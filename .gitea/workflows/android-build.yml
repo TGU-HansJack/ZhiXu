@@ -1,12 +1,6 @@
 name: Android Build
 
 on:
-  push:
-    paths-ignore:
-      - "**/*.md"
-      - "LICENSE"
-      - "NOTICE"
-  pull_request:
   workflow_dispatch:
     inputs:
       variant:
@@ -84,4 +78,3 @@ jobs:
         with:
           name: zhixu-android-${{ github.event_name == 'workflow_dispatch' && inputs.variant || 'debug' }}-apk
           path: ${{ steps.resolve.outputs.project_dir }}/apps/zhixu-android/build/outputs/apk/**/*.apk
-
