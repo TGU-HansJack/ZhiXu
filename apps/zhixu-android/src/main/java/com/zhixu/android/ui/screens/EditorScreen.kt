@@ -396,7 +396,8 @@ fun EditorScreen(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet(
-                modifier = Modifier.widthIn(min = 280.dp, max = 320.dp),
+                modifier = Modifier.width(320.dp),
+                drawerContainerColor = MaterialTheme.colorScheme.background,
                 drawerTonalElevation = 0.dp,
             ) {
                 Text(
