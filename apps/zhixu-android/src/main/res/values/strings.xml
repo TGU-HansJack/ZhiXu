@@ -1,0 +1,121 @@
+<resources>
+    <string name="app_name">Zhixu</string>
+
+    <!-- Navigation -->
+    <string name="nav_docs">Docs</string>
+    <string name="nav_tasks">Tasks</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Vault -->
+    <string name="vault_select_title">Select Vault folder</string>
+    <string name="vault_select_desc">Zhixu stores your data as files inside a Vault (portable and exportable).</string>
+    <string name="vault_select_button">Choose folder</string>
+
+    <!-- Docs -->
+    <string name="docs_title">Docs</string>
+    <string name="docs_empty">No documents</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_settings">Settings</string>
+    <string name="action_new_doc">New</string>
+    <string name="action_search">Search</string>
+    <string name="dialog_new_doc_title">New document</string>
+    <string name="field_file_name">File name</string>
+    <string name="action_create">Create</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="dialog_delete_doc_title">Delete document?</string>
+    <string name="action_delete">Delete</string>
+    <string name="search_empty">No results</string>
+    <string name="search_task_hit">Task match</string>
+
+    <!-- New doc -->
+    <string name="new_doc_title">New document</string>
+    <string name="new_doc_initial_content">Initial content (optional)</string>
+    <string name="new_doc_default_title">Untitled</string>
+    <string name="new_doc_error_name_required">File name is required.</string>
+    <string name="new_doc_error_create_failed">Create failed: %1$s</string>
+    <string name="new_doc_error_write_failed">Created, but failed to write initial content.</string>
+
+    <!-- Editor -->
+    <string name="editor_title">Editor</string>
+    <string name="action_back">Back</string>
+    <string name="action_preview">Preview</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_save">Save</string>
+    <string name="action_undo">Undo</string>
+    <string name="action_redo">Redo</string>
+    <string name="action_find_replace">Find/Replace</string>
+    <string name="dialog_find_replace_title">Find &amp; Replace</string>
+    <string name="field_find">Find</string>
+    <string name="field_replace">Replace</string>
+    <string name="action_replace_all">Replace all</string>
+    <string name="action_insert_task">Insert task</string>
+    <string name="action_insert_due">Insert due</string>
+    <string name="action_insert_tag">Insert tag</string>
+    <string name="snackbar_saved">Saved</string>
+    <string name="snackbar_saved_with_ids">Saved (+%1$d task ids)</string>
+    <string name="editor_load_failed_generic">Failed to open document.</string>
+    <string name="editor_load_failed_permission">No permission to open this document. Re-select the Vault folder.</string>
+    <string name="editor_load_failed_not_found">Document not found.</string>
+    <string name="editor_save_failed_generic">Failed to save.</string>
+    <string name="editor_save_failed_permission">No permission to save. Re-select the Vault folder.</string>
+    <string name="editor_rename_failed_generic">Failed to rename.</string>
+    <string name="action_open_drawer">Open panel</string>
+    <string name="editor_outline_title">Outline</string>
+    <string name="editor_outline_empty">No headings</string>
+    <string name="editor_links_title">Links</string>
+
+    <!-- Tasks -->
+    <string name="tasks_title">Tasks</string>
+    <string name="tasks_tab_today">Today</string>
+    <string name="tasks_tab_upcoming">Upcoming</string>
+    <string name="tasks_add_placeholder">添加任务</string>
+    <string name="tasks_completed">已完成</string>
+    <string name="tasks_completed_count">%1$d</string>
+    <string name="tasks_due_today">今天</string>
+    <string name="tasks_due_tomorrow">明天</string>
+    <string name="tasks_due_day_after_tomorrow">后天</string>
+    <string name="task_input_hint">准备做什么？</string>
+    <string name="task_input_add">添加</string>
+    <string name="task_input_date">日期</string>
+    <string name="task_input_time_range">时间段</string>
+    <string name="task_input_priority">优先级</string>
+    <string name="task_input_tags">标签</string>
+    <string name="task_input_clear">清除</string>
+    <string name="task_input_confirm">确定</string>
+    <string name="tasks_filter_undone">Undone</string>
+    <string name="tasks_filter_done">Done</string>
+    <string name="tasks_filter_all">All</string>
+    <string name="tasks_filter_tag">Tag filter (e.g. work)</string>
+    <string name="tasks_empty">No tasks</string>
+    <string name="action_toggle_task">Toggle task</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_vault">Vault</string>
+    <string name="settings_vault_not_selected">Not selected</string>
+    <string name="settings_change_vault">Change Vault</string>
+    <string name="settings_section_sync">Sync</string>
+    <string name="settings_sync_placeholder">v0.1 reserves entry; WebDAV sync comes later (see docs/sync-protocol.md).</string>
+
+    <!-- WebDAV -->
+    <string name="webdav_enable">Enable WebDAV</string>
+    <string name="webdav_base_url">Base URL</string>
+    <string name="webdav_remote_root">Remote root path</string>
+    <string name="webdav_username">Username</string>
+    <string name="webdav_password">Password</string>
+    <string name="webdav_show_password">Show password</string>
+    <string name="webdav_hide_password">Hide password</string>
+    <string name="webdav_include_index_sqlite">Sync .zhixu/index.sqlite (rebuildable)</string>
+    <string name="webdav_saved">Saved</string>
+    <string name="webdav_test">Test</string>
+    <string name="webdav_testing">Testing…</string>
+    <string name="webdav_test_ok">OK (HTTP %1$d)</string>
+    <string name="webdav_test_fail">Failed (HTTP %1$d): %2$s</string>
+    <string name="webdav_sync_now">Sync now</string>
+    <string name="webdav_syncing">Syncing…</string>
+    <string name="webdav_sync_ok">Synced: up %1$d, down %2$d, conflicts %3$d, failed %4$d</string>
+    <string name="webdav_sync_failed">Sync failed: %1$s</string>
+
+    <!-- Reminders -->
+    <string name="reminder_channel_name">Task reminders</string>
+</resources>

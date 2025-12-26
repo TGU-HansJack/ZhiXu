@@ -1,0 +1,87 @@
+name: Android Build
+
+on:
+  push:
+    paths-ignore:
+      - "**/*.md"
+      - "LICENSE"
+      - "NOTICE"
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: "Build variant"
+        required: true
+        default: "debug"
+        type: choice
+        options:
+          - debug
+          - release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ✅ 兜底：确保系统工具一定存在（非常重要）
+      - name: Ensure base system tools
+        shell: bash
+        run: |
+          set -e
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates \
+            curl \
+            git \
+            unzip \
+            zip
+          unzip -v
+          node --version
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve project directory
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f "./gradlew" ]]; then
+            echo "project_dir=." >> "$GITHUB_OUTPUT"
+          elif [[ -f "./ZhiXu/gradlew" ]]; then
+            echo "project_dir=ZhiXu" >> "$GITHUB_OUTPUT"
+          else
+            echo "Could not find gradlew" >&2
+            ls -la
+            exit 1
+          fi
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle wrapper executable
+        working-directory: ${{ steps.resolve.outputs.project_dir }}
+        run: chmod +x ./gradlew
+
+      - name: Assemble (Debug)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.variant == 'debug' }}
+        working-directory: ${{ steps.resolve.outputs.project_dir }}
+        run: ./gradlew :apps:zhixu-android:assembleDebug
+
+      - name: Assemble (Release)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.variant == 'release' }}
+        working-directory: ${{ steps.resolve.outputs.project_dir }}
+        run: ./gradlew :apps:zhixu-android:assembleRelease
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v3
+        with:
+          name: zhixu-android-${{ github.event_name == 'workflow_dispatch' && inputs.variant || 'debug' }}-apk
+          path: ${{ steps.resolve.outputs.project_dir }}/apps/zhixu-android/build/outputs/apk/**/*.apk
+

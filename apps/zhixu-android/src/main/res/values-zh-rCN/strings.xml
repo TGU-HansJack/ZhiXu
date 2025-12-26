@@ -1,0 +1,101 @@
+<resources>
+    <!-- Navigation -->
+    <string name="nav_docs">文档</string>
+    <string name="nav_tasks">任务</string>
+    <string name="nav_settings">设置</string>
+
+    <!-- Vault -->
+    <string name="vault_select_title">选择 Vault 文件夹</string>
+    <string name="vault_select_desc">Zhixu 将数据以文件形式存储在 Vault 中（可迁移、可导出）。</string>
+    <string name="vault_select_button">选择文件夹</string>
+
+    <!-- Docs -->
+    <string name="docs_title">文档</string>
+    <string name="docs_empty">暂无文档</string>
+    <string name="action_refresh">刷新</string>
+    <string name="action_settings">设置</string>
+    <string name="action_new_doc">新建</string>
+    <string name="action_search">搜索</string>
+    <string name="dialog_new_doc_title">新建文档</string>
+    <string name="field_file_name">文件名</string>
+    <string name="action_create">创建</string>
+    <string name="action_cancel">取消</string>
+    <string name="dialog_delete_doc_title">删除文档？</string>
+    <string name="action_delete">删除</string>
+    <string name="search_empty">无结果</string>
+    <string name="search_task_hit">任务命中</string>
+
+    <!-- New doc -->
+    <string name="new_doc_title">新建文档</string>
+    <string name="new_doc_initial_content">初始内容（可选）</string>
+    <string name="new_doc_default_title">未命名</string>
+    <string name="new_doc_error_name_required">请填写文件名。</string>
+    <string name="new_doc_error_create_failed">创建失败：%1$s</string>
+    <string name="new_doc_error_write_failed">文档已创建，但写入初始内容失败。</string>
+
+    <!-- Editor -->
+    <string name="editor_title">编辑</string>
+    <string name="action_back">返回</string>
+    <string name="action_preview">预览</string>
+    <string name="action_edit">编辑</string>
+    <string name="action_save">保存</string>
+    <string name="action_undo">撤销</string>
+    <string name="action_redo">重做</string>
+    <string name="action_find_replace">查找/替换</string>
+    <string name="dialog_find_replace_title">查找与替换</string>
+    <string name="field_find">查找</string>
+    <string name="field_replace">替换为</string>
+    <string name="action_replace_all">全部替换</string>
+    <string name="action_insert_task">插入任务</string>
+    <string name="action_insert_due">插入到期时间</string>
+    <string name="action_insert_tag">插入标签</string>
+    <string name="snackbar_saved">已保存</string>
+    <string name="snackbar_saved_with_ids">已保存（补全 %1$d 个任务 id）</string>
+    <string name="editor_load_failed_generic">打开文档失败。</string>
+    <string name="editor_load_failed_permission">没有权限打开该文档，请重新选择 Vault 文件夹。</string>
+    <string name="editor_load_failed_not_found">文档不存在。</string>
+    <string name="editor_save_failed_generic">保存失败。</string>
+    <string name="editor_save_failed_permission">没有权限保存，请重新选择 Vault 文件夹。</string>
+    <string name="editor_rename_failed_generic">重命名失败。</string>
+    <string name="action_open_drawer">打开侧栏</string>
+    <string name="editor_outline_title">大纲</string>
+    <string name="editor_outline_empty">暂无标题</string>
+    <string name="editor_links_title">链接</string>
+
+    <!-- Tasks -->
+    <string name="tasks_title">任务</string>
+    <string name="tasks_tab_today">今天</string>
+    <string name="tasks_tab_upcoming">即将到期</string>
+    <string name="tasks_empty">暂无任务</string>
+    <string name="action_toggle_task">切换任务状态</string>
+
+    <!-- Settings -->
+    <string name="settings_title">设置</string>
+    <string name="settings_section_vault">Vault</string>
+    <string name="settings_vault_not_selected">未选择</string>
+    <string name="settings_change_vault">更换 Vault</string>
+    <string name="settings_section_sync">同步</string>
+    <string name="settings_sync_placeholder">v0.1 预留入口；WebDAV 同步在后续迭代落地（见 docs/sync-protocol.md）。</string>
+
+    <!-- WebDAV -->
+    <string name="webdav_enable">启用 WebDAV</string>
+    <string name="webdav_base_url">服务器地址（Base URL）</string>
+    <string name="webdav_remote_root">远端根目录</string>
+    <string name="webdav_username">用户名</string>
+    <string name="webdav_password">密码</string>
+    <string name="webdav_show_password">显示密码</string>
+    <string name="webdav_hide_password">隐藏密码</string>
+    <string name="webdav_include_index_sqlite">同步 .zhixu/index.sqlite（可重建）</string>
+    <string name="webdav_saved">已保存</string>
+    <string name="webdav_test">测试连接</string>
+    <string name="webdav_testing">测试中…</string>
+    <string name="webdav_test_ok">连接成功（HTTP %1$d）</string>
+    <string name="webdav_test_fail">连接失败（HTTP %1$d）：%2$s</string>
+    <string name="webdav_sync_now">立即同步</string>
+    <string name="webdav_syncing">同步中…</string>
+    <string name="webdav_sync_ok">同步完成：上传 %1$d，下载 %2$d，冲突 %3$d，失败 %4$d</string>
+    <string name="webdav_sync_failed">同步失败：%1$s</string>
+
+    <!-- Reminders -->
+    <string name="reminder_channel_name">任务提醒</string>
+</resources>

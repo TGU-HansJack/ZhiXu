@@ -1,0 +1,15 @@
+.idea/
+.vscode/
+.gradle/
+**/build/
+local.properties
+*.iml
+.tmp/
+
+# Keystore (do not commit)
+*.jks
+*.keystore
+
+# OS
+.DS_Store
+Thumbs.db
