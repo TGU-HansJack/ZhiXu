@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun CapsuleActionBar(
     modifier: Modifier = Modifier,
-    onSearch: () -> Unit,
+    onSearch: (() -> Unit)? = null,
     onAdd: () -> Unit,
     onAi: () -> Unit,
 ) {
@@ -42,10 +42,12 @@ fun CapsuleActionBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            IconButton(onClick = onSearch, modifier = Modifier.size(64.dp)) {
-                Icon(imageVector = Icons.Outlined.Search, contentDescription = null)
+            if (onSearch != null) {
+                IconButton(onClick = onSearch, modifier = Modifier.size(64.dp)) {
+                    Icon(imageVector = Icons.Outlined.Search, contentDescription = null)
+                }
+                CapsuleDivider()
             }
-            CapsuleDivider()
             IconButton(onClick = onAdd, modifier = Modifier.size(64.dp)) {
                 Icon(imageVector = Icons.Outlined.Add, contentDescription = null)
             }
@@ -73,4 +75,3 @@ private fun CapsuleDivider() {
                 .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f)),
     )
 }
-

@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -273,26 +272,18 @@ fun WorkshopScreen(
                     windowInsets = TopAppBarDefaults.windowInsets,
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
                     title = { Text(stringResource(R.string.workshop_title)) },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                                contentDescription = stringResource(R.string.action_back),
-                            )
-                        }
-                    },
-                    actions = {
-                        IconButton(
-                            enabled = vaultRootUri != null,
-                            onClick = { scope.launch { refresh() } },
-                        ) {
-                            Icon(imageVector = Icons.Outlined.Refresh, contentDescription = stringResource(R.string.action_refresh))
-                        }
-                    },
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            }
-        },
+                     navigationIcon = {
+                         IconButton(onClick = onBack) {
+                             Icon(
+                                 imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                                 contentDescription = stringResource(R.string.action_back),
+                             )
+                         }
+                     },
+                 )
+                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+             }
+         },
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier

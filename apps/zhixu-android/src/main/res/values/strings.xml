@@ -24,6 +24,9 @@
     <string name="action_cancel">Cancel</string>
     <string name="dialog_delete_doc_title">Delete document?</string>
     <string name="action_delete">Delete</string>
+    <string name="action_show">Show</string>
+    <string name="action_hide">Hide</string>
+    <string name="edited_at_fmt">Edited at %1$s</string>
     <string name="search_empty">No results</string>
     <string name="search_task_hit">Task match</string>
 
@@ -95,7 +98,7 @@
     <string name="settings_vault_not_selected">Not selected</string>
     <string name="settings_change_vault">Change Vault</string>
     <string name="settings_section_sync">Sync</string>
-    <string name="settings_sync_placeholder">v0.1 reserves entry; WebDAV sync comes later (see docs/sync-protocol.md).</string>
+    <string name="settings_sync_placeholder">Sync settings. Configure WebDAV and run manual sync below.</string>
 
     <!-- WebDAV -->
     <string name="webdav_enable">Enable WebDAV</string>
@@ -136,6 +139,7 @@
     <string name="workshop_remove">Remove</string>
     <string name="workshop_removed">Removed: %1$s</string>
     <string name="workshop_remove_failed">Remove failed: %1$s</string>
+    <string name="todo_done_fmt">Tasks done %1$d/%2$d</string>
     <string name="bundled_typecho_name">Typecho XML-RPC Publisher</string>
     <string name="bundled_typecho_desc">Publish notes to a Typecho blog via XML-RPC (placeholder).</string>
     <string name="workshop_search_hint">Search plugins…</string>

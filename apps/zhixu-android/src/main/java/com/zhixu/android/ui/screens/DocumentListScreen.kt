@@ -13,22 +13,29 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +44,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -60,7 +69,11 @@ import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DocumentListScreen(
     contentPadding: PaddingValues,
@@ -74,12 +87,11 @@ fun DocumentListScreen(
     val highlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     val lifecycleOwner = LocalLifecycleOwner.current
     var docs by remember { mutableStateOf<List<UiDoc>>(emptyList()) }
-    var pendingDelete by remember { mutableStateOf<UiDoc?>(null) }
-    var isSearching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
     var showAiDialog by remember { mutableStateOf(false) }
+    var showSearchSheet by remember { mutableStateOf(false) }
 
     suspend fun refresh(reindex: Boolean) {
         val root = vaultRootUri ?: return
@@ -114,6 +126,27 @@ fun DocumentListScreen(
         )
     }
 
+    fun clearSearch() {
+        query = ""
+        results = emptyList()
+        searchJob?.cancel()
+        searchJob = null
+    }
+
+    fun updateQuery(newQuery: String) {
+        query = newQuery
+        searchJob?.cancel()
+        searchJob =
+            scope.launch {
+                delay(200)
+                if (query.isBlank() || vaultRootUri == null) {
+                    results = emptyList()
+                    return@launch
+                }
+                results = repository.search(vaultRootUri, query)
+            }
+    }
+
     Box(
         modifier =
             Modifier
@@ -122,50 +155,6 @@ fun DocumentListScreen(
                 .fillMaxSize(),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (isSearching) {
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = {
-                            query = it
-                            searchJob?.cancel()
-                            searchJob =
-                                scope.launch {
-                                    delay(200)
-                                    if (query.isBlank() || vaultRootUri == null) {
-                                        results = emptyList()
-                                        return@launch
-                                    }
-                                    results = repository.search(vaultRootUri, query)
-                                }
-                        },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true,
-                        label = { Text(stringResource(R.string.action_search)) },
-                    )
-                } else {
-                    Text(text = "", modifier = Modifier.weight(1f))
-                }
-
-                IconButton(
-                    onClick = {
-                        isSearching = !isSearching
-                        if (!isSearching) {
-                            query = ""
-                            results = emptyList()
-                        }
-                    },
-                ) {
-                    Icon(imageVector = Icons.Outlined.Search, contentDescription = stringResource(R.string.action_search))
-                }
-                IconButton(onClick = { scope.launch { refresh(reindex = true) } }) {
-                    Icon(imageVector = Icons.Outlined.Refresh, contentDescription = stringResource(R.string.action_refresh))
-                }
-            }
-
             if (vaultRootUri == null) {
                 Column(
                     modifier = Modifier
@@ -181,15 +170,165 @@ fun DocumentListScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 96.dp),
                 ) {
-                if (isSearching && query.isNotBlank()) {
-                    if (results.isEmpty()) {
-                        item {
-                            Text(
-                                text = stringResource(R.string.search_empty),
-                                modifier = Modifier.padding(16.dp),
-                            )
-                        }
+                if (docs.isEmpty()) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.docs_empty),
+                            modifier = Modifier.padding(16.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
+                }
+                items(docs, key = { it.uri.toString() }) { doc ->
+                    val title = doc.name.removeSuffix(".md").ifBlank { stringResource(R.string.new_doc_default_title) }
+                    ListItem(
+                        modifier = Modifier.clickable { onOpenDoc(doc.uri.toString(), null, null) },
+                        leadingContent = {
+                            Surface(
+                                modifier = Modifier.size(40.dp),
+                                shape = MaterialTheme.shapes.small,
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Description,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        },
+                        headlineContent = {
+                            Text(
+                                text = title,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleLarge,
+                            )
+                        },
+                        supportingContent = {
+                            Text(
+                                text = stringResource(R.string.edited_at_fmt, formatEditedAt(doc.lastModified)),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        trailingContent = {
+                            IconButton(onClick = { /* UI only */ }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.MoreHoriz,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                }
+                }
+            }
+        }
+
+        CapsuleActionBar(
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 18.dp)
+                    .windowInsetsPadding(WindowInsets.navigationBars),
+            onSearch = { showSearchSheet = true },
+            onAdd = { if (vaultRootUri == null) onChangeVault() else onNewDoc() },
+            onAi = { showAiDialog = true },
+        )
+    }
+
+    if (showSearchSheet) {
+        DocumentSearchSheet(
+            query = query,
+            onQueryChange = ::updateQuery,
+            results = results,
+            highlightBg = highlightBg,
+            onDismiss = {
+                showSearchSheet = false
+                clearSearch()
+            },
+            onOpenResult = { uriStr, lineIndex ->
+                showSearchSheet = false
+                onOpenDoc(uriStr, query, lineIndex)
+                clearSearch()
+            },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DocumentSearchSheet(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    results: List<SearchResult>,
+    highlightBg: Color,
+    onDismiss: () -> Unit,
+    onOpenResult: (String, Int?) -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        dragHandle = null,
+    ) {
+        Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    singleLine = true,
+                    placeholder = { Text(stringResource(R.string.action_search)) },
+                    leadingIcon = { Icon(imageVector = Icons.Outlined.Search, contentDescription = null) },
+                    modifier = Modifier.weight(1f).focusRequester(focusRequester),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    colors =
+                        TextFieldDefaults.colors(
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                        ),
+                )
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 24.dp),
+            ) {
+                if (query.isBlank()) {
+                    item {
+                        Text(
+                            text = "",
+                            modifier = Modifier.padding(16.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else if (results.isEmpty()) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.search_empty),
+                            modifier = Modifier.padding(16.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
                     itemsIndexed(
                         results,
                         key = { index, result ->
@@ -202,7 +341,7 @@ fun DocumentListScreen(
                         when (result) {
                             is DocSearchResult -> {
                                 ListItem(
-                                    modifier = Modifier.clickable { onOpenDoc(result.uri.toString(), query, null) },
+                                    modifier = Modifier.clickable { onOpenResult(result.uri.toString(), null) },
                                     headlineContent = {
                                         Text(
                                             text = highlightQuery(result.title, query, highlightBg),
@@ -212,7 +351,11 @@ fun DocumentListScreen(
                                     },
                                     supportingContent = {
                                         if (!result.snippet.isNullOrBlank()) {
-                                            Text(highlightQuery(result.snippet, query, highlightBg), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                            Text(
+                                                highlightQuery(result.snippet, query, highlightBg),
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
                                         }
                                     },
                                 )
@@ -220,7 +363,7 @@ fun DocumentListScreen(
 
                             is TaskSearchResult -> {
                                 ListItem(
-                                    modifier = Modifier.clickable { onOpenDoc(result.docUri.toString(), query, result.lineIndex) },
+                                    modifier = Modifier.clickable { onOpenResult(result.docUri.toString(), result.lineIndex) },
                                     headlineContent = {
                                         Text(
                                             text = highlightQuery(result.title, query, highlightBg),
@@ -233,73 +376,18 @@ fun DocumentListScreen(
                             }
                         }
                     }
-                } else if (docs.isEmpty()) {
-                    item {
-                        Text(
-                            text = stringResource(R.string.docs_empty),
-                            modifier = Modifier.padding(16.dp),
-                        )
-                    }
-                }
-                items(docs, key = { it.uri.toString() }) { doc ->
-                    ListItem(
-                        modifier = Modifier.clickable { onOpenDoc(doc.uri.toString(), null, null) },
-                        headlineContent = {
-                            Text(text = doc.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        },
-                        supportingContent = { Text(text = "${doc.size} B") },
-                        trailingContent = {
-                            IconButton(onClick = { pendingDelete = doc }) {
-                                Icon(imageVector = Icons.Outlined.Delete, contentDescription = stringResource(R.string.action_delete))
-                            }
-                        },
-                    )
-                }
                 }
             }
         }
-
-        CapsuleActionBar(
-            modifier =
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 18.dp)
-                    .windowInsetsPadding(WindowInsets.navigationBars),
-            onSearch = {
-                isSearching = !isSearching
-                if (!isSearching) {
-                    query = ""
-                    results = emptyList()
-                    searchJob?.cancel()
-                }
-            },
-            onAdd = { if (vaultRootUri == null) onChangeVault() else onNewDoc() },
-            onAi = { showAiDialog = true },
-        )
     }
+}
 
-    if (pendingDelete != null) {
-        val doc = pendingDelete!!
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text(stringResource(R.string.dialog_delete_doc_title)) },
-            text = { Text(doc.name) },
-            confirmButton = {
-                androidx.compose.material3.TextButton(
-                    onClick = {
-                        scope.launch {
-                            repository.deleteDoc(doc.uri)
-                            pendingDelete = null
-                            refresh(reindex = false)
-                        }
-                    },
-                ) { Text(stringResource(R.string.action_delete)) }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.action_cancel)) }
-            },
-        )
-    }
+private val editedAtFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm")
+
+private fun formatEditedAt(lastModifiedMs: Long): String {
+    val instant = Instant.ofEpochMilli(lastModifiedMs)
+    val local = instant.atZone(ZoneId.systemDefault()).toLocalDateTime()
+    return editedAtFormatter.format(local)
 }
 
 private fun highlightQuery(text: String, query: String, highlightBg: Color): AnnotatedString {

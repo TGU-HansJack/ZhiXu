@@ -22,6 +22,9 @@
     <string name="action_cancel">取消</string>
     <string name="dialog_delete_doc_title">删除文档？</string>
     <string name="action_delete">删除</string>
+    <string name="action_show">显示</string>
+    <string name="action_hide">隐藏</string>
+    <string name="edited_at_fmt">编辑于 %1$s</string>
     <string name="search_empty">无结果</string>
     <string name="search_task_hit">任务命中</string>
 
@@ -75,7 +78,7 @@
     <string name="settings_vault_not_selected">未选择</string>
     <string name="settings_change_vault">更换 Vault</string>
     <string name="settings_section_sync">同步</string>
-    <string name="settings_sync_placeholder">v0.1 预留入口；WebDAV 同步在后续迭代落地（见 docs/sync-protocol.md）。</string>
+    <string name="settings_sync_placeholder">同步设置：配置 WebDAV，并可在下方手动同步。</string>
 
     <!-- WebDAV -->
     <string name="webdav_enable">启用 WebDAV</string>
@@ -115,6 +118,7 @@
     <string name="workshop_remove">移除</string>
     <string name="workshop_removed">已移除：%1$s</string>
     <string name="workshop_remove_failed">移除失败：%1$s</string>
+    <string name="todo_done_fmt">待办完成 %1$d/%2$d</string>
     <string name="bundled_typecho_name">Typecho XML-RPC 发布插件</string>
     <string name="bundled_typecho_desc">通过 XML-RPC 将笔记发布到 Typecho（占位）。</string>
     <string name="workshop_search_hint">搜索插件名称或命令…</string>

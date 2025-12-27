@@ -15,6 +15,7 @@ import kotlinx.coroutines.yield
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
@@ -23,6 +24,12 @@ data class UiDoc(
     val uri: Uri,
     val lastModified: Long,
     val size: Long,
+)
+
+data class TaskStats(
+    val done: Int,
+    val total: Int,
+    val donePerDay: Map<LocalDate, Int>,
 )
 
 class VaultRepository(
@@ -324,6 +331,40 @@ class VaultRepository(
         }.onFailure {
             Log.e("Zhixu", "indexDocUri failed for $docUri", it)
         }
+    }
+
+    suspend fun taskStats(
+        rootUri: Uri,
+        days: Int = 98,
+        maxDocsToScan: Int = 200,
+    ): TaskStats = withContext(Dispatchers.IO) {
+        val docs = listMarkdownDocs(rootUri).take(maxDocsToScan)
+        val cutoff = LocalDate.now().minusDays((days - 1).coerceAtLeast(0).toLong())
+        val donePerDay = HashMap<LocalDate, Int>()
+        var done = 0
+        var total = 0
+
+        for ((idx, doc) in docs.withIndex()) {
+            currentCoroutineContext().ensureActive()
+            val content = readText(doc.uri)
+            val tasks = TaskSyntax.parseTasks(content)
+            total += tasks.size
+
+            for (task in tasks) {
+                if (task.checked) done++
+                val doneAt = task.done ?: continue
+                val date =
+                    runCatching { LocalDateTime.parse(doneAt, dueFormat).toLocalDate() }
+                        .getOrNull()
+                        ?: continue
+                if (date.isBefore(cutoff)) continue
+                donePerDay[date] = (donePerDay[date] ?: 0) + 1
+            }
+
+            if (idx % 8 == 0) yield()
+        }
+
+        TaskStats(done = done, total = total, donePerDay = donePerDay)
     }
 
     suspend fun writeBytes(uri: Uri, bytes: ByteArray) = withContext(Dispatchers.IO) {
