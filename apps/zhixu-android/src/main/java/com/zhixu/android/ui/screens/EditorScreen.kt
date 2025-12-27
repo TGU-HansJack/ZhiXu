@@ -35,7 +35,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.FindReplace
 import androidx.compose.material.icons.outlined.Menu
-import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.Undo
 import androidx.compose.material.icons.outlined.Redo
 import androidx.compose.material.icons.outlined.TaskAlt
@@ -64,7 +63,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
@@ -77,6 +78,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.runtime.Composable
@@ -98,6 +100,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
@@ -116,7 +119,6 @@ import com.zhixu.android.plugins.PluginRepository
 import com.zhixu.android.plugins.typecho.TypechoPublishPayload
 import com.zhixu.android.plugins.typecho.TypechoXmlRpcClient
 import com.zhixu.android.plugins.typecho.TypechoXmlRpcConfig
-import com.zhixu.android.ui.components.DraggableRadialFab
 import com.zhixu.android.ui.components.MarkdownPreview
 import com.zhixu.android.ui.components.RadialFabAction
 import com.zhixu.core.tasks.TaskSyntax
@@ -153,7 +155,11 @@ fun EditorScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    var showOverflowSheet by remember { mutableStateOf(false) }
+    val overflowSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val clipboard = LocalClipboardManager.current
+    val density = LocalDensity.current
+    val isImeVisible = WindowInsets.ime.getBottom(density) > 0
 
     var showLinkDialog by remember { mutableStateOf(false) }
     var linkText by remember { mutableStateOf("") }
@@ -258,6 +264,71 @@ fun EditorScreen(
             defaultCategories = defaultCategories,
             defaultTags = defaultTags,
         )
+    }
+
+    fun handlePluginAction(action: RadialFabAction) {
+        when {
+            action.id == "plugins:none" -> {
+                scope.launch { snackbarHostState.showSnackbar("请到 设置 -> 创意工坊 启用/安装插件") }
+            }
+
+            action.id.startsWith("plugin:typecho-xmlrpc-publisher/") -> {
+                val root = vaultRootUri
+                if (root == null) {
+                    scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.settings_vault_not_selected)) }
+                } else {
+                    scope.launch {
+                        val cfgJson = pluginRepo.readPluginConfig(root, "typecho-xmlrpc-publisher")
+                        val cfg = typechoConfigFromJson(cfgJson)
+                        if (cfg == null) {
+                            snackbarHostState.showSnackbar("请先到 设置 -> 创意工坊 -> Typecho 插件 设置")
+                            return@launch
+                        }
+
+                        val fm = FrontMatterParser.parse(content.text)
+                        val fmTitle = fm.string("title")
+                        val fmSlug = fm.string("slug") ?: fm.string("permalink")
+                        val fmTags = fm.stringList("tags")
+                        val fmCategories = fm.stringList("categories")
+                        val fmPostId = fm.string("typechoPostId") ?: fm.string("postId")
+                        val draft = fm.bool("draft") == true
+
+                        val payload =
+                            TypechoPublishPayload(
+                                title = (fmTitle ?: title).ifBlank { originalFileName.removeSuffix(".md") },
+                                markdown = fm.body,
+                                categories = fmCategories,
+                                tags = fmTags,
+                                slug = fmSlug,
+                                publish = !draft,
+                                postId = fmPostId,
+                            )
+
+                        snackbarHostState.showSnackbar("发布中…")
+                        val result =
+                            withContext(Dispatchers.IO) {
+                                TypechoXmlRpcClient().publish(cfg, payload)
+                            }
+                        if (result.ok && !result.postId.isNullOrBlank()) {
+                            val updated = FrontMatterParser.upsert(content.text, mapOf("typechoPostId" to result.postId))
+                            repository.writeText(currentDocUri, updated)
+                            content = content.copy(text = updated)
+                        }
+                        snackbarHostState.showSnackbar(
+                            if (result.ok) {
+                                if (result.postId != null) "${result.message} (postId=${result.postId})" else result.message
+                            } else {
+                                result.message
+                            },
+                        )
+                    }
+                }
+            }
+
+            action.id.startsWith("plugin:") -> scope.launch { snackbarHostState.showSnackbar(action.label) }
+
+            else -> Unit
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -641,6 +712,21 @@ fun EditorScreen(
             }
     }
 
+    LaunchedEffect(isLoaded, title, currentDocUri) {
+        if (!isLoaded) return@LaunchedEffect
+        val desiredName = title.trim()
+        if (desiredName.isBlank()) return@LaunchedEffect
+        delay(600)
+        if (desiredName != title.trim()) return@LaunchedEffect
+
+        val base = originalFileName.removeSuffix(".md")
+        if (desiredName == base) return@LaunchedEffect
+
+        val renamedUri = repository.renameDoc(currentDocUri, desiredName) ?: return@LaunchedEffect
+        currentDocUri = renamedUri
+        originalFileName = DocumentFile.fromSingleUri(context, renamedUri)?.name.orEmpty()
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -719,70 +805,33 @@ fun EditorScreen(
             containerColor = MaterialTheme.colorScheme.background,
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             topBar = {
-                Column {
+                Column(
+                    modifier =
+                        Modifier.padding(
+                            top =
+                                with(density) {
+                                    TopAppBarDefaults.windowInsets.getTop(this).toDp()
+                                },
+                        ),
+                ) {
                     TopAppBar(
-                        windowInsets = TopAppBarDefaults.windowInsets,
+                        windowInsets = WindowInsets(0, 0, 0, 0),
+                        modifier = Modifier.height(48.dp),
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
                         title = { },
                         navigationIcon = {
-                            IconButton(onClick = onBack) {
-                                Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                    Icon(imageVector = Icons.Outlined.Menu, contentDescription = stringResource(R.string.action_open_drawer))
+                                }
+                                IconButton(onClick = onBack) {
+                                    Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                                }
                             }
                         },
                         actions = {
-                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                Icon(imageVector = Icons.Outlined.Menu, contentDescription = stringResource(R.string.action_open_drawer))
-                            }
-                            IconButton(
-                                onClick = {
-                                    scope.launch {
-                                        val desiredName = title.trim()
-                                        if (desiredName.isNotBlank()) {
-                                            val base = originalFileName.removeSuffix(".md")
-                                            if (desiredName != base) {
-                                                val renamedUri = repository.renameDoc(currentDocUri, desiredName)
-                                                if (renamedUri != null) {
-                                                    currentDocUri = renamedUri
-                                                    originalFileName = DocumentFile.fromSingleUri(context, renamedUri)?.name.orEmpty()
-                                                } else {
-                                                    snackbarHostState.showSnackbar(context.getString(R.string.editor_rename_failed_generic))
-                                                }
-                                            }
-                                        }
-
-                                        val result =
-                                            runCatching {
-                                                val normalized = TaskSyntax.normalizeMarkdown(content.text)
-                                                val toSave = normalized.markdown
-                                                repository.writeText(currentDocUri, toSave)
-                                                repository.indexDocUri(currentDocUri)
-                                                content = TextFieldValue(toSave)
-                                                normalized.insertedIds
-                                            }
-
-                                        result.fold(
-                                            onSuccess = { insertedIds ->
-                                                val msg =
-                                                    if (insertedIds > 0) {
-                                                        context.getString(R.string.snackbar_saved_with_ids, insertedIds)
-                                                    } else {
-                                                        context.getString(R.string.snackbar_saved)
-                                                    }
-                                                snackbarHostState.showSnackbar(msg)
-                                            },
-                                            onFailure = { e ->
-                                                val msg =
-                                                    when (e) {
-                                                        is SecurityException -> context.getString(R.string.editor_save_failed_permission)
-                                                        else -> context.getString(R.string.editor_save_failed_generic)
-                                                    }
-                                                snackbarHostState.showSnackbar(msg)
-                                            },
-                                        )
-                                    }
-                                },
-                            ) {
-                                Icon(imageVector = Icons.Outlined.Save, contentDescription = stringResource(R.string.action_save))
+                            IconButton(onClick = { showOverflowSheet = true }) {
+                                Icon(imageVector = Icons.Outlined.MoreHoriz, contentDescription = "More")
                             }
                         },
                     )
@@ -790,65 +839,67 @@ fun EditorScreen(
                 }
             },
             bottomBar = {
-                EditorBottomToolbar(
-                    isPreview = isPreview,
-                    canUndo = undoStack.isNotEmpty(),
-                    canRedo = redoStack.isNotEmpty(),
-                    onTogglePreview = { isPreview = !isPreview },
-                    onUndo = {
-                        val prev = undoStack.removeLastOrNull() ?: return@EditorBottomToolbar
-                        redoStack.addLast(content)
-                        content = prev
-                    },
-                    onRedo = {
-                        val next = redoStack.removeLastOrNull() ?: return@EditorBottomToolbar
-                        undoStack.addLast(content)
-                        content = next
-                    },
-                    onHeading1 = { insertHeading(1) },
-                    onHeading2 = { insertHeading(2) },
-                    onHeading3 = { insertHeading(3) },
-                    onBold = { wrapSelection("**", "**") },
-                    onTask = {
-                        val lineIndex = content.text.take(content.selection.start).count { it == '\n' }
-                        val toggled = TaskSyntax.toggleTaskAtLine(content.text, lineIndex)
-                        if (toggled != content.text) {
-                            pushHistoryIfNeeded(content)
-                            content = content.copy(text = toggled)
-                        } else {
-                            insertTaskLine()
-                        }
-                    },
-                    onBullets = { insertUnorderedList() },
-                    onNumbers = { insertOrderedList() },
-                    onItalic = { wrapSelection("*", "*") },
-                    onStrike = { wrapSelection("~~", "~~") },
-                    onQuote = { insertQuote() },
-                    onDivider = { insertDivider() },
-                    onLink = { openLinkDialog() },
-                    onImage = { openImageDialog() },
-                    onCode = { openCodeDialog() },
-                    onTable = { openTableDialog() },
-                    onMoreFindReplace = { showFindReplace = true },
-                    onMoreHeading4 = { insertHeading(4) },
-                    onMoreHeading5 = { insertHeading(5) },
-                    onMoreHeading6 = { insertHeading(6) },
-                    onMoreHighlight = { wrapSelection("==", "==") },
-                    onMoreUnderline = { wrapSelection("<u>", "</u>") },
-                    onMoreTaskToggle = {
-                        val lineIndex = content.text.take(content.selection.start).count { it == '\n' }
-                        val toggled = TaskSyntax.toggleTaskAtLine(content.text, lineIndex)
-                        if (toggled != content.text) {
-                            pushHistoryIfNeeded(content)
-                            content = content.copy(text = toggled)
-                        } else {
-                            insertTaskLine()
-                        }
-                    },
-                    onMoreMermaid = { insertMermaidTemplate() },
-                    onMoreMathInline = { insertInlineMath() },
-                    onMoreMathBlock = { insertBlockMath() },
-                )
+                if (!isPreview && isImeVisible) {
+                    EditorBottomToolbar(
+                        isPreview = isPreview,
+                        canUndo = undoStack.isNotEmpty(),
+                        canRedo = redoStack.isNotEmpty(),
+                        onTogglePreview = { isPreview = !isPreview },
+                        onUndo = {
+                            val prev = undoStack.removeLastOrNull() ?: return@EditorBottomToolbar
+                            redoStack.addLast(content)
+                            content = prev
+                        },
+                        onRedo = {
+                            val next = redoStack.removeLastOrNull() ?: return@EditorBottomToolbar
+                            undoStack.addLast(content)
+                            content = next
+                        },
+                        onHeading1 = { insertHeading(1) },
+                        onHeading2 = { insertHeading(2) },
+                        onHeading3 = { insertHeading(3) },
+                        onBold = { wrapSelection("**", "**") },
+                        onTask = {
+                            val lineIndex = content.text.take(content.selection.start).count { it == '\n' }
+                            val toggled = TaskSyntax.toggleTaskAtLine(content.text, lineIndex)
+                            if (toggled != content.text) {
+                                pushHistoryIfNeeded(content)
+                                content = content.copy(text = toggled)
+                            } else {
+                                insertTaskLine()
+                            }
+                        },
+                        onBullets = { insertUnorderedList() },
+                        onNumbers = { insertOrderedList() },
+                        onItalic = { wrapSelection("*", "*") },
+                        onStrike = { wrapSelection("~~", "~~") },
+                        onQuote = { insertQuote() },
+                        onDivider = { insertDivider() },
+                        onLink = { openLinkDialog() },
+                        onImage = { openImageDialog() },
+                        onCode = { openCodeDialog() },
+                        onTable = { openTableDialog() },
+                        onMoreFindReplace = { showFindReplace = true },
+                        onMoreHeading4 = { insertHeading(4) },
+                        onMoreHeading5 = { insertHeading(5) },
+                        onMoreHeading6 = { insertHeading(6) },
+                        onMoreHighlight = { wrapSelection("==", "==") },
+                        onMoreUnderline = { wrapSelection("<u>", "</u>") },
+                        onMoreTaskToggle = {
+                            val lineIndex = content.text.take(content.selection.start).count { it == '\n' }
+                            val toggled = TaskSyntax.toggleTaskAtLine(content.text, lineIndex)
+                            if (toggled != content.text) {
+                                pushHistoryIfNeeded(content)
+                                content = content.copy(text = toggled)
+                            } else {
+                                insertTaskLine()
+                            }
+                        },
+                        onMoreMermaid = { insertMermaidTemplate() },
+                        onMoreMathInline = { insertInlineMath() },
+                        onMoreMathBlock = { insertBlockMath() },
+                    )
+                }
             },
         ) { padding ->
             Box(
@@ -1019,87 +1070,35 @@ fun EditorScreen(
 
                 }
 
-                    DraggableRadialFab(
-                        modifier = Modifier.fillMaxSize(),
-                        primaryLabel = "Z",
-                        onClickPrimary = { isPreview = !isPreview },
-                        actions = pluginFabActions,
-                        persistenceKey = "editor_fab",
-                        edgePadding = 0.dp,
-                        onClickAction = { action ->
-                            when {
-                                action.id == "plugins:none" -> {
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar("请到 设置 -> 创意工坊 启用/安装插件")
-                                    }
-                                }
-
-                                action.id.startsWith("plugin:typecho-xmlrpc-publisher/") -> {
-                                    val root = vaultRootUri
-                                    if (root == null) {
-                                        scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.settings_vault_not_selected)) }
-                                    } else {
-                                        scope.launch {
-                                            val cfgJson = pluginRepo.readPluginConfig(root, "typecho-xmlrpc-publisher")
-                                            val cfg = typechoConfigFromJson(cfgJson)
-                                            if (cfg == null) {
-                                                snackbarHostState.showSnackbar("请先到 设置 -> 创意工坊 -> Typecho 插件 设置")
-                                                return@launch
-                                            }
-
-                                            val fm = FrontMatterParser.parse(content.text)
-                                            val fmTitle = fm.string("title")
-                                            val fmSlug = fm.string("slug") ?: fm.string("permalink")
-                                            val fmTags = fm.stringList("tags")
-                                            val fmCategories = fm.stringList("categories")
-                                            val fmPostId = fm.string("typechoPostId") ?: fm.string("postId")
-                                            val draft = fm.bool("draft") == true
-
-                                            val payload =
-                                                TypechoPublishPayload(
-                                                    title = (fmTitle ?: title).ifBlank { originalFileName.removeSuffix(".md") },
-                                                    markdown = fm.body,
-                                                    categories = fmCategories,
-                                                    tags = fmTags,
-                                                    slug = fmSlug,
-                                                    publish = !draft,
-                                                    postId = fmPostId,
-                                                )
-
-                                            snackbarHostState.showSnackbar("发布中…")
-                                            val result =
-                                                withContext(Dispatchers.IO) {
-                                                    TypechoXmlRpcClient().publish(cfg, payload)
-                                                }
-                                            if (result.ok && !result.postId.isNullOrBlank()) {
-                                                val updated = FrontMatterParser.upsert(content.text, mapOf("typechoPostId" to result.postId))
-                                                repository.writeText(currentDocUri, updated)
-                                                content = content.copy(text = updated)
-                                            }
-                                            snackbarHostState.showSnackbar(
-                                                if (result.ok) {
-                                                    if (result.postId != null) "${result.message} (postId=${result.postId})" else result.message
-                                                } else {
-                                                    result.message
-                                                },
-                                            )
-                                        }
-                                    }
-                                }
-
-                                action.id.startsWith("plugin:") -> {
-                                    scope.launch { snackbarHostState.showSnackbar(action.label) }
-                                }
-
-                                else -> Unit
-                            }
-                        },
-                    )
             }
         }
     }
 
-    // Plugin publish actions are handled via FAB; plugin settings live in Workshop.
+    if (showOverflowSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showOverflowSheet = false },
+            sheetState = overflowSheetState,
+        ) {
+            Text(
+                text = "更多",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            )
+            LazyColumn(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                items(pluginFabActions, key = { it.id }) { action ->
+                    ListItem(
+                        modifier =
+                            Modifier.clickable {
+                                showOverflowSheet = false
+                                handlePluginAction(action)
+                            },
+                        leadingContent = { Icon(imageVector = action.icon, contentDescription = null) },
+                        headlineContent = { Text(action.label) },
+                    )
+                }
+            }
+        }
+    }
 
     if (showFindReplace) {
         AlertDialog(
@@ -1402,20 +1401,18 @@ private fun EditorBottomToolbar(
     val toolbarScrollState = rememberScrollState()
     Surface(
         tonalElevation = 3.dp,
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier
-            .then(modifier)
-            .fillMaxWidth()
-            .wrapContentHeight()
-            .heightIn(min = 64.dp)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+        shape = RoundedCornerShape(0.dp),
+        modifier =
+            Modifier
+                .then(modifier)
+                .fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(toolbarScrollState)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

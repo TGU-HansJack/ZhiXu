@@ -9,8 +9,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
@@ -25,11 +28,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material.icons.outlined.ContentPaste
-import androidx.compose.material.icons.outlined.DocumentScanner
-import androidx.compose.material.icons.outlined.Mic
-import androidx.compose.material.icons.outlined.PhotoCamera
-import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -41,7 +39,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -51,15 +48,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
-import android.widget.Toast
 import com.zhixu.android.R
 import com.zhixu.android.data.DocSearchResult
 import com.zhixu.android.data.SearchResult
 import com.zhixu.android.data.TaskSearchResult
 import com.zhixu.android.data.UiDoc
 import com.zhixu.android.data.VaultRepository
-import com.zhixu.android.ui.components.DraggableRadialFab
-import com.zhixu.android.ui.components.RadialFabAction
+import com.zhixu.android.ui.components.CapsuleActionBar
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.launch
@@ -85,16 +80,6 @@ fun DocumentListScreen(
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
     var showAiDialog by remember { mutableStateOf(false) }
-    val fabActions =
-        remember {
-            listOf(
-                RadialFabAction("record", "录音（占位）", Icons.Outlined.Mic, ringIndex = 0, angleDegrees = -90f),
-                RadialFabAction("clip", "剪存（占位）", Icons.Outlined.ContentPaste, ringIndex = 0, angleDegrees = -30f),
-                RadialFabAction("ai", "AI（占位）", Icons.Outlined.SmartToy, ringIndex = 0, angleDegrees = -150f),
-                RadialFabAction("photo", "拍照（占位）", Icons.Outlined.PhotoCamera, ringIndex = 1, angleDegrees = 0f),
-                RadialFabAction("ocr", "OCR（占位）", Icons.Outlined.DocumentScanner, ringIndex = 1, angleDegrees = 180f),
-            )
-        }
 
     suspend fun refresh(reindex: Boolean) {
         val root = vaultRootUri ?: return
@@ -119,8 +104,6 @@ fun DocumentListScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-
-    val context = LocalContext.current
 
     if (showAiDialog) {
         AlertDialog(
@@ -196,6 +179,7 @@ fun DocumentListScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 96.dp),
                 ) {
                 if (isSearching && query.isNotBlank()) {
                     if (results.isEmpty()) {
@@ -275,23 +259,22 @@ fun DocumentListScreen(
             }
         }
 
-        DraggableRadialFab(
-            modifier = Modifier.fillMaxSize(),
-            primaryLabel = "Z",
-            onClickPrimary = if (vaultRootUri == null) onChangeVault else onNewDoc,
-            actions = fabActions,
-            onClickAction = { action ->
-                when (action.id) {
-                    "ai" -> showAiDialog = true
-                    else -> {
-                        if (vaultRootUri == null) {
-                            Toast.makeText(context, context.getString(R.string.settings_vault_not_selected), Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, action.label, Toast.LENGTH_SHORT).show()
-                        }
-                    }
+        CapsuleActionBar(
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 18.dp)
+                    .windowInsetsPadding(WindowInsets.navigationBars),
+            onSearch = {
+                isSearching = !isSearching
+                if (!isSearching) {
+                    query = ""
+                    results = emptyList()
+                    searchJob?.cancel()
                 }
             },
+            onAdd = { if (vaultRootUri == null) onChangeVault() else onNewDoc() },
+            onAi = { showAiDialog = true },
         )
     }
 
