@@ -3,6 +3,15 @@ package com.zhixu.android.ui
 import android.net.Uri
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -367,6 +376,62 @@ fun ZhixuApp() {
                                 defaultValue = -1
                             },
                         ),
+                        enterTransition = {
+                            val fromEdit = initialState.destination.route?.startsWith("edit") == true
+                            if (fromEdit) {
+                                EnterTransition.None
+                            } else {
+                                slideInVertically(
+                                    animationSpec =
+                                        tween(
+                                            durationMillis = 160,
+                                            easing = LinearOutSlowInEasing,
+                                        ),
+                                    initialOffsetY = { fullHeight -> fullHeight },
+                                ) +
+                                    fadeIn(animationSpec = tween(durationMillis = 100)) +
+                                    scaleIn(
+                                        initialScale = 0.98f,
+                                        animationSpec = tween(durationMillis = 160),
+                                    )
+                            }
+                        },
+                        exitTransition = {
+                            val toEdit = targetState.destination.route?.startsWith("edit") == true
+                            if (toEdit) {
+                                ExitTransition.None
+                            } else {
+                                slideOutVertically(
+                                    animationSpec =
+                                        tween(
+                                            durationMillis = 160,
+                                            easing = FastOutLinearInEasing,
+                                        ),
+                                    targetOffsetY = { fullHeight -> fullHeight },
+                                ) +
+                                    fadeOut(animationSpec = tween(durationMillis = 100)) +
+                                    scaleOut(
+                                        targetScale = 0.98f,
+                                        animationSpec = tween(durationMillis = 160),
+                                    )
+                            }
+                        },
+                        popEnterTransition = { EnterTransition.None },
+                        popExitTransition = {
+                            slideOutVertically(
+                                animationSpec =
+                                    tween(
+                                        durationMillis = 160,
+                                        easing = FastOutLinearInEasing,
+                                    ),
+                                targetOffsetY = { fullHeight -> fullHeight },
+                            ) +
+                                fadeOut(animationSpec = tween(durationMillis = 100)) +
+                                scaleOut(
+                                    targetScale = 0.98f,
+                                    animationSpec = tween(durationMillis = 160),
+                                )
+                        },
                     ) { entry ->
                         val uriParam = entry.arguments?.getString("uri") ?: ""
                         val qParam = entry.arguments?.getString("q") ?: ""
