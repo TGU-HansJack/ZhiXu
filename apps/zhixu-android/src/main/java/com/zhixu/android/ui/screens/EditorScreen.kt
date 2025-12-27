@@ -853,14 +853,15 @@ fun EditorScreen(
                 val top = layout.getLineTop(line)
                 val bottom = layout.getLineBottom(line)
 
-                val margin = 48
+                val marginTopPx = with(density) { 24.dp.roundToPx() }
+                val marginBottomPx = with(density) { 36.dp.roundToPx() }
                 val visibleTop = scrollState.value.toFloat()
                 val visibleBottom = (scrollState.value + viewport).toFloat()
 
                 val targetY =
                     when {
-                        top < visibleTop + margin -> (top - margin).toInt()
-                        bottom > visibleBottom - margin -> (bottom - viewport + margin).toInt()
+                        top < visibleTop + marginTopPx -> (top - marginTopPx).toInt()
+                        bottom > visibleBottom - marginBottomPx -> (bottom - viewport + marginBottomPx).toInt()
                         else -> null
                     }?.coerceAtLeast(0) ?: return@collectLatest
 
