@@ -2,6 +2,13 @@ package com.zhixu.android.ui.screens
 
 import android.net.Uri
 import android.os.SystemClock
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.clickable
@@ -29,14 +36,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +55,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -58,6 +64,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.zhixu.android.R
 import com.zhixu.android.data.DocSearchResult
 import com.zhixu.android.data.SearchResult
@@ -292,52 +300,77 @@ private fun DocumentSearchSheet(
     onOpenResult: (String, Int?) -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
 
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+    DisposableEffect(Unit) {
+        onDispose { keyboardController?.hide() }
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        dragHandle = null,
-    ) {
-        Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    singleLine = true,
-                    placeholder = { Text(stringResource(R.string.action_search)) },
-                    leadingIcon = { Icon(imageVector = Icons.Outlined.Search, contentDescription = null) },
-                    modifier = Modifier.weight(1f).focusRequester(focusRequester),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    colors =
-                        TextFieldDefaults.colors(
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            disabledIndicatorColor = Color.Transparent,
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                        ),
-                )
-                TextButton(onClick = onDismiss) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            }
+    LaunchedEffect(Unit) {
+        delay(80)
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 24.dp),
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        AnimatedVisibility(
+            visibleState = visibleState,
+            enter =
+                fadeIn(animationSpec = tween(durationMillis = 120)) +
+                    slideInVertically(animationSpec = tween(durationMillis = 120)) { fullHeight -> fullHeight / 8 },
+            exit =
+                fadeOut(animationSpec = tween(durationMillis = 90)) +
+                    slideOutVertically(animationSpec = tween(durationMillis = 90)) { fullHeight -> fullHeight / 8 },
+        ) {
+            Surface(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .windowInsetsPadding(WindowInsets.navigationBars),
+                color = MaterialTheme.colorScheme.background,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp,
             ) {
-                if (query.isBlank()) {
-                    item {
-                        Text(
-                            text = "",
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextField(
+                            value = query,
+                            onValueChange = onQueryChange,
+                            singleLine = true,
+                            placeholder = { Text(stringResource(R.string.action_search)) },
+                            leadingIcon = { Icon(imageVector = Icons.Outlined.Search, contentDescription = null) },
+                            modifier = Modifier.weight(1f).focusRequester(focusRequester),
+                            shape = MaterialTheme.shapes.extraLarge,
+                            colors =
+                                TextFieldDefaults.colors(
+                                    focusedIndicatorColor = Color.Transparent,
+                                    unfocusedIndicatorColor = Color.Transparent,
+                                    disabledIndicatorColor = Color.Transparent,
+                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                ),
+                        )
+                        TextButton(onClick = onDismiss) {
+                            Text(stringResource(R.string.action_cancel))
+                        }
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 24.dp),
+                    ) {
+                        if (query.isBlank()) {
+                            item {
+                                Text(
+                                    text = "",
                             modifier = Modifier.padding(16.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -395,6 +428,8 @@ private fun DocumentSearchSheet(
                                     },
                                     supportingContent = { Text(stringResource(R.string.search_task_hit)) },
                                 )
+                            }
+                        }
                             }
                         }
                     }
