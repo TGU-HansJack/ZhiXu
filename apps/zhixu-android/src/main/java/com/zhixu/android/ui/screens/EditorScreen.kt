@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -66,6 +67,10 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -79,6 +84,7 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -106,6 +112,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -118,6 +125,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
@@ -132,12 +140,15 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlin.math.abs
 import com.zhixu.android.R
+import com.zhixu.android.data.dataStore
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.plugins.InstalledPlugin
 import com.zhixu.android.plugins.FrontMatterParser
 import com.zhixu.android.plugins.PluginRepository
 import com.zhixu.android.plugins.typecho.TypechoPublishPayload
 import com.zhixu.android.plugins.typecho.TypechoXmlRpcClient
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import com.zhixu.android.plugins.typecho.TypechoXmlRpcConfig
 import com.zhixu.android.ui.components.MarkdownPreview
 import com.zhixu.android.ui.components.RadialFabAction
@@ -148,6 +159,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.FileNotFoundException
 import org.json.JSONObject
@@ -194,6 +207,11 @@ fun EditorScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var showOverflowSheet by remember { mutableStateOf(false) }
     val overflowSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showFontSizeSheet by remember { mutableStateOf(false) }
+    val fontSizeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showTagDialog by remember { mutableStateOf(false) }
+    var pendingTag by remember { mutableStateOf("") }
     val clipboard = LocalClipboardManager.current
     val density = LocalDensity.current
     val imeInsets = WindowInsets.ime
@@ -214,7 +232,26 @@ fun EditorScreen(
             with(density) { (imeBottomPx + anticipatedToolbarPx).toDp() } + 96.dp,
         )
 
-    val editorFontSize = 16.sp
+    val editorFontSizeKey = remember { floatPreferencesKey("editor_font_size_sp") }
+    var editorFontSizeSpValue by remember { mutableStateOf(16f) }
+
+    LaunchedEffect(Unit) {
+        val loaded =
+            context.dataStore.data
+                .map { prefs -> prefs[editorFontSizeKey] ?: 16f }
+                .first()
+        editorFontSizeSpValue = loaded.coerceIn(12f, 28f)
+    }
+
+    fun persistEditorFontSize(next: Float) {
+        scope.launch {
+            context.dataStore.edit { prefs ->
+                prefs[editorFontSizeKey] = next.coerceIn(12f, 28f)
+            }
+        }
+    }
+
+    val editorFontSize = editorFontSizeSpValue.sp
     val editorLineHeight = editorFontSize * 1.5f
     val editorLetterSpacing = 0.2.sp
     val editorTextStyle =
@@ -1236,6 +1273,7 @@ fun EditorScreen(
                                 MarkdownPreview(
                                     modifier = Modifier.fillMaxSize(),
                                     markdown = content.text,
+                                    fontScale = (editorFontSizeSpValue / 16f).coerceIn(0.75f, 1.75f),
                                     vaultRootUri = vaultRootUri,
                                     onOpenWikiLink = { name ->
                                         val root = vaultRootUri ?: return@MarkdownPreview
@@ -1470,27 +1508,300 @@ fun EditorScreen(
         ModalBottomSheet(
             onDismissRequest = { showOverflowSheet = false },
             sheetState = overflowSheetState,
-            containerColor = Color.White,
+            containerColor = Color(0xFFF5F5F5),
+            dragHandle = null,
         ) {
-            Text(
-                text = "更多",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-            )
-            LazyColumn(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-                items(pluginFabActions, key = { it.id }) { action ->
-                    ListItem(
-                        modifier =
-                            Modifier.clickable {
-                                showOverflowSheet = false
-                                handlePluginAction(action)
-                            },
-                        leadingContent = { Icon(imageVector = action.icon, contentDescription = null) },
-                        headlineContent = { Text(action.label) },
+            val notImplemented: () -> Unit = {
+                scope.launch { snackbarHostState.showSnackbar("暂未实现") }
+            }
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                        .windowInsetsPadding(WindowInsets.navigationBars),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    EditorOverflowQuickAction(
+                        title = "生成长图",
+                        icon = Icons.Outlined.Image,
+                        onClick = {
+                            showOverflowSheet = false
+                            notImplemented()
+                        },
+                        modifier = Modifier.weight(1f),
                     )
+                    EditorOverflowQuickAction(
+                        title = "开启分享",
+                        icon = Icons.Outlined.Share,
+                        onClick = {
+                            showOverflowSheet = false
+                            val subject =
+                                title.ifBlank {
+                                    originalFileName.removeSuffix(".md").ifBlank { "Zhixu" }
+                                }
+                            val intent =
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, subject)
+                                    putExtra(Intent.EXTRA_TEXT, content.text)
+                                }
+                            runCatching {
+                                context.startActivity(Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            }.onFailure {
+                                scope.launch { snackbarHostState.showSnackbar("无法打开分享面板") }
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                    EditorOverflowQuickAction(
+                        title = "移动知识库",
+                        icon = Icons.Outlined.Extension,
+                        onClick = {
+                            showOverflowSheet = false
+                            notImplemented()
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    color = Color.White,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column {
+                        EditorOverflowRow(
+                            title = "调整字号",
+                            trailing = { Text("A+", style = MaterialTheme.typography.titleLarge) },
+                            onClick = {
+                                showOverflowSheet = false
+                                showFontSizeSheet = true
+                            },
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                        EditorOverflowRow(
+                            title = "添加标签",
+                            trailing = { Icon(imageVector = Icons.Outlined.BorderColor, contentDescription = null) },
+                            onClick = {
+                                showOverflowSheet = false
+                                pendingTag = ""
+                                showTagDialog = true
+                            },
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                        EditorOverflowRow(
+                            title = "置顶",
+                            trailing = { Icon(imageVector = Icons.Outlined.TaskAlt, contentDescription = null) },
+                            onClick = {
+                                showOverflowSheet = false
+                                notImplemented()
+                            },
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                        EditorOverflowRow(
+                            title = "复制",
+                            trailing = { Icon(imageVector = Icons.Outlined.ContentCopy, contentDescription = null) },
+                            onClick = {
+                                showOverflowSheet = false
+                                clipboard.setText(AnnotatedString(content.text))
+                                scope.launch { snackbarHostState.showSnackbar("已复制") }
+                            },
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                        EditorOverflowRow(
+                            title = "历史版本",
+                            trailing = { Icon(imageVector = Icons.Outlined.History, contentDescription = null) },
+                            onClick = {
+                                showOverflowSheet = false
+                                notImplemented()
+                            },
+                        )
+                        if (pluginFabActions.isNotEmpty()) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                            LazyColumn(
+                                modifier = Modifier.heightIn(max = 260.dp),
+                            ) {
+                                items(pluginFabActions, key = { it.id }) { action ->
+                                    EditorOverflowRow(
+                                        title = action.label,
+                                        trailing = { Icon(imageVector = action.icon, contentDescription = null) },
+                                        onClick = {
+                                            showOverflowSheet = false
+                                            handlePluginAction(action)
+                                        },
+                                    )
+                                    if (action.id != pluginFabActions.last().id) {
+                                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                                    }
+                                }
+                            }
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                        EditorOverflowRow(
+                            title = "删除",
+                            titleColor = Color(0xFFFF4D4F),
+                            trailing = {
+                                Icon(
+                                    imageVector = Icons.Outlined.DeleteOutline,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFF4D4F),
+                                )
+                            },
+                            onClick = {
+                                showOverflowSheet = false
+                                showDeleteConfirm = true
+                            },
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    color = Color.White,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { showOverflowSheet = false }
+                                .padding(vertical = 16.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(text = "取消", style = MaterialTheme.typography.titleMedium)
+                    }
                 }
             }
         }
+    }
+
+    if (showFontSizeSheet) {
+        var tempSize by remember(showFontSizeSheet) { mutableStateOf(editorFontSizeSpValue) }
+        ModalBottomSheet(
+            onDismissRequest = { showFontSizeSheet = false },
+            sheetState = fontSizeSheetState,
+            containerColor = Color.White,
+            dragHandle = null,
+        ) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .windowInsetsPadding(WindowInsets.navigationBars),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(text = "调整字号", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(text = "${tempSize.toInt()}sp", style = MaterialTheme.typography.labelLarge, color = Color.Gray)
+                }
+
+                Text(
+                    text = "预览：这是一段示例文本 AaBb123",
+                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = tempSize.sp, lineHeight = (tempSize * 1.5f).sp),
+                )
+
+                Slider(
+                    value = tempSize,
+                    onValueChange = { tempSize = it.coerceIn(12f, 28f) },
+                    valueRange = 12f..28f,
+                    steps = 15,
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    TextButton(
+                        onClick = { tempSize = 16f },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("重置") }
+                    TextButton(
+                        onClick = { showFontSizeSheet = false },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("取消") }
+                    TextButton(
+                        onClick = {
+                            editorFontSizeSpValue = tempSize.coerceIn(12f, 28f)
+                            persistEditorFontSize(editorFontSizeSpValue)
+                            showFontSizeSheet = false
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("完成") }
+                }
+            }
+        }
+    }
+
+    if (showTagDialog) {
+        AlertDialog(
+            onDismissRequest = { showTagDialog = false },
+            containerColor = Color.White,
+            title = { Text("添加标签") },
+            text = {
+                OutlinedTextField(
+                    value = pendingTag,
+                    onValueChange = { pendingTag = it },
+                    singleLine = true,
+                    label = { Text("标签") },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val tag = pendingTag.trim()
+                        if (tag.isNotBlank()) {
+                            insertField("@tag($tag)")
+                        }
+                        showTagDialog = false
+                    },
+                ) { Text("添加") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTagDialog = false }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            containerColor = Color.White,
+            title = { Text(stringResource(R.string.dialog_delete_doc_title)) },
+            text = { Text(originalFileName.ifBlank { title }) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        scope.launch {
+                            val ok = withContext(Dispatchers.IO) { repository.deleteDoc(latestDocUri) }
+                            if (ok) {
+                                snackbarHostState.showSnackbar("已删除")
+                                latestOnBack()
+                            } else {
+                                snackbarHostState.showSnackbar("删除失败")
+                            }
+                        }
+                    },
+                ) { Text(stringResource(R.string.action_delete), color = Color(0xFFFF4D4F)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
     }
 
     if (showFindReplace) {
@@ -1659,6 +1970,69 @@ fun EditorScreen(
             },
             dismissButton = { TextButton(onClick = { showTableDialog = false }) { Text(stringResource(R.string.action_cancel)) } },
         )
+    }
+}
+
+@Composable
+private fun EditorOverflowQuickAction(
+    title: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(32.dp),
+                tint = Color(0xFF111111),
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = Color(0xFF111111),
+            )
+        }
+    }
+}
+
+@Composable
+private fun EditorOverflowRow(
+    title: String,
+    trailing: @Composable () -> Unit,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    titleColor: Color = Color(0xFF111111),
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 18.dp, vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            color = titleColor,
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Box(contentAlignment = Alignment.Center) { trailing() }
     }
 }
 

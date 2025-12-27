@@ -6,7 +6,7 @@
 
     <script>
       // Kotlin might call these before scripts finish loading; buffer and apply later.
-      window.__payload = { themeJson: null, vaultRoot: "", markdown: "" };
+      window.__payload = { themeJson: null, vaultRoot: "", markdown: "", fontScale: 1 };
       window.__applyQueued = false;
       window.__scheduleApply = () => {
         if (window.__applyQueued) return;
@@ -20,6 +20,7 @@
       window.__setTheme = (json) => { window.__payload.themeJson = json; window.__scheduleApply(); };
       window.__setVaultRoot = (s) => { window.__payload.vaultRoot = s || ""; window.__scheduleApply(); };
       window.__setMarkdown = (md) => { window.__payload.markdown = md || ""; window.__scheduleApply(); };
+      window.__setFontScale = (s) => { window.__payload.fontScale = Number(s) || 1; window.__scheduleApply(); };
     </script>
 
     <style>
@@ -448,6 +449,9 @@
         if (window.__payload.themeJson) {
           try { setTheme(JSON.parse(window.__payload.themeJson)); } catch (_) {}
         }
+        const fs = Number(window.__payload.fontScale) || 1;
+        const contentEl = document.getElementById("content");
+        if (contentEl) contentEl.style.fontSize = (16 * fs) + "px";
         render(window.__payload.markdown || "");
       };
       window.__apply();

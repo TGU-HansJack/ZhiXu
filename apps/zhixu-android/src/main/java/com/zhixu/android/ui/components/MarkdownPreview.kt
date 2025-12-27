@@ -29,6 +29,7 @@ import java.io.ByteArrayInputStream
 fun MarkdownPreview(
     modifier: Modifier = Modifier,
     markdown: String,
+    fontScale: Float = 1f,
     vaultRootUri: Uri? = null,
     onOpenWikiLink: ((String) -> Unit)? = null,
     onOpenVaultDocUri: ((Uri) -> Unit)? = null,
@@ -124,6 +125,7 @@ fun MarkdownPreview(
                     themeJson = theme.toJson(),
                     vaultRoot = vaultRootUri?.toString().orEmpty(),
                     markdown = preprocessed,
+                    fontScale = fontScale.coerceIn(0.5f, 2.5f),
                 )
             view.setTag(TAG_PENDING_STATE, pending)
 
@@ -185,6 +187,7 @@ private data class PendingPreviewState(
     val themeJson: String,
     val vaultRoot: String,
     val markdown: String,
+    val fontScale: Float,
 )
 
 private data class PreviewTheme(
@@ -359,6 +362,7 @@ private fun applyPendingState(
         view.evaluateJavascript("window.__setTheme(${JSONObject.quote(pending.themeJson)});", null)
         view.evaluateJavascript("window.__setVaultRoot(${JSONObject.quote(pending.vaultRoot)});", null)
         view.evaluateJavascript("window.__setMarkdown(${JSONObject.quote(pending.markdown)});", null)
+        view.evaluateJavascript("window.__setFontScale(${pending.fontScale});", null)
     }
 }
 
