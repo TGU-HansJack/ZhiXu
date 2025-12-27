@@ -5,8 +5,11 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -15,12 +18,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.width
@@ -87,7 +92,9 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -103,6 +110,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalDensity
@@ -110,6 +118,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
@@ -181,7 +190,23 @@ fun EditorScreen(
     val overflowSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val clipboard = LocalClipboardManager.current
     val density = LocalDensity.current
-    val isImeVisible = WindowInsets.ime.getBottom(density) > 0
+    val imeInsets = WindowInsets.ime
+    var isEditorFocused by remember { mutableStateOf(false) }
+    var lastEditorFocusAtMs by remember { mutableStateOf(0L) }
+    var lastImeChangeAtMs by remember { mutableStateOf(0L) }
+    var imeBottomPx by remember { mutableIntStateOf(0) }
+    val navBarsBottomPx = WindowInsets.navigationBars.getBottom(density)
+    val effectiveImeBottomPx = (imeBottomPx - navBarsBottomPx).coerceAtLeast(0)
+    var showEditorToolbar by remember { mutableStateOf(false) }
+    var toolbarImeOffsetPx by remember { mutableIntStateOf(0) }
+    val toolbarHideThresholdPx = with(density) { 12.dp.roundToPx() }
+    val fallbackToolbarHeightPx = with(density) { 56.dp.roundToPx() }
+    val anticipatedToolbarPx = if (!isPreview && imeBottomPx > 0) fallbackToolbarHeightPx else 0
+    val extraScrollSpaceDp =
+        maxOf(
+            376.dp,
+            with(density) { (imeBottomPx + anticipatedToolbarPx).toDp() } + 96.dp,
+        )
 
     var showLinkDialog by remember { mutableStateOf(false) }
     var linkText by remember { mutableStateOf("") }
@@ -200,6 +225,9 @@ fun EditorScreen(
 
     var autosaveJob by remember { mutableStateOf<Job?>(null) }
     var isLoaded by remember { mutableStateOf(false) }
+    var lastPersistedText by remember { mutableStateOf<String?>(null) }
+    var lastParsedText by remember { mutableStateOf<String?>(null) }
+    val isDirty by remember { derivedStateOf { isLoaded && lastPersistedText != null && content.text != lastPersistedText } }
 
     val undoStack = remember { ArrayDeque<TextFieldValue>() }
     val redoStack = remember { ArrayDeque<TextFieldValue>() }
@@ -258,7 +286,9 @@ fun EditorScreen(
             pluginFabActions = buildPluginFabActions(emptyList())
             return@LaunchedEffect
         }
-        val installed = runCatching { pluginRepo.listInstalled(root) }.getOrElse { emptyList() }
+        val installed =
+            runCatching { withContext(Dispatchers.IO) { pluginRepo.listInstalled(root) } }
+                .getOrElse { emptyList() }
         pluginFabActions = buildPluginFabActions(installed)
     }
 
@@ -300,7 +330,10 @@ fun EditorScreen(
                     scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.settings_vault_not_selected)) }
                 } else {
                     scope.launch {
-                        val cfgJson = pluginRepo.readPluginConfig(root, "typecho-xmlrpc-publisher")
+                        val cfgJson =
+                            withContext(Dispatchers.IO) {
+                                pluginRepo.readPluginConfig(root, "typecho-xmlrpc-publisher")
+                            }
                         val cfg = typechoConfigFromJson(cfgJson)
                         if (cfg == null) {
                             snackbarHostState.showSnackbar("请先到 设置 -> 创意工坊 -> Typecho 插件 设置")
@@ -333,8 +366,12 @@ fun EditorScreen(
                             }
                         if (result.ok && !result.postId.isNullOrBlank()) {
                             val updated = FrontMatterParser.upsert(content.text, mapOf("typechoPostId" to result.postId))
-                            repository.writeText(currentDocUri, updated)
+                            withContext(Dispatchers.IO) {
+                                repository.writeText(currentDocUri, updated)
+                                repository.indexDocUri(currentDocUri)
+                            }
                             content = content.copy(text = updated)
+                            lastPersistedText = updated
                         }
                         snackbarHostState.showSnackbar(
                             if (result.ok) {
@@ -362,19 +399,81 @@ fun EditorScreen(
             }
     }
 
+    LaunchedEffect(imeInsets, density) {
+        snapshotFlow { imeInsets.getBottom(density) }
+            .distinctUntilChanged()
+            .collectLatest { bottom ->
+                imeBottomPx = bottom
+                lastImeChangeAtMs = SystemClock.uptimeMillis()
+            }
+    }
+
+    LaunchedEffect(isPreview, imeBottomPx) {
+        if (isPreview || imeBottomPx <= 0) {
+            showEditorToolbar = false
+            toolbarImeOffsetPx = 0
+            return@LaunchedEffect
+        }
+
+        // Don't animate with IME. Wait until the IME height settles, then show the toolbar.
+        delay(180)
+        if (!isPreview && imeBottomPx > 0) {
+            showEditorToolbar = true
+            toolbarImeOffsetPx = effectiveImeBottomPx
+        }
+    }
+
+    LaunchedEffect(showEditorToolbar, toolbarImeOffsetPx, imeBottomPx) {
+        if (!showEditorToolbar) return@LaunchedEffect
+        if (imeBottomPx <= 0) {
+            showEditorToolbar = false
+            toolbarImeOffsetPx = 0
+            return@LaunchedEffect
+        }
+
+        // IME is hiding: hide toolbar immediately instead of following the animation down.
+        if (effectiveImeBottomPx + toolbarHideThresholdPx < toolbarImeOffsetPx) {
+            showEditorToolbar = false
+            toolbarImeOffsetPx = 0
+            return@LaunchedEffect
+        }
+
+        // IME height increases (e.g. suggestion bar): re-anchor after it settles to avoid overlap.
+        if (effectiveImeBottomPx > toolbarImeOffsetPx + toolbarHideThresholdPx) {
+            delay(180)
+            if (showEditorToolbar && effectiveImeBottomPx > toolbarImeOffsetPx) {
+                toolbarImeOffsetPx = effectiveImeBottomPx
+            }
+        }
+    }
+
     LaunchedEffect(docUri) {
+        isLoaded = false
         if (docUri.toString().isBlank()) {
             snackbarHostState.showSnackbar(context.getString(R.string.editor_load_failed_generic))
             onBack()
             return@LaunchedEffect
         }
 
-        val fileName = DocumentFile.fromSingleUri(context, docUri)?.name.orEmpty()
-        originalFileName = fileName
-        title = fileName.removeSuffix(".md").ifBlank { context.getString(R.string.new_doc_default_title) }
+        EditorScreenCache.get(docUri)?.let { cached ->
+            originalFileName = cached.originalFileName
+            title = cached.title
+            content = TextFieldValue(cached.text)
+            outline = cached.outline
+            wikiLinks = cached.wikiLinks
+            lastParsedText = cached.text
+            lastPersistedText = cached.text
+            isLoaded = true
+        }
 
-        val loaded = runCatching { repository.readText(docUri) }
-            .getOrElse { e ->
+        val (fileName, loaded) =
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val name = DocumentFile.fromSingleUri(context, docUri)?.name.orEmpty()
+                    val text = repository.readText(docUri)
+                    name to text
+                }
+            }.getOrElse { e ->
                 val msg =
                     when (e) {
                         is SecurityException -> context.getString(R.string.editor_load_failed_permission)
@@ -382,23 +481,44 @@ fun EditorScreen(
                         else -> context.getString(R.string.editor_load_failed_generic)
                     }
                 snackbarHostState.showSnackbar(msg)
-                ""
+                "" to ""
             }
-        content = TextFieldValue(loaded)
-        undoStack.clear()
-        redoStack.clear()
-        isLoaded = true
 
+        originalFileName = fileName
+        title = fileName.removeSuffix(".md").ifBlank { context.getString(R.string.new_doc_default_title) }
+
+        if (loaded != content.text) {
+            content = TextFieldValue(loaded)
+            undoStack.clear()
+            redoStack.clear()
+            outline = emptyList()
+            wikiLinks = emptyList()
+            lastParsedText = null
+        }
+        lastPersistedText = loaded
+        isLoaded = true
+        EditorScreenCache.put(
+            docUri,
+            EditorScreenCache.Entry(
+                text = loaded,
+                title = title,
+                originalFileName = originalFileName,
+                outline = outline,
+                wikiLinks = wikiLinks,
+            ),
+        )
+
+        val jumpText = content.text
         val jump =
             when {
                 initialLineIndex != null && initialLineIndex >= 0 -> {
-                    val start = lineStartOffset(loaded, initialLineIndex)
-                    val end = lineEndOffset(loaded, start)
+                    val start = lineStartOffset(jumpText, initialLineIndex)
+                    val end = lineEndOffset(jumpText, start)
                     JumpTarget(start = start, end = end)
                 }
 
                 !initialQuery.isNullOrBlank() -> {
-                    val match = findFirstMatchOffset(loaded, initialQuery)
+                    val match = findFirstMatchOffset(jumpText, initialQuery)
                     if (match != null) JumpTarget(start = match.first, end = match.second) else null
                 }
 
@@ -666,13 +786,25 @@ fun EditorScreen(
     LaunchedEffect(isLoaded, content.text) {
         if (!isLoaded) return@LaunchedEffect
         val snapshot = content.text
-        delay(250)
-        val parsed =
+        if (snapshot == lastParsedText) return@LaunchedEffect
+        delay(350)
+        val (nextOutline, nextWikiLinks) =
             withContext(Dispatchers.Default) {
                 parseOutline(snapshot) to parseWikiLinks(snapshot)
             }
-        outline = parsed.first
-        wikiLinks = parsed.second
+        lastParsedText = snapshot
+        if (nextOutline != outline) outline = nextOutline
+        if (nextWikiLinks != wikiLinks) wikiLinks = nextWikiLinks
+        EditorScreenCache.put(
+            currentDocUri,
+            EditorScreenCache.Entry(
+                text = snapshot,
+                title = title,
+                originalFileName = originalFileName,
+                outline = nextOutline,
+                wikiLinks = nextWikiLinks,
+            ),
+        )
     }
 
     fun jumpToSelection(startOffset: Int, endOffset: Int = startOffset) {
@@ -696,41 +828,87 @@ fun EditorScreen(
         jumpToSelection(jump.start, jump.end)
     }
 
-    LaunchedEffect(isLoaded, isPreview, textLayoutResult, content.selection, stableEditorViewportHeightPx) {
+    LaunchedEffect(isLoaded, isPreview, textLayoutResult) {
         if (!isLoaded || isPreview) return@LaunchedEffect
         val layout = textLayoutResult ?: return@LaunchedEffect
-        val viewport = stableEditorViewportHeightPx
-        if (viewport <= 0) return@LaunchedEffect
 
-        val offset = content.selection.end.coerceIn(0, content.text.length)
-        val line = runCatching { layout.getLineForOffset(offset) }.getOrNull() ?: return@LaunchedEffect
-        val top = layout.getLineTop(line)
-        val bottom = layout.getLineBottom(line)
+        snapshotFlow {
+            listOf(
+                content.selection.end,
+                stableEditorViewportHeightPx,
+                imeBottomPx,
+            )
+        }.distinctUntilChanged()
+            .collectLatest {
+                if (!isLoaded || isPreview) return@collectLatest
+                if (stableEditorViewportHeightPx <= 0) return@collectLatest
 
-        val margin = 48
-        val visibleTop = scrollState.value.toFloat()
-        val visibleBottom = (scrollState.value + viewport).toFloat()
+                val viewport =
+                    (stableEditorViewportHeightPx - imeBottomPx - anticipatedToolbarPx)
+                        .coerceAtLeast(0)
+                if (viewport <= 0) return@collectLatest
 
-        val targetY =
-            when {
-                top < visibleTop + margin -> (top - margin).toInt()
-                bottom > visibleBottom - margin -> (bottom - viewport + margin).toInt()
-                else -> null
-            }?.coerceAtLeast(0)
+                val offset = content.selection.end.coerceIn(0, content.text.length)
+                val line = runCatching { layout.getLineForOffset(offset) }.getOrNull() ?: return@collectLatest
+                val top = layout.getLineTop(line)
+                val bottom = layout.getLineBottom(line)
 
-        if (targetY != null && abs(targetY - scrollState.value) > 4) {
-            scrollState.scrollTo(targetY)
-        }
+                val margin = 48
+                val visibleTop = scrollState.value.toFloat()
+                val visibleBottom = (scrollState.value + viewport).toFloat()
+
+                val targetY =
+                    when {
+                        top < visibleTop + margin -> (top - margin).toInt()
+                        bottom > visibleBottom - margin -> (bottom - viewport + margin).toInt()
+                        else -> null
+                    }?.coerceAtLeast(0) ?: return@collectLatest
+
+                if (abs(targetY - scrollState.value) <= 4) return@collectLatest
+
+                val now = SystemClock.uptimeMillis()
+                val imeAnimating = now - lastImeChangeAtMs < 500
+                val justFocused = now - lastEditorFocusAtMs < 250
+
+                // During IME animation, keep the cursor in view continuously (no tween). Otherwise animate for better UX.
+                if (imeAnimating || justFocused) {
+                    scrollState.scrollTo(targetY)
+                } else {
+                    scrollState.animateScrollTo(
+                        targetY,
+                        animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
+                    )
+                }
+            }
     }
 
-    LaunchedEffect(content.text, isLoaded, isPreview, currentDocUri) {
-        if (!isLoaded || isPreview) return@LaunchedEffect
+    LaunchedEffect(content.text, isLoaded, isPreview, currentDocUri, isDirty) {
+        if (!isLoaded || isPreview || !isDirty) return@LaunchedEffect
         autosaveJob?.cancel()
+        val textSnapshot = content.text
+        val uriSnapshot = currentDocUri
         autosaveJob =
             scope.launch {
                 delay(1200)
-                runCatching { repository.writeText(currentDocUri, content.text) }
-                    .onSuccess { repository.indexDocUri(currentDocUri) }
+                if (!isDirty || content.text != textSnapshot) return@launch
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        repository.writeText(uriSnapshot, textSnapshot)
+                        repository.indexDocUri(uriSnapshot)
+                    }
+                }.onSuccess {
+                    lastPersistedText = textSnapshot
+                    EditorScreenCache.put(
+                        uriSnapshot,
+                        EditorScreenCache.Entry(
+                            text = textSnapshot,
+                            title = title,
+                            originalFileName = originalFileName,
+                            outline = outline,
+                            wikiLinks = wikiLinks,
+                        ),
+                    )
+                }
             }
     }
 
@@ -744,9 +922,17 @@ fun EditorScreen(
         val base = originalFileName.removeSuffix(".md")
         if (desiredName == base) return@LaunchedEffect
 
-        val renamedUri = repository.renameDoc(currentDocUri, desiredName) ?: return@LaunchedEffect
+        val oldUri = currentDocUri
+        val renamedUri =
+            withContext(Dispatchers.IO) {
+                repository.renameDoc(oldUri, desiredName)
+            } ?: return@LaunchedEffect
         currentDocUri = renamedUri
-        originalFileName = DocumentFile.fromSingleUri(context, renamedUri)?.name.orEmpty()
+        EditorScreenCache.move(oldUri, renamedUri)
+        originalFileName =
+            withContext(Dispatchers.IO) {
+                DocumentFile.fromSingleUri(context, renamedUri)?.name.orEmpty()
+            }
     }
 
     ModalNavigationDrawer(
@@ -805,7 +991,10 @@ fun EditorScreen(
                                         scope.launch { drawerState.close() }
                                         val root = vaultRootUri ?: return@clickable
                                         scope.launch {
-                                            val doc = repository.findDocByName(root, name) ?: return@launch
+                                            val doc =
+                                                withContext(Dispatchers.IO) {
+                                                    repository.findDocByName(root, name)
+                                                } ?: return@launch
                                             onOpenDoc(doc.uri.toString(), null, null)
                                         }
                                     }
@@ -819,122 +1008,64 @@ fun EditorScreen(
             }
         },
     ) {
-        Scaffold(
-            modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)),
-            contentWindowInsets = WindowInsets(0, 0, 0, 0),
-            containerColor = MaterialTheme.colorScheme.background,
-            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-            topBar = {
-                Column(
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.navigationBars),
+        ) {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                containerColor = MaterialTheme.colorScheme.background,
+                snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+                topBar = {
+                    Column(
+                        modifier =
+                            Modifier
+                                .background(Color.White)
+                                .padding(
+                                    top =
+                                        with(density) {
+                                            TopAppBarDefaults.windowInsets.getTop(this).toDp()
+                                        },
+                                ),
+                    ) {
+                        TopAppBar(
+                            windowInsets = WindowInsets(0, 0, 0, 0),
+                            modifier = Modifier.height(48.dp),
+                            colors =
+                                TopAppBarDefaults.topAppBarColors(
+                                    containerColor = Color.White,
+                                    scrolledContainerColor = Color.White,
+                                ),
+                            title = { },
+                            navigationIcon = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                        Icon(imageVector = Icons.Outlined.Menu, contentDescription = stringResource(R.string.action_open_drawer))
+                                    }
+                                    IconButton(onClick = onBack) {
+                                        Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                                    }
+                                }
+                            },
+                            actions = {
+                                IconButton(onClick = { showOverflowSheet = true }) {
+                                    Icon(imageVector = Icons.Outlined.MoreHoriz, contentDescription = "More")
+                                }
+                            },
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                },
+            ) { padding ->
+                Box(
                     modifier =
                         Modifier
-                            .background(Color.White)
-                            .padding(
-                                top =
-                                    with(density) {
-                                        TopAppBarDefaults.windowInsets.getTop(this).toDp()
-                                    },
-                            ),
+                            .padding(padding)
+                            .fillMaxSize(),
                 ) {
-                    TopAppBar(
-                        windowInsets = WindowInsets(0, 0, 0, 0),
-                        modifier = Modifier.height(48.dp),
-                        colors =
-                            TopAppBarDefaults.topAppBarColors(
-                                containerColor = Color.White,
-                                scrolledContainerColor = Color.White,
-                            ),
-                        title = { },
-                        navigationIcon = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                    Icon(imageVector = Icons.Outlined.Menu, contentDescription = stringResource(R.string.action_open_drawer))
-                                }
-                                IconButton(onClick = onBack) {
-                                    Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.action_back))
-                                }
-                            }
-                        },
-                        actions = {
-                            IconButton(onClick = { showOverflowSheet = true }) {
-                                Icon(imageVector = Icons.Outlined.MoreHoriz, contentDescription = "More")
-                            }
-                        },
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                }
-            },
-            bottomBar = {
-                if (!isPreview && isImeVisible) {
-                    EditorBottomToolbar(
-                        isPreview = isPreview,
-                        canUndo = undoStack.isNotEmpty(),
-                        canRedo = redoStack.isNotEmpty(),
-                        onTogglePreview = { isPreview = !isPreview },
-                        onUndo = {
-                            val prev = undoStack.removeLastOrNull() ?: return@EditorBottomToolbar
-                            redoStack.addLast(content)
-                            content = prev
-                        },
-                        onRedo = {
-                            val next = redoStack.removeLastOrNull() ?: return@EditorBottomToolbar
-                            undoStack.addLast(content)
-                            content = next
-                        },
-                        onHeading1 = { insertHeading(1) },
-                        onHeading2 = { insertHeading(2) },
-                        onHeading3 = { insertHeading(3) },
-                        onBold = { wrapSelection("**", "**") },
-                        onTask = {
-                            val lineIndex = content.text.take(content.selection.start).count { it == '\n' }
-                            val toggled = TaskSyntax.toggleTaskAtLine(content.text, lineIndex)
-                            if (toggled != content.text) {
-                                pushHistoryIfNeeded(content)
-                                content = content.copy(text = toggled)
-                            } else {
-                                insertTaskLine()
-                            }
-                        },
-                        onBullets = { insertUnorderedList() },
-                        onNumbers = { insertOrderedList() },
-                        onItalic = { wrapSelection("*", "*") },
-                        onStrike = { wrapSelection("~~", "~~") },
-                        onQuote = { insertQuote() },
-                        onDivider = { insertDivider() },
-                        onLink = { openLinkDialog() },
-                        onImage = { openImageDialog() },
-                        onCode = { openCodeDialog() },
-                        onTable = { openTableDialog() },
-                        onMoreFindReplace = { showFindReplace = true },
-                        onMoreHeading4 = { insertHeading(4) },
-                        onMoreHeading5 = { insertHeading(5) },
-                        onMoreHeading6 = { insertHeading(6) },
-                        onMoreHighlight = { wrapSelection("==", "==") },
-                        onMoreUnderline = { wrapSelection("<u>", "</u>") },
-                        onMoreTaskToggle = {
-                            val lineIndex = content.text.take(content.selection.start).count { it == '\n' }
-                            val toggled = TaskSyntax.toggleTaskAtLine(content.text, lineIndex)
-                            if (toggled != content.text) {
-                                pushHistoryIfNeeded(content)
-                                content = content.copy(text = toggled)
-                            } else {
-                                insertTaskLine()
-                            }
-                        },
-                        onMoreMermaid = { insertMermaidTemplate() },
-                        onMoreMathInline = { insertInlineMath() },
-                        onMoreMathBlock = { insertBlockMath() },
-                    )
-                }
-            },
-        ) { padding ->
-            Box(
-                modifier = Modifier
-                    .padding(padding)
-                    .fillMaxSize(),
-            ) {
                 Box(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
@@ -977,7 +1108,10 @@ fun EditorScreen(
                                         onOpenWikiLink = { name ->
                                             val root = vaultRootUri ?: return@MarkdownPreview
                                             scope.launch {
-                                                val doc = repository.findDocByName(root, name) ?: return@launch
+                                                val doc =
+                                                    withContext(Dispatchers.IO) {
+                                                        repository.findDocByName(root, name)
+                                                    } ?: return@launch
                                                 onOpenDoc(doc.uri.toString(), null, null)
                                             }
                                         },
@@ -1003,6 +1137,10 @@ fun EditorScreen(
                                         },
                                         modifier = Modifier
                                             .fillMaxSize()
+                                            .onFocusChanged {
+                                                isEditorFocused = it.isFocused
+                                                if (it.isFocused) lastEditorFocusAtMs = SystemClock.uptimeMillis()
+                                            }
                                             .onPreviewKeyEvent { event ->
                                                 if (event.type != KeyEventType.KeyDown || event.key != Key.Enter) return@onPreviewKeyEvent false
                                                 if (isPreview) return@onPreviewKeyEvent false
@@ -1081,14 +1219,17 @@ fun EditorScreen(
                                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                         onTextLayout = { textLayoutResult = it },
                                         decorationBox = { inner ->
-                                            if (content.text.isBlank()) {
+                                            Column {
+                                                if (content.text.isBlank()) {
                                                 Text(
                                                     text = "输入内容或使用 / 快速插入",
                                                     color = Color.Gray,
                                                     style = TextStyle.Default.copy(fontSize = 16.sp),
                                                 )
+                                                }
+                                                inner()
+                                                Spacer(modifier = Modifier.height(extraScrollSpaceDp))
                                             }
-                                            inner()
                                         },
                                     )
                                 }
@@ -1098,7 +1239,75 @@ fun EditorScreen(
 
                 }
 
+                if (showEditorToolbar) {
+                    EditorBottomToolbar(
+                        isPreview = isPreview,
+                        canUndo = undoStack.isNotEmpty(),
+                        canRedo = redoStack.isNotEmpty(),
+                        onTogglePreview = { isPreview = !isPreview },
+                        onUndo = {
+                            val prev = undoStack.removeLastOrNull() ?: return@EditorBottomToolbar
+                            redoStack.addLast(content)
+                            content = prev
+                        },
+                        onRedo = {
+                            val next = redoStack.removeLastOrNull() ?: return@EditorBottomToolbar
+                            undoStack.addLast(content)
+                            content = next
+                        },
+                        onHeading1 = { insertHeading(1) },
+                        onHeading2 = { insertHeading(2) },
+                        onHeading3 = { insertHeading(3) },
+                        onBold = { wrapSelection("**", "**") },
+                        onTask = {
+                            val lineIndex = content.text.take(content.selection.start).count { it == '\n' }
+                            val toggled = TaskSyntax.toggleTaskAtLine(content.text, lineIndex)
+                            if (toggled != content.text) {
+                                pushHistoryIfNeeded(content)
+                                content = content.copy(text = toggled)
+                            } else {
+                                insertTaskLine()
+                            }
+                        },
+                        onBullets = { insertUnorderedList() },
+                        onNumbers = { insertOrderedList() },
+                        onItalic = { wrapSelection("*", "*") },
+                        onStrike = { wrapSelection("~~", "~~") },
+                        onQuote = { insertQuote() },
+                        onDivider = { insertDivider() },
+                        onLink = { openLinkDialog() },
+                        onImage = { openImageDialog() },
+                        onCode = { openCodeDialog() },
+                        onTable = { openTableDialog() },
+                        onMoreFindReplace = { showFindReplace = true },
+                        onMoreHeading4 = { insertHeading(4) },
+                        onMoreHeading5 = { insertHeading(5) },
+                        onMoreHeading6 = { insertHeading(6) },
+                        onMoreHighlight = { wrapSelection("==", "==") },
+                        onMoreUnderline = { wrapSelection("<u>", "</u>") },
+                        onMoreTaskToggle = {
+                            val lineIndex = content.text.take(content.selection.start).count { it == '\n' }
+                            val toggled = TaskSyntax.toggleTaskAtLine(content.text, lineIndex)
+                            if (toggled != content.text) {
+                                pushHistoryIfNeeded(content)
+                                content = content.copy(text = toggled)
+                            } else {
+                                insertTaskLine()
+                            }
+                        },
+                        onMoreMermaid = { insertMermaidTemplate() },
+                        onMoreMathInline = { insertInlineMath() },
+                        onMoreMathBlock = { insertBlockMath() },
+                        modifier =
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .offset { IntOffset(x = 0, y = -toolbarImeOffsetPx) }
+                    )
+                }
+
             }
+        }
+
         }
     }
 
@@ -1295,6 +1504,42 @@ fun EditorScreen(
             },
             dismissButton = { TextButton(onClick = { showTableDialog = false }) { Text(stringResource(R.string.action_cancel)) } },
         )
+    }
+}
+
+private object EditorScreenCache {
+    private const val MaxEntries = 8
+    private val lock = Any()
+    private val cache =
+        object : LinkedHashMap<String, Entry>(MaxEntries, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>?): Boolean = size > MaxEntries
+        }
+
+    data class Entry(
+        val text: String,
+        val title: String,
+        val originalFileName: String,
+        val outline: List<OutlineItem>,
+        val wikiLinks: List<String>,
+    )
+
+    fun get(uri: Uri): Entry? = synchronized(lock) { cache[uri.toString()] }
+
+    fun put(
+        uri: Uri,
+        entry: Entry,
+    ) {
+        synchronized(lock) { cache[uri.toString()] = entry }
+    }
+
+    fun move(
+        from: Uri,
+        to: Uri,
+    ) {
+        synchronized(lock) {
+            val removed = cache.remove(from.toString()) ?: return
+            cache[to.toString()] = removed
+        }
     }
 }
 

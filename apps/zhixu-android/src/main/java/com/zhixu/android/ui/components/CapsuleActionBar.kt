@@ -23,6 +23,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
+object CapsuleActionBarDefaults {
+    val Height = 52.dp
+    val ButtonSize = 52.dp
+    val AiBadgeSize = 30.dp
+}
+
 @Composable
 fun CapsuleActionBar(
     modifier: Modifier = Modifier,
@@ -30,9 +36,6 @@ fun CapsuleActionBar(
     onAdd: () -> Unit,
     onAi: () -> Unit,
 ) {
-    val barHeight = 52.dp
-    val buttonSize = 52.dp
-    val aiBadgeSize = 30.dp
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(28.dp),
@@ -41,25 +44,25 @@ fun CapsuleActionBar(
         shadowElevation = 10.dp,
     ) {
         Row(
-            modifier = Modifier.height(barHeight).padding(horizontal = 6.dp),
+            modifier = Modifier.height(CapsuleActionBarDefaults.Height).padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             if (onSearch != null) {
-                IconButton(onClick = onSearch, modifier = Modifier.size(buttonSize)) {
+                IconButton(onClick = onSearch, modifier = Modifier.size(CapsuleActionBarDefaults.ButtonSize)) {
                     Icon(imageVector = Icons.Outlined.Search, contentDescription = null)
                 }
                 CapsuleDivider()
             }
-            IconButton(onClick = onAdd, modifier = Modifier.size(buttonSize)) {
+            IconButton(onClick = onAdd, modifier = Modifier.size(CapsuleActionBarDefaults.ButtonSize)) {
                 Icon(imageVector = Icons.Outlined.Add, contentDescription = null)
             }
             CapsuleDivider()
-            IconButton(onClick = onAi, modifier = Modifier.size(buttonSize)) {
+            IconButton(onClick = onAi, modifier = Modifier.size(CapsuleActionBarDefaults.ButtonSize)) {
                 Box(
                     modifier =
                         Modifier
-                            .size(aiBadgeSize)
+                            .size(CapsuleActionBarDefaults.AiBadgeSize)
                             .background(color = Color(0xFF00C853), shape = RoundedCornerShape(10.dp)),
                     contentAlignment = Alignment.Center,
                 ) {

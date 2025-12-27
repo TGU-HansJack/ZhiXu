@@ -1,6 +1,7 @@
 package com.zhixu.android.ui.screens
 
 import android.net.Uri
+import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.clickable
@@ -64,11 +65,14 @@ import com.zhixu.android.data.TaskSearchResult
 import com.zhixu.android.data.UiDoc
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.components.CapsuleActionBar
+import com.zhixu.android.ui.components.CapsuleActionBarDefaults
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -86,31 +90,51 @@ fun DocumentListScreen(
     val scope = rememberCoroutineScope()
     val highlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     val lifecycleOwner = LocalLifecycleOwner.current
-    var docs by remember { mutableStateOf<List<UiDoc>>(emptyList()) }
+    var docs by
+        remember(vaultRootUri) {
+            mutableStateOf(DocumentListCache.get(vaultRootUri) ?: emptyList())
+        }
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
+    var refreshJob by remember { mutableStateOf<Job?>(null) }
+    var lastRefreshAtMs by remember { mutableStateOf(0L) }
     var showAiDialog by remember { mutableStateOf(false) }
     var showSearchSheet by remember { mutableStateOf(false) }
 
-    suspend fun refresh(reindex: Boolean) {
+    fun requestRefresh(reindex: Boolean) {
         val root = vaultRootUri ?: return
-        repository.ensureVaultStructure(root)
-        docs = repository.listMarkdownDocs(root)
-        if (reindex) {
-            runCatching { repository.rebuildIndex(root) }
-        }
+        refreshJob?.cancel()
+        refreshJob =
+            scope.launch {
+                val now = SystemClock.uptimeMillis()
+                val elapsed = now - lastRefreshAtMs
+                if (elapsed in 0..250) delay(250 - elapsed)
+
+                val nextDocs =
+                    withContext(Dispatchers.IO) {
+                        repository.ensureVaultStructure(root)
+                        repository.listMarkdownDocs(root)
+                    }
+                if (nextDocs != docs) docs = nextDocs
+                DocumentListCache.put(root, nextDocs)
+
+                if (reindex) {
+                    withContext(Dispatchers.IO) { runCatching { repository.rebuildIndex(root) } }
+                }
+                lastRefreshAtMs = SystemClock.uptimeMillis()
+            }
     }
 
     LaunchedEffect(vaultRootUri) {
-        refresh(reindex = false)
+        requestRefresh(reindex = false)
     }
 
     DisposableEffect(lifecycleOwner, vaultRootUri) {
         val observer =
             LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_RESUME) {
-                    scope.launch { refresh(reindex = false) }
+                    requestRefresh(reindex = false)
                 }
             }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -230,7 +254,7 @@ fun DocumentListScreen(
             modifier =
                 Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 18.dp)
+                    .padding(bottom = 18.dp + CapsuleActionBarDefaults.Height)
                     .windowInsetsPadding(WindowInsets.navigationBars),
             onSearch = { showSearchSheet = true },
             onAdd = { if (vaultRootUri == null) onChangeVault() else onNewDoc() },
@@ -377,6 +401,28 @@ private fun DocumentSearchSheet(
                 }
             }
         }
+    }
+}
+
+private object DocumentListCache {
+    private const val MaxEntries = 4
+    private val lock = Any()
+    private val cache =
+        object : LinkedHashMap<String, List<UiDoc>>(MaxEntries, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<UiDoc>>?): Boolean = size > MaxEntries
+        }
+
+    fun get(rootUri: Uri?): List<UiDoc>? {
+        val key = rootUri?.toString().orEmpty()
+        if (key.isBlank()) return null
+        return synchronized(lock) { cache[key] }
+    }
+
+    fun put(
+        rootUri: Uri,
+        docs: List<UiDoc>,
+    ) {
+        synchronized(lock) { cache[rootUri.toString()] = docs }
     }
 }
 
