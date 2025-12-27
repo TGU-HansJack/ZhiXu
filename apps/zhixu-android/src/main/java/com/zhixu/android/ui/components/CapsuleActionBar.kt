@@ -30,34 +30,40 @@ fun CapsuleActionBar(
     onAdd: () -> Unit,
     onAi: () -> Unit,
 ) {
+    val barHeight = 52.dp
+    val buttonSize = 52.dp
+    val aiBadgeSize = 30.dp
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
+        color = Color(0xFFFFFFFF),
+        tonalElevation = 0.dp,
         shadowElevation = 10.dp,
     ) {
         Row(
-            modifier = Modifier.height(64.dp).padding(horizontal = 6.dp),
+            modifier = Modifier.height(barHeight).padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             if (onSearch != null) {
-                IconButton(onClick = onSearch, modifier = Modifier.size(64.dp)) {
+                IconButton(onClick = onSearch, modifier = Modifier.size(buttonSize)) {
                     Icon(imageVector = Icons.Outlined.Search, contentDescription = null)
                 }
                 CapsuleDivider()
             }
-            IconButton(onClick = onAdd, modifier = Modifier.size(64.dp)) {
+            IconButton(onClick = onAdd, modifier = Modifier.size(buttonSize)) {
                 Icon(imageVector = Icons.Outlined.Add, contentDescription = null)
             }
             CapsuleDivider()
-            IconButton(onClick = onAi, modifier = Modifier.size(64.dp)) {
+            IconButton(onClick = onAi, modifier = Modifier.size(buttonSize)) {
                 Box(
-                    modifier = Modifier.size(40.dp).background(color = Color(0xFF00C853), shape = RoundedCornerShape(12.dp)),
+                    modifier =
+                        Modifier
+                            .size(aiBadgeSize)
+                            .background(color = Color(0xFF00C853), shape = RoundedCornerShape(10.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(text = "AI", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    Text(text = "AI", color = Color.White, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -69,9 +75,9 @@ private fun CapsuleDivider() {
     Box(
         modifier =
             Modifier
-                .padding(vertical = 12.dp)
+                .padding(vertical = 10.dp)
                 .fillMaxHeight()
-                .size(width = 1.dp, height = 40.dp)
+                .size(width = 1.dp, height = 30.dp)
                 .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f)),
     )
 }
