@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <script>
+      // Kotlin might call these before scripts finish loading; buffer and apply later.
+      window.__payload = { themeJson: null, vaultRoot: "", markdown: "" };
+      window.__applyQueued = false;
+      window.__scheduleApply = () => {
+        if (window.__applyQueued) return;
+        window.__applyQueued = true;
+        // Batch multiple setter calls (theme/vault/markdown) into a single render.
+        setTimeout(() => {
+          window.__applyQueued = false;
+          if (window.__apply) window.__apply();
+        }, 0);
+      };
+      window.__setTheme = (json) => { window.__payload.themeJson = json; window.__scheduleApply(); };
+      window.__setVaultRoot = (s) => { window.__payload.vaultRoot = s || ""; window.__scheduleApply(); };
+      window.__setMarkdown = (md) => { window.__payload.markdown = md || ""; window.__scheduleApply(); };
+    </script>
+
+    <style>
+      * { box-sizing: border-box; }
+      :root {
+        --surface: #FFFFFF;
+        --onSurface: #111111;
+        --outline: rgba(0, 0, 0, 0.18);
+        --quoteBg: rgba(0, 0, 0, 0.04);
+        --link: #2F6FEB;
+        --inlineCodeBg: rgba(27, 31, 36, 0.06);
+        --inlineCodeFg: #111111;
+        --codeBg: rgba(27, 31, 36, 0.06);
+      }
+      html, body { margin: 0; padding: 0; background: var(--surface); color: var(--onSurface); }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial,
+          "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      }
+      /* Keep content readable on wide screens */
+      #content {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 10px 12px 20px;
+        line-height: 1.65;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+
+      /* Hide scrollbars (still scrollable) */
+      html, body { scrollbar-width: none; }
+      html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; }
+      .table-wrap { scrollbar-width: none; }
+      .table-wrap::-webkit-scrollbar { width: 0; height: 0; }
+      pre { scrollbar-width: none; }
+      pre::-webkit-scrollbar { width: 0; height: 0; }
+      a { color: var(--link); text-decoration: underline; }
+
+      h1, h2, h3, h4, h5, h6 { margin: 18px 0 10px; font-weight: 700; line-height: 1.25; }
+      h1 { font-size: 1.55em; border-bottom: 1px solid var(--outline); padding-bottom: 6px; }
+      h2 { font-size: 1.28em; }
+      h3 { font-size: 1.16em; }
+      h4 { font-size: 1.06em; }
+      h5 { font-size: 0.98em; }
+      h6 { font-size: 0.92em; font-weight: 650; opacity: 0.9; }
+
+      p { margin: 10px 0; }
+      strong { font-weight: 750; }
+      em { font-style: italic; }
+      del { text-decoration-thickness: 2px; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      :not(pre) > code {
+        background: var(--inlineCodeBg);
+        color: var(--inlineCodeFg);
+        padding: 0.15em 0.35em;
+        border-radius: 6px;
+        border: 1px solid var(--outline);
+      }
+
+      ul, ol { margin: 10px 0 10px 1.2em; padding: 0; }
+      li { margin: 4px 0; }
+      ul ul, ul ol, ol ul, ol ol { margin-left: 1.2em; }
+      input[type="checkbox"] { transform: translateY(1px); margin-right: 0.5em; }
+
+      blockquote {
+        margin: 12px 0;
+        padding: 10px 15px;
+        border-left: 4px solid var(--link);
+        background: var(--quoteBg);
+        border-radius: 10px;
+      }
+      blockquote blockquote { border-left-width: 3px; opacity: 0.98; }
+
+      hr {
+        border: 0;
+        border-top: 1px solid var(--outline);
+        margin: 18px auto;
+        width: 60%;
+      }
+
+      figure { margin: 14px 0; text-align: center; }
+      img, svg {
+        max-width: 100%;
+        height: auto;
+      }
+      img {
+        display: block;
+        margin: 0 auto;
+        object-fit: contain;
+      }
+      figure img { border-radius: 10px; }
+      figcaption { margin-top: 6px; font-size: 0.9em; opacity: 0.8; }
+
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 12px 0; }
+      table { border-collapse: collapse; min-width: 520px; width: 100%; }
+      th, td { padding: 8px; border: 1px solid var(--outline); }
+      th { font-weight: 750; background: rgba(127, 127, 127, 0.08); }
+
+      .code-block { margin: 12px 0; border: 1px solid var(--outline); border-radius: 12px; overflow: hidden; }
+      .code-toolbar {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 8px 10px;
+        background: rgba(127, 127, 127, 0.06);
+        border-bottom: 1px solid var(--outline);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 12px;
+      }
+      .code-toolbar .lang { opacity: 0.75; }
+      .code-toolbar button {
+        border: 1px solid var(--outline);
+        background: transparent;
+        color: var(--onSurface);
+        padding: 4px 8px;
+        border-radius: 8px;
+      }
+      pre { margin: 0; padding: 10px 0; overflow-x: auto; background: var(--codeBg); }
+      pre code { display: block; padding: 0 10px; }
+
+      /* highlightjs-line-numbers */
+      .hljs-ln { width: 100%; border-collapse: collapse; }
+      .hljs-ln td { border: 0; padding: 0; vertical-align: top; }
+      .hljs-ln-numbers {
+        text-align: right;
+        user-select: none;
+        opacity: 0.55;
+        padding: 0 10px 0 12px !important;
+        border-right: 1px solid var(--outline);
+      }
+      .hljs-ln-code { padding-left: 10px !important; }
+
+      /* lightbox */
+      #lightbox {
+        position: fixed; inset: 0; display: none;
+        background: rgba(0, 0, 0, 0.72);
+        z-index: 9999;
+        align-items: center; justify-content: center;
+        padding: 14px;
+      }
+      #lightbox img { max-width: 96vw; max-height: 92vh; border-radius: 12px; }
+    </style>
+
+    <link id="hljs-theme-light" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css">
+    <link id="hljs-theme-dark" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" disabled>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it-task-lists@2.1.1/dist/markdown-it-task-lists.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it-footnote@4.0.0/dist/markdown-it-footnote.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it-anchor@9.2.0/dist/markdownItAnchor.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlightjs-line-numbers.js@2.8.0/dist/highlightjs-line-numbers.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+  </head>
+  <body>
+    <div id="content"></div>
+    <div id="lightbox" onclick="hideLightbox()"><img id="lightbox-img" alt="" /></div>
+
+    <script>
+      let theme = { isDark: false };
+      let lastRenderedMarkdown = null;
+      let io = null;
+
+      function setTheme(t) {
+        theme = t || theme;
+        const r = document.documentElement;
+        r.style.setProperty("--surface", theme.surface || "#FFFFFF");
+        r.style.setProperty("--onSurface", theme.onSurface || "#111111");
+        r.style.setProperty("--outline", theme.outline || "rgba(0,0,0,0.18)");
+        r.style.setProperty("--quoteBg", theme.quoteBg || "rgba(0,0,0,0.04)");
+        r.style.setProperty("--link", theme.link || "#2F6FEB");
+        r.style.setProperty("--inlineCodeBg", theme.inlineCodeBg || "rgba(27,31,36,0.06)");
+        r.style.setProperty("--inlineCodeFg", theme.inlineCodeFg || "#111111");
+        r.style.setProperty("--codeBg", theme.isDark ? "rgba(240,246,252,0.06)" : "rgba(27,31,36,0.06)");
+        document.getElementById("hljs-theme-light").disabled = !!theme.isDark;
+        document.getElementById("hljs-theme-dark").disabled = !theme.isDark;
+      }
+
+      function idle(fn) {
+        if (window.requestIdleCallback) return requestIdleCallback(fn, { timeout: 600 });
+        return setTimeout(fn, 16);
+      }
+
+      function cleanupObservers() {
+        if (io) {
+          try { io.disconnect(); } catch (_) {}
+          io = null;
+        }
+      }
+
+      function hideLightbox() {
+        const lb = document.getElementById("lightbox");
+        lb.style.display = "none";
+        document.getElementById("lightbox-img").src = "";
+      }
+
+      function showLightbox(src) {
+        const lb = document.getElementById("lightbox");
+        const img = document.getElementById("lightbox-img");
+        img.src = src;
+        lb.style.display = "flex";
+      }
+
+      function isProbablyRelativeUrl(u) {
+        if (!u) return false;
+        if (u.startsWith("#")) return false;
+        if (u.startsWith("mailto:") || u.startsWith("tel:") || u.startsWith("data:")) return false;
+        return !u.includes("://") && !u.startsWith("content:") && !u.startsWith("file:");
+      }
+
+      function toVaultUrl(path) {
+        return "zhixu://vault?path=" + encodeURIComponent(path);
+      }
+
+      function attachLongPressWikiPreview(a, name) {
+        let timer = null;
+        const start = () => {
+          timer = setTimeout(() => {
+            timer = null;
+            if (window.ZhixuPreview && window.ZhixuPreview.wikiLongPress) {
+              window.ZhixuPreview.wikiLongPress(name);
+            }
+          }, 450);
+        };
+        const cancel = () => {
+          if (timer) { clearTimeout(timer); timer = null; }
+        };
+        a.addEventListener("touchstart", start, { passive: true });
+        a.addEventListener("touchend", cancel, { passive: true });
+        a.addEventListener("touchmove", cancel, { passive: true });
+        a.addEventListener("touchcancel", cancel, { passive: true });
+      }
+
+      function render(mdText) {
+        const container = document.getElementById("content");
+        try {
+          if (!window.markdownit) throw new Error("markdown-it not loaded");
+
+          const mdInput = mdText || "";
+          // Avoid re-rendering when only theme/vaultRoot changed.
+          if (lastRenderedMarkdown === mdInput) return;
+          lastRenderedMarkdown = mdInput;
+          cleanupObservers();
+
+          const md = window.markdownit({
+            html: true,
+            linkify: true,
+            typographer: true,
+            // Defer syntax highlighting to post-processing (lazy on visible blocks) to reduce jank.
+            highlight: function () { return ""; },
+          })
+            .use(window.markdownItTaskLists || (() => (md) => md), { enabled: true, label: true, labelAfter: true })
+            .use(window.markdownitFootnote || (() => (md) => md))
+            .use(window.markdownItAnchor || (() => (md) => md), { level: [1, 2, 3, 4, 5, 6], permalink: false });
+
+          container.innerHTML = md.render(mdInput);
+        } catch (e) {
+          // JS deps failed (offline/CDN blocked/etc). Fallback to plain text so it's never blank.
+          container.innerHTML = "";
+          const pre = document.createElement("pre");
+          pre.style.whiteSpace = "pre-wrap";
+          pre.style.wordBreak = "break-word";
+          pre.style.margin = "0";
+          pre.textContent = mdText || "";
+          container.appendChild(pre);
+          return;
+        }
+
+        // Lightweight post-processing now; heavy ones deferred/lazy.
+        idle(() => {
+          // Rewrite links/images to vault scheme when relative.
+          container.querySelectorAll("a[href]").forEach((a) => {
+            const href = a.getAttribute("href") || "";
+            if (isProbablyRelativeUrl(href)) {
+              a.setAttribute("href", toVaultUrl(href));
+            }
+            if (!a.getAttribute("title")) a.setAttribute("title", href);
+
+            if ((a.getAttribute("href") || "").startsWith("zhixu://doc/")) {
+              const name = decodeURIComponent((a.getAttribute("href") || "").split("/").pop() || "");
+              attachLongPressWikiPreview(a, name);
+            }
+          });
+          container.querySelectorAll("img[src]").forEach((img) => {
+            const src = img.getAttribute("src") || "";
+            if (isProbablyRelativeUrl(src)) {
+              img.setAttribute("src", toVaultUrl(src));
+            }
+            img.addEventListener("click", () => showLightbox(img.currentSrc || img.src));
+          });
+
+          // Figures + captions (alt text)
+          container.querySelectorAll("p > img:only-child").forEach((img) => {
+            const alt = img.getAttribute("alt") || "";
+            const figure = document.createElement("figure");
+            img.parentNode.replaceWith(figure);
+            figure.appendChild(img);
+            if (alt.trim()) {
+              const cap = document.createElement("figcaption");
+              cap.textContent = alt;
+              figure.appendChild(cap);
+            }
+          });
+
+          // Tables scroll wrapper.
+          container.querySelectorAll("table").forEach((table) => {
+            if (table.parentElement && table.parentElement.classList.contains("table-wrap")) return;
+            const wrap = document.createElement("div");
+            wrap.className = "table-wrap";
+            table.parentNode.insertBefore(wrap, table);
+            wrap.appendChild(table);
+          });
+
+          // Mermaid: replace fenced code blocks.
+          container.querySelectorAll("pre > code").forEach((code) => {
+            const cls = code.className || "";
+            const lang = (cls.match(/language-([\w-]+)/) || [])[1] || "";
+            const pre = code.parentElement;
+            if (!pre) return;
+            if (lang.toLowerCase() === "mermaid") {
+              const div = document.createElement("div");
+              div.className = "mermaid";
+              div.textContent = code.textContent || "";
+              pre.replaceWith(div);
+            }
+          });
+
+          // Code blocks: wrap toolbar quickly; highlight+lineNumbers lazily on visibility.
+          container.querySelectorAll("pre > code").forEach((code) => {
+            const pre = code.parentElement;
+            if (!pre || (pre.parentElement && pre.parentElement.classList.contains("code-block"))) return;
+            const cls = code.className || "";
+            const lang = (cls.match(/language-([\w-]+)/) || [])[1] || "";
+
+            const wrapper = document.createElement("div");
+            wrapper.className = "code-block";
+            const toolbar = document.createElement("div");
+            toolbar.className = "code-toolbar";
+            const langSpan = document.createElement("span");
+            langSpan.className = "lang";
+            langSpan.textContent = lang || "code";
+            const btn = document.createElement("button");
+            btn.textContent = "复制";
+            btn.addEventListener("click", () => {
+              const text = code.innerText || code.textContent || "";
+              if (window.ZhixuPreview && window.ZhixuPreview.copy) {
+                window.ZhixuPreview.copy(text);
+                btn.textContent = "已复制";
+                setTimeout(() => (btn.textContent = "复制"), 900);
+                return;
+              }
+              try {
+                navigator.clipboard.writeText(text);
+                btn.textContent = "已复制";
+                setTimeout(() => (btn.textContent = "复制"), 900);
+              } catch (_) {}
+            });
+            toolbar.appendChild(langSpan);
+            toolbar.appendChild(btn);
+
+            pre.parentNode.insertBefore(wrapper, pre);
+            wrapper.appendChild(toolbar);
+            wrapper.appendChild(pre);
+          });
+
+          // Lazy heavy post-processing via IntersectionObserver.
+          try {
+            io = new IntersectionObserver((entries) => {
+              for (const e of entries) {
+                if (!e.isIntersecting) continue;
+                const el = e.target;
+                io.unobserve(el);
+
+                // Code highlight + line numbers.
+                if (el.tagName === "CODE") {
+                  if (!el.dataset.hlDone) {
+                    el.dataset.hlDone = "1";
+                    try { if (window.hljs) hljs.highlightElement(el); } catch (_) {}
+                    try { if (window.hljs && window.hljs.lineNumbersBlock) hljs.lineNumbersBlock(el); } catch (_) {}
+                  }
+                  continue;
+                }
+
+                // Mermaid rendering.
+                if (el.classList && el.classList.contains("mermaid")) {
+                  if (!el.dataset.mmDone) {
+                    el.dataset.mmDone = "1";
+                    try {
+                      if (window.mermaid) {
+                        mermaid.initialize({ startOnLoad: false, theme: theme.isDark ? "dark" : "default" });
+                        mermaid.run({ querySelector: ".mermaid" });
+                      }
+                    } catch (_) {}
+                  }
+                }
+              }
+            }, { root: null, rootMargin: "600px 0px", threshold: 0.01 });
+
+            container.querySelectorAll("pre > code").forEach((code) => io.observe(code));
+            container.querySelectorAll(".mermaid").forEach((m) => io.observe(m));
+          } catch (_) {
+            // No IO support; best-effort do nothing (content still readable).
+          }
+
+          // KaTeX math (defer to idle to reduce scroll jank).
+          idle(() => {
+            try {
+              if (window.renderMathInElement) {
+                renderMathInElement(container, {
+                  delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false },
+                  ],
+                  ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"],
+                  throwOnError: false,
+                });
+              }
+            } catch (_) {}
+          });
+        });
+      }
+
+      window.__apply = () => {
+        if (!window.__payload) return;
+        if (window.__payload.themeJson) {
+          try { setTheme(JSON.parse(window.__payload.themeJson)); } catch (_) {}
+        }
+        render(window.__payload.markdown || "");
+      };
+      window.__apply();
+    </script>
+  </body>
+</html>

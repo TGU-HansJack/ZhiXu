@@ -938,6 +938,7 @@ fun EditorScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = drawerState.isOpen,
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.width(320.dp),
@@ -1109,21 +1110,27 @@ fun EditorScreen(
                             HorizontalDivider(modifier = Modifier.padding(top = 6.dp, bottom = 4.dp), thickness = 0.5.dp)
 
                             if (isPreview) {
-                                Column(modifier = Modifier.fillMaxSize().verticalScroll(scrollState)) {
-                                    MarkdownPreview(
-                                        markdown = content.text,
-                                        onOpenWikiLink = { name ->
-                                            val root = vaultRootUri ?: return@MarkdownPreview
-                                            scope.launch {
-                                                val doc =
-                                                    withContext(Dispatchers.IO) {
-                                                        repository.findDocByName(root, name)
-                                                    } ?: return@launch
-                                                onOpenDoc(doc.uri.toString(), null, null)
-                                            }
-                                        },
-                                    )
-                                }
+                                MarkdownPreview(
+                                    modifier = Modifier.fillMaxSize(),
+                                    markdown = content.text,
+                                    vaultRootUri = vaultRootUri,
+                                    onOpenWikiLink = { name ->
+                                        val root = vaultRootUri ?: return@MarkdownPreview
+                                        scope.launch {
+                                            val doc = repository.findDocByName(root, name) ?: return@launch
+                                            onOpenDoc(doc.uri.toString(), null, null)
+                                        }
+                                    },
+                                    onOpenVaultDocUri = { uri ->
+                                        onOpenDoc(uri.toString(), null, null)
+                                    },
+                                    loadWikiLinkPreview = { name ->
+                                        val root = vaultRootUri ?: return@MarkdownPreview null
+                                        val doc = repository.findDocByName(root, name) ?: return@MarkdownPreview null
+                                        val text = repository.readText(doc.uri)
+                                        buildPreviewSnippet(text)
+                                    },
+                                )
                             } else {
                                 Box(
                                     modifier = Modifier
@@ -1604,6 +1611,33 @@ private fun parseWikiLinks(markdown: String): List<String> {
         .filter { it.isNotBlank() }
         .distinct()
         .toList()
+}
+
+private fun buildPreviewSnippet(
+    markdown: String,
+    maxChars: Int = 180,
+): String {
+    val noFrontMatter =
+        if (markdown.startsWith("---\n")) {
+            val end = markdown.indexOf("\n---", startIndex = 4)
+            if (end >= 0) markdown.substring((end + 4).coerceAtMost(markdown.length)) else markdown
+        } else {
+            markdown
+        }
+
+    val text =
+        noFrontMatter
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .filterNot { it.startsWith("#") }
+            .filterNot { it.startsWith(">") }
+            .filterNot { it.startsWith("```") }
+            .joinToString(" ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+    return if (text.length <= maxChars) text else text.take(maxChars).trimEnd() + "…"
 }
 
 private fun lineStartOffset(text: String, lineIndex: Int): Int {

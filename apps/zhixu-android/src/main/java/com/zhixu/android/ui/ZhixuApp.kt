@@ -134,7 +134,10 @@ fun ZhixuApp() {
     Surface(color = MaterialTheme.colorScheme.background) {
         ModalNavigationDrawer(
             drawerState = drawerState,
-            gesturesEnabled = currentRoute != "vault" && currentRoute != "settings",
+            gesturesEnabled =
+                currentRoute != "vault" &&
+                    currentRoute != "settings" &&
+                    !currentRoute.orEmpty().startsWith("edit"),
             drawerContent = {
                 ModalDrawerSheet(drawerContainerColor = Color.White) {
                     Column(
