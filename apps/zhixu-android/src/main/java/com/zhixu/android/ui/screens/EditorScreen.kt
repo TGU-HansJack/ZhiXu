@@ -1052,6 +1052,12 @@ fun EditorScreen(
                                 }
                             },
                             actions = {
+                                IconButton(onClick = { isPreview = !isPreview }) {
+                                    Icon(
+                                        imageVector = if (isPreview) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                        contentDescription = stringResource(R.string.action_preview),
+                                    )
+                                }
                                 IconButton(onClick = { showOverflowSheet = true }) {
                                     Icon(imageVector = Icons.Outlined.MoreHoriz, contentDescription = "More")
                                 }
@@ -1242,10 +1248,8 @@ fun EditorScreen(
 
                 if (showEditorToolbar) {
                     EditorBottomToolbar(
-                        isPreview = isPreview,
                         canUndo = undoStack.isNotEmpty(),
                         canRedo = redoStack.isNotEmpty(),
-                        onTogglePreview = { isPreview = !isPreview },
                         onUndo = {
                             val prev = undoStack.removeLastOrNull() ?: return@EditorBottomToolbar
                             redoStack.addLast(content)
@@ -1644,10 +1648,8 @@ private fun findFirstMatchOffset(text: String, query: String): Pair<Int, Int>? {
 
 @Composable
 private fun EditorBottomToolbar(
-    isPreview: Boolean,
     canUndo: Boolean,
     canRedo: Boolean,
-    onTogglePreview: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onHeading1: () -> Unit,
@@ -1698,13 +1700,6 @@ private fun EditorBottomToolbar(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            EditorToolIcon(onClick = onTogglePreview) {
-                Icon(
-                    imageVector = if (isPreview) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                    contentDescription = null,
-                )
-            }
-            EditorToolDivider()
             EditorToolIcon(enabled = canUndo, onClick = onUndo) { Icon(Icons.Outlined.Undo, null) }
             EditorToolIcon(enabled = canRedo, onClick = onRedo) { Icon(Icons.Outlined.Redo, null) }
             EditorToolDivider()
