@@ -68,8 +68,10 @@ import com.zhixu.android.R
 import com.zhixu.android.data.UiTask
 import com.zhixu.android.data.VaultIndexRepository
 import com.zhixu.android.data.VaultRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -87,24 +89,37 @@ fun TasksScreen(
     onOpenDoc: (String, String?, Int?) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var tasks by remember { mutableStateOf<List<UiTask>>(emptyList()) }
-    var completed by remember { mutableStateOf<List<UiTask>>(emptyList()) }
+    var tasks by
+        remember(vaultRootUri) {
+            mutableStateOf(TasksScreenCache.get(vaultRootUri)?.tasks ?: emptyList())
+        }
+    var completed by
+        remember(vaultRootUri) {
+            mutableStateOf(TasksScreenCache.get(vaultRootUri)?.completed ?: emptyList())
+        }
     var showCompleted by remember { mutableStateOf(false) }
     var addJob by remember { mutableStateOf<Job?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val dueFormatter = remember { DateTimeFormatter.ofPattern("MM-dd HH:mm") }
+    var lastRefreshAtMs by remember { mutableStateOf(0L) }
 
-    suspend fun refresh() {
+    suspend fun refresh(force: Boolean) {
         val root = vaultRootUri ?: return
-        runCatching { repository.ensureIndexBuilt(root) }
-        tasks = repository.getAllTasks(status = VaultIndexRepository.TaskStatusFilter.Undone)
-        completed = repository.getRecentCompletedTasks(limit = 50)
-    }
+        val now = android.os.SystemClock.uptimeMillis()
+        if (!force && now - lastRefreshAtMs in 0..500) return
 
-    fun submitNewTask() {
-        val root = vaultRootUri ?: return
-        // handled by TaskComposer
-        return
+        val (nextTasks, nextCompleted) =
+            withContext(Dispatchers.IO) {
+                runCatching { repository.ensureIndexBuilt(root) }
+                val t = repository.getAllTasks(status = VaultIndexRepository.TaskStatusFilter.Undone)
+                val c = repository.getRecentCompletedTasks(limit = 50)
+                t to c
+            }
+
+        tasks = nextTasks
+        completed = nextCompleted
+        TasksScreenCache.put(root, TasksScreenCache.Entry(tasks = nextTasks, completed = nextCompleted))
+        lastRefreshAtMs = android.os.SystemClock.uptimeMillis()
     }
 
     fun submitTaskDraft(draft: TaskDraft) {
@@ -127,11 +142,11 @@ fun TasksScreen(
                     snackbarHostState.showSnackbar("添加失败")
                     return@launch
                 }
-                refresh()
+                refresh(force = true)
             }
     }
 
-    LaunchedEffect(vaultRootUri) { refresh() }
+    LaunchedEffect(vaultRootUri) { refresh(force = false) }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -173,7 +188,7 @@ fun TasksScreen(
                         onToggle = {
                             scope.launch {
                                 repository.toggleTask(task.docUri, task.lineIndex)
-                                refresh()
+                                refresh(force = true)
                             }
                         },
                         onOpen = { onOpenDoc(task.docUri.toString(), null, task.lineIndex) },
@@ -209,7 +224,7 @@ fun TasksScreen(
                             onToggle = {
                                 scope.launch {
                                     repository.toggleTask(task.docUri, task.lineIndex)
-                                    refresh()
+                                    refresh(force = true)
                                 }
                             },
                             onOpen = { onOpenDoc(task.docUri.toString(), null, task.lineIndex) },
@@ -220,6 +235,33 @@ fun TasksScreen(
                 }
             }
         }
+    }
+}
+
+private object TasksScreenCache {
+    private const val MaxEntries = 4
+    private val lock = Any()
+    private val cache =
+        object : LinkedHashMap<String, Entry>(MaxEntries, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>?): Boolean = size > MaxEntries
+        }
+
+    data class Entry(
+        val tasks: List<UiTask>,
+        val completed: List<UiTask>,
+    )
+
+    fun get(rootUri: Uri?): Entry? {
+        val key = rootUri?.toString().orEmpty()
+        if (key.isBlank()) return null
+        return synchronized(lock) { cache[key] }
+    }
+
+    fun put(
+        rootUri: Uri,
+        entry: Entry,
+    ) {
+        synchronized(lock) { cache[rootUri.toString()] = entry }
     }
 }
 

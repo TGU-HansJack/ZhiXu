@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Description
@@ -98,6 +99,7 @@ fun DocumentListScreen(
     val scope = rememberCoroutineScope()
     val highlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     val lifecycleOwner = LocalLifecycleOwner.current
+    val listState = rememberLazyListState()
     var docs by
         remember(vaultRootUri) {
             mutableStateOf(DocumentListCache.get(vaultRootUri) ?: emptyList())
@@ -175,7 +177,10 @@ fun DocumentListScreen(
                     results = emptyList()
                     return@launch
                 }
-                results = repository.search(vaultRootUri, query)
+                results =
+                    withContext(Dispatchers.IO) {
+                        repository.search(vaultRootUri, query)
+                    }
             }
     }
 
@@ -200,60 +205,72 @@ fun DocumentListScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
+                    state = listState,
                     contentPadding = PaddingValues(bottom = 96.dp),
                 ) {
-                if (docs.isEmpty()) {
-                    item {
-                        Text(
-                            text = stringResource(R.string.docs_empty),
-                            modifier = Modifier.padding(16.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    if (docs.isEmpty()) {
+                        item {
+                            Text(
+                                text = stringResource(R.string.docs_empty),
+                                modifier = Modifier.padding(16.dp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
-                }
-                items(docs, key = { it.uri.toString() }) { doc ->
-                    val title = doc.name.removeSuffix(".md").ifBlank { stringResource(R.string.new_doc_default_title) }
-                    ListItem(
-                        modifier = Modifier.clickable { onOpenDoc(doc.uri.toString(), null, null) },
-                        leadingContent = {
-                            Box(
-                                modifier = Modifier.size(40.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Description,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                    items(
+                        items = docs,
+                        key = { it.uri.toString() },
+                        contentType = { "doc" },
+                    ) { doc ->
+                        val title =
+                            remember(doc.name) {
+                                doc.name.removeSuffix(".md")
+                            }.ifBlank { stringResource(R.string.new_doc_default_title) }
+                        val editedAt =
+                            remember(doc.lastModified) {
+                                formatEditedAt(doc.lastModified)
                             }
-                        },
-                        headlineContent = {
-                            Text(
-                                text = title,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                        },
-                        supportingContent = {
-                            Text(
-                                text = stringResource(R.string.edited_at_fmt, formatEditedAt(doc.lastModified)),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        },
-                        trailingContent = {
-                            IconButton(onClick = { /* UI only */ }) {
-                                Icon(
-                                    imageVector = Icons.Outlined.MoreHoriz,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ListItem(
+                            modifier = Modifier.clickable { onOpenDoc(doc.uri.toString(), null, null) },
+                            leadingContent = {
+                                Box(
+                                    modifier = Modifier.size(40.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Description,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            headlineContent = {
+                                Text(
+                                    text = title,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.titleMedium,
                                 )
-                            }
-                        },
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                }
+                            },
+                            supportingContent = {
+                                Text(
+                                    text = stringResource(R.string.edited_at_fmt, editedAt),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            },
+                            trailingContent = {
+                                IconButton(onClick = { /* UI only */ }) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.MoreHoriz,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    }
                 }
             }
         }

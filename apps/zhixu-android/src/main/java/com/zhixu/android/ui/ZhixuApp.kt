@@ -446,6 +446,7 @@ private fun HomePager(
 ) {
     HorizontalPager(
         state = pagerState,
+        beyondViewportPageCount = 1,
         modifier = Modifier.fillMaxSize(),
     ) { page ->
         when (page) {
