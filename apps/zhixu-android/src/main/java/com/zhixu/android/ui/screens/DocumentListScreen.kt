@@ -184,18 +184,15 @@ fun DocumentListScreen(
                     ListItem(
                         modifier = Modifier.clickable { onOpenDoc(doc.uri.toString(), null, null) },
                         leadingContent = {
-                            Surface(
+                            Box(
                                 modifier = Modifier.size(40.dp),
-                                shape = MaterialTheme.shapes.small,
-                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                contentAlignment = Alignment.Center,
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Description,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Outlined.Description,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         },
                         headlineContent = {
@@ -203,13 +200,14 @@ fun DocumentListScreen(
                                 text = title,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.titleLarge,
+                                style = MaterialTheme.typography.titleMedium,
                             )
                         },
                         supportingContent = {
                             Text(
                                 text = stringResource(R.string.edited_at_fmt, formatEditedAt(doc.lastModified)),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                                style = MaterialTheme.typography.bodySmall,
                             )
                         },
                         trailingContent = {

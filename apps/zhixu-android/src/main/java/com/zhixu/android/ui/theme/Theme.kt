@@ -3,6 +3,7 @@ package com.zhixu.android.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -75,6 +76,18 @@ private val ZhixuDarkColorScheme =
         inversePrimary = Color(0xFF0969DA),
     )
 
+private fun ColorScheme.withFlatSurfaces(): ColorScheme =
+    copy(
+        surfaceTint = Color.Transparent,
+        surfaceContainerLowest = surface,
+        surfaceContainerLow = surface,
+        surfaceContainer = surface,
+        surfaceContainerHigh = surface,
+        surfaceContainerHighest = surface,
+        surfaceBright = surface,
+        surfaceDim = surface,
+    )
+
 @Composable
 fun ZhixuTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -84,9 +97,9 @@ fun ZhixuTheme(
     val colorScheme =
         if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            (if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)).withFlatSurfaces()
         } else {
-            if (darkTheme) ZhixuDarkColorScheme else ZhixuLightColorScheme
+            (if (darkTheme) ZhixuDarkColorScheme else ZhixuLightColorScheme).withFlatSurfaces()
         }
     MaterialTheme(
         colorScheme = colorScheme,

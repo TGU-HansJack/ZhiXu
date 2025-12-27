@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Label
@@ -305,7 +306,16 @@ private fun TaskComposer(
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = { submit() }),
         trailingIcon = {
-            Button(onClick = { submit() }) { Text(stringResource(R.string.task_input_add)) }
+            IconButton(
+                onClick = { submit() },
+                enabled = text.isNotBlank(),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.ArrowForward,
+                    contentDescription = stringResource(R.string.task_input_add),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
         },
         interactionSource = remember { MutableInteractionSource() },
     )
@@ -319,13 +329,25 @@ private fun TaskComposer(
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 IconButton(onClick = { showDateSheet = true }) {
-                    Icon(imageVector = Icons.Outlined.Today, contentDescription = stringResource(R.string.task_input_date))
+                    Icon(
+                        imageVector = Icons.Outlined.Today,
+                        contentDescription = stringResource(R.string.task_input_date),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                    )
                 }
                 IconButton(onClick = { showPrioritySheet = true }) {
-                    Icon(imageVector = Icons.Outlined.Flag, contentDescription = stringResource(R.string.task_input_priority))
+                    Icon(
+                        imageVector = Icons.Outlined.Flag,
+                        contentDescription = stringResource(R.string.task_input_priority),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                    )
                 }
                 IconButton(onClick = { showTagSheet = true }) {
-                    Icon(imageVector = Icons.Outlined.Label, contentDescription = stringResource(R.string.task_input_tags))
+                    Icon(
+                        imageVector = Icons.Outlined.Label,
+                        contentDescription = stringResource(R.string.task_input_tags),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                    )
                 }
             }
 

@@ -1,5 +1,8 @@
 package com.zhixu.android.ui.screens
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -82,6 +85,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -100,6 +104,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
@@ -110,6 +115,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.core.view.WindowInsetsControllerCompat
 import kotlin.math.abs
 import com.zhixu.android.R
 import com.zhixu.android.data.VaultRepository
@@ -146,6 +152,22 @@ fun EditorScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val activity = view.context.findActivity() ?: return@DisposableEffect onDispose { }
+        val window = activity.window
+        val controller = WindowInsetsControllerCompat(window, view)
+        val previousStatusBarColor = window.statusBarColor
+        val previousLightStatusBars = controller.isAppearanceLightStatusBars
+
+        window.statusBarColor = android.graphics.Color.WHITE
+        controller.isAppearanceLightStatusBars = true
+
+        onDispose {
+            window.statusBarColor = previousStatusBarColor
+            controller.isAppearanceLightStatusBars = previousLightStatusBars
+        }
+    }
     val pluginRepo = remember(context) { PluginRepository(context) }
     var title by remember { mutableStateOf("") }
     var originalFileName by remember { mutableStateOf("") }
@@ -807,17 +829,23 @@ fun EditorScreen(
             topBar = {
                 Column(
                     modifier =
-                        Modifier.padding(
-                            top =
-                                with(density) {
-                                    TopAppBarDefaults.windowInsets.getTop(this).toDp()
-                                },
-                        ),
+                        Modifier
+                            .background(Color.White)
+                            .padding(
+                                top =
+                                    with(density) {
+                                        TopAppBarDefaults.windowInsets.getTop(this).toDp()
+                                    },
+                            ),
                 ) {
                     TopAppBar(
                         windowInsets = WindowInsets(0, 0, 0, 0),
                         modifier = Modifier.height(48.dp),
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                        colors =
+                            TopAppBarDefaults.topAppBarColors(
+                                containerColor = Color.White,
+                                scrolledContainerColor = Color.White,
+                            ),
                         title = { },
                         navigationIcon = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1078,6 +1106,7 @@ fun EditorScreen(
         ModalBottomSheet(
             onDismissRequest = { showOverflowSheet = false },
             sheetState = overflowSheetState,
+            containerColor = Color.White,
         ) {
             Text(
                 text = "更多",
@@ -1103,6 +1132,7 @@ fun EditorScreen(
     if (showFindReplace) {
         AlertDialog(
             onDismissRequest = { showFindReplace = false },
+            containerColor = Color.White,
             title = { Text(stringResource(R.string.dialog_find_replace_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1141,6 +1171,7 @@ fun EditorScreen(
     if (showLinkDialog) {
         AlertDialog(
             onDismissRequest = { showLinkDialog = false },
+            containerColor = Color.White,
             title = { Text("Insert link") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1173,6 +1204,7 @@ fun EditorScreen(
     if (showImageDialog) {
         AlertDialog(
             onDismissRequest = { showImageDialog = false },
+            containerColor = Color.White,
             title = { Text("Insert image") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1206,6 +1238,7 @@ fun EditorScreen(
     if (showCodeDialog) {
         AlertDialog(
             onDismissRequest = { showCodeDialog = false },
+            containerColor = Color.White,
             title = { Text("Insert code block") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1232,6 +1265,7 @@ fun EditorScreen(
     if (showTableDialog) {
         AlertDialog(
             onDismissRequest = { showTableDialog = false },
+            containerColor = Color.White,
             title = { Text("Insert table") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1400,13 +1434,15 @@ private fun EditorBottomToolbar(
     var showMore by remember { mutableStateOf(false) }
     val toolbarScrollState = rememberScrollState()
     Surface(
-        tonalElevation = 3.dp,
+        tonalElevation = 0.dp,
+        shadowElevation = 6.dp,
         shape = RoundedCornerShape(0.dp),
         modifier =
             Modifier
                 .then(modifier)
                 .fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
+        color = Color(0xFFFFFFFF),
+        contentColor = Color(0xFF111111),
     ) {
         Row(
             modifier = Modifier
@@ -1495,6 +1531,13 @@ private fun EditorToolDivider() {
         modifier = Modifier
             .width(1.dp)
             .height(22.dp)
-            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+            .background(Color.Black.copy(alpha = 0.18f)),
     )
 }
+
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
