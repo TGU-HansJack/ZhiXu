@@ -6,6 +6,7 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -98,6 +99,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -115,6 +117,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
@@ -125,6 +128,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlin.math.abs
 import com.zhixu.android.R
 import com.zhixu.android.data.VaultRepository
@@ -185,6 +190,7 @@ fun EditorScreen(
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var showOverflowSheet by remember { mutableStateOf(false) }
     val overflowSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -208,6 +214,17 @@ fun EditorScreen(
             with(density) { (imeBottomPx + anticipatedToolbarPx).toDp() } + 96.dp,
         )
 
+    val editorFontSize = 16.sp
+    val editorLineHeight = editorFontSize * 1.5f
+    val editorLetterSpacing = 0.2.sp
+    val editorTextStyle =
+        MaterialTheme.typography.bodyLarge.copy(
+            fontSize = editorFontSize,
+            lineHeight = editorLineHeight,
+            letterSpacing = editorLetterSpacing,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+
     var showLinkDialog by remember { mutableStateOf(false) }
     var linkText by remember { mutableStateOf("") }
     var linkUrl by remember { mutableStateOf("") }
@@ -224,6 +241,8 @@ fun EditorScreen(
     var tableColsText by remember { mutableStateOf("2") }
 
     var autosaveJob by remember { mutableStateOf<Job?>(null) }
+    var exitSaveJob by remember { mutableStateOf<Job?>(null) }
+    var isExitSaveInProgress by remember { mutableStateOf(false) }
     var isLoaded by remember { mutableStateOf(false) }
     var lastPersistedText by remember { mutableStateOf<String?>(null) }
     var lastParsedText by remember { mutableStateOf<String?>(null) }
@@ -244,6 +263,93 @@ fun EditorScreen(
     var outline by remember { mutableStateOf<List<OutlineItem>>(emptyList()) }
     var wikiLinks by remember { mutableStateOf<List<String>>(emptyList()) }
     var pluginFabActions by remember { mutableStateOf<List<RadialFabAction>>(emptyList()) }
+
+    val latestOnBack by rememberUpdatedState(onBack)
+    val latestOnOpenDoc by rememberUpdatedState(onOpenDoc)
+    val latestIsLoaded by rememberUpdatedState(isLoaded)
+    val latestIsDirty by rememberUpdatedState(isDirty)
+    val latestDocUri by rememberUpdatedState(currentDocUri)
+    val latestContentText by rememberUpdatedState(content.text)
+    val latestTitle by rememberUpdatedState(title)
+    val latestOriginalFileName by rememberUpdatedState(originalFileName)
+    val latestOutline by rememberUpdatedState(outline)
+    val latestWikiLinks by rememberUpdatedState(wikiLinks)
+
+    suspend fun persistNow(uri: Uri, text: String): Boolean {
+        return runCatching {
+            withContext(Dispatchers.IO) {
+                repository.writeText(uri, text)
+                repository.indexDocUri(uri)
+            }
+        }.onSuccess {
+            lastPersistedText = text
+            EditorScreenCache.put(
+                uri,
+                EditorScreenCache.Entry(
+                    text = text,
+                    title = latestTitle,
+                    originalFileName = latestOriginalFileName,
+                    outline = latestOutline,
+                    wikiLinks = latestWikiLinks,
+                ),
+            )
+        }.isSuccess
+    }
+
+    fun requestExit() {
+        if (!latestIsLoaded) {
+            latestOnBack()
+            return
+        }
+
+        if (!latestIsDirty || isExitSaveInProgress) {
+            latestOnBack()
+            return
+        }
+
+        val uriSnapshot = latestDocUri
+        val textSnapshot = latestContentText
+        autosaveJob?.cancel()
+        exitSaveJob?.cancel()
+        isExitSaveInProgress = true
+        exitSaveJob =
+            scope.launch {
+                val ok = persistNow(uriSnapshot, textSnapshot)
+                if (ok) {
+                    latestOnBack()
+                } else {
+                    isExitSaveInProgress = false
+                    snackbarHostState.showSnackbar(context.getString(R.string.editor_save_failed_generic))
+                }
+            }
+    }
+
+    BackHandler(enabled = true) {
+        requestExit()
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event != Lifecycle.Event.ON_PAUSE && event != Lifecycle.Event.ON_STOP) return@LifecycleEventObserver
+                if (!latestIsLoaded) return@LifecycleEventObserver
+                if (!latestIsDirty) return@LifecycleEventObserver
+                if (isExitSaveInProgress) return@LifecycleEventObserver
+
+                val uriSnapshot = latestDocUri
+                val textSnapshot = latestContentText
+                autosaveJob?.cancel()
+                exitSaveJob?.cancel()
+                exitSaveJob =
+                    scope.launch {
+                        persistNow(uriSnapshot, textSnapshot)
+                    }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     fun iconForPluginAction(name: String?) =
         when (name?.lowercase()?.trim()) {
@@ -997,7 +1103,15 @@ fun EditorScreen(
                                                 withContext(Dispatchers.IO) {
                                                     repository.findDocByName(root, name)
                                                 } ?: return@launch
-                                            onOpenDoc(doc.uri.toString(), null, null)
+                                            if (latestIsDirty) {
+                                                autosaveJob?.cancel()
+                                                val ok = persistNow(latestDocUri, latestContentText)
+                                                if (!ok) {
+                                                    snackbarHostState.showSnackbar(context.getString(R.string.editor_save_failed_generic))
+                                                    return@launch
+                                                }
+                                            }
+                                            latestOnOpenDoc(doc.uri.toString(), null, null)
                                         }
                                     }
                                     .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -1047,7 +1161,7 @@ fun EditorScreen(
                                     IconButton(onClick = { scope.launch { drawerState.open() } }) {
                                         Icon(imageVector = Icons.Outlined.Menu, contentDescription = stringResource(R.string.action_open_drawer))
                                     }
-                                    IconButton(onClick = onBack) {
+                                    IconButton(onClick = { requestExit() }, enabled = !isExitSaveInProgress) {
                                         Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.action_back))
                                     }
                                 }
@@ -1098,13 +1212,22 @@ fun EditorScreen(
                                     ),
                                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                 decorationBox = { inner ->
-                                    if (title.isBlank()) {
-                                        Text(
-                                            text = originalFileName.removeSuffix(".md").ifBlank { stringResource(R.string.new_doc_default_title) },
-                                            style = MaterialTheme.typography.headlineSmall.copy(color = Color.Gray, fontSize = 22.sp),
-                                        )
+                                    Box(modifier = Modifier.fillMaxWidth()) {
+                                        if (title.isBlank()) {
+                                            Text(
+                                                text =
+                                                    originalFileName
+                                                        .removeSuffix(".md")
+                                                        .ifBlank { stringResource(R.string.new_doc_default_title) },
+                                                style =
+                                                    MaterialTheme.typography.headlineSmall.copy(
+                                                        color = Color.Gray,
+                                                        fontSize = 22.sp,
+                                                    ),
+                                            )
+                                        }
+                                        inner()
                                     }
-                                    inner()
                                 },
                             )
                             HorizontalDivider(modifier = Modifier.padding(top = 6.dp, bottom = 4.dp), thickness = 0.5.dp)
@@ -1117,12 +1240,30 @@ fun EditorScreen(
                                     onOpenWikiLink = { name ->
                                         val root = vaultRootUri ?: return@MarkdownPreview
                                         scope.launch {
+                                            if (latestIsDirty) {
+                                                autosaveJob?.cancel()
+                                                val ok = persistNow(latestDocUri, latestContentText)
+                                                if (!ok) {
+                                                    snackbarHostState.showSnackbar(context.getString(R.string.editor_save_failed_generic))
+                                                    return@launch
+                                                }
+                                            }
                                             val doc = repository.findDocByName(root, name) ?: return@launch
-                                            onOpenDoc(doc.uri.toString(), null, null)
+                                            latestOnOpenDoc(doc.uri.toString(), null, null)
                                         }
                                     },
                                     onOpenVaultDocUri = { uri ->
-                                        onOpenDoc(uri.toString(), null, null)
+                                        scope.launch {
+                                            if (latestIsDirty) {
+                                                autosaveJob?.cancel()
+                                                val ok = persistNow(latestDocUri, latestContentText)
+                                                if (!ok) {
+                                                    snackbarHostState.showSnackbar(context.getString(R.string.editor_save_failed_generic))
+                                                    return@launch
+                                                }
+                                            }
+                                            latestOnOpenDoc(uri.toString(), null, null)
+                                        }
                                     },
                                     loadWikiLinkPreview = { name ->
                                         val root = vaultRootUri ?: return@MarkdownPreview null
@@ -1226,22 +1367,24 @@ fun EditorScreen(
                                             }
                                             .verticalScroll(scrollState),
                                         textStyle =
-                                            TextStyle.Default.copy(
-                                                fontSize = 16.sp,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                            ),
+                                            editorTextStyle,
                                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                         onTextLayout = { textLayoutResult = it },
                                         decorationBox = { inner ->
                                             Column {
-                                                if (content.text.isBlank()) {
-                                                Text(
-                                                    text = "输入内容或使用 / 快速插入",
-                                                    color = Color.Gray,
-                                                    style = TextStyle.Default.copy(fontSize = 16.sp),
-                                                )
+                                                Box(modifier = Modifier.fillMaxWidth()) {
+                                                    if (content.text.isEmpty()) {
+                                                        Text(
+                                                            text = "输入内容或使用 / 快速插入",
+                                                            color = Color.Gray,
+                                                            style =
+                                                                editorTextStyle.copy(
+                                                                    color = Color.Gray,
+                                                                ),
+                                                        )
+                                                    }
+                                                    inner()
                                                 }
-                                                inner()
                                                 Spacer(modifier = Modifier.height(extraScrollSpaceDp))
                                             }
                                         },
