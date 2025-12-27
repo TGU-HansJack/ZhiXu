@@ -847,7 +847,7 @@ fun EditorScreen(
                 )
             },
         ) { padding ->
-            Column(
+            Box(
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize(),
@@ -1013,11 +1013,15 @@ fun EditorScreen(
                         }
                     }
 
+                }
+
                     DraggableRadialFab(
                         modifier = Modifier.fillMaxSize(),
                         primaryLabel = "Z",
                         onClickPrimary = { isPreview = !isPreview },
                         actions = pluginFabActions,
+                        persistenceKey = "editor_fab",
+                        edgePadding = 0.dp,
                         onClickAction = { action ->
                             when {
                                 action.id == "plugins:none" -> {
@@ -1087,7 +1091,6 @@ fun EditorScreen(
                             }
                         },
                     )
-                }
             }
         }
     }

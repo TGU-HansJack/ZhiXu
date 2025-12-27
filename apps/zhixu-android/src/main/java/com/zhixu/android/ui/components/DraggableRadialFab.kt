@@ -1,8 +1,11 @@
 package com.zhixu.android.ui.components
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
@@ -16,6 +19,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ChevronLeft
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
@@ -45,6 +51,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import androidx.datastore.preferences.core.edit
@@ -87,6 +94,7 @@ fun DraggableRadialFab(
     edgeHideEnabled: Boolean = true,
     edgePeekFraction: Float = 0.25f,
     autoHideDelayMs: Long = 1400,
+    edgePadding: Dp = 16.dp,
 ) {
     BoxWithConstraints(modifier = modifier) {
         val currentOnClickPrimary by rememberUpdatedState(onClickPrimary)
@@ -102,14 +110,15 @@ fun DraggableRadialFab(
 
         val fabSizeDp = 56.dp
         val fabSizePx = with(density) { fabSizeDp.toPx() }
-        val contentPaddingPx = with(density) { 16.dp.toPx() }
-        val actionButtonSizeDp = 44.dp
+        val contentPaddingPx = with(density) { edgePadding.toPx() }
+        val actionButtonSizeDp = 48.dp
         val actionButtonSizePx = with(density) { actionButtonSizeDp.toPx() }
-        val actionHitRadiusPx = actionButtonSizePx * 0.9f
+        val actionHitRadiusPx = actionButtonSizePx * 0.95f
         val desiredMaxRadiusPx = with(density) { 192.dp.toPx() }
 
         var fabOffsetPx by remember { mutableStateOf<Offset?>(null) }
         var menuOpen by remember { mutableStateOf(false) }
+        var menuVisible by remember { mutableStateOf(false) }
         var hoveredActionId by remember { mutableStateOf<String?>(null) }
         var fabMeasuredSizePx by remember { mutableStateOf(fabSizePx) }
         var persistedFracOffset by remember(persistenceKey) { mutableStateOf<Offset?>(null) }
@@ -217,16 +226,16 @@ fun DraggableRadialFab(
             dockEdge = computeDockEdge(base)
         }
 
-        LaunchedEffect(edgeHideEnabled, dockEdge, interactionTick, menuOpen, maxX, maxY) {
+        LaunchedEffect(edgeHideEnabled, dockEdge, interactionTick, menuOpen, menuVisible, maxX, maxY) {
             if (!edgeHideEnabled) return@LaunchedEffect
-            if (menuOpen) return@LaunchedEffect
+            if (menuOpen || menuVisible) return@LaunchedEffect
             val edge = dockEdge ?: computeDockEdge(resolvedFabOffsetPx) ?: return@LaunchedEffect
             if (maxX <= 0f && maxY <= 0f) return@LaunchedEffect
             edgeCollapsed = false
             delay(autoHideDelayMs)
             // Re-check: still at edge, still same edge.
             val still = computeDockEdge(fabOffsetPx ?: resolvedFabOffsetPx)
-            if (still == edge && !menuOpen) {
+            if (still == edge && !menuOpen && !menuVisible) {
                 dockEdge = edge
                 edgeCollapsed = true
             }
@@ -280,58 +289,51 @@ fun DraggableRadialFab(
             return min(desiredMaxRadiusPx, maxAllowed)
         }
 
-        fun menuSpreadDegrees(space: AvailableSpacePx): Float {
-            val tiny = desiredMaxRadiusPx * 0.35f
-            val blocked =
-                listOf(space.left < tiny, space.right < tiny, space.top < tiny, space.bottom < tiny).count { it }
-            return when {
-                blocked >= 2 -> 110f
-                blocked == 1 -> 200f
-                else -> 320f
+        fun desiredMenuSpreadDegrees(actions: List<RadialFabAction>): Float =
+            if (actions.size >= 6) 360f else 180f
+
+        fun computeFanAnglesDegrees(
+            count: Int,
+            baseAngle: Float,
+            spread: Float,
+        ): List<Float> {
+            if (count <= 0) return emptyList()
+            return List(count) { idx ->
+                val t =
+                    if (spread >= 359.5f) {
+                        (360f * idx / count)
+                    } else {
+                        (-spread / 2f + (idx + 0.5f) * (spread / count))
+                    }
+                baseAngle + t
             }
         }
 
-        fun ringFactor(ringIndex: Int): Float =
-            when (ringIndex) {
-                0 -> 0.5f
-                1 -> 0.75f
-                else -> 1.0f
-            }
-
-        fun computeAdaptiveActionCenters(
+        fun computeFanActionCenters(
             space: AvailableSpacePx,
             actions: List<RadialFabAction>,
             baseAngle: Float,
             spread: Float,
-        ): Map<String, Offset> {
-            val perRing = actions.groupBy { it.ringIndex }
+        ): Pair<Float, Map<String, Offset>> {
+            val angles = computeFanAnglesDegrees(count = actions.size, baseAngle = baseAngle, spread = spread)
+            if (angles.isEmpty()) return 0f to emptyMap()
+
+            val baseRadiusPx = angles.minOf { angle -> maxRadiusForAnglePx(space, angle) }.coerceAtLeast(0f)
             val centers = HashMap<String, Offset>(actions.size)
-            for ((ringIndex, ringActions) in perRing) {
-                val count = ringActions.size
-                if (count == 0) continue
-                for (idx in 0 until count) {
-                    val action = ringActions[idx]
-                    val t =
-                        if (spread >= 359.5f) {
-                            (360f * idx / count)
-                        } else {
-                            (-spread / 2f + (idx + 0.5f) * (spread / count))
-                        }
-                    val angle = baseAngle + t
-                    val maxRadiusAtAngle = maxRadiusForAnglePx(space, angle)
-                    val radius = ringFactor(ringIndex) * maxRadiusAtAngle
-                    val theta = (angle.toDouble() * PI) / 180.0
-                    val dx = cos(theta).toFloat() * radius
-                    val dy = sin(theta).toFloat() * radius
-                    centers[action.id] = fabCenterPx + Offset(dx, dy)
-                }
+            for (idx in actions.indices) {
+                val action = actions[idx]
+                val theta = (angles[idx].toDouble() * PI) / 180.0
+                val dx = cos(theta).toFloat() * baseRadiusPx
+                val dy = sin(theta).toFloat() * baseRadiusPx
+                centers[action.id] = fabCenterPx + Offset(dx, dy)
             }
-            return centers
+            return baseRadiusPx to centers
         }
 
-        fun pickMenuBaseAngle(space: AvailableSpacePx, actions: List<RadialFabAction>, spread: Float): Float {
+        fun pickMenuBaseAngle(space: AvailableSpacePx, actions: List<RadialFabAction>, spread: Float): Pair<Float, Float> {
             fun candidateScore(baseAngle: Float): Float {
-                val centers = computeAdaptiveActionCenters(space = space, actions = actions, baseAngle = baseAngle, spread = spread)
+                val (baseRadiusPx, centers) =
+                    computeFanActionCenters(space = space, actions = actions, baseAngle = baseAngle, spread = spread)
                 if (centers.isEmpty()) return 0f
 
                 var minPairwiseDistance = Float.POSITIVE_INFINITY
@@ -344,20 +346,14 @@ fun DraggableRadialFab(
                 }
                 if (centerList.size < 2) minPairwiseDistance = 1_000_000f
 
-                var minRadiusFromFab = Float.POSITIVE_INFINITY
-                var sumRadiusFromFab = 0f
-                for (p in centerList) {
-                    val r = hypot(p.x - fabCenterPx.x, p.y - fabCenterPx.y)
-                    if (r < minRadiusFromFab) minRadiusFromFab = r
-                    sumRadiusFromFab += r
-                }
-                val avgRadiusFromFab = sumRadiusFromFab / centerList.size
-
-                return minPairwiseDistance + (0.2f * minRadiusFromFab) + (0.05f * avgRadiusFromFab)
+                return minPairwiseDistance + (0.25f * baseRadiusPx)
             }
 
-            val candidates = listOf(0f, 45f, 90f, 135f, 180f, 225f, 270f, 315f)
-            return candidates.maxBy { candidateScore(it) }
+            val candidates = (0 until 360 step 15).map { it.toFloat() }
+            val bestAngle = candidates.maxBy { candidateScore(it) }
+            val bestRadius =
+                computeFanActionCenters(space = space, actions = actions, baseAngle = bestAngle, spread = spread).first
+            return bestAngle to bestRadius
         }
 
         fun computeMenuLayout(space: AvailableSpacePx, actions: List<RadialFabAction>): MenuLayout {
@@ -384,66 +380,16 @@ fun DraggableRadialFab(
                 )
             }
 
-            val baseSpread = menuSpreadDegrees(space)
-            val spreadCandidates =
-                listOf(110f, 160f, 200f, 240f, 280f, 320f, baseSpread)
-                    .distinct()
-                    .map { it.coerceIn(90f, 320f) }
-                    .distinct()
-
-            var bestBaseAngle = 0f
-            var bestCenters: Map<String, Offset> = emptyMap()
-            var bestScore = Float.NEGATIVE_INFINITY
-            for (candidateSpread in spreadCandidates) {
-                val candidateBaseAngle = pickMenuBaseAngle(space = space, actions = actions, spread = candidateSpread)
-                val candidateCenters =
-                    computeAdaptiveActionCenters(
-                        space = space,
-                        actions = actions,
-                        baseAngle = candidateBaseAngle,
-                        spread = candidateSpread,
-                    )
-                val score =
-                    run {
-                        if (candidateCenters.isEmpty()) 0f
-                        else {
-                            var minPairwiseDistance = Float.POSITIVE_INFINITY
-                            val centerList = candidateCenters.values.toList()
-                            for (i in 0 until centerList.size) {
-                                for (j in i + 1 until centerList.size) {
-                                    val d = hypot(centerList[i].x - centerList[j].x, centerList[i].y - centerList[j].y)
-                                    if (d < minPairwiseDistance) minPairwiseDistance = d
-                                }
-                            }
-                            if (centerList.size < 2) minPairwiseDistance = 1_000_000f
-
-                            var minRadiusFromFab = Float.POSITIVE_INFINITY
-                            var sumRadiusFromFab = 0f
-                            for (p in centerList) {
-                                val r = hypot(p.x - fabCenterPx.x, p.y - fabCenterPx.y)
-                                if (r < minRadiusFromFab) minRadiusFromFab = r
-                                sumRadiusFromFab += r
-                            }
-                            val avgRadiusFromFab = sumRadiusFromFab / centerList.size
-
-                            minPairwiseDistance + (0.2f * minRadiusFromFab) + (0.05f * avgRadiusFromFab)
-                        }
-                    }
-
-                if (score > bestScore) {
-                    bestScore = score
-                    bestBaseAngle = candidateBaseAngle
-                    bestCenters = candidateCenters
-                }
-            }
-
-            val baseRadiusPx = maxRadiusForAnglePx(space, bestBaseAngle)
-            val ringRadiiPx = listOf(baseRadiusPx * 0.5f, baseRadiusPx * 0.75f, baseRadiusPx)
+            val spread = desiredMenuSpreadDegrees(actions)
+            val (baseAngle, baseRadiusPx) = pickMenuBaseAngle(space = space, actions = actions, spread = spread)
+            val (_, centers) =
+                computeFanActionCenters(space = space, actions = actions, baseAngle = baseAngle, spread = spread)
+            val ringRadiiPx = listOf(baseRadiusPx * 0.66f, baseRadiusPx)
 
             return MenuLayout(
                 baseRadiusPx = baseRadiusPx,
                 ringRadiiPx = ringRadiiPx,
-                actionCentersPx = bestCenters,
+                actionCentersPx = centers,
             )
         }
 
@@ -478,56 +424,122 @@ fun DraggableRadialFab(
                 }
         }
 
-        if (menuOpen) {
+        val menuProgress by animateFloatAsState(
+            targetValue = if (menuOpen) 1f else 0f,
+            animationSpec = tween(durationMillis = if (menuOpen) 220 else 160, easing = FastOutSlowInEasing),
+            label = "radialFabMenuProgress",
+        )
+
+        LaunchedEffect(menuOpen, currentActions.size) {
+            if (menuOpen) {
+                menuVisible = true
+            } else if (menuVisible) {
+                val exitDurationMs = 160
+                val exitStaggerMs = 28
+                val exitTotalMs = ((currentActions.size - 1).coerceAtLeast(0) * exitStaggerMs) + exitDurationMs
+                delay(exitTotalMs.toLong())
+                menuVisible = false
+            }
+        }
+
+        if (menuVisible) {
             val space = availableSpacePx()
             val layout = computeMenuLayout(space = space, actions = currentActions)
 
+            val overlayAlpha = 0.28f * menuProgress
             Box(
                 modifier =
                     Modifier
                         .matchParentSize()
-                        .background(Color.Black.copy(alpha = 0.45f))
+                        .background(Color.Black.copy(alpha = overlayAlpha))
                         .pointerInput(Unit) {
                             awaitEachGesture {
                                 awaitFirstDown(requireUnconsumed = false)
                                 menuOpen = false
                                 hoveredActionId = null
-                            }
-                        },
+                    }
+                },
             )
 
+            val menuBgColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f * menuProgress)
+            val ringColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f * menuProgress)
             Canvas(modifier = Modifier.matchParentSize()) {
+                val menuBgRadius = (layout.baseRadiusPx + actionButtonSizePx / 2).coerceAtLeast(0f)
+                drawCircle(
+                    color = menuBgColor,
+                    radius = menuBgRadius,
+                    center = fabCenterPx,
+                )
                 for (radius in layout.ringRadiiPx) {
                     drawCircle(
-                        color = Color.White.copy(alpha = 0.12f),
+                        color = ringColor,
                         radius = radius,
                         center = fabCenterPx,
                     )
                 }
             }
 
-            for (action in currentActions) {
+            val enterDurationMs = 220
+            val enterStaggerMs = 28
+            val exitDurationMs = 160
+            val exitStaggerMs = 28
+
+            for ((index, action) in currentActions.withIndex()) {
                 val center = layout.actionCentersPx[action.id] ?: fabCenterPx
                 val selected = hoveredActionId == action.id
-                val scale by animateFloatAsState(if (selected) 1.12f else 1.0f, label = "radialFabScale")
+                val hoverScale by animateFloatAsState(if (selected) 1.10f else 1.0f, label = "radialFabHoverScale")
+
+                val delayMs =
+                    if (menuOpen) {
+                        index * enterStaggerMs
+                    } else {
+                        (currentActions.size - 1 - index).coerceAtLeast(0) * exitStaggerMs
+                    }
+                val actionProgress by animateFloatAsState(
+                    targetValue = if (menuOpen) 1f else 0f,
+                    animationSpec =
+                        tween(
+                            durationMillis = if (menuOpen) enterDurationMs else exitDurationMs,
+                            delayMillis = delayMs,
+                            easing = FastOutSlowInEasing,
+                        ),
+                    label = "radialFabActionProgress_${action.id}",
+                )
+
+                val animatedCenter =
+                    Offset(
+                        x = fabCenterPx.x + ((center.x - fabCenterPx.x) * actionProgress),
+                        y = fabCenterPx.y + ((center.y - fabCenterPx.y) * actionProgress),
+                    )
+                val baseScale = 0.64f + (0.36f * actionProgress)
+                val scale = baseScale * hoverScale
                 val topLeft =
                     IntOffset(
-                        x = (center.x - actionButtonSizePx / 2).roundToInt(),
-                        y = (center.y - actionButtonSizePx / 2).roundToInt(),
+                        x = (animatedCenter.x - actionButtonSizePx / 2).roundToInt(),
+                        y = (animatedCenter.y - actionButtonSizePx / 2).roundToInt(),
                     )
                 Box(
                     modifier =
                         Modifier
                             .offset { topLeft }
                             .size(actionButtonSizeDp)
-                            .graphicsLayer(scaleX = scale, scaleY = scale)
+                            .graphicsLayer(
+                                alpha = actionProgress,
+                                scaleX = scale,
+                                scaleY = scale,
+                            )
                             .background(
                                 color =
                                     if (selected) {
                                         MaterialTheme.colorScheme.primary
                                     } else {
-                                        MaterialTheme.colorScheme.surface
+                                        MaterialTheme.colorScheme.primaryContainer
                                     },
+                                shape = CircleShape,
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.75f),
                                 shape = CircleShape,
                             ),
                     contentAlignment = Alignment.Center,
@@ -539,9 +551,9 @@ fun DraggableRadialFab(
                             if (selected) {
                                 MaterialTheme.colorScheme.onPrimary
                             } else {
-                                MaterialTheme.colorScheme.onSurface
+                                MaterialTheme.colorScheme.onPrimaryContainer
                             },
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(24.dp),
                     )
                 }
             }
@@ -684,14 +696,16 @@ fun DraggableRadialFab(
                             },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            text = if (dockEdge == DockEdge.Left) "›" else "‹",
-                            style = MaterialTheme.typography.titleSmall,
+                        Icon(
+                            imageVector = if (dockEdge == DockEdge.Left) Icons.Outlined.ChevronRight else Icons.Outlined.ChevronLeft,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.95f),
+                            modifier = Modifier.size(22.dp),
                         )
                     }
                 }
             } else {
-                Text(text = primaryLabel, style = MaterialTheme.typography.titleMedium)
+                Text(text = if (menuVisible) "×" else primaryLabel, style = MaterialTheme.typography.titleMedium)
             }
         }
     }
