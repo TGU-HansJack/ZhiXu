@@ -176,6 +176,17 @@ class VaultRepository(
                 emptyList()
             }
 
+    suspend fun getAllTasks(
+        limit: Int = 200,
+        status: VaultIndexRepository.TaskStatusFilter = VaultIndexRepository.TaskStatusFilter.Undone,
+        tag: String? = null,
+    ): List<UiTask> =
+        runCatching { indexRepository.getAllTasks(limit = limit, status = status, tag = tag) }
+            .getOrElse {
+                Log.e("Zhixu", "getAllTasks failed", it)
+                emptyList()
+            }
+
     suspend fun getRecentCompletedTasks(limit: Int = 50): List<UiTask> =
         runCatching { indexRepository.getRecentCompletedTasks(limit) }
             .getOrElse {

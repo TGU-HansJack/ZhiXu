@@ -86,7 +86,6 @@ fun TasksScreen(
     onOpenDoc: (String, String?, Int?) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var selectedTab by remember { mutableIntStateOf(0) }
     var tasks by remember { mutableStateOf<List<UiTask>>(emptyList()) }
     var completed by remember { mutableStateOf<List<UiTask>>(emptyList()) }
     var showCompleted by remember { mutableStateOf(false) }
@@ -97,12 +96,7 @@ fun TasksScreen(
     suspend fun refresh() {
         val root = vaultRootUri ?: return
         runCatching { repository.ensureIndexBuilt(root) }
-        tasks =
-            if (selectedTab == 0) {
-                repository.getTodayTasks(status = VaultIndexRepository.TaskStatusFilter.Undone)
-            } else {
-                repository.getUpcomingTasks(status = VaultIndexRepository.TaskStatusFilter.Undone)
-            }
+        tasks = repository.getAllTasks(status = VaultIndexRepository.TaskStatusFilter.Undone)
         completed = repository.getRecentCompletedTasks(limit = 50)
     }
 
@@ -136,7 +130,7 @@ fun TasksScreen(
             }
     }
 
-    LaunchedEffect(vaultRootUri, selectedTab) { refresh() }
+    LaunchedEffect(vaultRootUri) { refresh() }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -149,19 +143,6 @@ fun TasksScreen(
                 .padding(padding)
                 .fillMaxSize(),
         ) {
-            TabRow(selectedTabIndex = selectedTab) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text(stringResource(R.string.tasks_tab_today)) },
-                )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = { Text(stringResource(R.string.tasks_tab_upcoming)) },
-                )
-            }
-
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),

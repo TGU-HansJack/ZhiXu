@@ -191,6 +191,15 @@ class VaultIndexRepository(
             mutex.withLock { queryDueTasks(start, end, limit, status = status, tag = tag) }
         }
 
+    suspend fun getAllTasks(
+        limit: Int = 200,
+        status: TaskStatusFilter = TaskStatusFilter.Undone,
+        tag: String? = null,
+    ): List<UiTask> =
+        withContext(Dispatchers.IO) {
+            mutex.withLock { queryAllTasks(limit = limit, status = status, tag = tag) }
+        }
+
     suspend fun getDueTasksForReminder(
         nowEpochMillis: Long = System.currentTimeMillis(),
         windowMillis: Long = DateUtils.HOUR_IN_MILLIS,
@@ -227,7 +236,7 @@ class VaultIndexRepository(
                         lineIndex = cursor.getInt(lineIdx),
                         checked = cursor.getInt(checkedIdx) != 0,
                         taskId = cursor.getString(idIdx),
-                        dueEpochMillis = cursor.getLong(dueIdx),
+                        dueEpochMillis = if (cursor.isNull(dueIdx)) null else cursor.getLong(dueIdx),
                     )
                 }
             }
@@ -326,6 +335,58 @@ class VaultIndexRepository(
               $statusClause
               $tagClause
             ORDER BY due_epoch_ms ASC
+            LIMIT ?
+            """.trimIndent(),
+            args,
+        ).use { cursor ->
+            val docUriIdx = cursor.getColumnIndexOrThrow("doc_uri")
+            val docNameIdx = cursor.getColumnIndexOrThrow("doc_name")
+            val lineIdx = cursor.getColumnIndexOrThrow("line_index")
+            val checkedIdx = cursor.getColumnIndexOrThrow("checked")
+            val idIdx = cursor.getColumnIndexOrThrow("task_id")
+            val titleIdx = cursor.getColumnIndexOrThrow("title")
+            val dueIdx = cursor.getColumnIndexOrThrow("due_epoch_ms")
+            while (cursor.moveToNext()) {
+                out += UiTask(
+                    title = cursor.getString(titleIdx),
+                    docUri = Uri.parse(cursor.getString(docUriIdx)),
+                    docName = cursor.getString(docNameIdx),
+                    lineIndex = cursor.getInt(lineIdx),
+                    checked = cursor.getInt(checkedIdx) != 0,
+                    taskId = cursor.getString(idIdx),
+                    dueEpochMillis = if (cursor.isNull(dueIdx)) null else cursor.getLong(dueIdx),
+                )
+            }
+        }
+        return out
+    }
+
+    private fun queryAllTasks(
+        limit: Int,
+        status: TaskStatusFilter,
+        tag: String?,
+    ): List<UiTask> {
+        val database = db.readableDatabase
+        val out = ArrayList<UiTask>()
+        val statusClause =
+            when (status) {
+                TaskStatusFilter.All -> ""
+                TaskStatusFilter.Undone -> " AND checked = 0"
+                TaskStatusFilter.Done -> " AND checked = 1"
+            }
+        val tagClause = if (!tag.isNullOrBlank()) " AND tags LIKE ?" else ""
+        val args = ArrayList<String>(2).apply {
+            if (!tag.isNullOrBlank()) add("%${tag.trim().lowercase()}%")
+            add(limit.toString())
+        }.toTypedArray()
+        database.rawQuery(
+            """
+            SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms
+            FROM tasks
+            WHERE 1 = 1
+              $statusClause
+              $tagClause
+            ORDER BY (due_epoch_ms IS NULL) ASC, due_epoch_ms ASC, doc_name COLLATE NOCASE ASC, line_index ASC
             LIMIT ?
             """.trimIndent(),
             args,
