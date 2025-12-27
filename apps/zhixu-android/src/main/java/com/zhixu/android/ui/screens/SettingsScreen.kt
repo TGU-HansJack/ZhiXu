@@ -44,6 +44,7 @@ fun SettingsScreen(
     vaultRootUri: Uri?,
     repository: VaultRepository,
     onChangeVault: () -> Unit,
+    onOpenWorkshop: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -94,6 +95,18 @@ fun SettingsScreen(
             }
             item {
                 Button(onClick = onChangeVault) { Text(stringResource(R.string.settings_change_vault)) }
+            }
+
+            item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }
+
+            item { Text(text = stringResource(R.string.settings_section_workshop)) }
+            item { Text(text = stringResource(R.string.settings_workshop_desc)) }
+            item {
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = vaultRootUri != null,
+                    onClick = onOpenWorkshop,
+                ) { Text(stringResource(R.string.settings_open_workshop)) }
             }
 
             item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }

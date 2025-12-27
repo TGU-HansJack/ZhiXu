@@ -13,3 +13,4 @@ local.properties
 # OS
 .DS_Store
 Thumbs.db
+/typecho-xmlrpc-publisher

@@ -63,6 +63,7 @@ dependencies {
     implementation("androidx.concurrent:concurrent-futures:1.2.0")
     implementation("com.google.guava:listenablefuture:1.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r")
     implementation("io.noties.markwon:ext-tables:4.6.2")
     implementation("io.noties.markwon:ext-tasklist:4.6.2")
     implementation("io.noties.markwon:ext-strikethrough:4.6.2")

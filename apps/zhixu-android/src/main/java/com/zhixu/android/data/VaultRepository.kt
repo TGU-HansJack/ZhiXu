@@ -50,9 +50,17 @@ class VaultRepository(
         val zhixu = findChild(root, ".zhixu") ?: root.createDirectory(".zhixu")
         val syncDir = zhixu?.let { findChild(it, "sync") ?: it.createDirectory("sync") }
         val exportsDir = zhixu?.let { findChild(it, "exports") ?: it.createDirectory("exports") }
+        val pluginsDir = zhixu?.let { findChild(it, "plugins") ?: it.createDirectory("plugins") }
+        val pluginState =
+            pluginsDir?.let {
+                findChild(it, "state.json") ?: it.createFile("application/json", "state.json")
+            }
         val settings = zhixu?.let { findChild(it, "settings.json") ?: it.createFile("application/json", "settings.json") }
         if (settings != null && settings.length() == 0L) {
             writeText(settings.uri, "{}\n")
+        }
+        if (pluginState != null && pluginState.length() == 0L) {
+            writeText(pluginState.uri, "{\n  \"enabled\": []\n}\n")
         }
 
         if (docs != null && findChild(docs, "Inbox.md") == null) {
@@ -67,6 +75,7 @@ class VaultRepository(
         // Validate creation of subdirectories too.
         requireNotNull(syncDir) { ".zhixu/sync directory missing" }
         requireNotNull(exportsDir) { ".zhixu/exports directory missing" }
+        requireNotNull(pluginsDir) { ".zhixu/plugins directory missing" }
     }
 
     suspend fun listMarkdownDocs(rootUri: Uri): List<UiDoc> = withContext(Dispatchers.IO) {

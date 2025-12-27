@@ -46,6 +46,7 @@ import com.zhixu.android.ui.screens.NewDocScreen
 import com.zhixu.android.ui.screens.SettingsScreen
 import com.zhixu.android.ui.screens.TasksScreen
 import com.zhixu.android.ui.screens.VaultGateScreen
+import com.zhixu.android.ui.screens.WorkshopScreen
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.launch
 
@@ -188,6 +189,16 @@ fun ZhixuApp() {
                                 popUpTo("settings") { inclusive = true }
                             }
                         },
+                        onOpenWorkshop = {
+                            navController.navigate("workshop")
+                        },
+                    )
+                }
+                composable("workshop") {
+                    WorkshopScreen(
+                        contentPadding = padding,
+                        vaultRootUri = vaultRootUri,
+                        onBack = { navController.popBackStack() },
                     )
                 }
                 composable("newDoc") {

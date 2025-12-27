@@ -8,12 +8,16 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -52,6 +56,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import kotlin.math.PI
 import kotlin.math.cos
@@ -79,6 +84,9 @@ fun DraggableRadialFab(
     modifier: Modifier = Modifier,
     persistenceKey: String = "draggable_radial_fab",
     adaptiveMenuLayout: Boolean = true,
+    edgeHideEnabled: Boolean = true,
+    edgePeekFraction: Float = 0.25f,
+    autoHideDelayMs: Long = 1400,
 ) {
     BoxWithConstraints(modifier = modifier) {
         val currentOnClickPrimary by rememberUpdatedState(onClickPrimary)
@@ -97,7 +105,7 @@ fun DraggableRadialFab(
         val contentPaddingPx = with(density) { 16.dp.toPx() }
         val actionButtonSizeDp = 44.dp
         val actionButtonSizePx = with(density) { actionButtonSizeDp.toPx() }
-        val actionHitRadiusPx = actionButtonSizePx * 0.65f
+        val actionHitRadiusPx = actionButtonSizePx * 0.9f
         val desiredMaxRadiusPx = with(density) { 192.dp.toPx() }
 
         var fabOffsetPx by remember { mutableStateOf<Offset?>(null) }
@@ -107,6 +115,9 @@ fun DraggableRadialFab(
         var persistedFracOffset by remember(persistenceKey) { mutableStateOf<Offset?>(null) }
         var persistedOffsetLoaded by remember(persistenceKey) { mutableStateOf(false) }
         var initialOffsetApplied by remember(persistenceKey) { mutableStateOf(false) }
+        var dockEdge by remember(persistenceKey) { mutableStateOf<DockEdge?>(null) }
+        var edgeCollapsed by remember(persistenceKey) { mutableStateOf(false) }
+        var interactionTick by remember(persistenceKey) { mutableStateOf(0) }
 
         fun clampOffsetForDrag(next: Offset): Offset {
             val maxX = (containerWidthPx - fabMeasuredSizePx).coerceAtLeast(0f)
@@ -179,7 +190,63 @@ fun DraggableRadialFab(
                         y = containerHeightPx - fabMeasuredSizePx - contentPaddingPx - navBarsBottomPx,
                     ),
                 )
-        val fabCenterPx = resolvedFabOffsetPx + Offset(fabMeasuredSizePx / 2, fabMeasuredSizePx / 2)
+        val maxX = (containerWidthPx - fabMeasuredSizePx).coerceAtLeast(0f)
+        val maxY = (containerHeightPx - navBarsBottomPx - fabMeasuredSizePx).coerceAtLeast(0f)
+
+        val edgeDockThresholdPx = with(density) { 24.dp.toPx() }
+        fun computeDockEdge(offsetPx: Offset): DockEdge? =
+            when {
+                offsetPx.x <= edgeDockThresholdPx -> DockEdge.Left
+                offsetPx.x >= (maxX - edgeDockThresholdPx) -> DockEdge.Right
+                else -> null
+            }
+
+        LaunchedEffect(edgeHideEnabled, dockEdge, resolvedFabOffsetPx, maxX) {
+            if (!edgeHideEnabled) return@LaunchedEffect
+            val docked = computeDockEdge(resolvedFabOffsetPx) != null
+            if (!docked) {
+                edgeCollapsed = false
+            }
+        }
+
+        LaunchedEffect(edgeHideEnabled, initialOffsetApplied, maxX, maxY) {
+            if (!edgeHideEnabled) return@LaunchedEffect
+            if (!initialOffsetApplied) return@LaunchedEffect
+            if (dockEdge != null) return@LaunchedEffect
+            val base = fabOffsetPx ?: return@LaunchedEffect
+            dockEdge = computeDockEdge(base)
+        }
+
+        LaunchedEffect(edgeHideEnabled, dockEdge, interactionTick, menuOpen, maxX, maxY) {
+            if (!edgeHideEnabled) return@LaunchedEffect
+            if (menuOpen) return@LaunchedEffect
+            val edge = dockEdge ?: computeDockEdge(resolvedFabOffsetPx) ?: return@LaunchedEffect
+            if (maxX <= 0f && maxY <= 0f) return@LaunchedEffect
+            edgeCollapsed = false
+            delay(autoHideDelayMs)
+            // Re-check: still at edge, still same edge.
+            val still = computeDockEdge(fabOffsetPx ?: resolvedFabOffsetPx)
+            if (still == edge && !menuOpen) {
+                dockEdge = edge
+                edgeCollapsed = true
+            }
+        }
+
+        val hideShiftPx =
+            (fabMeasuredSizePx * (1f - edgePeekFraction.coerceIn(0.1f, 1f))).coerceAtLeast(0f)
+        val hideAnimPx by animateFloatAsState(
+            targetValue = if (edgeHideEnabled && edgeCollapsed && dockEdge != null) hideShiftPx else 0f,
+            label = "fabEdgeHideShift",
+        )
+        val isEdgeHidden = edgeHideEnabled && dockEdge != null && hideAnimPx > 0.5f
+        val renderOffsetPx =
+            when (dockEdge) {
+                DockEdge.Left -> resolvedFabOffsetPx.copy(x = resolvedFabOffsetPx.x - hideAnimPx)
+                DockEdge.Right -> resolvedFabOffsetPx.copy(x = resolvedFabOffsetPx.x + hideAnimPx)
+                null -> resolvedFabOffsetPx
+            }
+
+        val fabCenterPx = renderOffsetPx + Offset(fabMeasuredSizePx / 2, fabMeasuredSizePx / 2)
 
         fun availableSpacePx(): AvailableSpacePx {
             val half = actionButtonSizePx / 2
@@ -483,12 +550,24 @@ fun DraggableRadialFab(
         val viewConfiguration = LocalViewConfiguration.current
         FloatingActionButton(
             onClick = {},
-            shape = RoundedCornerShape(18.dp),
+            shape = if (isEdgeHidden) CircleShape else RoundedCornerShape(18.dp),
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
+            elevation =
+                if (isEdgeHidden) {
+                    FloatingActionButtonDefaults.elevation(
+                        defaultElevation = 0.dp,
+                        pressedElevation = 0.dp,
+                        focusedElevation = 0.dp,
+                        hoveredElevation = 0.dp,
+                    )
+                } else {
+                    FloatingActionButtonDefaults.elevation()
+                },
             modifier =
                 Modifier
-                    .offset { IntOffset(resolvedFabOffsetPx.x.roundToInt(), resolvedFabOffsetPx.y.roundToInt()) }
+                    .offset { IntOffset(renderOffsetPx.x.roundToInt(), renderOffsetPx.y.roundToInt()) }
+                    .size(fabSizeDp)
                     .onSizeChanged { fabMeasuredSizePx = it.toSize().width }
                     .pointerInput(containerWidthPx, containerHeightPx, navBarsBottomPx) {
                         awaitEachGesture {
@@ -496,6 +575,7 @@ fun DraggableRadialFab(
                             val pointerId: PointerId = down.id
                             var totalDrag = Offset.Zero
                             hoveredActionId = null
+                            val wasCollapsed = edgeHideEnabled && edgeCollapsed
 
                             var dragging = false
                             var longPressed = false
@@ -523,6 +603,7 @@ fun DraggableRadialFab(
                             } catch (_: PointerEventTimeoutCancellationException) {
                                 longPressed = true
                                 menuOpen = true
+                                interactionTick++
                             }
 
                             if (longPressed) {
@@ -546,7 +627,9 @@ fun DraggableRadialFab(
                                 while (true) {
                                     val event = awaitPointerEvent()
                                     val change = findChange(event.changes) ?: break
-                                    hoveredActionId = findHoveredAction(change.position)
+                                    // `change.position` is FAB-local; convert to parent coordinates for hit-testing.
+                                    val pointerGlobal = renderOffsetPx + change.position
+                                    hoveredActionId = findHoveredAction(pointerGlobal)
                                     change.consume()
                                     if (!change.pressed) {
                                         val selectedId = hoveredActionId
@@ -555,6 +638,7 @@ fun DraggableRadialFab(
                                         if (selectedId != null) {
                                             currentActions.firstOrNull { it.id == selectedId }?.let(currentOnClickAction)
                                         }
+                                        interactionTick++
                                         break
                                     }
                                 }
@@ -562,7 +646,12 @@ fun DraggableRadialFab(
                             }
 
                             if (!dragging) {
-                                currentOnClickPrimary()
+                                if (wasCollapsed) {
+                                    edgeCollapsed = false
+                                } else {
+                                    currentOnClickPrimary()
+                                }
+                                interactionTick++
                                 return@awaitEachGesture
                             }
 
@@ -577,12 +666,40 @@ fun DraggableRadialFab(
                                 fabOffsetPx = clampOffsetForDrag((fabOffsetPx ?: resolvedFabOffsetPx) + delta)
                                 change.consume()
                             }
+                            dockEdge = computeDockEdge(fabOffsetPx ?: resolvedFabOffsetPx)
+                            edgeCollapsed = false
+                            interactionTick++
                         }
                     },
         ) {
-            Text(text = primaryLabel, style = MaterialTheme.typography.titleMedium)
+            if (isEdgeHidden) {
+                val peekWidthDp = fabSizeDp * edgePeekFraction.coerceIn(0.1f, 1f)
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier =
+                            if (dockEdge == DockEdge.Left) {
+                                Modifier.align(Alignment.CenterEnd).width(peekWidthDp).fillMaxHeight()
+                            } else {
+                                Modifier.align(Alignment.CenterStart).width(peekWidthDp).fillMaxHeight()
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = if (dockEdge == DockEdge.Left) "›" else "‹",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                    }
+                }
+            } else {
+                Text(text = primaryLabel, style = MaterialTheme.typography.titleMedium)
+            }
         }
     }
+}
+
+private enum class DockEdge {
+    Left,
+    Right,
 }
 
 @Immutable

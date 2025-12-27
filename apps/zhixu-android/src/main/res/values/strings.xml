@@ -118,4 +118,40 @@
 
     <!-- Reminders -->
     <string name="reminder_channel_name">Task reminders</string>
+
+    <!-- Workshop -->
+    <string name="settings_section_workshop">Creative Workshop</string>
+    <string name="settings_workshop_desc">Manage installed plugins (enable/disable/remove).</string>
+    <string name="settings_open_workshop">Open</string>
+    <string name="workshop_title">Creative Workshop</string>
+    <string name="workshop_no_vault">Select a Vault folder first.</string>
+    <string name="workshop_section_installed">Installed</string>
+    <string name="workshop_section_install">Install</string>
+    <string name="workshop_section_bundled">Bundled</string>
+    <string name="workshop_no_plugins">No plugins installed.</string>
+    <string name="workshop_install_from_git">Git URL</string>
+    <string name="workshop_install_from_folder">Local folder</string>
+    <string name="workshop_git_url">Git repository URL</string>
+    <string name="workshop_install">Install</string>
+    <string name="workshop_remove">Remove</string>
+    <string name="workshop_removed">Removed: %1$s</string>
+    <string name="workshop_remove_failed">Remove failed: %1$s</string>
+    <string name="bundled_typecho_name">Typecho XML-RPC Publisher</string>
+    <string name="bundled_typecho_desc">Publish notes to a Typecho blog via XML-RPC (placeholder).</string>
+    <string name="workshop_search_hint">Search plugins…</string>
+    <string name="workshop_view_details">View details &gt;</string>
+
+    <!-- Plugin settings -->
+    <string name="plugin_typecho_settings_title">Typecho Publisher Settings</string>
+    <string name="plugin_typecho_endpoint">XML-RPC Endpoint</string>
+    <string name="plugin_typecho_username">Username</string>
+    <string name="plugin_typecho_password">Password</string>
+    <string name="plugin_typecho_blog_id">BlogId (usually 1)</string>
+    <string name="plugin_typecho_default_categories">Default categories (comma separated)</string>
+    <string name="plugin_typecho_default_tags">Default tags (comma separated)</string>
+    <string name="plugin_show_password">Show password</string>
+    <string name="plugin_hide_password">Hide password</string>
+    <string name="plugin_save">Save</string>
+    <string name="plugin_saved">Saved</string>
+    <string name="plugin_save_failed">Save failed</string>
 </resources>
