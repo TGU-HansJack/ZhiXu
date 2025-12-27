@@ -719,71 +719,75 @@ fun EditorScreen(
             containerColor = MaterialTheme.colorScheme.background,
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             topBar = {
-                TopAppBar(
-                    windowInsets = TopAppBarDefaults.windowInsets,
-                    title = { },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.action_back))
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(imageVector = Icons.Outlined.Menu, contentDescription = stringResource(R.string.action_open_drawer))
-                        }
-                        IconButton(
-                            onClick = {
-                                scope.launch {
-                                    val desiredName = title.trim()
-                                    if (desiredName.isNotBlank()) {
-                                        val base = originalFileName.removeSuffix(".md")
-                                        if (desiredName != base) {
-                                            val renamedUri = repository.renameDoc(currentDocUri, desiredName)
-                                            if (renamedUri != null) {
-                                                currentDocUri = renamedUri
-                                                originalFileName = DocumentFile.fromSingleUri(context, renamedUri)?.name.orEmpty()
-                                            } else {
-                                                snackbarHostState.showSnackbar(context.getString(R.string.editor_rename_failed_generic))
+                Column {
+                    TopAppBar(
+                        windowInsets = TopAppBarDefaults.windowInsets,
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                        title = { },
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                Icon(imageVector = Icons.Outlined.Menu, contentDescription = stringResource(R.string.action_open_drawer))
+                            }
+                            IconButton(
+                                onClick = {
+                                    scope.launch {
+                                        val desiredName = title.trim()
+                                        if (desiredName.isNotBlank()) {
+                                            val base = originalFileName.removeSuffix(".md")
+                                            if (desiredName != base) {
+                                                val renamedUri = repository.renameDoc(currentDocUri, desiredName)
+                                                if (renamedUri != null) {
+                                                    currentDocUri = renamedUri
+                                                    originalFileName = DocumentFile.fromSingleUri(context, renamedUri)?.name.orEmpty()
+                                                } else {
+                                                    snackbarHostState.showSnackbar(context.getString(R.string.editor_rename_failed_generic))
+                                                }
                                             }
                                         }
+
+                                        val result =
+                                            runCatching {
+                                                val normalized = TaskSyntax.normalizeMarkdown(content.text)
+                                                val toSave = normalized.markdown
+                                                repository.writeText(currentDocUri, toSave)
+                                                repository.indexDocUri(currentDocUri)
+                                                content = TextFieldValue(toSave)
+                                                normalized.insertedIds
+                                            }
+
+                                        result.fold(
+                                            onSuccess = { insertedIds ->
+                                                val msg =
+                                                    if (insertedIds > 0) {
+                                                        context.getString(R.string.snackbar_saved_with_ids, insertedIds)
+                                                    } else {
+                                                        context.getString(R.string.snackbar_saved)
+                                                    }
+                                                snackbarHostState.showSnackbar(msg)
+                                            },
+                                            onFailure = { e ->
+                                                val msg =
+                                                    when (e) {
+                                                        is SecurityException -> context.getString(R.string.editor_save_failed_permission)
+                                                        else -> context.getString(R.string.editor_save_failed_generic)
+                                                    }
+                                                snackbarHostState.showSnackbar(msg)
+                                            },
+                                        )
                                     }
-
-                                    val result =
-                                         runCatching {
-                                             val normalized = TaskSyntax.normalizeMarkdown(content.text)
-                                             val toSave = normalized.markdown
-                                            repository.writeText(currentDocUri, toSave)
-                                            repository.indexDocUri(currentDocUri)
-                                            content = TextFieldValue(toSave)
-                                            normalized.insertedIds
-                                        }
-
-                                    result.fold(
-                                        onSuccess = { insertedIds ->
-                                            val msg =
-                                                if (insertedIds > 0) {
-                                                    context.getString(R.string.snackbar_saved_with_ids, insertedIds)
-                                                } else {
-                                                    context.getString(R.string.snackbar_saved)
-                                                }
-                                            snackbarHostState.showSnackbar(msg)
-                                        },
-                                        onFailure = { e ->
-                                            val msg =
-                                                when (e) {
-                                                    is SecurityException -> context.getString(R.string.editor_save_failed_permission)
-                                                    else -> context.getString(R.string.editor_save_failed_generic)
-                                                }
-                                            snackbarHostState.showSnackbar(msg)
-                                        },
-                                    )
-                                }
-                            },
-                        ) {
-                            Icon(imageVector = Icons.Outlined.Save, contentDescription = stringResource(R.string.action_save))
-                        }
-                    },
-                )
+                                },
+                            ) {
+                                Icon(imageVector = Icons.Outlined.Save, contentDescription = stringResource(R.string.action_save))
+                            }
+                        },
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
             },
             bottomBar = {
                 EditorBottomToolbar(

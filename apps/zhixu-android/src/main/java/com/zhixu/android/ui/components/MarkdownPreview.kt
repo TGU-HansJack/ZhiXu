@@ -3,8 +3,10 @@ package com.zhixu.android.ui.components
 import android.net.Uri
 import android.text.method.LinkMovementMethod
 import android.widget.TextView
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import io.noties.markwon.Markwon
@@ -22,8 +24,9 @@ fun MarkdownPreview(
     onOpenWikiLink: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val linkColor = MaterialTheme.colorScheme.primary.toArgb()
     val markwon =
-        remember(context, onOpenWikiLink) {
+        remember(context, onOpenWikiLink, linkColor) {
             Markwon.builder(context)
                 .usePlugin(StrikethroughPlugin.create())
                 .usePlugin(TablePlugin.create(context))
@@ -32,7 +35,7 @@ fun MarkdownPreview(
                 .usePlugin(
                     object : AbstractMarkwonPlugin() {
                         override fun configureTheme(builder: MarkwonTheme.Builder) {
-                            builder.linkColor(0xFF1565C0.toInt())
+                            builder.linkColor(linkColor)
                         }
 
                         override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {

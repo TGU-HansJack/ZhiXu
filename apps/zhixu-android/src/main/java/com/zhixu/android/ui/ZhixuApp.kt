@@ -12,6 +12,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -21,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.Alignment
@@ -92,35 +94,49 @@ fun ZhixuApp() {
                     TopNavItem("tasks", R.string.nav_tasks),
                     TopNavItem("settings", R.string.nav_settings),
                 )
-                TopAppBar(
-                    windowInsets = TopAppBarDefaults.windowInsets,
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-                    title = {
-                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                for (item in items) {
-                                    val selected = currentDestination?.hierarchy?.any { it.route == item.route } == true
-                                    FilterChip(
-                                        selected = selected,
-                                        onClick = {
-                                            navController.navigate(item.route) {
-                                                launchSingleTop = true
-                                                restoreState = true
-                                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                            }
-                                        },
-                                        label = { Text(stringResource(item.labelResId)) },
-                                        colors =
-                                            FilterChipDefaults.filterChipColors(
-                                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            ),
-                                    )
+                Column {
+                    TopAppBar(
+                        windowInsets = TopAppBarDefaults.windowInsets,
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                        title = {
+                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    for (item in items) {
+                                        val selected = currentDestination?.hierarchy?.any { it.route == item.route } == true
+                                        FilterChip(
+                                            selected = selected,
+                                            onClick = {
+                                                navController.navigate(item.route) {
+                                                    launchSingleTop = true
+                                                    restoreState = true
+                                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                                }
+                                            },
+                                            label = { Text(stringResource(item.labelResId)) },
+                                            colors =
+                                                FilterChipDefaults.filterChipColors(
+                                                    containerColor = MaterialTheme.colorScheme.surface,
+                                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    selectedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                                    selectedLabelColor = MaterialTheme.colorScheme.onSurface,
+                                                ),
+                                            border =
+                                                FilterChipDefaults.filterChipBorder(
+                                                    enabled = true,
+                                                    selected = selected,
+                                                    borderColor = MaterialTheme.colorScheme.outline,
+                                                    selectedBorderColor = MaterialTheme.colorScheme.outline,
+                                                    borderWidth = 1.dp,
+                                                    selectedBorderWidth = 1.dp,
+                                                ),
+                                        )
+                                    }
                                 }
                             }
-                        }
-                    },
-                )
+                        },
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
             },
         ) { padding ->
             NavHost(

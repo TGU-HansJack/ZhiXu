@@ -268,26 +268,30 @@ fun WorkshopScreen(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
-            TopAppBar(
-                windowInsets = TopAppBarDefaults.windowInsets,
-                title = { Text(stringResource(R.string.workshop_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = stringResource(R.string.action_back),
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        enabled = vaultRootUri != null,
-                        onClick = { scope.launch { refresh() } },
-                    ) {
-                        Icon(imageVector = Icons.Outlined.Refresh, contentDescription = stringResource(R.string.action_refresh))
-                    }
-                },
-            )
+            Column {
+                TopAppBar(
+                    windowInsets = TopAppBarDefaults.windowInsets,
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                    title = { Text(stringResource(R.string.workshop_title)) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                                contentDescription = stringResource(R.string.action_back),
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            enabled = vaultRootUri != null,
+                            onClick = { scope.launch { refresh() } },
+                        ) {
+                            Icon(imageVector = Icons.Outlined.Refresh, contentDescription = stringResource(R.string.action_refresh))
+                        }
+                    },
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
         },
     ) { innerPadding ->
         LazyColumn(

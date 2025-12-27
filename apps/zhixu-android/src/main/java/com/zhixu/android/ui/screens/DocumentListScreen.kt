@@ -76,6 +76,7 @@ fun DocumentListScreen(
     onChangeVault: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val highlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     val lifecycleOwner = LocalLifecycleOwner.current
     var docs by remember { mutableStateOf<List<UiDoc>>(emptyList()) }
     var pendingDelete by remember { mutableStateOf<UiDoc?>(null) }
@@ -220,14 +221,14 @@ fun DocumentListScreen(
                                     modifier = Modifier.clickable { onOpenDoc(result.uri.toString(), query, null) },
                                     headlineContent = {
                                         Text(
-                                            text = highlightQuery(result.title, query),
+                                            text = highlightQuery(result.title, query, highlightBg),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
                                     },
                                     supportingContent = {
                                         if (!result.snippet.isNullOrBlank()) {
-                                            Text(highlightQuery(result.snippet, query), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                            Text(highlightQuery(result.snippet, query, highlightBg), maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         }
                                     },
                                 )
@@ -238,7 +239,7 @@ fun DocumentListScreen(
                                     modifier = Modifier.clickable { onOpenDoc(result.docUri.toString(), query, result.lineIndex) },
                                     headlineContent = {
                                         Text(
-                                            text = highlightQuery(result.title, query),
+                                            text = highlightQuery(result.title, query, highlightBg),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
@@ -318,7 +319,7 @@ fun DocumentListScreen(
     }
 }
 
-private fun highlightQuery(text: String, query: String): AnnotatedString {
+private fun highlightQuery(text: String, query: String, highlightBg: Color): AnnotatedString {
     val q = query.trim()
     if (q.isBlank()) return AnnotatedString(text)
     val tokens = q.split(Regex("""\s+""")).filter { it.isNotBlank() }.distinct()
@@ -345,7 +346,7 @@ private fun highlightQuery(text: String, query: String): AnnotatedString {
         acc
     }
 
-    val highlight = SpanStyle(background = Color(0x33FFD54F), fontWeight = FontWeight.SemiBold)
+    val highlight = SpanStyle(background = highlightBg, fontWeight = FontWeight.SemiBold)
     return buildAnnotatedString {
         var pos = 0
         for (r in merged) {

@@ -212,10 +212,10 @@ fun TasksScreen(
                         Icon(
                             imageVector = if (showCompleted) Icons.Outlined.ExpandMore else Icons.Outlined.ChevronRight,
                             contentDescription = null,
-                            tint = Color.Gray,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(stringResource(R.string.tasks_completed))
-                        Text(text = count.toString(), color = Color.Gray)
+                        Text(text = count.toString(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 
@@ -315,9 +315,9 @@ private fun TaskComposer(
         singleLine = true,
         placeholder = { Text(stringResource(R.string.task_input_hint)) },
         colors = TextFieldDefaults.colors(
-            focusedContainerColor = Color(0xFFF5F5F5),
-            unfocusedContainerColor = Color(0xFFF5F5F5),
-            disabledContainerColor = Color(0xFFF5F5F5),
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
             focusedIndicatorColor = Color.Transparent,
             unfocusedIndicatorColor = Color.Transparent,
         ),
@@ -353,21 +353,21 @@ private fun TaskComposer(
                     AssistChip(
                         onClick = { showDateSheet = true },
                         label = { Text(buildDueChipLabel(dueDate, timeRange)) },
-                        colors = AssistChipDefaults.assistChipColors(containerColor = Color(0xFFEAEFFF)),
+                        colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                     )
                 }
                 if (priority != null) {
                     AssistChip(
                         onClick = { showPrioritySheet = true },
                         label = { Text("P${priority}") },
-                        colors = AssistChipDefaults.assistChipColors(containerColor = Color(0xFFFFF3E0)),
+                        colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                     )
                 }
                 if (tags.isNotEmpty()) {
                     AssistChip(
                         onClick = { showTagSheet = true },
                         label = { Text(tags.joinToString(" ")) },
-                        colors = AssistChipDefaults.assistChipColors(containerColor = Color(0xFFE8F5E9)),
+                        colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
                     )
                 }
             }
@@ -699,19 +699,20 @@ private fun TaskRow(
     onOpen: () -> Unit,
     dimmed: Boolean,
 ) {
-    val titleColor = if (dimmed) Color.Gray else Color.Unspecified
+    val titleColor = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+    val metaColor = MaterialTheme.colorScheme.onSurfaceVariant
     ListItem(
         modifier = Modifier.clickable(onClick = onOpen),
         headlineContent = { Text(task.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = titleColor) },
         supportingContent = {
-            Text(task.docName, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color.Gray)
+            Text(task.docName, maxLines = 1, overflow = TextOverflow.Ellipsis, color = metaColor)
         },
         leadingContent = {
             IconButton(onClick = onToggle) {
                 Icon(
                     imageVector = if (task.checked) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
                     contentDescription = null,
-                    tint = if (task.checked) Color.Gray else Color.Unspecified,
+                    tint = if (task.checked) metaColor else MaterialTheme.colorScheme.onSurface,
                 )
             }
         },
@@ -719,7 +720,7 @@ private fun TaskRow(
             if (!dueLabel.isNullOrBlank()) {
                 Text(
                     text = dueLabel,
-                    color = if (dimmed) Color.Gray else Color(0xFF3D6DFF),
+                    color = if (dimmed) metaColor else MaterialTheme.colorScheme.primary,
                     maxLines = 1,
                 )
             }

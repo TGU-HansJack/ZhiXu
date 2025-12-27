@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
@@ -63,50 +64,54 @@ fun NewDocScreen(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
-            TopAppBar(
-                windowInsets = TopAppBarDefaults.windowInsets,
-                title = { Text(stringResource(R.string.new_doc_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = stringResource(R.string.action_back),
-                        )
-                    }
-                },
-                actions = {
-                    TextButton(
-                        onClick = {
-                            scope.launch {
-                                val trimmed = fileName.trim()
-                                if (trimmed.isBlank()) {
-                                    snackbarHostState.showSnackbar(context.getString(R.string.new_doc_error_name_required))
-                                    return@launch
-                                }
-
-                                val created = runCatching { repository.createDoc(vaultRootUri, trimmed) }
-                                    .getOrElse { e ->
-                                        snackbarHostState.showSnackbar(
-                                            context.getString(R.string.new_doc_error_create_failed, e.message ?: e.javaClass.simpleName),
-                                        )
+            Column {
+                TopAppBar(
+                    windowInsets = TopAppBarDefaults.windowInsets,
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                    title = { Text(stringResource(R.string.new_doc_title)) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                                contentDescription = stringResource(R.string.action_back),
+                            )
+                        }
+                    },
+                    actions = {
+                        TextButton(
+                            onClick = {
+                                scope.launch {
+                                    val trimmed = fileName.trim()
+                                    if (trimmed.isBlank()) {
+                                        snackbarHostState.showSnackbar(context.getString(R.string.new_doc_error_name_required))
                                         return@launch
                                     }
 
-                                val contentToWrite = initialContent.ifBlank { buildDefaultContent(created.name) }
-                                runCatching { repository.writeText(created.uri, contentToWrite) }
-                                    .onFailure {
-                                        snackbarHostState.showSnackbar(context.getString(R.string.new_doc_error_write_failed))
-                                    }
+                                    val created = runCatching { repository.createDoc(vaultRootUri, trimmed) }
+                                        .getOrElse { e ->
+                                            snackbarHostState.showSnackbar(
+                                                context.getString(R.string.new_doc_error_create_failed, e.message ?: e.javaClass.simpleName),
+                                            )
+                                            return@launch
+                                        }
 
-                                onCreated(created.uri.toString())
-                            }
-                        },
-                    ) {
-                        Icon(imageVector = Icons.Outlined.Check, contentDescription = stringResource(R.string.action_create))
-                        Text(stringResource(R.string.action_create), modifier = Modifier.padding(start = 6.dp))
-                    }
-                },
-            )
+                                    val contentToWrite = initialContent.ifBlank { buildDefaultContent(created.name) }
+                                    runCatching { repository.writeText(created.uri, contentToWrite) }
+                                        .onFailure {
+                                            snackbarHostState.showSnackbar(context.getString(R.string.new_doc_error_write_failed))
+                                        }
+
+                                    onCreated(created.uri.toString())
+                                }
+                            },
+                        ) {
+                            Icon(imageVector = Icons.Outlined.Check, contentDescription = stringResource(R.string.action_create))
+                            Text(stringResource(R.string.action_create), modifier = Modifier.padding(start = 6.dp))
+                        }
+                    },
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
         },
     ) { padding ->
         Column(
