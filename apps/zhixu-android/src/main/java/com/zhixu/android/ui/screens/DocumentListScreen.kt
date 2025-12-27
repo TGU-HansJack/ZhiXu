@@ -15,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.WindowInsets
@@ -47,6 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -72,6 +74,7 @@ import com.zhixu.android.data.DocSearchResult
 import com.zhixu.android.data.SearchResult
 import com.zhixu.android.data.TaskSearchResult
 import com.zhixu.android.data.UiDoc
+import com.zhixu.android.data.VaultPreferences
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.components.CapsuleActionBar
 import com.zhixu.android.ui.components.CapsuleActionBarDefaults
@@ -82,15 +85,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DocumentListScreen(
     contentPadding: PaddingValues,
     vaultRootUri: Uri?,
+    prefs: VaultPreferences,
     repository: VaultRepository,
     onOpenDoc: (String, String?, Int?) -> Unit,
     onNewDoc: () -> Unit,
@@ -104,30 +105,51 @@ fun DocumentListScreen(
         remember(vaultRootUri) {
             mutableStateOf(DocumentListCache.get(vaultRootUri) ?: emptyList())
         }
+    var docsSig by remember(vaultRootUri) { mutableLongStateOf(docListSignature(docs)) }
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
     var refreshJob by remember { mutableStateOf<Job?>(null) }
     var lastRefreshAtMs by remember { mutableStateOf(0L) }
+    var cacheUpdatedAtMs by remember(vaultRootUri) { mutableLongStateOf(0L) }
+    var ensuredVaultThisSession by remember(vaultRootUri) { mutableStateOf(false) }
     var showAiDialog by remember { mutableStateOf(false) }
     var showSearchSheet by remember { mutableStateOf(false) }
 
-    fun requestRefresh(reindex: Boolean) {
+    fun requestRefresh(force: Boolean, reindex: Boolean) {
         val root = vaultRootUri ?: return
+        val effectiveForce = force || docs.isEmpty()
+        if (!effectiveForce) {
+            val now = SystemClock.uptimeMillis()
+            val elapsed = now - lastRefreshAtMs
+            if (elapsed in 0..1_500) return
+
+            // If we have a fairly fresh cache, avoid refreshing on app resume.
+            val cacheAgeMs = System.currentTimeMillis() - cacheUpdatedAtMs
+            if (cacheUpdatedAtMs > 0L && cacheAgeMs in 0..(10 * 60 * 1000L)) return
+        }
         refreshJob?.cancel()
+        val needEnsure = !ensuredVaultThisSession && docs.isEmpty() && cacheUpdatedAtMs == 0L
         refreshJob =
             scope.launch {
                 val now = SystemClock.uptimeMillis()
                 val elapsed = now - lastRefreshAtMs
                 if (elapsed in 0..250) delay(250 - elapsed)
 
-                val nextDocs =
+                val (nextDocs, nextSig, didEnsure) =
                     withContext(Dispatchers.IO) {
-                        repository.ensureVaultStructure(root)
-                        repository.listMarkdownDocs(root)
+                        if (needEnsure) runCatching { repository.ensureVaultStructure(root) }
+                        val listed = repository.listMarkdownDocs(root)
+                        Triple(listed, docListSignature(listed), needEnsure)
                     }
-                if (nextDocs != docs) docs = nextDocs
-                DocumentListCache.put(root, nextDocs)
+                if (didEnsure) ensuredVaultThisSession = true
+                if (nextSig != docsSig) {
+                    docs = nextDocs
+                    docsSig = nextSig
+                    DocumentListCache.put(root, nextDocs)
+                    cacheUpdatedAtMs = System.currentTimeMillis()
+                    runCatching { prefs.setDocListCache(root, nextDocs, updatedAtMs = cacheUpdatedAtMs) }
+                }
 
                 if (reindex) {
                     withContext(Dispatchers.IO) { runCatching { repository.rebuildIndex(root) } }
@@ -137,14 +159,32 @@ fun DocumentListScreen(
     }
 
     LaunchedEffect(vaultRootUri) {
-        requestRefresh(reindex = false)
+        val root = vaultRootUri ?: return@LaunchedEffect
+        val cached = prefs.getDocListCache(root)
+        if (docs.isEmpty() && cached != null && cached.docs.isNotEmpty()) {
+            docs = cached.docs
+            docsSig = docListSignature(cached.docs)
+            DocumentListCache.put(root, cached.docs)
+            cacheUpdatedAtMs = cached.updatedAtMs
+        } else if (cached != null) {
+            cacheUpdatedAtMs = cached.updatedAtMs
+        }
+
+        val cacheAgeMs =
+            if (cacheUpdatedAtMs > 0L) (System.currentTimeMillis() - cacheUpdatedAtMs) else Long.MAX_VALUE
+        val shouldRefresh = docs.isEmpty() || cacheAgeMs > (10 * 60 * 1000L)
+        if (shouldRefresh) {
+            // Let the cached list render first; refresh in background after a short delay.
+            delay(120)
+            requestRefresh(force = true, reindex = false)
+        }
     }
 
     DisposableEffect(lifecycleOwner, vaultRootUri) {
         val observer =
             LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_RESUME) {
-                    requestRefresh(reindex = false)
+                    requestRefresh(force = false, reindex = false)
                 }
             }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -219,55 +259,15 @@ fun DocumentListScreen(
                     }
                     items(
                         items = docs,
-                        key = { it.uri.toString() },
+                        key = { it.uri },
                         contentType = { "doc" },
                     ) { doc ->
-                        val title =
-                            remember(doc.name) {
-                                doc.name.removeSuffix(".md")
-                            }.ifBlank { stringResource(R.string.new_doc_default_title) }
-                        val editedAt =
-                            remember(doc.lastModified) {
-                                formatEditedAt(doc.lastModified)
-                            }
-                        ListItem(
-                            modifier = Modifier.clickable { onOpenDoc(doc.uri.toString(), null, null) },
-                            leadingContent = {
-                                Box(
-                                    modifier = Modifier.size(40.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Description,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            },
-                            headlineContent = {
-                                Text(
-                                    text = title,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
-                            },
-                            supportingContent = {
-                                Text(
-                                    text = stringResource(R.string.edited_at_fmt, editedAt),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            },
-                            trailingContent = {
-                                IconButton(onClick = { /* UI only */ }) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.MoreHoriz,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            },
+                        val title = doc.baseName.ifBlank { stringResource(R.string.new_doc_default_title) }
+                        val editedAt = doc.editedAtText.ifBlank { "—" }
+                        DocRow(
+                            title = title,
+                            editedAt = editedAt,
+                            onClick = { onOpenDoc(doc.uri.toString(), null, null) },
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
@@ -478,14 +478,6 @@ private object DocumentListCache {
     }
 }
 
-private val editedAtFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm")
-
-private fun formatEditedAt(lastModifiedMs: Long): String {
-    val instant = Instant.ofEpochMilli(lastModifiedMs)
-    val local = instant.atZone(ZoneId.systemDefault()).toLocalDateTime()
-    return editedAtFormatter.format(local)
-}
-
 private fun highlightQuery(text: String, query: String, highlightBg: Color): AnnotatedString {
     val q = query.trim()
     if (q.isBlank()) return AnnotatedString(text)
@@ -525,5 +517,59 @@ private fun highlightQuery(text: String, query: String, highlightBg: Color): Ann
             pos = end
         }
         if (pos < text.length) append(text.substring(pos))
+    }
+}
+
+private fun docListSignature(docs: List<UiDoc>): Long {
+    var sig = 1125899906842597L
+    for (doc in docs) {
+        sig = 31 * sig + doc.uri.hashCode().toLong()
+        sig = 31 * sig + doc.lastModified
+        sig = 31 * sig + doc.size
+    }
+    return sig
+}
+
+@Composable
+private fun DocRow(
+    title: String,
+    editedAt: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.Description,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.size(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = stringResource(R.string.edited_at_fmt, editedAt),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Spacer(modifier = Modifier.size(12.dp))
+        Icon(
+            imageVector = Icons.Outlined.MoreHoriz,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

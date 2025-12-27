@@ -14,9 +14,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import java.io.File
 import java.nio.charset.StandardCharsets
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 data class UiDoc(
@@ -24,6 +26,8 @@ data class UiDoc(
     val uri: Uri,
     val lastModified: Long,
     val size: Long,
+    val baseName: String = "",
+    val editedAtText: String = "",
 )
 
 data class TaskStats(
@@ -102,11 +106,14 @@ class VaultRepository(
             }
             .mapNotNull { file ->
                 val name = file.name ?: return@mapNotNull null
+                val lastModified = file.lastModified()
                 UiDoc(
                     name = name,
                     uri = file.uri,
-                    lastModified = file.lastModified(),
+                    lastModified = lastModified,
                     size = file.length(),
+                    baseName = computeDocBaseName(name),
+                    editedAtText = formatEditedAt(lastModified),
                 )
             }
             .sortedBy { it.name.lowercase() }
@@ -121,7 +128,7 @@ class VaultRepository(
             else "$trimmed.md"
         val docs = listMarkdownDocs(rootUri)
         docs.firstOrNull { it.name.equals(target, ignoreCase = true) }
-            ?: docs.firstOrNull { it.name.removeSuffix(".md").equals(trimmed, ignoreCase = true) }
+            ?: docs.firstOrNull { computeDocBaseName(it.name).equals(trimmed, ignoreCase = true) }
     }
 
     suspend fun rebuildIndex(rootUri: Uri) = withContext(Dispatchers.IO) {
@@ -260,11 +267,15 @@ class VaultRepository(
             // Some providers may ignore extension; best-effort rename to keep the vault consistent.
             runCatching { created.renameTo(createdName) }
         }
+        val name = created.name ?: createdName
+        val lastModified = created.lastModified()
         UiDoc(
-            name = created.name ?: createdName,
+            name = name,
             uri = created.uri,
-            lastModified = created.lastModified(),
+            lastModified = lastModified,
             size = created.length(),
+            baseName = computeDocBaseName(name),
+            editedAtText = formatEditedAt(lastModified),
         )
     }
 
@@ -447,12 +458,15 @@ class VaultRepository(
             writeText(docUri, after)
             val docName = DocumentFile.fromSingleUri(context, docUri)?.name ?: "Document"
             val stat = DocumentFile.fromSingleUri(context, docUri)
+            val lastModified = stat?.lastModified() ?: 0L
             val uiDoc =
                 UiDoc(
                     name = docName,
                     uri = docUri,
-                    lastModified = stat?.lastModified() ?: 0L,
+                    lastModified = lastModified,
                     size = stat?.length() ?: after.toByteArray(StandardCharsets.UTF_8).size.toLong(),
+                    baseName = computeDocBaseName(docName),
+                    editedAtText = if (lastModified == 0L) "" else formatEditedAt(lastModified),
                 )
             runCatching { indexRepository.indexDocument(uiDoc, after) }
                 .onFailure { Log.e("Zhixu", "Index update failed for $docUri", it) }
@@ -487,3 +501,14 @@ class VaultRepository(
         return parent.createFile("text/markdown", mdName) ?: parent.createFile("text/plain", mdName)
     }
 }
+
+private val editedAtFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm")
+
+private fun formatEditedAt(lastModifiedMs: Long): String {
+    val instant = Instant.ofEpochMilli(lastModifiedMs)
+    val local = instant.atZone(ZoneId.systemDefault()).toLocalDateTime()
+    return editedAtFormatter.format(local)
+}
+
+private fun computeDocBaseName(name: String): String =
+    if (name.endsWith(".md", ignoreCase = true)) name.dropLast(3) else name

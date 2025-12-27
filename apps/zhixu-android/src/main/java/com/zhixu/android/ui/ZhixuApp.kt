@@ -301,6 +301,7 @@ fun ZhixuApp() {
                         HomePager(
                             contentPadding = padding,
                             vaultRootUri = vaultRootUri,
+                            prefs = prefs,
                             repository = repository,
                             pagerState = pagerState,
                             onOpenDoc = { rawUri, query, lineIndex ->
@@ -503,6 +504,7 @@ private fun UserAvatarButton(
 private fun HomePager(
     contentPadding: PaddingValues,
     vaultRootUri: Uri?,
+    prefs: VaultPreferences,
     repository: VaultRepository,
     pagerState: androidx.compose.foundation.pager.PagerState,
     onOpenDoc: (String, String?, Int?) -> Unit,
@@ -511,7 +513,7 @@ private fun HomePager(
 ) {
     HorizontalPager(
         state = pagerState,
-        beyondViewportPageCount = 1,
+        beyondViewportPageCount = 0,
         modifier = Modifier.fillMaxSize(),
     ) { page ->
         when (page) {
@@ -519,6 +521,7 @@ private fun HomePager(
                 DocumentListScreen(
                     contentPadding = contentPadding,
                     vaultRootUri = vaultRootUri,
+                    prefs = prefs,
                     repository = repository,
                     onOpenDoc = onOpenDoc,
                     onNewDoc = onNewDoc,
