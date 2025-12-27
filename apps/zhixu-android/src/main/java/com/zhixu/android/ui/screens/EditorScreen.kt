@@ -102,10 +102,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
@@ -120,7 +116,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.IntOffset
@@ -1079,122 +1074,70 @@ fun EditorScreen(
                             .padding(padding)
                             .fillMaxSize(),
                 ) {
-                Box(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
                         tonalElevation = 0.dp,
-                        shape = RoundedCornerShape(0.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.surface,
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
                         ) {
                             BasicTextField(
                                 value = title,
-                                onValueChange = { title = it.toHalfWidthAscii() },
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(min = 44.dp),
+                                onValueChange = { title = it },
+                                modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
                                 textStyle =
                                     MaterialTheme.typography.headlineSmall.copy(
-                                        fontSize = 18.sp,
-                                        lineHeight = 20.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 22.sp,
                                         color = MaterialTheme.colorScheme.onSurface,
                                     ),
                                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                 decorationBox = { inner ->
-                                    Box(
-                                        modifier =
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .heightIn(min = 44.dp)
-                                                .padding(horizontal = 12.dp),
-                                        contentAlignment = Alignment.CenterStart,
-                                    ) {
-                                        if (title.isBlank()) {
-                                            Text(
-                                                text =
-                                                    originalFileName.removeSuffix(".md")
-                                                        .toHalfWidthAscii()
-                                                        .ifBlank { stringResource(R.string.new_doc_default_title) },
-                                                style =
-                                                    MaterialTheme.typography.headlineSmall.copy(
-                                                        color = Color.Gray,
-                                                        fontSize = 18.sp,
-                                                        lineHeight = 20.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                    ),
-                                            )
-                                        }
-                                        inner()
+                                    if (title.isBlank()) {
+                                        Text(
+                                            text = originalFileName.removeSuffix(".md").ifBlank { stringResource(R.string.new_doc_default_title) },
+                                            style = MaterialTheme.typography.headlineSmall.copy(color = Color.Gray, fontSize = 22.sp),
+                                        )
                                     }
+                                    inner()
                                 },
                             )
+                            HorizontalDivider(modifier = Modifier.padding(top = 6.dp, bottom = 4.dp), thickness = 0.5.dp)
 
-                            // Full-width border + subtle shadow under file name (replace old underline divider).
-                            val titleBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
-                            val titleShadowColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f)
-                            Box(
-                                modifier =
-                                    Modifier
+                            if (isPreview) {
+                                MarkdownPreview(
+                                    modifier = Modifier.fillMaxSize(),
+                                    markdown = content.text,
+                                    vaultRootUri = vaultRootUri,
+                                    onOpenWikiLink = { name ->
+                                        val root = vaultRootUri ?: return@MarkdownPreview
+                                        scope.launch {
+                                            val doc = repository.findDocByName(root, name) ?: return@launch
+                                            onOpenDoc(doc.uri.toString(), null, null)
+                                        }
+                                    },
+                                    onOpenVaultDocUri = { uri ->
+                                        onOpenDoc(uri.toString(), null, null)
+                                    },
+                                    loadWikiLinkPreview = { name ->
+                                        val root = vaultRootUri ?: return@MarkdownPreview null
+                                        val doc = repository.findDocByName(root, name) ?: return@MarkdownPreview null
+                                        val text = repository.readText(doc.uri)
+                                        buildPreviewSnippet(text)
+                                    },
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
                                         .fillMaxSize()
-                                        .drawWithContent {
-                                            drawContent()
-
-                                            val borderH = 1.dp.toPx()
-                                            drawRect(
-                                                color = titleBorderColor,
-                                                topLeft = Offset(0f, 0f),
-                                                size = Size(size.width, borderH),
-                                            )
-
-                                            val shadowH = 6.dp.toPx()
-                                            drawRect(
-                                                brush =
-                                                    Brush.verticalGradient(
-                                                        colors = listOf(titleShadowColor, Color.Transparent),
-                                                        startY = 0f,
-                                                        endY = shadowH,
-                                                    ),
-                                                topLeft = Offset(0f, borderH),
-                                                size = Size(size.width, shadowH),
-                                            )
-                                        },
-                            ) {
-                                if (isPreview) {
-                                    MarkdownPreview(
-                                        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-                                        markdown = content.text,
-                                        vaultRootUri = vaultRootUri,
-                                        onOpenWikiLink = { name ->
-                                            val root = vaultRootUri ?: return@MarkdownPreview
-                                            scope.launch {
-                                                val doc = repository.findDocByName(root, name) ?: return@launch
-                                                onOpenDoc(doc.uri.toString(), null, null)
-                                            }
-                                        },
-                                        onOpenVaultDocUri = { uri ->
-                                            onOpenDoc(uri.toString(), null, null)
-                                        },
-                                        loadWikiLinkPreview = { name ->
-                                            val root = vaultRootUri ?: return@MarkdownPreview null
-                                            val doc = repository.findDocByName(root, name) ?: return@MarkdownPreview null
-                                            val text = repository.readText(doc.uri)
-                                            buildPreviewSnippet(text)
-                                        },
-                                    )
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(horizontal = 12.dp)
-                                            .onSizeChanged { editorViewportHeightPx = it.height },
-                                    ) {
-                                        BasicTextField(
+                                        .onSizeChanged { editorViewportHeightPx = it.height },
+                                ) {
+                                    BasicTextField(
                                         value = content,
                                         onValueChange = { next ->
                                             val normalized =
@@ -1574,8 +1517,6 @@ fun EditorScreen(
             dismissButton = { TextButton(onClick = { showTableDialog = false }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
-}
-
 }
 
 private object EditorScreenCache {
