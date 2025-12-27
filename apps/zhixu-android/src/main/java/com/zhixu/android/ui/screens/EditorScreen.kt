@@ -1,8 +1,12 @@
 package com.zhixu.android.ui.screens
 
+import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
@@ -45,7 +49,13 @@ import androidx.compose.material.icons.outlined.CheckBox
 import androidx.compose.material.icons.outlined.StrikethroughS
 import androidx.compose.material.icons.outlined.FormatUnderlined
 import androidx.compose.material.icons.outlined.BorderColor
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.FormatQuote
+import androidx.compose.material.icons.outlined.HorizontalRule
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -79,7 +89,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
@@ -125,6 +141,22 @@ fun EditorScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val clipboard = LocalClipboardManager.current
+
+    var showLinkDialog by remember { mutableStateOf(false) }
+    var linkText by remember { mutableStateOf("") }
+    var linkUrl by remember { mutableStateOf("") }
+
+    var showImageDialog by remember { mutableStateOf(false) }
+    var imageAlt by remember { mutableStateOf("") }
+    var imageUrl by remember { mutableStateOf("") }
+
+    var showCodeDialog by remember { mutableStateOf(false) }
+    var codeLanguage by remember { mutableStateOf("python") }
+
+    var showTableDialog by remember { mutableStateOf(false) }
+    var tableRowsText by remember { mutableStateOf("2") }
+    var tableColsText by remember { mutableStateOf("2") }
 
     var autosaveJob by remember { mutableStateOf<Job?>(null) }
     var isLoaded by remember { mutableStateOf(false) }
@@ -281,7 +313,43 @@ fun EditorScreen(
 
     fun insertHeading(level: Int) {
         val p = "#".repeat(level.coerceIn(1, 6)) + " "
-        prefixCurrentLine(p)
+        val text = content.text
+        val sel = content.selection
+        val start = sel.start.coerceIn(0, text.length)
+        val end = sel.end.coerceIn(0, text.length)
+
+        fun replaceHeadingPrefix(line: String): String {
+            val trimmed = line.trimStart()
+            val leadingSpaces = line.take(line.length - trimmed.length)
+            val withoutOld = trimmed.replaceFirst(Regex("""^#{1,6}\s+"""), "")
+            return leadingSpaces + p + withoutOld
+        }
+
+        if (start != end) {
+            val startLineStart = text.lastIndexOf('\n', startIndex = (start - 1).coerceAtLeast(0)).let { if (it < 0) 0 else it + 1 }
+            val endLineEnd = text.indexOf('\n', startIndex = end).let { if (it < 0) text.length else it }
+            val block = text.substring(startLineStart, endLineEnd)
+            val lines = block.split('\n')
+            val replaced = lines.joinToString("\n") { replaceHeadingPrefix(it) }
+            pushHistoryIfNeeded(content)
+            content =
+                content.copy(
+                    text = text.substring(0, startLineStart) + replaced + text.substring(endLineEnd),
+                    selection = TextRange(startLineStart, startLineStart + replaced.length),
+                )
+            return
+        }
+
+        val lineStart = text.lastIndexOf('\n', startIndex = (start - 1).coerceAtLeast(0)).let { if (it < 0) 0 else it + 1 }
+        val lineEnd = text.indexOf('\n', startIndex = start).let { if (it < 0) text.length else it }
+        val line = text.substring(lineStart, lineEnd)
+        val updated = replaceHeadingPrefix(line)
+        pushHistoryIfNeeded(content)
+        content =
+            content.copy(
+                text = text.substring(0, lineStart) + updated + text.substring(lineEnd),
+                selection = TextRange((start + (updated.length - line.length)).coerceIn(0, (text.length + (updated.length - line.length)).coerceAtLeast(0))),
+            )
     }
 
     fun insertOrderedList() = prefixCurrentLine("1. ")
@@ -320,6 +388,103 @@ fun EditorScreen(
 
     fun insertInlineMath() = wrapSelection("$", "$")
     fun insertBlockMath() = wrapSelection("$$\n", "\n$$\n")
+
+    fun openLinkDialog() {
+        val text = content.text
+        val sel = content.selection
+        val start = sel.start.coerceIn(0, text.length)
+        val end = sel.end.coerceIn(0, text.length)
+        val selected = if (start != end) text.substring(start, end) else ""
+        linkText = selected
+        val clip = clipboard.getText()?.text.orEmpty()
+        linkUrl = if (clip.startsWith("http://") || clip.startsWith("https://")) clip else ""
+        showLinkDialog = true
+    }
+
+    fun insertLinkMarkdown(label: String, url: String) {
+        val u = url.trim()
+        if (u.isBlank()) return
+        val t = content.text
+        val sel = content.selection
+        val start = sel.start.coerceIn(0, t.length)
+        val end = sel.end.coerceIn(0, t.length)
+        pushHistoryIfNeeded(content)
+
+        if (start != end) {
+            val selected = t.substring(start, end)
+            val md = "[${label.ifBlank { selected }}]($u)"
+            content =
+                content.copy(
+                    text = t.substring(0, start) + md + t.substring(end),
+                    selection = TextRange(start + md.length),
+                )
+        } else {
+            val md = "[${label}]($u)"
+            val insertAt = start
+            val cursor =
+                if (label.isBlank()) {
+                    insertAt + 1
+                } else {
+                    insertAt + md.length
+                }
+            content =
+                content.copy(
+                    text = t.substring(0, insertAt) + md + t.substring(insertAt),
+                    selection = TextRange(cursor),
+                )
+        }
+    }
+
+    fun openImageDialog() {
+        val clip = clipboard.getText()?.text.orEmpty()
+        imageUrl = if (clip.startsWith("http://") || clip.startsWith("https://")) clip else ""
+        imageAlt = ""
+        showImageDialog = true
+    }
+
+    fun insertImageMarkdown(alt: String, url: String) {
+        val u = url.trim()
+        if (u.isBlank()) return
+        val a = alt.trim()
+        insertField("![$a]($u)")
+    }
+
+    fun insertImageFromUri(uri: Uri) {
+        val name = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':').orEmpty()
+        insertField("![$name]($uri)")
+    }
+
+    val imagePickerLauncher =
+        rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { picked: Uri? ->
+            if (picked == null) return@rememberLauncherForActivityResult
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    picked,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            insertImageFromUri(picked)
+        }
+
+    fun openCodeDialog() {
+        showCodeDialog = true
+    }
+
+    fun openTableDialog() {
+        showTableDialog = true
+    }
+
+    fun insertTable(rows: Int, cols: Int) {
+        val safeRows = rows.coerceIn(1, 50)
+        val safeCols = cols.coerceIn(1, 20)
+        val header = (1..safeCols).joinToString(" | ", prefix = "| ", postfix = " |") { "Col$it" }
+        val sep = (1..safeCols).joinToString(" | ", prefix = "| ", postfix = " |") { "---" }
+        val body =
+            (1..safeRows).joinToString("\n") {
+                (1..safeCols).joinToString(" | ", prefix = "| ", postfix = " |") { "" }
+            }
+        insertField("\n$header\n$sep\n$body\n")
+    }
 
     LaunchedEffect(isLoaded, content.text) {
         if (!isLoaded) return@LaunchedEffect
@@ -552,21 +717,46 @@ fun EditorScreen(
                         undoStack.addLast(content)
                         content = next
                     },
-                    onHeading = { insertHeading(1) },
+                    onHeading1 = { insertHeading(1) },
+                    onHeading2 = { insertHeading(2) },
+                    onHeading3 = { insertHeading(3) },
                     onBold = { wrapSelection("**", "**") },
-                    onHighlight = { wrapSelection("==", "==") },
-                    onTask = { insertTaskLine() },
+                    onTask = {
+                        val lineIndex = content.text.take(content.selection.start).count { it == '\n' }
+                        val toggled = TaskSyntax.toggleTaskAtLine(content.text, lineIndex)
+                        if (toggled != content.text) {
+                            pushHistoryIfNeeded(content)
+                            content = content.copy(text = toggled)
+                        } else {
+                            insertTaskLine()
+                        }
+                    },
                     onBullets = { insertUnorderedList() },
                     onNumbers = { insertOrderedList() },
                     onItalic = { wrapSelection("*", "*") },
-                    onUnderline = { wrapSelection("<u>", "</u>") },
                     onStrike = { wrapSelection("~~", "~~") },
+                    onQuote = { insertQuote() },
+                    onDivider = { insertDivider() },
+                    onLink = { openLinkDialog() },
+                    onImage = { openImageDialog() },
+                    onCode = { openCodeDialog() },
+                    onTable = { openTableDialog() },
                     onMoreFindReplace = { showFindReplace = true },
-                    onMoreLink = { insertLink() },
-                    onMoreImage = { insertImage() },
-                    onMoreCode = { insertCodeBlock() },
-                    onMoreDivider = { insertDivider() },
-                    onMoreTable = { insertTableTemplate() },
+                    onMoreHeading4 = { insertHeading(4) },
+                    onMoreHeading5 = { insertHeading(5) },
+                    onMoreHeading6 = { insertHeading(6) },
+                    onMoreHighlight = { wrapSelection("==", "==") },
+                    onMoreUnderline = { wrapSelection("<u>", "</u>") },
+                    onMoreTaskToggle = {
+                        val lineIndex = content.text.take(content.selection.start).count { it == '\n' }
+                        val toggled = TaskSyntax.toggleTaskAtLine(content.text, lineIndex)
+                        if (toggled != content.text) {
+                            pushHistoryIfNeeded(content)
+                            content = content.copy(text = toggled)
+                        } else {
+                            insertTaskLine()
+                        }
+                    },
                     onMoreMermaid = { insertMermaidTemplate() },
                     onMoreMathInline = { insertInlineMath() },
                     onMoreMathBlock = { insertBlockMath() },
@@ -646,6 +836,75 @@ fun EditorScreen(
                                         },
                                         modifier = Modifier
                                             .fillMaxSize()
+                                            .onPreviewKeyEvent { event ->
+                                                if (event.type != KeyEventType.KeyDown || event.key != Key.Enter) return@onPreviewKeyEvent false
+                                                if (isPreview) return@onPreviewKeyEvent false
+                                                if (content.selection.start != content.selection.end) return@onPreviewKeyEvent false
+
+                                                val t = content.text
+                                                val cursor = content.selection.start.coerceIn(0, t.length)
+                                                val lineStart = t.lastIndexOf('\n', startIndex = (cursor - 1).coerceAtLeast(0)).let { if (it < 0) 0 else it + 1 }
+                                                val lineEnd = t.indexOf('\n', startIndex = cursor).let { if (it < 0) t.length else it }
+                                                val line = t.substring(lineStart, lineEnd)
+
+                                                val taskMatch = Regex("""^(\s*)-\s+\[( |x|X)\]\s+""").find(line)
+                                                val unorderedMatch = Regex("""^(\s*)([-*+])\s+""").find(line)
+                                                val orderedMatch = Regex("""^(\s*)(\d+)\.\s+""").find(line)
+                                                val quoteMatch = Regex("""^(\s*(?:>\s*)+)""").find(line)
+
+                                                val currentPrefix: String?
+                                                val nextPrefix: String?
+
+                                                when {
+                                                    taskMatch != null -> {
+                                                        val indent = taskMatch.groupValues[1]
+                                                        currentPrefix = taskMatch.value
+                                                        nextPrefix = "$indent- [ ] "
+                                                    }
+
+                                                    orderedMatch != null -> {
+                                                        val indent = orderedMatch.groupValues[1]
+                                                        val n = orderedMatch.groupValues[2].toIntOrNull() ?: 1
+                                                        currentPrefix = "$indent$n. "
+                                                        nextPrefix = "$indent${n + 1}. "
+                                                    }
+
+                                                    unorderedMatch != null -> {
+                                                        val indent = unorderedMatch.groupValues[1]
+                                                        val bullet = unorderedMatch.groupValues[2]
+                                                        currentPrefix = "$indent$bullet "
+                                                        nextPrefix = currentPrefix
+                                                    }
+
+                                                    quoteMatch != null -> {
+                                                        currentPrefix = quoteMatch.value
+                                                        nextPrefix = currentPrefix
+                                                    }
+
+                                                    else -> return@onPreviewKeyEvent false
+                                                }
+
+                                                val remainder = line.drop(currentPrefix.length).trim()
+                                                if (cursor == lineEnd && remainder.isBlank()) {
+                                                    pushHistoryIfNeeded(content)
+                                                    val removed = t.removeRange(lineStart, (lineStart + currentPrefix.length).coerceAtMost(t.length))
+                                                    val newCursor = (cursor - currentPrefix.length).coerceIn(0, removed.length)
+                                                    content =
+                                                        content.copy(
+                                                            text = removed.substring(0, newCursor) + "\n" + removed.substring(newCursor),
+                                                            selection = TextRange(newCursor + 1),
+                                                        )
+                                                    return@onPreviewKeyEvent true
+                                                }
+
+                                                pushHistoryIfNeeded(content)
+                                                content =
+                                                    content.copy(
+                                                        text = t.substring(0, cursor) + "\n" + nextPrefix + t.substring(cursor),
+                                                        selection = TextRange(cursor + 1 + nextPrefix.length),
+                                                    )
+                                                true
+                                            }
                                             .verticalScroll(scrollState),
                                         textStyle =
                                             TextStyle.Default.copy(
@@ -709,6 +968,131 @@ fun EditorScreen(
             dismissButton = {
                 TextButton(onClick = { showFindReplace = false }) { Text(stringResource(R.string.action_cancel)) }
             },
+        )
+    }
+
+    if (showLinkDialog) {
+        AlertDialog(
+            onDismissRequest = { showLinkDialog = false },
+            title = { Text("Insert link") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = linkText,
+                        onValueChange = { linkText = it },
+                        label = { Text("Text") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = linkUrl,
+                        onValueChange = { linkUrl = it },
+                        label = { Text("URL") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        insertLinkMarkdown(linkText, linkUrl)
+                        showLinkDialog = false
+                    },
+                ) { Text("Insert") }
+            },
+            dismissButton = { TextButton(onClick = { showLinkDialog = false }) { Text(stringResource(R.string.action_cancel)) } },
+        )
+    }
+
+    if (showImageDialog) {
+        AlertDialog(
+            onDismissRequest = { showImageDialog = false },
+            title = { Text("Insert image") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = imageAlt,
+                        onValueChange = { imageAlt = it },
+                        label = { Text("Alt") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = imageUrl,
+                        onValueChange = { imageUrl = it },
+                        label = { Text("URL") },
+                        singleLine = true,
+                    )
+                    TextButton(onClick = { imagePickerLauncher.launch(arrayOf("image/*")) }) { Text("Choose local image") }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (imageUrl.isNotBlank()) insertImageMarkdown(imageAlt, imageUrl)
+                        showImageDialog = false
+                    },
+                ) { Text("Insert") }
+            },
+            dismissButton = { TextButton(onClick = { showImageDialog = false }) { Text(stringResource(R.string.action_cancel)) } },
+        )
+    }
+
+    if (showCodeDialog) {
+        AlertDialog(
+            onDismissRequest = { showCodeDialog = false },
+            title = { Text("Insert code block") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = codeLanguage,
+                        onValueChange = { codeLanguage = it },
+                        label = { Text("Language") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        insertCodeBlock(codeLanguage.takeIf { it.isNotBlank() })
+                        showCodeDialog = false
+                    },
+                ) { Text("Insert") }
+            },
+            dismissButton = { TextButton(onClick = { showCodeDialog = false }) { Text(stringResource(R.string.action_cancel)) } },
+        )
+    }
+
+    if (showTableDialog) {
+        AlertDialog(
+            onDismissRequest = { showTableDialog = false },
+            title = { Text("Insert table") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = tableRowsText,
+                        onValueChange = { tableRowsText = it.filter { ch -> ch.isDigit() }.take(3) },
+                        label = { Text("Rows") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = tableColsText,
+                        onValueChange = { tableColsText = it.filter { ch -> ch.isDigit() }.take(2) },
+                        label = { Text("Cols") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val r = tableRowsText.toIntOrNull() ?: 2
+                        val c = tableColsText.toIntOrNull() ?: 2
+                        insertTable(r, c)
+                        showTableDialog = false
+                    },
+                ) { Text("Insert") }
+            },
+            dismissButton = { TextButton(onClick = { showTableDialog = false }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
 }
@@ -819,27 +1203,35 @@ private fun EditorBottomToolbar(
     onTogglePreview: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
-    onHeading: () -> Unit,
+    onHeading1: () -> Unit,
+    onHeading2: () -> Unit,
+    onHeading3: () -> Unit,
     onBold: () -> Unit,
-    onHighlight: () -> Unit,
     onTask: () -> Unit,
     onBullets: () -> Unit,
     onNumbers: () -> Unit,
     onItalic: () -> Unit,
-    onUnderline: () -> Unit,
     onStrike: () -> Unit,
+    onQuote: () -> Unit,
+    onDivider: () -> Unit,
+    onLink: () -> Unit,
+    onImage: () -> Unit,
+    onCode: () -> Unit,
+    onTable: () -> Unit,
     onMoreFindReplace: () -> Unit,
-    onMoreLink: () -> Unit,
-    onMoreImage: () -> Unit,
-    onMoreCode: () -> Unit,
-    onMoreDivider: () -> Unit,
-    onMoreTable: () -> Unit,
+    onMoreHeading4: () -> Unit,
+    onMoreHeading5: () -> Unit,
+    onMoreHeading6: () -> Unit,
+    onMoreHighlight: () -> Unit,
+    onMoreUnderline: () -> Unit,
+    onMoreTaskToggle: () -> Unit,
     onMoreMermaid: () -> Unit,
     onMoreMathInline: () -> Unit,
     onMoreMathBlock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showMore by remember { mutableStateOf(false) }
+    val toolbarScrollState = rememberScrollState()
     Surface(
         tonalElevation = 3.dp,
         shape = RoundedCornerShape(14.dp),
@@ -854,6 +1246,7 @@ private fun EditorBottomToolbar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .horizontalScroll(toolbarScrollState)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -868,17 +1261,24 @@ private fun EditorBottomToolbar(
             EditorToolIcon(enabled = canUndo, onClick = onUndo) { Icon(Icons.Outlined.Undo, null) }
             EditorToolIcon(enabled = canRedo, onClick = onRedo) { Icon(Icons.Outlined.Redo, null) }
             EditorToolDivider()
-            EditorToolIcon(onClick = onHeading) { Text("H", style = MaterialTheme.typography.titleMedium) }
+            EditorToolIcon(onClick = onHeading1) { Text("H1", style = MaterialTheme.typography.labelLarge) }
+            EditorToolIcon(onClick = onHeading2) { Text("H2", style = MaterialTheme.typography.labelLarge) }
+            EditorToolIcon(onClick = onHeading3) { Text("H3", style = MaterialTheme.typography.labelLarge) }
             EditorToolIcon(onClick = onBold) { Icon(Icons.Outlined.FormatBold, null) }
-            EditorToolIcon(onClick = onHighlight) { Icon(Icons.Outlined.BorderColor, null) }
+            EditorToolIcon(onClick = onItalic) { Icon(Icons.Outlined.FormatItalic, null) }
+            EditorToolIcon(onClick = onStrike) { Icon(Icons.Outlined.StrikethroughS, null) }
             EditorToolDivider()
             EditorToolIcon(onClick = onTask) { Icon(Icons.Outlined.CheckBox, null) }
             EditorToolIcon(onClick = onBullets) { Icon(Icons.Outlined.FormatListBulleted, null) }
             EditorToolIcon(onClick = onNumbers) { Icon(Icons.Outlined.FormatListNumbered, null) }
             EditorToolDivider()
-            EditorToolIcon(onClick = onItalic) { Icon(Icons.Outlined.FormatItalic, null) }
-            EditorToolIcon(onClick = onUnderline) { Icon(Icons.Outlined.FormatUnderlined, null) }
-            EditorToolIcon(onClick = onStrike) { Icon(Icons.Outlined.StrikethroughS, null) }
+            EditorToolIcon(onClick = onQuote) { Icon(Icons.Outlined.FormatQuote, null) }
+            EditorToolIcon(onClick = onDivider) { Icon(Icons.Outlined.HorizontalRule, null) }
+            EditorToolDivider()
+            EditorToolIcon(onClick = onLink) { Icon(Icons.Outlined.Link, null) }
+            EditorToolIcon(onClick = onImage) { Icon(Icons.Outlined.Image, null) }
+            EditorToolIcon(onClick = onCode) { Icon(Icons.Outlined.Code, null) }
+            EditorToolIcon(onClick = onTable) { Icon(Icons.Outlined.TableChart, null) }
             EditorToolDivider()
 
             Box {
@@ -892,11 +1292,12 @@ private fun EditorBottomToolbar(
                         onClick = { showMore = false; onMoreFindReplace() },
                         leadingIcon = { Icon(Icons.Outlined.FindReplace, null) },
                     )
-                    DropdownMenuItem(text = { Text("Link") }, onClick = { showMore = false; onMoreLink() })
-                    DropdownMenuItem(text = { Text("Image") }, onClick = { showMore = false; onMoreImage() })
-                    DropdownMenuItem(text = { Text("Code") }, onClick = { showMore = false; onMoreCode() })
-                    DropdownMenuItem(text = { Text("Divider") }, onClick = { showMore = false; onMoreDivider() })
-                    DropdownMenuItem(text = { Text("Table") }, onClick = { showMore = false; onMoreTable() })
+                    DropdownMenuItem(text = { Text("Heading 4") }, onClick = { showMore = false; onMoreHeading4() })
+                    DropdownMenuItem(text = { Text("Heading 5") }, onClick = { showMore = false; onMoreHeading5() })
+                    DropdownMenuItem(text = { Text("Heading 6") }, onClick = { showMore = false; onMoreHeading6() })
+                    DropdownMenuItem(text = { Text("Highlight") }, onClick = { showMore = false; onMoreHighlight() })
+                    DropdownMenuItem(text = { Text("Underline") }, onClick = { showMore = false; onMoreUnderline() })
+                    DropdownMenuItem(text = { Text("Toggle task done") }, onClick = { showMore = false; onMoreTaskToggle() })
                     DropdownMenuItem(text = { Text("Mermaid") }, onClick = { showMore = false; onMoreMermaid() })
                     DropdownMenuItem(text = { Text("Inline math") }, onClick = { showMore = false; onMoreMathInline() })
                     DropdownMenuItem(text = { Text("Block math") }, onClick = { showMore = false; onMoreMathBlock() })
