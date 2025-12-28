@@ -448,6 +448,7 @@ fun ZhixuApp() {
                             vaultRootUri = vaultRootUri,
                             repository = repository,
                             onBack = { navController.popBackStack() },
+                            onDocListMutated = { docListRefreshToken += 1L },
                             onOpenDoc = { rawUri, query, lineIndex ->
                                 val uriParam2 = Uri.encode(rawUri)
                                 val qParam2 = Uri.encode(query ?: "")

@@ -6,6 +6,7 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -173,6 +174,7 @@ fun EditorScreen(
     vaultRootUri: Uri?,
     repository: VaultRepository,
     onBack: () -> Unit,
+    onDocListMutated: () -> Unit,
     onOpenDoc: (String, String?, Int?) -> Unit,
     initialQuery: String?,
     initialLineIndex: Int?,
@@ -1071,6 +1073,7 @@ fun EditorScreen(
             } ?: return@LaunchedEffect
         currentDocUri = renamedUri
         EditorScreenCache.move(oldUri, renamedUri)
+        onDocListMutated()
         originalFileName =
             withContext(Dispatchers.IO) {
                 DocumentFile.fromSingleUri(context, renamedUri)?.name.orEmpty()
@@ -1722,8 +1725,9 @@ fun EditorScreen(
                         scope.launch {
                             val ok = withContext(Dispatchers.IO) { repository.deleteDoc(latestDocUri) }
                             if (ok) {
-                                snackbarHostState.showSnackbar("已删除")
+                                onDocListMutated()
                                 latestOnBack()
+                                Toast.makeText(context, "已删除", Toast.LENGTH_SHORT).show()
                             } else {
                                 snackbarHostState.showSnackbar("删除失败")
                             }

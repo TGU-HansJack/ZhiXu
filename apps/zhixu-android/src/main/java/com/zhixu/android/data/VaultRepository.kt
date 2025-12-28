@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.os.SystemClock
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.zhixu.core.tasks.TaskSyntax
@@ -12,6 +13,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.time.Instant
@@ -41,6 +44,110 @@ class VaultRepository(
 ) {
     private val indexRepository = VaultIndexRepository(context)
     private val dueFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+
+    private data class DocListCacheEntry(
+        val docs: List<UiDoc>,
+        val listedAtUptimeMs: Long,
+        val listedAtWallMs: Long,
+        val isDirty: Boolean,
+        val docsDirUri: Uri?,
+    )
+
+    private val docListCacheLock = Mutex()
+    private val docListCacheMaxEntries = 4
+    private val docListCache = LinkedHashMap<String, DocListCacheEntry>(docListCacheMaxEntries, 0.75f, true)
+
+    fun invalidateDocListCache(rootUri: Uri) {
+        val key = rootUri.toString()
+        synchronized(docListCache) {
+            val existing = docListCache[key] ?: return
+            docListCache[key] = existing.copy(isDirty = true)
+        }
+    }
+
+    suspend fun getDocsDirUri(rootUri: Uri): Uri? =
+        docListCacheLock.withLock {
+            val key = rootUri.toString()
+            val cached = synchronized(docListCache) { docListCache[key]?.docsDirUri }
+            if (cached != null) return@withLock cached
+
+            val root = DocumentFile.fromTreeUri(context, rootUri) ?: return@withLock null
+            val docsDir = findChild(root, "docs") ?: return@withLock null
+            val uri = docsDir.uri
+            synchronized(docListCache) {
+                val prev = docListCache[key]
+                docListCache[key] =
+                    (prev ?: DocListCacheEntry(emptyList(), 0L, 0L, isDirty = true, docsDirUri = uri))
+                        .copy(docsDirUri = uri)
+            }
+            uri
+        }
+
+    suspend fun listMarkdownDocsCached(
+        rootUri: Uri,
+        force: Boolean,
+        maxStaleMs: Long = 20_000L,
+    ): List<UiDoc> {
+        val key = rootUri.toString()
+        val nowUptime = SystemClock.uptimeMillis()
+        val nowWall = System.currentTimeMillis()
+
+        val cached =
+            synchronized(docListCache) { docListCache[key] }
+        if (!force && cached != null && !cached.isDirty) {
+            val ageMs = nowWall - cached.listedAtWallMs
+            if (ageMs in 0..maxStaleMs) return cached.docs
+        }
+
+        return docListCacheLock.withLock {
+            val current = synchronized(docListCache) { docListCache[key] }
+            if (!force && current != null && !current.isDirty) {
+                val ageMs = nowWall - current.listedAtWallMs
+                if (ageMs in 0..maxStaleMs) return@withLock current.docs
+            }
+
+            val listed = listMarkdownDocs(rootUri)
+            val docsDirUri =
+                runCatching {
+                    val root = DocumentFile.fromTreeUri(context, rootUri) ?: return@runCatching null
+                    findChild(root, "docs")?.uri
+                }.getOrNull()
+
+            val entry =
+                DocListCacheEntry(
+                    docs = listed,
+                    listedAtUptimeMs = nowUptime,
+                    listedAtWallMs = nowWall,
+                    isDirty = false,
+                    docsDirUri = docsDirUri,
+                )
+            synchronized(docListCache) {
+                docListCache[key] = entry
+                while (docListCache.size > docListCacheMaxEntries) {
+                    val eldestKey = docListCache.entries.firstOrNull()?.key ?: break
+                    docListCache.remove(eldestKey)
+                }
+            }
+            listed
+        }
+    }
+
+    suspend fun getDocumentLastModified(uri: Uri): Long =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                context.contentResolver.query(
+                    uri,
+                    arrayOf(DocumentsContract.Document.COLUMN_LAST_MODIFIED),
+                    null,
+                    null,
+                    null,
+                )?.use { cursor ->
+                    if (!cursor.moveToFirst()) return@runCatching 0L
+                    val idx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+                    if (idx < 0 || cursor.isNull(idx)) 0L else cursor.getLong(idx)
+                } ?: 0L
+            }.getOrDefault(0L)
+        }
 
     suspend fun hasAnyIndexedDocs(): Boolean =
         runCatching { indexRepository.hasAnyIndexedDocs() }
