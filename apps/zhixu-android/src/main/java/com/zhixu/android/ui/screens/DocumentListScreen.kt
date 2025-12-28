@@ -52,13 +52,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.FocusRequester
@@ -118,11 +118,8 @@ fun DocumentListScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val listState = rememberLazyListState()
     val initialCacheEntry = remember(vaultRootUri) { DocumentListCache.get(vaultRootUri) }
-    val docs =
-        remember(vaultRootUri) {
-            mutableStateListOf<UiDoc>().apply { addAll(initialCacheEntry?.docs ?: emptyList()) }
-        }
-    var docsSig by remember(vaultRootUri) { mutableLongStateOf(docListSignature(docs)) }
+    var docs by remember(vaultRootUri) { mutableStateOf(initialCacheEntry?.docs ?: emptyList()) }
+    var docsSig by remember(vaultRootUri) { mutableLongStateOf(0L) }
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
@@ -135,48 +132,15 @@ fun DocumentListScreen(
     var showSearchSheet by remember { mutableStateOf(false) }
     var pendingRefresh by remember(vaultRootUri) { mutableStateOf<PendingRefresh?>(null) }
     var docsDirUri by remember(vaultRootUri) { mutableStateOf<Uri?>(null) }
+    var skipNextResumeRefresh by remember(vaultRootUri) { mutableStateOf(true) }
 
     val latestVaultRootUri by rememberUpdatedState(vaultRootUri)
     val latestIsActive by rememberUpdatedState(isActive)
 
-    fun applyDocsIncremental(nextDocs: List<UiDoc>) {
-        if (docs.isEmpty()) {
-            docs.addAll(nextDocs)
-            return
-        }
-
-        var i = 0
-        while (i < nextDocs.size) {
-            val desired = nextDocs[i]
-            val currentAt = docs.getOrNull(i)
-            if (currentAt?.uri == desired.uri) {
-                if (currentAt != desired) docs[i] = desired
-                i++
-                continue
-            }
-
-            val foundIndex = docs.indexOfFirst { it.uri == desired.uri }
-            if (foundIndex >= 0) {
-                val existing = docs.removeAt(foundIndex)
-                docs.add(i, existing)
-                if (docs[i] != desired) docs[i] = desired
-                i++
-                continue
-            }
-
-            docs.add(i, desired)
-            i++
-        }
-
-        while (docs.size > nextDocs.size) {
-            docs.removeAt(docs.lastIndex)
-        }
-    }
-
     fun requestRefresh(force: Boolean, reindex: Boolean) {
         if (!isActive) return
         val root = vaultRootUri ?: return
-        if (listState.isScrollInProgress) {
+        if (listState.isScrollInProgress || showSearchSheet) {
             pendingRefresh = PendingRefresh(force = force, reindex = reindex)
             return
         }
@@ -208,14 +172,14 @@ fun DocumentListScreen(
                 docsDirUri = runCatching { withContext(Dispatchers.IO) { repository.getDocsDirUri(root) } }.getOrNull()
                 val validatedAtMs = System.currentTimeMillis()
                 if (nextSig != docsSig) {
-                    applyDocsIncremental(nextDocs)
+                    docs = nextDocs
                     docsSig = nextSig
                     cacheUpdatedAtMs = validatedAtMs
                     DocumentListCache.put(root, docs = nextDocs, updatedAtMs = validatedAtMs)
                     runCatching { prefs.setDocListCache(root, nextDocs, updatedAtMs = validatedAtMs) }
                 } else {
                     cacheUpdatedAtMs = validatedAtMs
-                    DocumentListCache.put(root, docs = docs.toList(), updatedAtMs = validatedAtMs)
+                    DocumentListCache.put(root, docs = docs, updatedAtMs = validatedAtMs)
                     runCatching { prefs.touchDocListCacheUpdatedAt(root, updatedAtMs = validatedAtMs) }
                 }
 
@@ -238,26 +202,35 @@ fun DocumentListScreen(
     LaunchedEffect(vaultRootUri, isActive) {
         if (!isActive) return@LaunchedEffect
         val root = vaultRootUri ?: return@LaunchedEffect
-        docsDirUri = withContext(Dispatchers.IO) { repository.getDocsDirUri(root) }
+
+        // Let the first frame render (cached list / shell) before kicking off any I/O.
+        withFrameNanos { }
+
         val cached =
             if (docs.isEmpty() || cacheUpdatedAtMs == 0L) prefs.getDocListCache(root) else null
         if (cached != null) {
             if (docs.isEmpty() && cached.docs.isNotEmpty()) {
-                docs.clear()
-                docs.addAll(cached.docs)
-                docsSig = docListSignature(cached.docs)
+                docs = cached.docs
             }
             if (cached.updatedAtMs > 0L) cacheUpdatedAtMs = cached.updatedAtMs
             if (docs.isNotEmpty() && cacheUpdatedAtMs > 0L) {
-                DocumentListCache.put(root, docs = docs.toList(), updatedAtMs = cacheUpdatedAtMs)
+                DocumentListCache.put(root, docs = docs, updatedAtMs = cacheUpdatedAtMs)
             }
         }
 
-        val cacheAgeMs =
-            if (cacheUpdatedAtMs > 0L) (System.currentTimeMillis() - cacheUpdatedAtMs) else Long.MAX_VALUE
-        val shouldRefresh = docs.isEmpty() || cacheAgeMs > (10 * 60 * 1000L)
-        if (shouldRefresh) {
-            // Let the cached list render first; refresh in background after a short delay.
+        if (docsSig == 0L && docs.isNotEmpty()) {
+            val snapshot = docs
+            docsSig = withContext(Dispatchers.Default) { docListSignature(snapshot) }
+        }
+
+        // Defer docs directory lookups/observers until the list is visible and initial decisions are done.
+        launch {
+            delay(400)
+            docsDirUri = withContext(Dispatchers.IO) { repository.getDocsDirUri(root) }
+        }
+
+        if (docs.isEmpty()) {
+            // No cached list available: refresh after a short delay.
             delay(120)
             requestRefresh(force = true, reindex = false)
         }
@@ -274,8 +247,8 @@ fun DocumentListScreen(
     LaunchedEffect(pendingRefresh, isActive) {
         val req = pendingRefresh ?: return@LaunchedEffect
         if (!isActive) return@LaunchedEffect
-        snapshotFlow { listState.isScrollInProgress }
-            .filter { scrolling -> !scrolling }
+        snapshotFlow { listState.isScrollInProgress || showSearchSheet }
+            .filter { busy -> !busy }
             .first()
         pendingRefresh = null
         requestRefresh(force = req.force, reindex = req.reindex)
@@ -286,6 +259,11 @@ fun DocumentListScreen(
         val observer =
             LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_RESUME) {
+                    // On cold start, ON_RESUME happens before we load cached docs; avoid forcing a refresh here.
+                    if (skipNextResumeRefresh) {
+                        skipNextResumeRefresh = false
+                        return@LifecycleEventObserver
+                    }
                     requestRefresh(force = false, reindex = false)
                 }
             }

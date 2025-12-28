@@ -1405,7 +1405,7 @@ fun EditorScreen(
                                         decorationBox = { inner ->
                                             Column {
                                                 Box(modifier = Modifier.fillMaxWidth()) {
-                                                    if (content.text.isEmpty()) {
+                                                    if (isLoaded && content.text.isEmpty()) {
                                                         Text(
                                                             text = "输入内容或使用 / 快速插入",
                                                             color = Color.Gray,

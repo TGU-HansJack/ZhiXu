@@ -46,6 +46,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.PaddingValues
@@ -87,8 +88,9 @@ import com.zhixu.android.ui.screens.SettingsScreen
 import com.zhixu.android.ui.screens.TasksScreen
 import com.zhixu.android.ui.screens.VaultGateScreen
 import com.zhixu.android.ui.screens.WorkshopScreen
-import com.zhixu.android.ui.screens.warmTasksCache
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,14 +102,19 @@ fun ZhixuApp() {
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
-        val request = PeriodicWorkRequestBuilder<com.zhixu.android.reminders.TaskReminderWorker>(
-            java.time.Duration.ofMinutes(30),
-        ).build()
-        WorkManager.getInstance(appContext).enqueueUniquePeriodicWork(
-            "task_reminders",
-            ExistingPeriodicWorkPolicy.UPDATE,
-            request,
-        )
+        // Defer background scheduling until at least one frame is rendered to avoid jank on cold start.
+        withFrameNanos { }
+        withContext(Dispatchers.Default) {
+            val request =
+                PeriodicWorkRequestBuilder<com.zhixu.android.reminders.TaskReminderWorker>(
+                    java.time.Duration.ofMinutes(30),
+                ).build()
+            WorkManager.getInstance(appContext).enqueueUniquePeriodicWork(
+                "task_reminders",
+                ExistingPeriodicWorkPolicy.KEEP,
+                request,
+            )
+        }
     }
 
     val vaultRootUriString by prefs.vaultRootUri.collectAsState(initial = null)
@@ -537,11 +544,6 @@ private fun HomePager(
     onNewDoc: () -> Unit,
     onChangeVault: () -> Unit,
 ) {
-    LaunchedEffect(vaultRootUri) {
-        val root = vaultRootUri ?: return@LaunchedEffect
-        runCatching { warmTasksCache(root, repository) }
-    }
-
     HorizontalPager(
         state = pagerState,
         beyondViewportPageCount = 1,
