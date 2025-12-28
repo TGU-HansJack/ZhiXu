@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.MoreHoriz
@@ -60,6 +59,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
@@ -395,6 +396,9 @@ fun DocumentListScreen(
                     TextButton(onClick = onChangeVault) { Text(stringResource(R.string.vault_select_button)) }
                 }
             } else {
+                val defaultTitle = stringResource(R.string.new_doc_default_title)
+                val editedAtDash = "—"
+                val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     state = listState,
@@ -409,19 +413,20 @@ fun DocumentListScreen(
                             )
                         }
                     }
-                    items(
+                    itemsIndexed(
                         items = docs,
-                        key = { it.uri },
-                        contentType = { "doc" },
-                    ) { doc ->
-                        val title = doc.baseName.ifBlank { stringResource(R.string.new_doc_default_title) }
-                        val editedAt = doc.editedAtText.ifBlank { "—" }
+                        key = { _, doc -> doc.uri },
+                        contentType = { _, _ -> "doc" },
+                    ) { index, doc ->
+                        val title = doc.baseName.ifBlank { defaultTitle }
+                        val editedAt = doc.editedAtText.ifBlank { editedAtDash }
                         DocRow(
                             title = title,
                             editedAt = editedAt,
                             onClick = { onOpenDoc(doc.uri.toString(), null, null) },
+                            showDivider = index != docs.lastIndex,
+                            dividerColor = dividerColor,
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                 }
             }
@@ -698,11 +703,24 @@ private fun DocRow(
     title: String,
     editedAt: String,
     onClick: () -> Unit,
+    showDivider: Boolean,
+    dividerColor: Color,
 ) {
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .drawBehind {
+                    if (!showDivider) return@drawBehind
+                    val strokeWidth = 0.5.dp.toPx()
+                    val y = size.height - (strokeWidth / 2f)
+                    drawLine(
+                        color = dividerColor,
+                        start = Offset(0f, y),
+                        end = Offset(size.width, y),
+                        strokeWidth = strokeWidth,
+                    )
+                }
                 .clickable(onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,

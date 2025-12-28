@@ -269,6 +269,25 @@ private object TasksScreenCache {
     }
 }
 
+internal suspend fun warmTasksCache(
+    rootUri: Uri,
+    repository: VaultRepository,
+) {
+    val key = rootUri.toString()
+    if (key.isBlank()) return
+    if (TasksScreenCache.get(rootUri) != null) return
+
+    val (tasks, completed) =
+        withContext(Dispatchers.IO) {
+            runCatching { repository.ensureIndexBuilt(rootUri) }
+            val t = repository.getAllTasks(status = VaultIndexRepository.TaskStatusFilter.Undone)
+            val c = repository.getRecentCompletedTasks(limit = 50)
+            t to c
+        }
+
+    TasksScreenCache.put(rootUri, TasksScreenCache.Entry(tasks = tasks, completed = completed))
+}
+
 private data class TaskDraft(
     val title: String,
     val dueDate: LocalDate?,

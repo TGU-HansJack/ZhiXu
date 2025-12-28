@@ -87,6 +87,7 @@ import com.zhixu.android.ui.screens.SettingsScreen
 import com.zhixu.android.ui.screens.TasksScreen
 import com.zhixu.android.ui.screens.VaultGateScreen
 import com.zhixu.android.ui.screens.WorkshopScreen
+import com.zhixu.android.ui.screens.warmTasksCache
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -130,7 +131,10 @@ fun ZhixuApp() {
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
         }
         scope.launch {
-            pagerState.animateScrollToPage(pageIndex.coerceIn(0, 1))
+            pagerState.animateScrollToPage(
+                page = pageIndex.coerceIn(0, 1),
+                animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing),
+            )
             drawerState.close()
         }
     }
@@ -246,12 +250,26 @@ fun ZhixuApp() {
                                             TabText(
                                                 text = stringResource(R.string.nav_docs),
                                                 selected = current == 0,
-                                                onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
+                                                onClick = {
+                                                    scope.launch {
+                                                        pagerState.animateScrollToPage(
+                                                            page = 0,
+                                                            animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing),
+                                                        )
+                                                    }
+                                                },
                                             )
                                             TabText(
                                                 text = stringResource(R.string.nav_tasks),
                                                 selected = current == 1,
-                                                onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
+                                                onClick = {
+                                                    scope.launch {
+                                                        pagerState.animateScrollToPage(
+                                                            page = 1,
+                                                            animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing),
+                                                        )
+                                                    }
+                                                },
                                             )
                                         }
                                     },
@@ -519,9 +537,14 @@ private fun HomePager(
     onNewDoc: () -> Unit,
     onChangeVault: () -> Unit,
 ) {
+    LaunchedEffect(vaultRootUri) {
+        val root = vaultRootUri ?: return@LaunchedEffect
+        runCatching { warmTasksCache(root, repository) }
+    }
+
     HorizontalPager(
         state = pagerState,
-        beyondViewportPageCount = 0,
+        beyondViewportPageCount = 1,
         modifier = Modifier.fillMaxSize(),
     ) { page ->
         val isActive = !pagerState.isScrollInProgress && pagerState.currentPage == page
