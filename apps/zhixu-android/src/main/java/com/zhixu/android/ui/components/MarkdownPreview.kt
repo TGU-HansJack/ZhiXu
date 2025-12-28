@@ -17,8 +17,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -27,10 +25,6 @@ import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 
@@ -55,7 +49,7 @@ fun MarkdownPreview(
             vaultRootUri?.let { VaultPathResolver(context = context, vaultRootUri = it) }
         }
 
-    val rawMarkdownState = rememberUpdatedState(markdown)
+    val rawMarkdown = markdown
     val vaultRoot = vaultRootUri?.toString().orEmpty()
     val effectiveFontScale = fontScale.coerceIn(0.5f, 2.5f)
     val nextTheme =
@@ -72,10 +66,11 @@ fun MarkdownPreview(
     val themeJson = nextTheme.toJson()
 
     var prepared by remember { mutableStateOf<PreparedPreviewState?>(null) }
-    LaunchedEffect(vaultRoot, themeJson, effectiveFontScale) {
-        suspend fun compute(mdText: String): PreparedPreviewState =
+    LaunchedEffect(rawMarkdown, vaultRoot, themeJson, effectiveFontScale) {
+        // Move heavy string processing (regex + JSON escaping) off the main thread to avoid traversal jank.
+        val next =
             withContext(Dispatchers.Default) {
-                val preprocessed = preprocessWikiLinks(mdText)
+                val preprocessed = preprocessWikiLinks(rawMarkdown)
                 PreparedPreviewState(
                     themeJsonQuoted = JSONObject.quote(themeJson),
                     vaultRootQuoted = JSONObject.quote(vaultRoot),
@@ -83,17 +78,7 @@ fun MarkdownPreview(
                     fontScale = effectiveFontScale,
                 )
             }
-
-        // First paint ASAP, then debounce rapid keystrokes (target 100–300ms UX).
-        prepared = compute(rawMarkdownState.value)
-
-        snapshotFlow { rawMarkdownState.value }
-            .drop(1)
-            .debounce(150)
-            .distinctUntilChanged()
-            .collectLatest { mdText ->
-                prepared = compute(mdText)
-            }
+        prepared = next
     }
 
     AndroidView(

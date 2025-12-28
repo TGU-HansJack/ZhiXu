@@ -16,13 +16,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -132,7 +130,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -155,7 +152,6 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import com.zhixu.android.plugins.typecho.TypechoXmlRpcConfig
 import com.zhixu.android.ui.components.MarkdownPreview
-import com.zhixu.android.ui.components.MarkdownLiveVisualTransformation
 import com.zhixu.android.ui.components.RadialFabAction
 import com.zhixu.core.tasks.TaskSyntax
 import kotlinx.coroutines.Dispatchers
@@ -205,8 +201,7 @@ fun EditorScreen(
     var title by remember { mutableStateOf("") }
     var originalFileName by remember { mutableStateOf("") }
     var content by remember { mutableStateOf(TextFieldValue("")) }
-    var splitEnabled by remember { mutableStateOf(false) }
-    var livePreviewEnabled by remember { mutableStateOf(true) }
+    var isPreview by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
@@ -230,7 +225,7 @@ fun EditorScreen(
     var toolbarImeOffsetPx by remember { mutableIntStateOf(0) }
     val toolbarHideThresholdPx = with(density) { 12.dp.roundToPx() }
     val fallbackToolbarHeightPx = with(density) { 56.dp.roundToPx() }
-    val anticipatedToolbarPx = if (imeBottomPx > 0) fallbackToolbarHeightPx else 0
+    val anticipatedToolbarPx = if (!isPreview && imeBottomPx > 0) fallbackToolbarHeightPx else 0
     val extraScrollSpaceDp =
         maxOf(
             376.dp,
@@ -556,8 +551,8 @@ fun EditorScreen(
             }
     }
 
-    LaunchedEffect(imeBottomPx) {
-        if (imeBottomPx <= 0) {
+    LaunchedEffect(isPreview, imeBottomPx) {
+        if (isPreview || imeBottomPx <= 0) {
             showEditorToolbar = false
             toolbarImeOffsetPx = 0
             return@LaunchedEffect
@@ -565,7 +560,7 @@ fun EditorScreen(
 
         // Don't animate with IME. Wait until the IME height settles, then show the toolbar.
         delay(180)
-        if (imeBottomPx > 0) {
+        if (!isPreview && imeBottomPx > 0) {
             showEditorToolbar = true
             toolbarImeOffsetPx = effectiveImeBottomPx
         }
@@ -968,16 +963,16 @@ fun EditorScreen(
         }
     }
 
-    LaunchedEffect(isLoaded, textLayoutResult, pendingInitialJump) {
+    LaunchedEffect(isLoaded, isPreview, textLayoutResult, pendingInitialJump) {
         val jump = pendingInitialJump ?: return@LaunchedEffect
-        if (!isLoaded) return@LaunchedEffect
+        if (!isLoaded || isPreview) return@LaunchedEffect
         if (textLayoutResult == null) return@LaunchedEffect
         pendingInitialJump = null
         jumpToSelection(jump.start, jump.end)
     }
 
-    LaunchedEffect(isLoaded, textLayoutResult) {
-        if (!isLoaded) return@LaunchedEffect
+    LaunchedEffect(isLoaded, isPreview, textLayoutResult) {
+        if (!isLoaded || isPreview) return@LaunchedEffect
         val layout = textLayoutResult ?: return@LaunchedEffect
 
         snapshotFlow {
@@ -988,7 +983,7 @@ fun EditorScreen(
             )
         }.distinctUntilChanged()
             .collectLatest {
-                if (!isLoaded) return@collectLatest
+                if (!isLoaded || isPreview) return@collectLatest
                 if (stableEditorViewportHeightPx <= 0) return@collectLatest
 
                 val viewport =
@@ -1031,8 +1026,8 @@ fun EditorScreen(
             }
     }
 
-    LaunchedEffect(content.text, isLoaded, currentDocUri, isDirty) {
-        if (!isLoaded || !isDirty) return@LaunchedEffect
+    LaunchedEffect(content.text, isLoaded, isPreview, currentDocUri, isDirty) {
+        if (!isLoaded || isPreview || !isDirty) return@LaunchedEffect
         autosaveJob?.cancel()
         val textSnapshot = content.text
         val uriSnapshot = currentDocUri
@@ -1203,16 +1198,10 @@ fun EditorScreen(
                                 }
                             },
                             actions = {
-                                IconButton(onClick = { splitEnabled = !splitEnabled }) {
+                                IconButton(onClick = { isPreview = !isPreview }) {
                                     Icon(
-                                        imageVector = if (splitEnabled) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                                        contentDescription = stringResource(R.string.action_split_view),
-                                    )
-                                }
-                                IconButton(onClick = { livePreviewEnabled = !livePreviewEnabled }) {
-                                    Icon(
-                                        imageVector = if (livePreviewEnabled) Icons.Outlined.FormatBold else Icons.Outlined.Code,
-                                        contentDescription = stringResource(R.string.action_live_preview),
+                                        imageVector = if (isPreview) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                        contentDescription = stringResource(R.string.action_preview),
                                     )
                                 }
                                 IconButton(onClick = { showOverflowSheet = true }) {
@@ -1274,44 +1263,40 @@ fun EditorScreen(
                             )
                             HorizontalDivider(modifier = Modifier.padding(top = 6.dp, bottom = 4.dp), thickness = 0.5.dp)
 
-                            fun openWikiLink(name: String) {
-                                val root = vaultRootUri ?: return
-                                scope.launch {
-                                    if (latestIsDirty) {
-                                        autosaveJob?.cancel()
-                                        val ok = persistNow(latestDocUri, latestContentText)
-                                        if (!ok) {
-                                            snackbarHostState.showSnackbar(context.getString(R.string.editor_save_failed_generic))
-                                            return@launch
-                                        }
-                                    }
-                                    val doc = repository.findDocByName(root, name) ?: return@launch
-                                    latestOnOpenDoc(doc.uri.toString(), null, null)
-                                }
-                            }
-
-                            fun openVaultDocUri(uri: Uri) {
-                                scope.launch {
-                                    if (latestIsDirty) {
-                                        autosaveJob?.cancel()
-                                        val ok = persistNow(latestDocUri, latestContentText)
-                                        if (!ok) {
-                                            snackbarHostState.showSnackbar(context.getString(R.string.editor_save_failed_generic))
-                                            return@launch
-                                        }
-                                    }
-                                    latestOnOpenDoc(uri.toString(), null, null)
-                                }
-                            }
-
-                            val preview: @Composable (Modifier) -> Unit = { modifier ->
+                            if (isPreview) {
                                 MarkdownPreview(
-                                    modifier = modifier,
+                                    modifier = Modifier.fillMaxSize(),
                                     markdown = content.text,
                                     fontScale = (editorFontSizeSpValue / 16f).coerceIn(0.75f, 1.75f),
                                     vaultRootUri = vaultRootUri,
-                                    onOpenWikiLink = ::openWikiLink,
-                                    onOpenVaultDocUri = ::openVaultDocUri,
+                                    onOpenWikiLink = { name ->
+                                        val root = vaultRootUri ?: return@MarkdownPreview
+                                        scope.launch {
+                                            if (latestIsDirty) {
+                                                autosaveJob?.cancel()
+                                                val ok = persistNow(latestDocUri, latestContentText)
+                                                if (!ok) {
+                                                    snackbarHostState.showSnackbar(context.getString(R.string.editor_save_failed_generic))
+                                                    return@launch
+                                                }
+                                            }
+                                            val doc = repository.findDocByName(root, name) ?: return@launch
+                                            latestOnOpenDoc(doc.uri.toString(), null, null)
+                                        }
+                                    },
+                                    onOpenVaultDocUri = { uri ->
+                                        scope.launch {
+                                            if (latestIsDirty) {
+                                                autosaveJob?.cancel()
+                                                val ok = persistNow(latestDocUri, latestContentText)
+                                                if (!ok) {
+                                                    snackbarHostState.showSnackbar(context.getString(R.string.editor_save_failed_generic))
+                                                    return@launch
+                                                }
+                                            }
+                                            latestOnOpenDoc(uri.toString(), null, null)
+                                        }
+                                    },
                                     loadWikiLinkPreview = { name ->
                                         val root = vaultRootUri ?: return@MarkdownPreview null
                                         val doc = repository.findDocByName(root, name) ?: return@MarkdownPreview null
@@ -1319,13 +1304,11 @@ fun EditorScreen(
                                         buildPreviewSnippet(text)
                                     },
                                 )
-                            }
-
-                            val editor: @Composable (Modifier) -> Unit = { modifier ->
+                            } else {
                                 Box(
-                                    modifier =
-                                        modifier
-                                            .onSizeChanged { editorViewportHeightPx = it.height },
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .onSizeChanged { editorViewportHeightPx = it.height },
                                 ) {
                                     BasicTextField(
                                         value = content,
@@ -1347,6 +1330,7 @@ fun EditorScreen(
                                             }
                                             .onPreviewKeyEvent { event ->
                                                 if (event.type != KeyEventType.KeyDown || event.key != Key.Enter) return@onPreviewKeyEvent false
+                                                if (isPreview) return@onPreviewKeyEvent false
                                                 if (content.selection.start != content.selection.end) return@onPreviewKeyEvent false
 
                                                 val t = content.text
@@ -1417,17 +1401,6 @@ fun EditorScreen(
                                         textStyle =
                                             editorTextStyle,
                                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                        visualTransformation =
-                                            if (livePreviewEnabled) {
-                                                MarkdownLiveVisualTransformation.from(
-                                                    value = content,
-                                                    baseFontSizeSp = editorFontSizeSpValue,
-                                                    linkColor = MaterialTheme.colorScheme.primary,
-                                                    codeBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                                                )
-                                            } else {
-                                                VisualTransformation.None
-                                            },
                                         onTextLayout = { textLayoutResult = it },
                                         decorationBox = { inner ->
                                             Column {
@@ -1448,32 +1421,6 @@ fun EditorScreen(
                                             }
                                         },
                                     )
-                                }
-                            }
-
-                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                                if (!splitEnabled) {
-                                    editor(Modifier.fillMaxSize())
-                                } else {
-                                    val wide = maxWidth >= 720.dp
-                                    if (wide) {
-                                        Row(
-                                            modifier = Modifier.fillMaxSize(),
-                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                        ) {
-                                            editor(Modifier.weight(1f).fillMaxHeight())
-                                            preview(Modifier.weight(1f).fillMaxHeight())
-                                        }
-                                    } else {
-                                        Column(
-                                            modifier = Modifier.fillMaxSize(),
-                                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                                        ) {
-                                            editor(Modifier.weight(1f).fillMaxWidth())
-                                            HorizontalDivider(thickness = 0.5.dp)
-                                            preview(Modifier.weight(1f).fillMaxWidth())
-                                        }
-                                    }
                                 }
                             }
                         }

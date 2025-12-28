@@ -42,8 +42,6 @@
     <string name="editor_title">Editor</string>
     <string name="action_back">Back</string>
     <string name="action_preview">Preview</string>
-    <string name="action_split_view">Split view</string>
-    <string name="action_live_preview">Live preview</string>
     <string name="action_edit">Edit</string>
     <string name="action_save">Save</string>
     <string name="action_undo">Undo</string>
