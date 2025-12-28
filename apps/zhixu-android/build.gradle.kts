@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 configurations.configureEach {
@@ -24,11 +25,18 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+        }
+        create("benchmark") {
+            initWith(getByName("release"))
+            isDebuggable = false
+            signingConfig = getByName("debug").signingConfig
+            matchingFallbacks += listOf("release")
         }
     }
 
@@ -81,4 +89,8 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     debugImplementation(libs.leakcanary.android)
     debugImplementation(libs.androidx.metrics.performance)
+
+    releaseImplementation(libs.androidx.profileinstaller)
+
+    baselineProfile(project(":apps:zhixu-android-benchmark"))
 }

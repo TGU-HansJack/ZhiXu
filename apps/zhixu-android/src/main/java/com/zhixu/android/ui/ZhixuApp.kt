@@ -41,6 +41,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -146,18 +147,22 @@ fun ZhixuApp() {
     val showTopBar = currentRoute in setOf("home", "settings")
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { 2 })
+    val settledPage by remember { derivedStateOf { pagerState.settledPage } }
 
     fun navigateHome(pageIndex: Int) {
+        val targetPage = pageIndex.coerceIn(0, 1)
         navController.navigate("home") {
             launchSingleTop = true
             restoreState = true
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
         }
         scope.launch {
-            pagerState.animateScrollToPage(
-                page = pageIndex.coerceIn(0, 1),
-                animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing),
-            )
+            if (pagerState.currentPage != targetPage) {
+                pagerState.animateScrollToPage(
+                    page = targetPage,
+                    animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
+                )
+            }
             drawerState.close()
         }
     }
@@ -269,27 +274,28 @@ fun ZhixuApp() {
                                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
-                                            val current = pagerState.currentPage
                                             TabText(
                                                 text = stringResource(R.string.nav_docs),
-                                                selected = current == 0,
+                                                selected = settledPage == 0,
                                                 onClick = {
+                                                    if (pagerState.currentPage == 0) return@TabText
                                                     scope.launch {
                                                         pagerState.animateScrollToPage(
                                                             page = 0,
-                                                            animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing),
+                                                            animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
                                                         )
                                                     }
                                                 },
                                             )
                                             TabText(
                                                 text = stringResource(R.string.nav_tasks),
-                                                selected = current == 1,
+                                                selected = settledPage == 1,
                                                 onClick = {
+                                                    if (pagerState.currentPage == 1) return@TabText
                                                     scope.launch {
                                                         pagerState.animateScrollToPage(
                                                             page = 1,
-                                                            animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing),
+                                                            animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
                                                         )
                                                     }
                                                 },
@@ -562,10 +568,10 @@ private fun HomePager(
 ) {
     HorizontalPager(
         state = pagerState,
-        beyondViewportPageCount = 1,
+        beyondViewportPageCount = 0,
         modifier = Modifier.fillMaxSize(),
     ) { page ->
-        val isActive = !pagerState.isScrollInProgress && pagerState.currentPage == page
+        val isActive = !pagerState.isScrollInProgress && pagerState.settledPage == page
         when (page) {
             0 ->
                 DocumentListScreen(

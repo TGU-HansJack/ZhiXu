@@ -185,10 +185,14 @@ fun TasksScreen(
                 if (tasks.isEmpty()) {
                     item { Text(stringResource(R.string.tasks_empty), modifier = Modifier.padding(16.dp)) }
                 }
-                items(tasks, key = { "${it.docUri}:${it.lineIndex}:${it.taskId}" }) { task ->
+                items(tasks, key = { it.taskId ?: "${it.docUri}:${it.lineIndex}" }) { task ->
+                    val dueLabel =
+                        remember(task.dueEpochMillis) {
+                            task.dueEpochMillis?.let(::formatDueLabel)
+                        }
                     TaskRow(
                         task = task,
-                        dueLabel = task.dueEpochMillis?.let(::formatDueLabel),
+                        dueLabel = dueLabel,
                         onToggle = {
                             scope.launch {
                                 repository.toggleTask(task.docUri, task.lineIndex)

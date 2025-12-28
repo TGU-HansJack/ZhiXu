@@ -19,6 +19,12 @@ markwon = "4.6.2"
 junitJupiter = "5.11.4"
 leakcanary = "2.14"
 androidxMetricsPerformance = "1.0.0-beta01"
+androidxProfileInstaller = "1.4.1"
+androidxBenchmark = "1.3.4"
+androidxTestRunner = "1.6.2"
+androidxTestExtJunit = "1.2.1"
+androidxUiAutomator = "2.3.0"
+androidxBaselineProfilePlugin = "1.3.4"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "androidxCore" }
@@ -34,6 +40,11 @@ junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version.r
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 leakcanary-android = { group = "com.squareup.leakcanary", name = "leakcanary-android", version.ref = "leakcanary" }
 androidx-metrics-performance = { group = "androidx.metrics", name = "metrics-performance", version.ref = "androidxMetricsPerformance" }
+androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "androidxProfileInstaller" }
+androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "androidxBenchmark" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
+androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "androidxUiAutomator" }
 
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
@@ -47,3 +58,4 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "androidxBaselineProfilePlugin" }

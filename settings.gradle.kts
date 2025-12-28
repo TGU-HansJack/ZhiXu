@@ -17,4 +17,5 @@ dependencyResolutionManagement {
 rootProject.name = "zhixu"
 
 include(":apps:zhixu-android")
+include(":apps:zhixu-android-benchmark")
 include(":core")
