@@ -52,6 +52,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -81,6 +82,8 @@ import com.zhixu.android.ui.components.CapsuleActionBarDefaults
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -93,6 +96,8 @@ fun DocumentListScreen(
     vaultRootUri: Uri?,
     prefs: VaultPreferences,
     repository: VaultRepository,
+    isActive: Boolean,
+    refreshToken: Long,
     onOpenDoc: (String, String?, Int?) -> Unit,
     onNewDoc: () -> Unit,
     onChangeVault: () -> Unit,
@@ -101,23 +106,30 @@ fun DocumentListScreen(
     val highlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     val lifecycleOwner = LocalLifecycleOwner.current
     val listState = rememberLazyListState()
+    val initialCacheEntry = remember(vaultRootUri) { DocumentListCache.get(vaultRootUri) }
     var docs by
         remember(vaultRootUri) {
-            mutableStateOf(DocumentListCache.get(vaultRootUri) ?: emptyList())
+            mutableStateOf(initialCacheEntry?.docs ?: emptyList())
         }
-    var docsSig by remember(vaultRootUri) { mutableLongStateOf(docListSignature(docs)) }
+    var docsSig by remember(vaultRootUri) { mutableLongStateOf(docListSignature(initialCacheEntry?.docs ?: emptyList())) }
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
     var refreshJob by remember { mutableStateOf<Job?>(null) }
     var lastRefreshAtMs by remember { mutableStateOf(0L) }
-    var cacheUpdatedAtMs by remember(vaultRootUri) { mutableLongStateOf(0L) }
+    var cacheUpdatedAtMs by remember(vaultRootUri) { mutableLongStateOf(initialCacheEntry?.updatedAtMs ?: 0L) }
     var ensuredVaultThisSession by remember(vaultRootUri) { mutableStateOf(false) }
     var showAiDialog by remember { mutableStateOf(false) }
     var showSearchSheet by remember { mutableStateOf(false) }
+    var pendingRefresh by remember(vaultRootUri) { mutableStateOf<PendingRefresh?>(null) }
 
     fun requestRefresh(force: Boolean, reindex: Boolean) {
+        if (!isActive) return
         val root = vaultRootUri ?: return
+        if (listState.isScrollInProgress) {
+            pendingRefresh = PendingRefresh(force = force, reindex = reindex)
+            return
+        }
         val effectiveForce = force || docs.isEmpty()
         if (!effectiveForce) {
             val now = SystemClock.uptimeMillis()
@@ -143,12 +155,17 @@ fun DocumentListScreen(
                         Triple(listed, docListSignature(listed), needEnsure)
                     }
                 if (didEnsure) ensuredVaultThisSession = true
+                val validatedAtMs = System.currentTimeMillis()
                 if (nextSig != docsSig) {
                     docs = nextDocs
                     docsSig = nextSig
-                    DocumentListCache.put(root, nextDocs)
-                    cacheUpdatedAtMs = System.currentTimeMillis()
-                    runCatching { prefs.setDocListCache(root, nextDocs, updatedAtMs = cacheUpdatedAtMs) }
+                    cacheUpdatedAtMs = validatedAtMs
+                    DocumentListCache.put(root, docs = nextDocs, updatedAtMs = validatedAtMs)
+                    runCatching { prefs.setDocListCache(root, nextDocs, updatedAtMs = validatedAtMs) }
+                } else {
+                    cacheUpdatedAtMs = validatedAtMs
+                    DocumentListCache.put(root, docs = docs, updatedAtMs = validatedAtMs)
+                    runCatching { prefs.touchDocListCacheUpdatedAt(root, updatedAtMs = validatedAtMs) }
                 }
 
                 if (reindex) {
@@ -158,16 +175,20 @@ fun DocumentListScreen(
             }
     }
 
-    LaunchedEffect(vaultRootUri) {
+    LaunchedEffect(vaultRootUri, isActive) {
+        if (!isActive) return@LaunchedEffect
         val root = vaultRootUri ?: return@LaunchedEffect
-        val cached = prefs.getDocListCache(root)
-        if (docs.isEmpty() && cached != null && cached.docs.isNotEmpty()) {
-            docs = cached.docs
-            docsSig = docListSignature(cached.docs)
-            DocumentListCache.put(root, cached.docs)
-            cacheUpdatedAtMs = cached.updatedAtMs
-        } else if (cached != null) {
-            cacheUpdatedAtMs = cached.updatedAtMs
+        val cached =
+            if (docs.isEmpty() || cacheUpdatedAtMs == 0L) prefs.getDocListCache(root) else null
+        if (cached != null) {
+            if (docs.isEmpty() && cached.docs.isNotEmpty()) {
+                docs = cached.docs
+                docsSig = docListSignature(cached.docs)
+            }
+            if (cached.updatedAtMs > 0L) cacheUpdatedAtMs = cached.updatedAtMs
+            if (docs.isNotEmpty() && cacheUpdatedAtMs > 0L) {
+                DocumentListCache.put(root, docs = docs, updatedAtMs = cacheUpdatedAtMs)
+            }
         }
 
         val cacheAgeMs =
@@ -180,7 +201,25 @@ fun DocumentListScreen(
         }
     }
 
-    DisposableEffect(lifecycleOwner, vaultRootUri) {
+    LaunchedEffect(vaultRootUri, isActive, refreshToken) {
+        if (!isActive) return@LaunchedEffect
+        if (refreshToken <= 0L) return@LaunchedEffect
+        if (vaultRootUri == null) return@LaunchedEffect
+        requestRefresh(force = true, reindex = false)
+    }
+
+    LaunchedEffect(pendingRefresh, isActive) {
+        val req = pendingRefresh ?: return@LaunchedEffect
+        if (!isActive) return@LaunchedEffect
+        snapshotFlow { listState.isScrollInProgress }
+            .filter { scrolling -> !scrolling }
+            .first()
+        pendingRefresh = null
+        requestRefresh(force = req.force, reindex = req.reindex)
+    }
+
+    DisposableEffect(lifecycleOwner, vaultRootUri, isActive) {
+        if (!isActive || vaultRootUri == null) return@DisposableEffect onDispose {}
         val observer =
             LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_RESUME) {
@@ -305,6 +344,11 @@ fun DocumentListScreen(
         )
     }
 }
+
+private data class PendingRefresh(
+    val force: Boolean,
+    val reindex: Boolean,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -460,11 +504,16 @@ private object DocumentListCache {
     private const val MaxEntries = 4
     private val lock = Any()
     private val cache =
-        object : LinkedHashMap<String, List<UiDoc>>(MaxEntries, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<UiDoc>>?): Boolean = size > MaxEntries
+        object : LinkedHashMap<String, Entry>(MaxEntries, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>?): Boolean = size > MaxEntries
         }
 
-    fun get(rootUri: Uri?): List<UiDoc>? {
+    data class Entry(
+        val docs: List<UiDoc>,
+        val updatedAtMs: Long,
+    )
+
+    fun get(rootUri: Uri?): Entry? {
         val key = rootUri?.toString().orEmpty()
         if (key.isBlank()) return null
         return synchronized(lock) { cache[key] }
@@ -473,8 +522,9 @@ private object DocumentListCache {
     fun put(
         rootUri: Uri,
         docs: List<UiDoc>,
+        updatedAtMs: Long,
     ) {
-        synchronized(lock) { cache[rootUri.toString()] = docs }
+        synchronized(lock) { cache[rootUri.toString()] = Entry(docs = docs, updatedAtMs = updatedAtMs) }
     }
 }
 

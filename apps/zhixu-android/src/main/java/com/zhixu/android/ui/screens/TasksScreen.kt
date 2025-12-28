@@ -86,6 +86,7 @@ fun TasksScreen(
     contentPadding: PaddingValues,
     vaultRootUri: Uri?,
     repository: VaultRepository,
+    isActive: Boolean,
     onOpenDoc: (String, String?, Int?) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -146,7 +147,10 @@ fun TasksScreen(
             }
     }
 
-    LaunchedEffect(vaultRootUri) { refresh(force = false) }
+    LaunchedEffect(vaultRootUri, isActive) {
+        if (!isActive) return@LaunchedEffect
+        refresh(force = false)
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),

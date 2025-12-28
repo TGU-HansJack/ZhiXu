@@ -42,8 +42,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.PaddingValues
@@ -114,6 +116,8 @@ fun ZhixuApp() {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
     val currentRoute = currentDestination?.route
+
+    var docListRefreshToken by remember { mutableLongStateOf(0L) }
 
     val showTopBar = currentRoute in setOf("home", "settings")
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -304,6 +308,7 @@ fun ZhixuApp() {
                             prefs = prefs,
                             repository = repository,
                             pagerState = pagerState,
+                            docListRefreshToken = docListRefreshToken,
                             onOpenDoc = { rawUri, query, lineIndex ->
                                 val uriParam = Uri.encode(rawUri)
                                 val qParam = Uri.encode(query ?: "")
@@ -354,6 +359,7 @@ fun ZhixuApp() {
                             vaultRootUri = root,
                             repository = repository,
                             onCreated = { rawUri ->
+                                docListRefreshToken += 1L
                                 navController.navigate("edit?uri=${Uri.encode(rawUri)}") {
                                     popUpTo("home") { inclusive = false }
                                 }
@@ -507,6 +513,7 @@ private fun HomePager(
     prefs: VaultPreferences,
     repository: VaultRepository,
     pagerState: androidx.compose.foundation.pager.PagerState,
+    docListRefreshToken: Long,
     onOpenDoc: (String, String?, Int?) -> Unit,
     onNewDoc: () -> Unit,
     onChangeVault: () -> Unit,
@@ -516,6 +523,7 @@ private fun HomePager(
         beyondViewportPageCount = 0,
         modifier = Modifier.fillMaxSize(),
     ) { page ->
+        val isActive = !pagerState.isScrollInProgress && pagerState.currentPage == page
         when (page) {
             0 ->
                 DocumentListScreen(
@@ -523,6 +531,8 @@ private fun HomePager(
                     vaultRootUri = vaultRootUri,
                     prefs = prefs,
                     repository = repository,
+                    isActive = isActive,
+                    refreshToken = docListRefreshToken,
                     onOpenDoc = onOpenDoc,
                     onNewDoc = onNewDoc,
                     onChangeVault = onChangeVault,
@@ -533,6 +543,7 @@ private fun HomePager(
                     contentPadding = contentPadding,
                     vaultRootUri = vaultRootUri,
                     repository = repository,
+                    isActive = isActive,
                     onOpenDoc = onOpenDoc,
                 )
         }

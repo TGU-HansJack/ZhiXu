@@ -61,6 +61,18 @@ class VaultPreferences(
             }
         }
     }
+
+    suspend fun touchDocListCacheUpdatedAt(
+        vaultRootUri: Uri,
+        updatedAtMs: Long = System.currentTimeMillis(),
+    ) {
+        withContext(Dispatchers.IO) {
+            context.dataStore.edit { prefs ->
+                prefs[docListCacheVaultRootUriKey] = vaultRootUri.toString()
+                prefs[docListCacheUpdatedAtMsKey] = updatedAtMs
+            }
+        }
+    }
 }
 
 data class DocListCache(
