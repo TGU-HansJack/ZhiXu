@@ -11,6 +11,7 @@ import android.webkit.WebViewClient
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
@@ -21,7 +22,9 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.documentfile.provider.DocumentFile
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 
@@ -46,12 +49,45 @@ fun MarkdownPreview(
             vaultRootUri?.let { VaultPathResolver(context = context, vaultRootUri = it) }
         }
 
+    val rawMarkdown = markdown
+    val vaultRoot = vaultRootUri?.toString().orEmpty()
+    val effectiveFontScale = fontScale.coerceIn(0.5f, 2.5f)
+    val nextTheme =
+        PreviewTheme(
+            isDark = colors.surface.toArgb().isProbablyDark(),
+            surface = colors.surface.toArgb().toCssHex(),
+            onSurface = colors.onSurface.toArgb().toCssHex(),
+            outline = colors.outline.copy(alpha = 0.35f).toArgb().toCssHex(),
+            quoteBg = colors.surfaceVariant.copy(alpha = 0.55f).toArgb().toCssHex(),
+            link = colors.primary.toArgb().toCssHex(),
+            inlineCodeBg = colors.secondaryContainer.copy(alpha = 0.55f).toArgb().toCssHex(),
+            inlineCodeFg = colors.onSecondaryContainer.toArgb().toCssHex(),
+        )
+    val themeJson = nextTheme.toJson()
+
+    var prepared by remember { mutableStateOf<PreparedPreviewState?>(null) }
+    LaunchedEffect(rawMarkdown, vaultRoot, themeJson, effectiveFontScale) {
+        // Move heavy string processing (regex + JSON escaping) off the main thread to avoid traversal jank.
+        val next =
+            withContext(Dispatchers.Default) {
+                val preprocessed = preprocessWikiLinks(rawMarkdown)
+                PreparedPreviewState(
+                    themeJsonQuoted = JSONObject.quote(themeJson),
+                    vaultRootQuoted = JSONObject.quote(vaultRoot),
+                    markdownQuoted = JSONObject.quote(preprocessed),
+                    fontScale = effectiveFontScale,
+                )
+            }
+        prepared = next
+    }
+
     AndroidView(
         modifier = modifier,
         factory = {
             WebView(it).apply {
                 setBackgroundColor(colors.surface.toArgb())
                 setTag(TAG_PAGE_LOADED, false)
+                setTag(TAG_LAST_SENT_STATE, null)
                 isVerticalScrollBarEnabled = false
                 isHorizontalScrollBarEnabled = false
                 overScrollMode = WebView.OVER_SCROLL_NEVER
@@ -97,8 +133,8 @@ fun MarkdownPreview(
                         onOpenVaultDocUri = onOpenVaultDocUri,
                         onPageReady = { webView ->
                             webView.setTag(TAG_PAGE_LOADED, true)
-                            (webView.getTag(TAG_PENDING_STATE) as? PendingPreviewState)?.let { pending ->
-                                applyPendingState(webView, pending)
+                            (webView.getTag(TAG_PENDING_STATE) as? PreparedPreviewState)?.let { pending ->
+                                applyPreparedState(webView, pending)
                             }
                         },
                     )
@@ -107,30 +143,17 @@ fun MarkdownPreview(
             }
         },
         update = { view ->
-            val preprocessed = preprocessWikiLinks(markdown)
-            val theme =
-                PreviewTheme(
-                    isDark = colors.surface.toArgb().isProbablyDark(),
-                    surface = colors.surface.toArgb().toCssHex(),
-                    onSurface = colors.onSurface.toArgb().toCssHex(),
-                    outline = colors.outline.copy(alpha = 0.35f).toArgb().toCssHex(),
-                    quoteBg = colors.surfaceVariant.copy(alpha = 0.55f).toArgb().toCssHex(),
-                    link = colors.primary.toArgb().toCssHex(),
-                    inlineCodeBg = colors.secondaryContainer.copy(alpha = 0.55f).toArgb().toCssHex(),
-                    inlineCodeFg = colors.onSecondaryContainer.toArgb().toCssHex(),
-                )
+            val nextPrepared = prepared ?: return@AndroidView
+            val lastSent = view.getTag(TAG_LAST_SENT_STATE) as? PreparedPreviewState
+            if (lastSent === nextPrepared) return@AndroidView
 
-            val pending =
-                PendingPreviewState(
-                    themeJson = theme.toJson(),
-                    vaultRoot = vaultRootUri?.toString().orEmpty(),
-                    markdown = preprocessed,
-                    fontScale = fontScale.coerceIn(0.5f, 2.5f),
-                )
-            view.setTag(TAG_PENDING_STATE, pending)
+            // Keep WebView background in sync with theme changes.
+            view.setBackgroundColor(colors.surface.toArgb())
+            view.setTag(TAG_PENDING_STATE, nextPrepared)
+            view.setTag(TAG_LAST_SENT_STATE, nextPrepared)
 
             if (view.getTag(TAG_PAGE_LOADED) == true) {
-                applyPendingState(view, pending)
+                applyPreparedState(view, nextPrepared)
             }
         },
     )
@@ -183,10 +206,10 @@ private data class WikiPreviewDialogState(
     val snippet: String?,
 )
 
-private data class PendingPreviewState(
-    val themeJson: String,
-    val vaultRoot: String,
-    val markdown: String,
+private data class PreparedPreviewState(
+    val themeJsonQuoted: String,
+    val vaultRootQuoted: String,
+    val markdownQuoted: String,
     val fontScale: Float,
 )
 
@@ -354,17 +377,24 @@ private fun Int.isProbablyDark(): Boolean {
     return luma < 0.5
 }
 
-private fun applyPendingState(
+private fun applyPreparedState(
     view: WebView,
-    pending: PendingPreviewState,
+    pending: PreparedPreviewState,
 ) {
-    view.post {
-        view.evaluateJavascript("window.__setTheme(${JSONObject.quote(pending.themeJson)});", null)
-        view.evaluateJavascript("window.__setVaultRoot(${JSONObject.quote(pending.vaultRoot)});", null)
-        view.evaluateJavascript("window.__setMarkdown(${JSONObject.quote(pending.markdown)});", null)
-        view.evaluateJavascript("window.__setFontScale(${pending.fontScale});", null)
-    }
+    // Single bridge call avoids repeated JNI crossings and lets JS batch the apply.
+    val js =
+        """
+        (function(){
+          if (!window.__setTheme) return;
+          window.__setTheme(${pending.themeJsonQuoted});
+          window.__setVaultRoot(${pending.vaultRootQuoted});
+          window.__setMarkdown(${pending.markdownQuoted});
+          window.__setFontScale(${pending.fontScale});
+        })();
+        """.trimIndent()
+    view.post { view.evaluateJavascript(js, null) }
 }
 
 private const val TAG_PENDING_STATE: Int = 0x5A48_4958
 private const val TAG_PAGE_LOADED: Int = 0x5A48_4959
+private const val TAG_LAST_SENT_STATE: Int = 0x5A48_4960

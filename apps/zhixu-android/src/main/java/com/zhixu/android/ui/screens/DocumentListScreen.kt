@@ -291,8 +291,17 @@ fun DocumentListScreen(
                 }
             }
 
-        runCatching { resolver.registerContentObserver(childrenUri, true, observer) }
-        onDispose { runCatching { resolver.unregisterContentObserver(observer) } }
+        // ContentResolver observer registration can block on Binder; do it off the main thread to avoid jank.
+        val registerJob =
+            scope.launch(Dispatchers.IO) {
+                runCatching { resolver.registerContentObserver(childrenUri, true, observer) }
+            }
+        onDispose {
+            registerJob.cancel()
+            scope.launch(Dispatchers.IO) {
+                runCatching { resolver.unregisterContentObserver(observer) }
+            }
+        }
     }
 
     LaunchedEffect(docsDirUri, vaultRootUri, isActive) {

@@ -43,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -97,6 +98,21 @@ import kotlinx.coroutines.withContext
 fun ZhixuApp() {
     val context = LocalContext.current
     val appContext = context.applicationContext
+    var uiReady by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        // Keep the very first frame light to reduce cold-start traversal/measure spikes.
+        withFrameNanos { }
+        uiReady = true
+    }
+
+    if (!uiReady) {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            Box(Modifier.fillMaxSize())
+        }
+        return
+    }
+
     val prefs = remember(appContext) { VaultPreferences(appContext) }
     val repository = remember(appContext) { VaultRepository(appContext) }
     val scope = rememberCoroutineScope()

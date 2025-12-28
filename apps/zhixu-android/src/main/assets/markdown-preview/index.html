@@ -166,15 +166,16 @@
     <link id="hljs-theme-dark" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" disabled>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 
-    <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/markdown-it-task-lists@2.1.1/dist/markdown-it-task-lists.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/markdown-it-footnote@4.0.0/dist/markdown-it-footnote.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/markdown-it-anchor@9.2.0/dist/markdownItAnchor.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlightjs-line-numbers.js@2.8.0/dist/highlightjs-line-numbers.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+    <!-- Defer heavy JS parsing/execution to reduce main-thread jank on first paint. -->
+    <script defer src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/markdown-it-task-lists@2.1.1/dist/markdown-it-task-lists.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/markdown-it-footnote@4.0.0/dist/markdown-it-footnote.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/markdown-it-anchor@9.2.0/dist/markdownItAnchor.umd.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/highlightjs-line-numbers.js@2.8.0/dist/highlightjs-line-numbers.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
   </head>
   <body>
     <div id="content"></div>
@@ -184,6 +185,8 @@
       let theme = { isDark: false };
       let lastRenderedMarkdown = null;
       let io = null;
+      let depsRetryTimer = null;
+      let depsRetryAttempts = 0;
 
       function setTheme(t) {
         theme = t || theme;
@@ -203,6 +206,20 @@
       function idle(fn) {
         if (window.requestIdleCallback) return requestIdleCallback(fn, { timeout: 600 });
         return setTimeout(fn, 16);
+      }
+
+      function scheduleDepsRetry() {
+        if (depsRetryTimer) return;
+        if (depsRetryAttempts >= 10) return;
+        depsRetryAttempts++;
+        depsRetryTimer = setTimeout(() => {
+          depsRetryTimer = null;
+          try {
+            if (window.__payload && window.__payload.markdown != null) {
+              render(window.__payload.markdown || "");
+            }
+          } catch (_) {}
+        }, Math.min(800, 60 * depsRetryAttempts));
       }
 
       function cleanupObservers() {
@@ -287,6 +304,8 @@
           pre.style.margin = "0";
           pre.textContent = mdText || "";
           container.appendChild(pre);
+          // If deps are merely delayed (due to defer), retry a few times to upgrade to rich preview.
+          if (!window.markdownit) scheduleDepsRetry();
           return;
         }
 
