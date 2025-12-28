@@ -79,4 +79,6 @@ dependencies {
     debugImplementation(platform(libs.androidx.compose.bom))
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+    debugImplementation(libs.leakcanary.android)
+    debugImplementation(libs.androidx.metrics.performance)
 }
