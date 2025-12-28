@@ -210,8 +210,6 @@ fun EditorScreen(
     var showFontSizeSheet by remember { mutableStateOf(false) }
     val fontSizeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    var showTagDialog by remember { mutableStateOf(false) }
-    var pendingTag by remember { mutableStateOf("") }
     val clipboard = LocalClipboardManager.current
     val density = LocalDensity.current
     val imeInsets = WindowInsets.ime
@@ -1177,16 +1175,9 @@ fun EditorScreen(
                         modifier =
                             Modifier
                                 .background(Color.White)
-                                .padding(
-                                    top =
-                                        with(density) {
-                                            TopAppBarDefaults.windowInsets.getTop(this).toDp()
-                                        },
-                                ),
                     ) {
                         TopAppBar(
-                            windowInsets = WindowInsets(0, 0, 0, 0),
-                            modifier = Modifier.height(48.dp),
+                            windowInsets = TopAppBarDefaults.windowInsets,
                             colors =
                                 TopAppBarDefaults.topAppBarColors(
                                     containerColor = Color.White,
@@ -1558,15 +1549,6 @@ fun EditorScreen(
                         },
                         modifier = Modifier.weight(1f),
                     )
-                    EditorOverflowQuickAction(
-                        title = "移动知识库",
-                        icon = Icons.Outlined.Extension,
-                        onClick = {
-                            showOverflowSheet = false
-                            notImplemented()
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
                 }
 
                 Surface(
@@ -1583,25 +1565,6 @@ fun EditorScreen(
                             onClick = {
                                 showOverflowSheet = false
                                 showFontSizeSheet = true
-                            },
-                        )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
-                        EditorOverflowRow(
-                            title = "添加标签",
-                            trailing = { Icon(imageVector = Icons.Outlined.BorderColor, contentDescription = null) },
-                            onClick = {
-                                showOverflowSheet = false
-                                pendingTag = ""
-                                showTagDialog = true
-                            },
-                        )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
-                        EditorOverflowRow(
-                            title = "置顶",
-                            trailing = { Icon(imageVector = Icons.Outlined.TaskAlt, contentDescription = null) },
-                            onClick = {
-                                showOverflowSheet = false
-                                notImplemented()
                             },
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
@@ -1744,36 +1707,6 @@ fun EditorScreen(
                 }
             }
         }
-    }
-
-    if (showTagDialog) {
-        AlertDialog(
-            onDismissRequest = { showTagDialog = false },
-            containerColor = Color.White,
-            title = { Text("添加标签") },
-            text = {
-                OutlinedTextField(
-                    value = pendingTag,
-                    onValueChange = { pendingTag = it },
-                    singleLine = true,
-                    label = { Text("标签") },
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val tag = pendingTag.trim()
-                        if (tag.isNotBlank()) {
-                            insertField("@tag($tag)")
-                        }
-                        showTagDialog = false
-                    },
-                ) { Text("添加") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showTagDialog = false }) { Text(stringResource(R.string.action_cancel)) }
-            },
-        )
     }
 
     if (showDeleteConfirm) {
