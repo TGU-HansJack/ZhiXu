@@ -195,10 +195,30 @@ fun MarkdownPreview(
 private fun preprocessWikiLinks(markdown: String): String {
     // Convert [[Name]] -> [Name](zhixu://doc/Name)
     val regex = Regex("""\[\[([^\]]+)\]\]""")
-    return markdown.replace(regex) { m ->
-        val name = m.groupValues[1].trim()
-        if (name.isBlank()) m.value else "[$name](zhixu://doc/${Uri.encode(name)})"
-    }
+    // Keep YAML front matter intact so web preview can parse it into a properties table.
+    val frontMatterPrefixLen =
+        runCatching {
+            val offset = if (markdown.startsWith("\uFEFF")) 1 else 0
+            val cleaned = markdown.substring(offset)
+            if (!cleaned.startsWith("---")) return@runCatching null
+            val eol = cleaned.indexOf('\n')
+            if (eol == -1) return@runCatching null
+            if (cleaned.substring(0, eol).trim() != "---") return@runCatching null
+            val end = Regex("""(?m)^\s*---\s*$""").find(cleaned, startIndex = eol + 1) ?: return@runCatching null
+            // Include trailing newline (if any) after the closing delimiter.
+            val after = cleaned.indexOf('\n', end.range.last).let { if (it == -1) cleaned.length else it + 1 }
+            offset + after
+        }.getOrNull()
+
+    val prefixLen = frontMatterPrefixLen ?: 0
+    val prefix = if (prefixLen > 0) markdown.substring(0, prefixLen) else ""
+    val rest = if (prefixLen > 0) markdown.substring(prefixLen) else markdown
+    val processed =
+        rest.replace(regex) { m ->
+            val name = m.groupValues[1].trim()
+            if (name.isBlank()) m.value else "[$name](zhixu://doc/${Uri.encode(name)})"
+        }
+    return prefix + processed
 }
 
 private data class WikiPreviewDialogState(

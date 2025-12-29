@@ -42,12 +42,23 @@
       }
       /* Keep content readable on wide screens */
       #content {
-        max-width: 860px;
-        margin: 0 auto;
-        padding: 10px 12px 20px;
+        max-width: 100%;
+        margin: 0;
+        padding: 4px 4px 14px;
         line-height: 1.65;
         word-break: break-word;
         overflow-wrap: anywhere;
+      }
+      #frontmatter { margin: 4px 0 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      #frontmatter { scrollbar-width: none; }
+      #frontmatter::-webkit-scrollbar { width: 0; height: 0; }
+      #markdown { min-height: 20px; }
+      @media (min-width: 900px) {
+        #content {
+          max-width: 860px;
+          margin: 0 auto;
+          padding: 6px 6px 18px;
+        }
       }
 
       /* Hide scrollbars (still scrollable) */
@@ -87,12 +98,16 @@
 
       blockquote {
         margin: 12px 0;
-        padding: 10px 15px;
-        border-left: 4px solid var(--link);
-        background: var(--quoteBg);
-        border-radius: 10px;
+        padding: 2px 0 2px 12px;
+        border-left: 2px solid var(--outline);
+        background: transparent;
+        border-radius: 0;
+        opacity: 0.92;
+        color: rgba(127, 127, 127, 0.92);
       }
-      blockquote blockquote { border-left-width: 3px; opacity: 0.98; }
+      blockquote > :first-child { margin-top: 6px; }
+      blockquote > :last-child { margin-bottom: 6px; }
+      blockquote blockquote { border-left-width: 2px; opacity: 0.92; }
 
       hr {
         border: 0;
@@ -115,15 +130,63 @@
       figcaption { margin-top: 6px; font-size: 0.9em; opacity: 0.8; }
 
       .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 12px 0; }
-      table { border-collapse: collapse; min-width: 520px; width: 100%; }
-      th, td { padding: 8px; border: 1px solid var(--outline); }
-      th { font-weight: 750; background: rgba(127, 127, 127, 0.08); }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { padding: 8px; border-bottom: 1px solid var(--outline); }
+      th { font-weight: 750; text-align: left; }
+      tr:last-child td { border-bottom: 0; }
 
-      .code-block { margin: 12px 0; border: 1px solid var(--outline); border-radius: 12px; overflow: hidden; }
+      /* Front matter (Obsidian-like properties) */
+      .fm {
+        border: 0;
+        border-radius: 0;
+        overflow: visible;
+        display: inline-block;
+        width: max-content;
+        max-width: none;
+      }
+      .fm-header {
+        padding: 8px 8px 6px;
+        font-weight: 750;
+        opacity: 0.85;
+        border-bottom: 0;
+      }
+      .fm-row {
+        display: grid;
+        grid-template-columns: 120px 1fr;
+        gap: 12px;
+        padding: 8px 8px;
+        align-items: center;
+        border-top: 1px solid var(--outline);
+        white-space: nowrap;
+      }
+      .fm-row:first-of-type { border-top: 0; }
+      .fm-key { opacity: 0.75; font-size: 0.92em; }
+      .fm-value { min-width: 0; white-space: nowrap; overflow: visible; text-overflow: clip; }
+      .fm-chips { display: flex; flex-wrap: nowrap; gap: 6px; overflow: visible; }
+      .fm-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 10px;
+        border: 1px solid var(--outline);
+        border-radius: 999px;
+        background: rgba(127, 127, 127, 0.06);
+        font-size: 0.92em;
+        line-height: 1.6;
+        white-space: nowrap;
+        max-width: none;
+      }
+      .fm-checkbox {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .fm-checkbox input { margin: 0; transform: translateY(1px); }
+
+      .code-block { margin: 12px 0; border: 1px solid var(--outline); border-radius: 10px; overflow: hidden; }
       .code-toolbar {
         display: flex; align-items: center; justify-content: space-between;
         padding: 8px 10px;
-        background: rgba(127, 127, 127, 0.06);
+        background: transparent;
         border-bottom: 1px solid var(--outline);
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         font-size: 12px;
@@ -162,23 +225,28 @@
       #lightbox img { max-width: 96vw; max-height: 92vh; border-radius: 12px; }
     </style>
 
-    <link id="hljs-theme-light" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css">
-    <link id="hljs-theme-dark" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" disabled>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+    <link id="hljs-theme-light" rel="stylesheet" href="vendor/highlight.js/github.min.css">
+    <link id="hljs-theme-dark" rel="stylesheet" href="vendor/highlight.js/github-dark.min.css" disabled>
+    <link rel="stylesheet" href="vendor/katex/katex.min.css">
+    <link rel="stylesheet" href="vendor/fancybox/fancybox.css">
 
     <!-- Defer heavy JS parsing/execution to reduce main-thread jank on first paint. -->
-    <script defer src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/markdown-it-task-lists@2.1.1/dist/markdown-it-task-lists.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/markdown-it-footnote@4.0.0/dist/markdown-it-footnote.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/markdown-it-anchor@9.2.0/dist/markdownItAnchor.umd.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/highlightjs-line-numbers.js@2.8.0/dist/highlightjs-line-numbers.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+    <script defer src="vendor/markdown-it/markdown-it.min.js"></script>
+    <script defer src="vendor/markdown-it/plugins/markdown-it-task-lists.min.js"></script>
+    <script defer src="vendor/markdown-it/plugins/markdown-it-footnote.min.js"></script>
+    <script defer src="vendor/markdown-it/plugins/markdownItAnchor.umd.js"></script>
+    <script defer src="vendor/highlight.js/highlight.min.js"></script>
+    <script defer src="vendor/highlightjs-line-numbers/highlightjs-line-numbers.min.js"></script>
+    <script defer src="vendor/katex/katex.min.js"></script>
+    <script defer src="vendor/katex/contrib/auto-render.min.js"></script>
+    <script defer src="vendor/mermaid/mermaid.min.js"></script>
+    <script defer src="vendor/fancybox/fancybox.umd.js"></script>
   </head>
   <body>
-    <div id="content"></div>
+    <div id="content">
+      <div id="frontmatter"></div>
+      <div id="markdown"></div>
+    </div>
     <div id="lightbox" onclick="hideLightbox()"><img id="lightbox-img" alt="" /></div>
 
     <script>
@@ -272,12 +340,193 @@
         a.addEventListener("touchcancel", cancel, { passive: true });
       }
 
+      function ensureFancyboxBound() {
+        try {
+          if (!window.Fancybox || window.__fancyboxBound) return;
+          window.__fancyboxBound = true;
+          Fancybox.bind('[data-fancybox="zhixu-gallery"]', {
+            dragToClose: true,
+            placeFocusBack: false,
+          });
+        } catch (_) {}
+      }
+
+      function getImageCaption(img) {
+        if (!img) return "";
+        const figure = img.closest && img.closest("figure");
+        const cap = figure ? figure.querySelector("figcaption") : null;
+        const text = cap ? (cap.textContent || "").trim() : "";
+        if (text) return text;
+        return (img.getAttribute("alt") || "").trim();
+      }
+
+      function wireImagesToFancybox(root) {
+        if (!root) return;
+        root.querySelectorAll("img").forEach((img) => {
+          const src = img.currentSrc || img.getAttribute("src") || img.src || "";
+          if (!src) return;
+
+          const caption = getImageCaption(img);
+
+          let a = img.closest && img.closest("a");
+          if (a) {
+            a.setAttribute("data-fancybox", "zhixu-gallery");
+            if (!a.getAttribute("href")) a.setAttribute("href", src);
+            if (caption && !a.getAttribute("data-caption")) a.setAttribute("data-caption", caption);
+          } else {
+            a = document.createElement("a");
+            a.setAttribute("data-fancybox", "zhixu-gallery");
+            a.setAttribute("href", src);
+            if (caption) a.setAttribute("data-caption", caption);
+            img.parentNode.insertBefore(a, img);
+            a.appendChild(img);
+          }
+
+          // Fallback when Fancybox isn't available: keep old lightbox behavior.
+          if (!a.dataset.lbBound) {
+            a.dataset.lbBound = "1";
+            a.addEventListener("click", (e) => {
+              if (window.Fancybox) return;
+              e.preventDefault();
+              showLightbox(a.getAttribute("href") || src);
+            });
+          }
+        });
+
+        ensureFancyboxBound();
+      }
+
+      function extractFrontMatter(mdText) {
+        const raw = (mdText || "").replace(/^\uFEFF/, "");
+        const m = raw.match(/^\uFEFF?---\s*\r?\n([\s\S]*?)\r?\n---\s*(?:\r?\n|$)/);
+        if (!m) return { front: null, body: mdText || "" };
+        const front = m[1] || "";
+        const body = raw.slice(m[0].length);
+        return { front, body };
+      }
+
+      function parseFrontMatterYaml(text) {
+        const out = {};
+        if (!text) return out;
+        const lines = String(text).split(/\r?\n/);
+        let currentKey = null;
+        for (const lineRaw of lines) {
+          const line = String(lineRaw || "");
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("#")) continue;
+
+          const indent = (line.match(/^\s*/) || [""])[0].length;
+          if (currentKey && indent > 0 && trimmed.startsWith("- ")) {
+            const item = trimmed.slice(2).trim();
+            out[currentKey].push(parseYamlScalar(item));
+            continue;
+          }
+
+          const m = trimmed.match(/^([A-Za-z0-9_.-]+)\s*:\s*(.*)$/);
+          if (!m) { currentKey = null; continue; }
+          const key = m[1];
+          const rest = (m[2] || "").trim();
+          if (!rest) {
+            out[key] = [];
+            currentKey = key;
+            continue;
+          }
+          currentKey = null;
+          out[key] = parseYamlValue(rest);
+        }
+        return out;
+      }
+
+      function parseYamlValue(s) {
+        const t = String(s || "").trim();
+        if (!t) return "";
+        if (t.startsWith("[") && t.endsWith("]")) {
+          const inner = t.slice(1, -1).trim();
+          if (!inner) return [];
+          return inner.split(",").map((x) => parseYamlScalar(x.trim())).filter((x) => x !== "");
+        }
+        if (t === "true") return true;
+        if (t === "false") return false;
+        if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t);
+        return parseYamlScalar(t);
+      }
+
+      function parseYamlScalar(s) {
+        const t = String(s || "").trim();
+        if (!t) return "";
+        if ((t.startsWith("\"") && t.endsWith("\"")) || (t.startsWith("'") && t.endsWith("'"))) {
+          return t.slice(1, -1);
+        }
+        return t;
+      }
+
+      function renderFrontMatter(frontText) {
+        const host = document.getElementById("frontmatter");
+        if (!host) return;
+        if (!frontText) { host.innerHTML = ""; return; }
+        const data = parseFrontMatterYaml(frontText);
+        const keys = Object.keys(data);
+        if (!keys.length) { host.innerHTML = ""; return; }
+
+        const fm = document.createElement("div");
+        fm.className = "fm";
+        const header = document.createElement("div");
+        header.className = "fm-header";
+        header.textContent = "Properties";
+        fm.appendChild(header);
+
+        for (const key of keys) {
+          const row = document.createElement("div");
+          row.className = "fm-row";
+          const k = document.createElement("div");
+          k.className = "fm-key";
+          k.textContent = key;
+          const v = document.createElement("div");
+          v.className = "fm-value";
+
+          const value = data[key];
+          if (Array.isArray(value)) {
+            const chips = document.createElement("div");
+            chips.className = "fm-chips";
+            for (const item of value) {
+              const chip = document.createElement("span");
+              chip.className = "fm-chip";
+              chip.textContent = String(item);
+              chips.appendChild(chip);
+            }
+            v.appendChild(chips);
+          } else if (typeof value === "boolean") {
+            const wrap = document.createElement("span");
+            wrap.className = "fm-checkbox";
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = !!value;
+            cb.disabled = true;
+            const label = document.createElement("span");
+            label.textContent = value ? "true" : "false";
+            wrap.appendChild(cb);
+            wrap.appendChild(label);
+            v.appendChild(wrap);
+          } else {
+            v.textContent = String(value);
+          }
+
+          row.appendChild(k);
+          row.appendChild(v);
+          fm.appendChild(row);
+        }
+
+        host.innerHTML = "";
+        host.appendChild(fm);
+      }
+
       function render(mdText) {
-        const container = document.getElementById("content");
+        const container = document.getElementById("markdown");
         try {
           if (!window.markdownit) throw new Error("markdown-it not loaded");
 
           const mdInput = mdText || "";
+          const parts = extractFrontMatter(mdInput);
           // Avoid re-rendering when only theme/vaultRoot changed.
           if (lastRenderedMarkdown === mdInput) return;
           lastRenderedMarkdown = mdInput;
@@ -294,7 +543,8 @@
             .use(window.markdownitFootnote || (() => (md) => md))
             .use(window.markdownItAnchor || (() => (md) => md), { level: [1, 2, 3, 4, 5, 6], permalink: false });
 
-          container.innerHTML = md.render(mdInput);
+          renderFrontMatter(parts.front);
+          container.innerHTML = md.render(parts.body || "");
         } catch (e) {
           // JS deps failed (offline/CDN blocked/etc). Fallback to plain text so it's never blank.
           container.innerHTML = "";
@@ -329,7 +579,6 @@
             if (isProbablyRelativeUrl(src)) {
               img.setAttribute("src", toVaultUrl(src));
             }
-            img.addEventListener("click", () => showLightbox(img.currentSrc || img.src));
           });
 
           // Figures + captions (alt text)
@@ -344,6 +593,8 @@
               figure.appendChild(cap);
             }
           });
+
+          wireImagesToFancybox(container);
 
           // Tables scroll wrapper.
           container.querySelectorAll("table").forEach((table) => {
