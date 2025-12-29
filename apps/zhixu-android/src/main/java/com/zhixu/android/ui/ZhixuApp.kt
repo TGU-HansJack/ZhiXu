@@ -298,6 +298,12 @@ fun ZhixuApp() {
                         vaultRootUri = vaultRootUri,
                         refreshToken = meRefreshToken,
                         repository = repository,
+                        onOpenDoc = { rawUri, query, lineIndex ->
+                            val uriParam = Uri.encode(rawUri)
+                            val qParam = Uri.encode(query ?: "")
+                            val lineParam = (lineIndex ?: -1).toString()
+                            navController.navigate("edit?uri=$uriParam&q=$qParam&line=$lineParam")
+                        },
                         onChangeVault = {
                             scope.launch { prefs.setVaultRootUri(null) }
                             navController.navigate("vault") {

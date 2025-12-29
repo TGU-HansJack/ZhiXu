@@ -2,7 +2,9 @@ package com.zhixu.android.data
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.text.format.DateUtils
+import androidx.documentfile.provider.DocumentFile
 import com.zhixu.core.tasks.TaskSyntax
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,6 +19,7 @@ import java.time.format.DateTimeFormatter
 class VaultIndexRepository(
     context: Context,
 ) {
+    private val appContext = context.applicationContext
     private val db = VaultIndexDb(context)
     private val dueFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
     private val doneFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
@@ -40,6 +43,12 @@ class VaultIndexRepository(
             val database = db.writableDatabase
             database.beginTransaction()
             try {
+                ensureDocsMetaTable(database)
+                database.execSQL(
+                    "INSERT OR IGNORE INTO docs_meta(uri, created_epoch_ms) VALUES(?, ?)",
+                    arrayOf<Any?>(doc.uri.toString(), (doc.lastModified.takeIf { it > 0 } ?: System.currentTimeMillis())),
+                )
+
                 database.execSQL("DELETE FROM docs_fts WHERE uri = ?", arrayOf(doc.uri.toString()))
                 database.execSQL(
                     "INSERT INTO docs_fts(uri, name, content, last_modified, size) VALUES(?,?,?,?,?)",
@@ -92,12 +101,180 @@ class VaultIndexRepository(
             database.beginTransaction()
             try {
                 database.execSQL("DELETE FROM docs_fts WHERE uri = ?", arrayOf(docUri.toString()))
+                ensureDocsMetaTable(database)
+                database.execSQL("DELETE FROM docs_meta WHERE uri = ?", arrayOf(docUri.toString()))
                 database.execSQL("DELETE FROM tasks WHERE doc_uri = ?", arrayOf(docUri.toString()))
                 database.execSQL("DELETE FROM tasks_fts WHERE doc_uri = ?", arrayOf(docUri.toString()))
+                ensureTasksMetaTable(database)
+                database.execSQL("DELETE FROM tasks_meta WHERE doc_uri = ?", arrayOf(docUri.toString()))
                 database.setTransactionSuccessful()
             } finally {
                 database.endTransaction()
             }
+        }
+    }
+
+    suspend fun upsertDocCreatedAt(
+        docUri: String,
+        createdEpochMs: Long,
+    ) = withContext(Dispatchers.IO) {
+        if (docUri.isBlank() || createdEpochMs <= 0L) return@withContext
+        mutex.withLock {
+            val database = db.writableDatabase
+            ensureDocsMetaTable(database)
+            val prev =
+                database.rawQuery(
+                    "SELECT created_epoch_ms FROM docs_meta WHERE uri = ?",
+                    arrayOf(docUri),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null else cursor.getLong(0)
+                }
+            if (prev == null || createdEpochMs < prev) {
+                database.execSQL(
+                    "INSERT OR REPLACE INTO docs_meta(uri, created_epoch_ms) VALUES(?, ?)",
+                    arrayOf<Any?>(docUri, createdEpochMs),
+                )
+            }
+        }
+    }
+
+    suspend fun getDocCreatedAtMap(docUris: List<String>): Map<String, Long> = withContext(Dispatchers.IO) {
+        if (docUris.isEmpty()) return@withContext emptyMap()
+        mutex.withLock {
+            val database = db.readableDatabase
+            ensureDocsMetaTable(database)
+
+            val out = HashMap<String, Long>(docUris.size)
+            val chunkSize = 800
+            for (chunk in docUris.chunked(chunkSize)) {
+                val placeholders = chunk.joinToString(",") { "?" }
+                database.rawQuery(
+                    "SELECT uri, created_epoch_ms FROM docs_meta WHERE uri IN ($placeholders)",
+                    chunk.toTypedArray(),
+                ).use { cursor ->
+                    val uriIdx = cursor.getColumnIndexOrThrow("uri")
+                    val createdIdx = cursor.getColumnIndexOrThrow("created_epoch_ms")
+                    while (cursor.moveToNext()) {
+                        out[cursor.getString(uriIdx)] = cursor.getLong(createdIdx)
+                    }
+                }
+            }
+            out
+        }
+    }
+
+    suspend fun getDocsCreatedOn(
+        day: LocalDate,
+        limit: Int = 200,
+    ): List<UiDoc> = withContext(Dispatchers.IO) {
+        val zone = ZoneId.systemDefault()
+        val startMs = day.atStartOfDay(zone).toInstant().toEpochMilli()
+        val endMs = day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+        mutex.withLock {
+            val database = db.readableDatabase
+            ensureDocsMetaTable(database)
+            val out = ArrayList<UiDoc>()
+            database.rawQuery(
+                """
+                SELECT m.uri, m.created_epoch_ms, COALESCE(f.name, '') AS name, COALESCE(f.last_modified, '0') AS last_modified, COALESCE(f.size, '0') AS size
+                FROM docs_meta m
+                LEFT JOIN docs_fts f ON f.uri = m.uri
+                WHERE m.created_epoch_ms BETWEEN ? AND ?
+                ORDER BY m.created_epoch_ms ASC
+                LIMIT ?
+                """.trimIndent(),
+                arrayOf(startMs.toString(), endMs.toString(), limit.toString()),
+            ).use { cursor ->
+                val uriIdx = cursor.getColumnIndexOrThrow("uri")
+                val createdIdx = cursor.getColumnIndexOrThrow("created_epoch_ms")
+                val nameIdx = cursor.getColumnIndexOrThrow("name")
+                val lastModifiedIdx = cursor.getColumnIndexOrThrow("last_modified")
+                val sizeIdx = cursor.getColumnIndexOrThrow("size")
+                while (cursor.moveToNext()) {
+                    val uri = cursor.getString(uriIdx)
+                    val indexedName = cursor.getString(nameIdx).orEmpty()
+                    val resolvedName =
+                        if (indexedName.isNotBlank()) indexedName
+                        else resolveDocName(uri).orEmpty().ifBlank { "Document" }
+                    val lastModified = cursor.getString(lastModifiedIdx).toLongOrNull() ?: 0L
+                    val size = cursor.getString(sizeIdx).toLongOrNull() ?: 0L
+                    val created = cursor.getLong(createdIdx)
+                    out +=
+                        UiDoc(
+                            name = resolvedName,
+                            uri = Uri.parse(uri),
+                            lastModified = lastModified,
+                            size = size,
+                            baseName = computeDocBaseNameLocal(resolvedName),
+                            createdAt = created,
+                            createdAtText = "",
+                            editedAtText = "",
+                        )
+                }
+            }
+            out
+        }
+    }
+
+    suspend fun recordTaskCreated(
+        taskId: String,
+        docUri: String,
+        createdEpochMs: Long,
+    ) = withContext(Dispatchers.IO) {
+        if (taskId.isBlank() || docUri.isBlank() || createdEpochMs <= 0L) return@withContext
+        mutex.withLock {
+            val database = db.writableDatabase
+            ensureTasksMetaTable(database)
+            database.execSQL(
+                "INSERT OR IGNORE INTO tasks_meta(task_id, doc_uri, created_epoch_ms) VALUES(?, ?, ?)",
+                arrayOf<Any?>(taskId, docUri, createdEpochMs),
+            )
+        }
+    }
+
+    suspend fun getTasksCreatedOn(
+        day: LocalDate,
+        limit: Int = 200,
+    ): List<UiTask> = withContext(Dispatchers.IO) {
+        val zone = ZoneId.systemDefault()
+        val startMs = day.atStartOfDay(zone).toInstant().toEpochMilli()
+        val endMs = day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+        mutex.withLock {
+            val database = db.readableDatabase
+            ensureTasksMetaTable(database)
+            val out = ArrayList<UiTask>()
+            database.rawQuery(
+                """
+                SELECT t.doc_uri, t.doc_name, t.line_index, t.checked, t.task_id, t.title, t.due_epoch_ms
+                FROM tasks_meta m
+                JOIN tasks t ON t.task_id = m.task_id
+                WHERE m.created_epoch_ms BETWEEN ? AND ?
+                ORDER BY m.created_epoch_ms ASC, t.doc_name COLLATE NOCASE ASC, t.line_index ASC
+                LIMIT ?
+                """.trimIndent(),
+                arrayOf(startMs.toString(), endMs.toString(), limit.toString()),
+            ).use { cursor ->
+                val docUriIdx = cursor.getColumnIndexOrThrow("doc_uri")
+                val docNameIdx = cursor.getColumnIndexOrThrow("doc_name")
+                val lineIdx = cursor.getColumnIndexOrThrow("line_index")
+                val checkedIdx = cursor.getColumnIndexOrThrow("checked")
+                val idIdx = cursor.getColumnIndexOrThrow("task_id")
+                val titleIdx = cursor.getColumnIndexOrThrow("title")
+                val dueIdx = cursor.getColumnIndexOrThrow("due_epoch_ms")
+                while (cursor.moveToNext()) {
+                    out +=
+                        UiTask(
+                            title = cursor.getString(titleIdx),
+                            docUri = Uri.parse(cursor.getString(docUriIdx)),
+                            docName = cursor.getString(docNameIdx),
+                            lineIndex = cursor.getInt(lineIdx),
+                            checked = cursor.getInt(checkedIdx) != 0,
+                            taskId = cursor.getString(idIdx),
+                            dueEpochMillis = if (cursor.isNull(dueIdx)) null else cursor.getLong(dueIdx),
+                        )
+                }
+            }
+            out
         }
     }
 
@@ -538,6 +715,50 @@ class VaultIndexRepository(
             """.trimIndent(),
         )
     }
+
+    private fun ensureDocsMetaTable(database: android.database.sqlite.SQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS docs_meta (
+              uri TEXT PRIMARY KEY,
+              created_epoch_ms INTEGER NOT NULL
+            );
+            """.trimIndent(),
+        )
+    }
+
+    private fun ensureTasksMetaTable(database: android.database.sqlite.SQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS tasks_meta (
+              task_id TEXT PRIMARY KEY,
+              doc_uri TEXT NOT NULL,
+              created_epoch_ms INTEGER NOT NULL
+            );
+            """.trimIndent(),
+        )
+    }
+
+    private fun resolveDocName(uriStr: String): String? {
+        val uri = runCatching { Uri.parse(uriStr) }.getOrNull() ?: return null
+        runCatching {
+            appContext.contentResolver.query(
+                uri,
+                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (!cursor.moveToFirst()) return@runCatching null
+                cursor.getString(0)
+            }
+        }.onSuccess { if (!it.isNullOrBlank()) return it }
+
+        return runCatching { DocumentFile.fromSingleUri(appContext, uri)?.name }.getOrNull()
+    }
+
+    private fun computeDocBaseNameLocal(name: String): String =
+        if (name.endsWith(".md", ignoreCase = true)) name.dropLast(3) else name
 
     private companion object {
         val mutex = Mutex()

@@ -8,6 +8,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.zhixu.core.tasks.TaskSyntax
+import com.zhixu.core.tasks.Ulid
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -30,6 +31,8 @@ data class UiDoc(
     val lastModified: Long,
     val size: Long,
     val baseName: String = "",
+    val createdAt: Long = 0L,
+    val createdAtText: String = "",
     val editedAtText: String = "",
 )
 
@@ -199,7 +202,8 @@ class VaultRepository(
     suspend fun listMarkdownDocs(rootUri: Uri): List<UiDoc> = withContext(Dispatchers.IO) {
         val root = DocumentFile.fromTreeUri(context, rootUri) ?: return@withContext emptyList()
         val docsDir = findChild(root, "docs") ?: return@withContext emptyList()
-        val docs = docsDir.listFiles()
+        val docs =
+            docsDir.listFiles()
             .filter { file ->
                 if (!file.isFile) return@filter false
                 val name = file.name
@@ -220,11 +224,28 @@ class VaultRepository(
                     lastModified = lastModified,
                     size = file.length(),
                     baseName = computeDocBaseName(name),
+                    createdAt = 0L,
+                    createdAtText = "",
                     editedAtText = formatEditedAt(lastModified),
                 )
             }
-            .sortedBy { it.name.lowercase() }
+
+        val createdAtByUri =
+            runCatching { indexRepository.getDocCreatedAtMap(docs.map { it.uri.toString() }) }
+                .getOrElse { emptyMap() }
+
         docs
+            .map { doc ->
+                val createdAt = createdAtByUri[doc.uri.toString()] ?: doc.lastModified
+                doc.copy(
+                    createdAt = createdAt,
+                    createdAtText = if (createdAt > 0L) formatEditedAt(createdAt) else "",
+                )
+            }
+            .sortedWith(
+                compareByDescending<UiDoc> { it.lastModified }
+                    .thenBy { it.name.lowercase() },
+            )
     }
 
     suspend fun findDocByName(rootUri: Uri, name: String): UiDoc? = withContext(Dispatchers.IO) {
@@ -334,6 +355,9 @@ class VaultRepository(
         val docs = findChild(root, "docs") ?: return@withContext false
         val inbox = findChild(docs, "Inbox.md") ?: createMarkdownFile(docs, "Inbox.md") ?: return@withContext false
 
+        val createdAtMs = System.currentTimeMillis()
+        val taskId = Ulid.next()
+
         val fields = buildString {
             val date = dueDate
             if (date != null) {
@@ -357,10 +381,12 @@ class VaultRepository(
 
         val before = readText(inbox.uri)
         val prefix = if (before.isNotEmpty() && !before.endsWith("\n")) "\n" else ""
-        val withLine = before + prefix + "- [ ] $trimmed$fields\n"
+        val withLine = before + prefix + "- [ ] $trimmed$fields @id($taskId)\n"
         val normalized = TaskSyntax.normalizeMarkdown(withLine).markdown
         writeText(inbox.uri, normalized)
         indexDocUri(inbox.uri)
+        recordDailyDocEdited(docUri = inbox.uri, day = LocalDate.now())
+        runCatching { indexRepository.recordTaskCreated(taskId = taskId, docUri = inbox.uri.toString(), createdEpochMs = createdAtMs) }
         true
     }
 
@@ -370,18 +396,38 @@ class VaultRepository(
         val baseName = sanitizeFileName(fileName).removeSuffix(".md").trim().ifBlank { "Untitled" }
         val createdName = createUniqueMarkdownName(docsDir, baseName)
         val created = createMarkdownFile(docsDir, createdName) ?: error("Failed to create document")
+        val createdAtMs = System.currentTimeMillis()
+        runCatching { indexRepository.upsertDocCreatedAt(created.uri.toString(), createdAtMs) }
         if (created.name?.endsWith(".md", ignoreCase = true) != true) {
             // Some providers may ignore extension; best-effort rename to keep the vault consistent.
             runCatching { created.renameTo(createdName) }
         }
         val name = created.name ?: createdName
         val lastModified = created.lastModified()
+        runCatching {
+            indexRepository.indexDocument(
+                UiDoc(
+                    name = name,
+                    uri = created.uri,
+                    lastModified = lastModified,
+                    size = created.length(),
+                    baseName = computeDocBaseName(name),
+                    createdAt = createdAtMs,
+                    createdAtText = "",
+                    editedAtText = "",
+                ),
+                "",
+            )
+        }
+        recordDailyDocEdited(docUri = created.uri, day = LocalDate.now())
         UiDoc(
             name = name,
             uri = created.uri,
             lastModified = lastModified,
             size = created.length(),
             baseName = computeDocBaseName(name),
+            createdAt = createdAtMs,
+            createdAtText = formatEditedAt(createdAtMs),
             editedAtText = formatEditedAt(lastModified),
         )
     }
@@ -531,6 +577,12 @@ class VaultRepository(
             }
             .filterKeys { d -> !d.isAfter(yearEnd) }
     }
+
+    suspend fun getDocsCreatedOn(day: LocalDate): List<UiDoc> =
+        runCatching { indexRepository.getDocsCreatedOn(day = day) }.getOrElse { emptyList() }
+
+    suspend fun getTasksCreatedOn(day: LocalDate): List<UiTask> =
+        runCatching { indexRepository.getTasksCreatedOn(day = day) }.getOrElse { emptyList() }
 
     suspend fun writeBytes(uri: Uri, bytes: ByteArray) = withContext(Dispatchers.IO) {
         val resolver: ContentResolver = context.contentResolver

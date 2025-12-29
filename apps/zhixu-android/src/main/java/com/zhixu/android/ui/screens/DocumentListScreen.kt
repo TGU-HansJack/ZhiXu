@@ -222,7 +222,7 @@ fun DocumentListScreen(
             if (docs.isEmpty() || cacheUpdatedAtMs == 0L) prefs.getDocListCache(root) else null
         if (cached != null) {
             if (docs.isEmpty() && cached.docs.isNotEmpty()) {
-                docs = cached.docs
+                docs = cached.docs.sortedByDescending { it.lastModified }
             }
             if (cached.updatedAtMs > 0L) cacheUpdatedAtMs = cached.updatedAtMs
             if (docs.isNotEmpty() && cacheUpdatedAtMs > 0L) {
@@ -409,7 +409,7 @@ fun DocumentListScreen(
                         contentType = { _, _ -> "doc" },
                     ) { index, doc ->
                         val title = doc.baseName.ifBlank { defaultTitle }
-                        val editedAt = doc.editedAtText.ifBlank { editedAtDash }
+                        val editedAt = doc.createdAtText.ifBlank { editedAtDash }
                         DocRow(
                             title = title,
                             editedAt = editedAt,

@@ -91,6 +91,8 @@ private fun encodeDocListCache(docs: List<UiDoc>): String {
                 .put("lastModified", doc.lastModified)
                 .put("size", doc.size)
                 .put("baseName", doc.baseName)
+                .put("createdAt", doc.createdAt)
+                .put("createdAtText", doc.createdAtText)
                 .put("editedAtText", doc.editedAtText)
         arr.put(obj)
     }
@@ -112,6 +114,14 @@ private fun decodeDocListCache(json: String): List<UiDoc> {
                 lastModified = obj.optLong("lastModified", 0L),
                 size = obj.optLong("size", 0L),
                 baseName = obj.optString("baseName").orEmpty(),
+                createdAt =
+                    obj.optLong("createdAt", 0L).let { created ->
+                        if (created > 0L) created else obj.optLong("lastModified", 0L)
+                    },
+                createdAtText =
+                    obj.optString("createdAtText").orEmpty().ifBlank {
+                        obj.optString("editedAtText").orEmpty()
+                    },
                 editedAtText = obj.optString("editedAtText").orEmpty(),
             )
     }

@@ -33,6 +33,25 @@ internal class VaultIndexDb(
 
         db.execSQL(
             """
+            CREATE TABLE IF NOT EXISTS docs_meta (
+              uri TEXT PRIMARY KEY,
+              created_epoch_ms INTEGER NOT NULL
+            );
+            """.trimIndent(),
+        )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS tasks_meta (
+              task_id TEXT PRIMARY KEY,
+              doc_uri TEXT NOT NULL,
+              created_epoch_ms INTEGER NOT NULL
+            );
+            """.trimIndent(),
+        )
+
+        db.execSQL(
+            """
             CREATE TABLE IF NOT EXISTS tasks (
               doc_uri TEXT NOT NULL,
               doc_name TEXT NOT NULL,
@@ -106,21 +125,34 @@ internal class VaultIndexDb(
                 );
                 """.trimIndent(),
             )
-            return
         }
 
-        // For future incompatible versions: destructive rebuild is acceptable (index is derived).
-        db.execSQL("DROP TABLE IF EXISTS tasks;")
-        db.execSQL("DROP TABLE IF EXISTS docs_fts;")
-        db.execSQL("DROP TABLE IF EXISTS tasks_fts;")
-        db.execSQL("DROP TABLE IF EXISTS meta;")
-        db.execSQL("DROP TABLE IF EXISTS daily_contrib;")
-        db.execSQL("DROP TABLE IF EXISTS doc_daily_edited;")
-        onCreate(db)
+        if (oldVersion < 7) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS docs_meta (
+                  uri TEXT PRIMARY KEY,
+                  created_epoch_ms INTEGER NOT NULL
+                );
+                """.trimIndent(),
+            )
+        }
+
+        if (oldVersion < 8) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS tasks_meta (
+                  task_id TEXT PRIMARY KEY,
+                  doc_uri TEXT NOT NULL,
+                  created_epoch_ms INTEGER NOT NULL
+                );
+                """.trimIndent(),
+            )
+        }
     }
 
     companion object {
         private const val DB_NAME = "vault_index.db"
-        private const val DB_VERSION = 6
+        private const val DB_VERSION = 8
     }
 }
