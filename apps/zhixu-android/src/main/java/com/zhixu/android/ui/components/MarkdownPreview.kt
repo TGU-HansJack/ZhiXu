@@ -1,32 +1,69 @@
 package com.zhixu.android.ui.components
 
+import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
-import android.webkit.JavascriptInterface
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.os.Handler
+import android.os.Looper
+import android.text.Selection
+import android.text.Spannable
+import android.text.Spanned
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
+import android.text.style.URLSpan
+import android.util.TypedValue
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewConfiguration
+import android.widget.TextView
+import android.widget.FrameLayout
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.widget.NestedScrollView
 import androidx.documentfile.provider.DocumentFile
+import io.noties.markwon.AbstractMarkwonPlugin
+import io.noties.markwon.LinkResolver
+import io.noties.markwon.Markwon
+import io.noties.markwon.MarkwonConfiguration
+import io.noties.markwon.MarkwonSpansFactory
+import io.noties.markwon.core.CorePlugin
+import io.noties.markwon.core.MarkwonTheme
+import io.noties.markwon.ext.latex.JLatexMathPlugin
+import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
+import io.noties.markwon.ext.tables.TablePlugin
+import io.noties.markwon.ext.tasklist.TaskListPlugin
+import io.noties.markwon.image.AsyncDrawable
+import io.noties.markwon.image.AsyncDrawableLoader
+import io.noties.markwon.image.AsyncDrawableScheduler
+import io.noties.markwon.image.ImageSpanFactory
+import io.noties.markwon.inlineparser.MarkwonInlineParserPlugin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.io.ByteArrayInputStream
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.commonmark.node.Image
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 @Composable
 fun MarkdownPreview(
@@ -41,6 +78,7 @@ fun MarkdownPreview(
     val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
 
     var previewDialog by remember { mutableStateOf<WikiPreviewDialogState?>(null) }
 
@@ -49,143 +87,164 @@ fun MarkdownPreview(
             vaultRootUri?.let { VaultPathResolver(context = context, vaultRootUri = it) }
         }
 
-    val rawMarkdown = markdown
-    val vaultRoot = vaultRootUri?.toString().orEmpty()
     val effectiveFontScale = fontScale.coerceIn(0.5f, 2.5f)
-    val nextTheme =
-        PreviewTheme(
-            isDark = colors.surface.toArgb().isProbablyDark(),
-            surface = colors.surface.toArgb().toCssHex(),
-            onSurface = colors.onSurface.toArgb().toCssHex(),
-            outline = colors.outline.copy(alpha = 0.35f).toArgb().toCssHex(),
-            quoteBg = colors.surfaceVariant.copy(alpha = 0.55f).toArgb().toCssHex(),
-            link = colors.primary.toArgb().toCssHex(),
-            inlineCodeBg = colors.secondaryContainer.copy(alpha = 0.55f).toArgb().toCssHex(),
-            inlineCodeFg = colors.onSecondaryContainer.toArgb().toCssHex(),
-        )
-    val themeJson = nextTheme.toJson()
+    val baseTextSizeSp = 16f * effectiveFontScale
+    val baseTextSizePx = with(density) { baseTextSizeSp.sp.toPx() }
 
-    var prepared by remember { mutableStateOf<PreparedPreviewState?>(null) }
-    LaunchedEffect(rawMarkdown, vaultRoot, themeJson, effectiveFontScale) {
-        // Move heavy string processing (regex + JSON escaping) off the main thread to avoid traversal jank.
-        val next =
-            withContext(Dispatchers.Default) {
-                val preprocessed = preprocessWikiLinks(rawMarkdown)
-                PreparedPreviewState(
-                    themeJsonQuoted = JSONObject.quote(themeJson),
-                    vaultRootQuoted = JSONObject.quote(vaultRoot),
-                    markdownQuoted = JSONObject.quote(preprocessed),
-                    fontScale = effectiveFontScale,
+    val linkResolver =
+        remember(context, vaultResolver, onOpenWikiLink, onOpenVaultDocUri) {
+            PreviewLinkResolver(
+                context = context,
+                vaultResolver = vaultResolver,
+                onOpenWikiLink = onOpenWikiLink,
+                onOpenVaultDocUri = onOpenVaultDocUri,
+            )
+        }
+
+    val asyncDrawableLoader =
+        remember(context, vaultResolver) {
+            VaultAsyncDrawableLoader(
+                context = context,
+                vaultResolver = vaultResolver,
+            )
+        }
+    DisposableEffect(asyncDrawableLoader) {
+        onDispose { asyncDrawableLoader.shutdown() }
+    }
+
+    val markwon =
+        remember(context, colors, baseTextSizePx, linkResolver, asyncDrawableLoader) {
+            Markwon.builderNoCore(context)
+                .usePlugin(CorePlugin.create().hasExplicitMovementMethod(true))
+                .usePlugin(MarkwonInlineParserPlugin.create())
+                .usePlugin(TablePlugin.create(context))
+                .usePlugin(TaskListPlugin.create(context))
+                .usePlugin(StrikethroughPlugin.create())
+                .usePlugin(JLatexMathPlugin.create(baseTextSizePx))
+                .usePlugin(
+                    object : AbstractMarkwonPlugin() {
+                        override fun configureTheme(builder: MarkwonTheme.Builder) {
+                            builder
+                                .linkColor(colors.primary.toArgb())
+                                .codeTextColor(colors.onSecondaryContainer.toArgb())
+                                .codeBackgroundColor(colors.secondaryContainer.copy(alpha = 0.55f).toArgb())
+                                .codeBlockBackgroundColor(colors.secondaryContainer.copy(alpha = 0.35f).toArgb())
+                                .blockQuoteColor(colors.outline.copy(alpha = 0.25f).toArgb())
+                                .listItemColor(colors.onSurface.toArgb())
+                        }
+
+                        override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
+                            builder
+                                .linkResolver(linkResolver)
+                                .asyncDrawableLoader(asyncDrawableLoader)
+                        }
+
+                        override fun configureSpansFactory(builder: MarkwonSpansFactory.Builder) {
+                            builder.setFactory(Image::class.java, ImageSpanFactory())
+                        }
+
+                        override fun beforeSetText(textView: TextView, markdown: Spanned) {
+                            AsyncDrawableScheduler.unschedule(textView)
+                        }
+
+                        override fun afterSetText(textView: TextView) {
+                            AsyncDrawableScheduler.schedule(textView)
+                        }
+                    },
                 )
+                .build()
+        }
+
+    val linkMovementMethod =
+        remember(context, loadWikiLinkPreview, scope) {
+            LongPressLinkMovementMethod { link ->
+                val uri = runCatching { Uri.parse(link) }.getOrNull() ?: return@LongPressLinkMovementMethod
+                if (uri.scheme != "zhixu" || uri.host != "doc") return@LongPressLinkMovementMethod
+                val name = uri.lastPathSegment?.trim().orEmpty().let(Uri::decode)
+                if (name.isBlank()) return@LongPressLinkMovementMethod
+                val loader = loadWikiLinkPreview ?: return@LongPressLinkMovementMethod
+                scope.launch {
+                    val snippet = runCatching { loader(name) }.getOrNull()
+                    previewDialog = WikiPreviewDialogState(name = name, snippet = snippet)
+                }
             }
-        prepared = next
+        }
+
+    var rendered by remember { mutableStateOf<Spanned?>(null) }
+    LaunchedEffect(markdown, markwon) {
+        val processed = preprocessWikiLinks(markdown)
+        rendered =
+            withContext(Dispatchers.Default) {
+                val node = markwon.parse(processed)
+                markwon.render(node)
+            }
     }
 
     AndroidView(
         modifier = modifier,
-        factory = {
-            WebView(it).apply {
+        factory = { viewContext ->
+            val textView =
+                TextView(viewContext).apply {
+                    setTextColor(colors.onSurface.toArgb())
+                    setBackgroundColor(colors.surface.toArgb())
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, baseTextSizeSp)
+                    setTextIsSelectable(true)
+                    isVerticalScrollBarEnabled = false
+                    movementMethod = linkMovementMethod
+                }
+
+            NestedScrollView(viewContext).apply {
+                isFillViewport = true
+                overScrollMode = View.OVER_SCROLL_NEVER
                 setBackgroundColor(colors.surface.toArgb())
-                setTag(TAG_PAGE_LOADED, false)
-                setTag(TAG_LAST_SENT_STATE, null)
-                isVerticalScrollBarEnabled = false
-                isHorizontalScrollBarEnabled = false
-                overScrollMode = WebView.OVER_SCROLL_NEVER
-
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.cacheMode = WebSettings.LOAD_DEFAULT
-                settings.loadsImagesAutomatically = true
-                settings.useWideViewPort = true
-                settings.loadWithOverviewMode = true
-                settings.setSupportZoom(true)
-                settings.builtInZoomControls = true
-                settings.displayZoomControls = false
-                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                settings.allowFileAccess = true
-                settings.allowContentAccess = true
-                settings.allowFileAccessFromFileURLs = true
-                settings.allowUniversalAccessFromFileURLs = true
-
-                addJavascriptInterface(
-                    PreviewBridge(
-                        onCopy = { text ->
-                            val clip = android.content.ClipData.newPlainText("code", text)
-                            context.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(clip)
-                        },
-                        onWikiLinkLongPress = onWikiLinkLongPress@{ name ->
-                            val loader = loadWikiLinkPreview ?: return@onWikiLinkLongPress
-                            scope.launch {
-                                val snippet =
-                                    runCatching { loader(name) }.getOrNull()
-                                previewDialog = WikiPreviewDialogState(name = name, snippet = snippet)
-                            }
-                        },
+                addView(
+                    textView,
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
                     ),
-                    "ZhixuPreview",
                 )
-
-                webViewClient =
-                    PreviewWebViewClient(
-                        context = context,
-                        vaultResolver = vaultResolver,
-                        onOpenWikiLink = onOpenWikiLink,
-                        onOpenVaultDocUri = onOpenVaultDocUri,
-                        onPageReady = { webView ->
-                            webView.setTag(TAG_PAGE_LOADED, true)
-                            (webView.getTag(TAG_PENDING_STATE) as? PreparedPreviewState)?.let { pending ->
-                                applyPreparedState(webView, pending)
-                            }
-                        },
-                    )
-
-                loadUrl("file:///android_asset/markdown-preview/index.html")
+                setTag(TAG_TEXT_VIEW, textView)
             }
         },
-        update = { view ->
-            val nextPrepared = prepared ?: return@AndroidView
-            val lastSent = view.getTag(TAG_LAST_SENT_STATE) as? PreparedPreviewState
-            if (lastSent === nextPrepared) return@AndroidView
+        update = { scrollView ->
+            val textView = scrollView.getTag(TAG_TEXT_VIEW) as TextView
+            scrollView.setBackgroundColor(colors.surface.toArgb())
+            textView.setBackgroundColor(colors.surface.toArgb())
+            textView.setTextColor(colors.onSurface.toArgb())
+            textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, baseTextSizeSp)
+            textView.movementMethod = linkMovementMethod
 
-            // Keep WebView background in sync with theme changes.
-            view.setBackgroundColor(colors.surface.toArgb())
-            view.setTag(TAG_PENDING_STATE, nextPrepared)
-            view.setTag(TAG_LAST_SENT_STATE, nextPrepared)
-
-            if (view.getTag(TAG_PAGE_LOADED) == true) {
-                applyPreparedState(view, nextPrepared)
-            }
+            val next = rendered ?: return@AndroidView
+            val last = textView.getTag(TAG_LAST_RENDERED) as? Spanned
+            if (last === next) return@AndroidView
+            textView.setTag(TAG_LAST_RENDERED, next)
+            markwon.setParsedMarkdown(textView, next)
         },
     )
 
-    DisposableEffect(Unit) {
-        onDispose {
-            // WebView is owned by AndroidView; no extra work needed here, but keep hook for future cleanup.
-        }
-    }
-
     val dialog = previewDialog
     if (dialog != null) {
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = { previewDialog = null },
-            title = { androidx.compose.material3.Text(text = dialog.name) },
+            title = { Text(text = dialog.name) },
             text = {
-                androidx.compose.material3.Text(
+                Text(
                     text = dialog.snippet ?: "未找到预览内容",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             },
             confirmButton = {
-                androidx.compose.material3.TextButton(
+                TextButton(
                     onClick = {
                         onOpenWikiLink?.invoke(dialog.name)
                         previewDialog = null
                     },
-                ) { androidx.compose.material3.Text("打开") }
+                ) { Text("打开") }
             },
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { previewDialog = null }) {
-                    androidx.compose.material3.Text("关闭")
+                TextButton(onClick = { previewDialog = null }) {
+                    Text("关闭")
                 }
             },
         )
@@ -206,123 +265,61 @@ private data class WikiPreviewDialogState(
     val snippet: String?,
 )
 
-private data class PreparedPreviewState(
-    val themeJsonQuoted: String,
-    val vaultRootQuoted: String,
-    val markdownQuoted: String,
-    val fontScale: Float,
-)
-
-private data class PreviewTheme(
-    val isDark: Boolean,
-    val surface: String,
-    val onSurface: String,
-    val outline: String,
-    val quoteBg: String,
-    val link: String,
-    val inlineCodeBg: String,
-    val inlineCodeFg: String,
-) {
-    fun toJson(): String =
-        """
-        {
-          "isDark": $isDark,
-          "surface": "$surface",
-          "onSurface": "$onSurface",
-          "outline": "$outline",
-          "quoteBg": "$quoteBg",
-          "link": "$link",
-          "inlineCodeBg": "$inlineCodeBg",
-          "inlineCodeFg": "$inlineCodeFg"
-        }
-        """.trimIndent()
-}
-
-private class PreviewBridge(
-    private val onCopy: (String) -> Unit,
-    private val onWikiLinkLongPress: (String) -> Unit,
-) {
-    @JavascriptInterface
-    fun copy(text: String) {
-        onCopy(text)
-    }
-
-    @JavascriptInterface
-    fun wikiLongPress(name: String) {
-        onWikiLinkLongPress(name)
-    }
-}
-
-private class PreviewWebViewClient(
-    private val context: android.content.Context,
+private class PreviewLinkResolver(
+    private val context: Context,
     private val vaultResolver: VaultPathResolver?,
     private val onOpenWikiLink: ((String) -> Unit)?,
     private val onOpenVaultDocUri: ((Uri) -> Unit)?,
-    private val onPageReady: (WebView) -> Unit,
-) : WebViewClient() {
-    override fun onPageFinished(view: WebView, url: String?) {
-        super.onPageFinished(view, url)
-        onPageReady(view)
-    }
+) : LinkResolver {
+    override fun resolve(view: View, link: String) {
+        val uri = Uri.parse(link)
+        val scheme = uri.scheme
 
-    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-        val uri = request.url ?: return false
-        when (uri.scheme) {
+        when (scheme) {
             "zhixu" -> {
                 when (uri.host) {
                     "doc" -> {
                         val name = uri.lastPathSegment?.trim().orEmpty()
                         if (name.isNotBlank()) onOpenWikiLink?.invoke(Uri.decode(name))
-                        return true
                     }
+
                     "vault" -> {
                         val relPath = uri.getQueryParameter("path")?.let(Uri::decode).orEmpty()
-                        if (relPath.isBlank()) return true
-                        val resolved = vaultResolver?.resolve(relPath)
-                        if (resolved != null && relPath.endsWith(".md", ignoreCase = true)) {
+                        if (relPath.isBlank()) return
+                        val resolved = vaultResolver?.resolve(relPath) ?: return
+                        if (relPath.endsWith(".md", ignoreCase = true)) {
                             onOpenVaultDocUri?.invoke(resolved)
-                            return true
-                        }
-                        if (resolved != null) {
+                        } else {
                             openExternal(resolved)
                         }
-                        return true
                     }
-                    else -> return true
                 }
+
+                return
             }
+
             "http", "https", "mailto", "tel", "file", "content" -> {
                 openExternal(uri)
-                return true
+                return
             }
-            else -> return false
+
+            null -> {
+                val rawPath = link.substringBefore('#').trim()
+                if (rawPath.isBlank()) return
+                val resolved = vaultResolver?.resolve(rawPath)
+                if (resolved != null) {
+                    if (rawPath.endsWith(".md", ignoreCase = true)) {
+                        onOpenVaultDocUri?.invoke(resolved)
+                    } else {
+                        openExternal(resolved)
+                    }
+                    return
+                }
+            }
         }
+
+        openExternal(uri)
     }
-
-    override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-        val uri = request.url ?: return null
-        if (uri.scheme != "zhixu" || uri.host != "vault") return null
-        val relPath = uri.getQueryParameter("path")?.let(Uri::decode).orEmpty()
-        if (relPath.isBlank()) return emptyNotFound()
-        val resolved = vaultResolver?.resolve(relPath) ?: return emptyNotFound()
-
-        return runCatching {
-            val resolver = context.contentResolver
-            val mime = resolver.getType(resolved) ?: "application/octet-stream"
-            val stream = resolver.openInputStream(resolved) ?: return@runCatching emptyNotFound()
-            WebResourceResponse(mime, "utf-8", stream)
-        }.getOrNull()
-    }
-
-    private fun emptyNotFound(): WebResourceResponse =
-        WebResourceResponse(
-            "text/plain",
-            "utf-8",
-            404,
-            "Not Found",
-            mapOf("Cache-Control" to "no-cache"),
-            ByteArrayInputStream(ByteArray(0)),
-        )
 
     private fun openExternal(uri: Uri) {
         runCatching {
@@ -336,8 +333,106 @@ private class PreviewWebViewClient(
     }
 }
 
+private class LongPressLinkMovementMethod(
+    private val onLongPressLink: (String) -> Unit,
+) : LinkMovementMethod() {
+    private val handler = Handler(Looper.getMainLooper())
+    private var longPressRunnable: Runnable? = null
+    private var pressedSpan: ClickableSpan? = null
+    private var longPressed: Boolean = false
+    private var downX: Float = 0f
+    private var downY: Float = 0f
+
+    override fun onTouchEvent(widget: TextView, buffer: Spannable, event: MotionEvent): Boolean {
+        val action = event.actionMasked
+        when (action) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = event.x
+                downY = event.y
+                longPressed = false
+
+                val span = clickableSpanUnderTouch(widget, buffer, event)
+                pressedSpan = span
+                if (span == null) {
+                    Selection.removeSelection(buffer)
+                    cancelLongPress()
+                    return false
+                }
+
+                Selection.setSelection(buffer, buffer.getSpanStart(span), buffer.getSpanEnd(span))
+                scheduleLongPress(span)
+                return true
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                val span = pressedSpan ?: return false
+                val slop = ViewConfiguration.get(widget.context).scaledTouchSlop
+                val moved = kotlin.math.abs(event.x - downX) > slop || kotlin.math.abs(event.y - downY) > slop
+                if (moved || clickableSpanUnderTouch(widget, buffer, event) !== span) {
+                    cancelLongPress()
+                    Selection.removeSelection(buffer)
+                    pressedSpan = null
+                    return false
+                }
+                return true
+            }
+
+            MotionEvent.ACTION_UP -> {
+                val span = pressedSpan
+                cancelLongPress()
+                Selection.removeSelection(buffer)
+                pressedSpan = null
+
+                if (span == null) return false
+                if (!longPressed) span.onClick(widget)
+                return true
+            }
+
+            MotionEvent.ACTION_CANCEL -> {
+                cancelLongPress()
+                Selection.removeSelection(buffer)
+                pressedSpan = null
+                return false
+            }
+        }
+        return super.onTouchEvent(widget, buffer, event)
+    }
+
+    private fun scheduleLongPress(span: ClickableSpan) {
+        cancelLongPress()
+        val timeout = ViewConfiguration.getLongPressTimeout().toLong()
+        val runnable =
+            Runnable {
+                longPressed = true
+                val link =
+                    when (span) {
+                        is io.noties.markwon.core.spans.LinkSpan -> span.link
+                        is URLSpan -> span.url
+                        else -> null
+                    }
+                if (!link.isNullOrBlank()) onLongPressLink(link)
+            }
+        longPressRunnable = runnable
+        handler.postDelayed(runnable, timeout)
+    }
+
+    private fun cancelLongPress() {
+        longPressRunnable?.let(handler::removeCallbacks)
+        longPressRunnable = null
+    }
+
+    private fun clickableSpanUnderTouch(widget: TextView, buffer: Spannable, event: MotionEvent): ClickableSpan? {
+        val layout = widget.layout ?: return null
+        val x = (event.x - widget.totalPaddingLeft + widget.scrollX).toInt()
+        val y = (event.y - widget.totalPaddingTop + widget.scrollY).toInt()
+        val line = layout.getLineForVertical(y)
+        val off = layout.getOffsetForHorizontal(line, x.toFloat())
+        return buffer.getSpans(off, off, ClickableSpan::class.java).firstOrNull()
+    }
+}
+
 private class VaultPathResolver(
-    private val context: android.content.Context,
+    private val context: Context,
     private val vaultRootUri: Uri,
 ) {
     fun resolve(vaultRelativePath: String): Uri? {
@@ -364,37 +459,90 @@ private class VaultPathResolver(
     }
 }
 
-private fun Int.toCssHex(): String {
-    val rgb = this and 0x00FFFFFF
-    return String.format("#%06X", rgb)
+private class VaultAsyncDrawableLoader(
+    private val context: Context,
+    private val vaultResolver: VaultPathResolver?,
+) : AsyncDrawableLoader() {
+    private val handler = Handler(Looper.getMainLooper())
+    private val executor = Executors.newFixedThreadPool(2)
+    private val inflight = ConcurrentHashMap<AsyncDrawable, Future<*>>()
+    private val okHttp = OkHttpClient()
+
+    override fun load(drawable: AsyncDrawable) {
+        cancel(drawable)
+
+        val future =
+            executor.submit {
+                var posted = false
+                try {
+                    val uri = resolveToUri(drawable.destination) ?: return@submit
+
+                    val bitmap =
+                        when (uri.scheme) {
+                            "http", "https" -> {
+                                val request = Request.Builder().url(uri.toString()).build()
+                                okHttp.newCall(request).execute().use { response ->
+                                    if (!response.isSuccessful) return@submit
+                                    val stream = response.body?.byteStream() ?: return@submit
+                                    stream.use(BitmapFactory::decodeStream)
+                                }
+                            }
+
+                            else -> {
+                                val stream = context.contentResolver.openInputStream(uri) ?: return@submit
+                                stream.use(BitmapFactory::decodeStream)
+                            }
+                        } ?: return@submit
+
+                    val result = BitmapDrawable(context.resources, bitmap)
+
+                    posted = true
+                    handler.post {
+                        if (inflight.remove(drawable) != null) drawable.setResult(result)
+                    }
+                } finally {
+                    if (!posted) inflight.remove(drawable)
+                }
+            }
+
+        inflight[drawable] = future
+    }
+
+    override fun cancel(drawable: AsyncDrawable) {
+        inflight.remove(drawable)?.cancel(true)
+    }
+
+    override fun placeholder(drawable: AsyncDrawable) = null
+
+    fun shutdown() {
+        inflight.values.forEach { it.cancel(true) }
+        inflight.clear()
+        executor.shutdownNow()
+    }
+
+    private fun resolveToUri(destination: String): Uri? {
+        val trimmed = destination.trim()
+        if (trimmed.isBlank()) return null
+
+        val parsed = runCatching { Uri.parse(trimmed) }.getOrNull()
+
+        if (parsed == null || parsed.scheme.isNullOrBlank()) {
+            val rawPath = trimmed.substringBefore('#')
+            return vaultResolver?.resolve(rawPath)
+        }
+
+        return when (parsed.scheme) {
+            "content", "file", "http", "https" -> parsed
+            "zhixu" -> {
+                if (parsed.host != "vault") return null
+                val relPath = parsed.getQueryParameter("path")?.let(Uri::decode).orEmpty()
+                if (relPath.isBlank()) null else vaultResolver?.resolve(relPath)
+            }
+
+            else -> null
+        }
+    }
 }
 
-private fun Int.isProbablyDark(): Boolean {
-    val r = (this shr 16) and 0xFF
-    val g = (this shr 8) and 0xFF
-    val b = this and 0xFF
-    val luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
-    return luma < 0.5
-}
-
-private fun applyPreparedState(
-    view: WebView,
-    pending: PreparedPreviewState,
-) {
-    // Single bridge call avoids repeated JNI crossings and lets JS batch the apply.
-    val js =
-        """
-        (function(){
-          if (!window.__setTheme) return;
-          window.__setTheme(${pending.themeJsonQuoted});
-          window.__setVaultRoot(${pending.vaultRootQuoted});
-          window.__setMarkdown(${pending.markdownQuoted});
-          window.__setFontScale(${pending.fontScale});
-        })();
-        """.trimIndent()
-    view.post { view.evaluateJavascript(js, null) }
-}
-
-private const val TAG_PENDING_STATE: Int = 0x5A48_4958
-private const val TAG_PAGE_LOADED: Int = 0x5A48_4959
-private const val TAG_LAST_SENT_STATE: Int = 0x5A48_4960
+private const val TAG_TEXT_VIEW: Int = 0x5A48_4D50
+private const val TAG_LAST_RENDERED: Int = 0x5A48_4D51
