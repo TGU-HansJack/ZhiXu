@@ -215,16 +215,10 @@ private fun ContribHeatmapCard(
         )
     }
 
-    val dayLabelWidth = 44.dp
-    val cellSize = 11.dp
-    val gap = 4.dp
+    val cellSize = 10.dp
+    val gap = 2.dp
     val weekPitch = cellSize + gap
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val dayLabelStyle =
-        MaterialTheme.typography.labelSmall.copy(
-            fontSize = 9.sp,
-            lineHeight = 9.sp,
-        )
 
     @Composable
     fun HeatmapHalf(
@@ -258,71 +252,39 @@ private fun ContribHeatmapCard(
                 }
             }
 
-        val scrollState = rememberScrollState()
-        LaunchedEffect(cols) {
-            scrollState.scrollTo(scrollState.maxValue)
-        }
+        val gridWidth = (cellSize * cols) + (gap * (cols - 1))
 
-        Row(verticalAlignment = Alignment.Bottom) {
-            Spacer(Modifier.width(dayLabelWidth))
-            Box(modifier = Modifier.horizontalScroll(scrollState)) {
-                Box(modifier = Modifier.width(weekPitch * cols).height(18.dp)) {
-                    for ((col, label) in monthStarts) {
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = textColor.copy(alpha = 0.75f),
-                            modifier = Modifier.offset(x = weekPitch * col, y = 1.dp),
-                            maxLines = 1,
-                        )
-                    }
+        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.width(gridWidth).height(18.dp)) {
+                for ((col, label) in monthStarts) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = textColor.copy(alpha = 0.75f),
+                        modifier = Modifier.offset(x = weekPitch * col, y = 1.dp),
+                        maxLines = 1,
+                    )
                 }
             }
         }
 
         Spacer(Modifier.height(6.dp))
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(
-                modifier = Modifier.width(dayLabelWidth),
-                verticalArrangement = Arrangement.spacedBy(gap),
+        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Row(
+                modifier = Modifier.width(gridWidth),
+                horizontalArrangement = Arrangement.spacedBy(gap),
             ) {
-                for (row in 0 until rows) {
-                    val label =
-                        when (row) {
-                            1 -> "周一"
-                            3 -> "周三"
-                            5 -> "周五"
-                            else -> ""
-                        }
-                    Box(
-                        modifier = Modifier.height(cellSize).fillMaxWidth(),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        if (label.isNotBlank()) {
-                            Text(
-                                text = label,
-                                style = dayLabelStyle,
-                                color = textColor.copy(alpha = 0.75f),
-                            )
-                        }
-                    }
-                }
-            }
-
-            Box(modifier = Modifier.horizontalScroll(scrollState)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    for (col in 0 until cols) {
-                        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-                            for (row in 0 until rows) {
-                                val idx = col * rows + row
-                                val level = levels.getOrNull(idx)?.coerceIn(0, 4) ?: 0
-                                val date = startSunday.plusDays((col * rows + row).toLong())
-                                if (date.isBefore(rangeStart) || date.isAfter(rangeEnd)) {
-                                    Spacer(Modifier.size(cellSize))
-                                } else {
-                                    ContributionCell(level = level, size = cellSize)
-                                }
+                for (col in 0 until cols) {
+                    Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+                        for (row in 0 until rows) {
+                            val idx = col * rows + row
+                            val level = levels.getOrNull(idx)?.coerceIn(0, 4) ?: 0
+                            val date = startSunday.plusDays((col * rows + row).toLong())
+                            if (date.isBefore(rangeStart) || date.isAfter(rangeEnd)) {
+                                Spacer(Modifier.size(cellSize))
+                            } else {
+                                ContributionCell(level = level, size = cellSize)
                             }
                         }
                     }
@@ -331,13 +293,20 @@ private fun ContribHeatmapCard(
         }
     }
 
+    val (halfStart, halfEnd, monthRange) =
+        if (today.monthValue <= 6) {
+            Triple(yearStart, LocalDate.of(year, 6, 30), 1..6)
+        } else {
+            Triple(LocalDate.of(year, 7, 1), yearEnd, 7..12)
+        }
+
     Surface(
         modifier = modifier.clickable { showCalendar = true },
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface,
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            HeatmapHalf(rangeStart = yearStart, rangeEnd = yearEnd, monthRange = 1..12)
+            HeatmapHalf(rangeStart = halfStart, rangeEnd = halfEnd, monthRange = monthRange)
 
             Spacer(Modifier.height(10.dp))
             Row(
