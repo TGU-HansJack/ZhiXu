@@ -80,6 +80,7 @@ import com.zhixu.android.data.VaultPreferences
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.screens.DocumentListScreen
 import com.zhixu.android.ui.screens.EditorScreen
+import com.zhixu.android.ui.screens.LongImageScreen
 import com.zhixu.android.ui.screens.NewDocScreen
 import com.zhixu.android.ui.screens.SettingsScreen
 import com.zhixu.android.ui.screens.TasksScreen
@@ -308,6 +309,26 @@ fun ZhixuApp() {
                         onBack = { navController.popBackStack() },
                     )
                 }
+                composable("longImage") {
+                    val prev = navController.previousBackStackEntry
+                    val markdown = prev?.savedStateHandle?.get<String>(KEY_LONG_IMAGE_MARKDOWN).orEmpty()
+                    val vaultRootRaw = prev?.savedStateHandle?.get<String>(KEY_LONG_IMAGE_VAULT_ROOT)
+                    val fontScale = prev?.savedStateHandle?.get<Float>(KEY_LONG_IMAGE_FONT_SCALE) ?: 1f
+                    val title = prev?.savedStateHandle?.get<String>(KEY_LONG_IMAGE_TITLE).orEmpty()
+
+                    if (markdown.isBlank()) {
+                        LaunchedEffect(Unit) { navController.popBackStack() }
+                        return@composable
+                    }
+
+                    LongImageScreen(
+                        markdown = markdown,
+                        vaultRootUri = vaultRootRaw?.takeIf { it.isNotBlank() }?.let(Uri::parse),
+                        fontScale = fontScale,
+                        title = title,
+                        onBack = { navController.popBackStack() },
+                    )
+                }
                 composable("newDoc") {
                     val root = vaultRootUri
                     if (root == null) {
@@ -394,6 +415,15 @@ fun ZhixuApp() {
                             val qParam2 = Uri.encode(query ?: "")
                             val lineParam2 = (lineIndex ?: -1).toString()
                             navController.navigate("edit?uri=$uriParam2&q=$qParam2&line=$lineParam2")
+                        },
+                        onGenerateLongImage = { req ->
+                            navController.currentBackStackEntry?.savedStateHandle?.apply {
+                                set(KEY_LONG_IMAGE_MARKDOWN, req.markdown)
+                                set(KEY_LONG_IMAGE_VAULT_ROOT, req.vaultRootUri?.toString().orEmpty())
+                                set(KEY_LONG_IMAGE_FONT_SCALE, req.fontScale)
+                                set(KEY_LONG_IMAGE_TITLE, req.title)
+                            }
+                            navController.navigate("longImage")
                         },
                         initialQuery = Uri.decode(qParam).takeIf { it.isNotBlank() },
                         initialLineIndex = lineParam.takeIf { it >= 0 },
@@ -495,6 +525,11 @@ private fun MainBottomBar(
         }
     }
 }
+
+internal const val KEY_LONG_IMAGE_MARKDOWN: String = "long_image_markdown"
+internal const val KEY_LONG_IMAGE_VAULT_ROOT: String = "long_image_vault_root"
+internal const val KEY_LONG_IMAGE_FONT_SCALE: String = "long_image_font_scale"
+internal const val KEY_LONG_IMAGE_TITLE: String = "long_image_title"
 
 @Composable
 private fun HomePager(

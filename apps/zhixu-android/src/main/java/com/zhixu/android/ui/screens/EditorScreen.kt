@@ -167,6 +167,13 @@ import java.io.FileNotFoundException
 import org.json.JSONObject
 import androidx.documentfile.provider.DocumentFile
 
+data class LongImageRequest(
+    val markdown: String,
+    val vaultRootUri: Uri?,
+    val fontScale: Float,
+    val title: String,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorScreen(
@@ -176,6 +183,7 @@ fun EditorScreen(
     onBack: () -> Unit,
     onDocListMutated: () -> Unit,
     onOpenDoc: (String, String?, Int?) -> Unit,
+    onGenerateLongImage: (LongImageRequest) -> Unit,
     initialQuery: String?,
     initialLineIndex: Int?,
 ) {
@@ -1525,7 +1533,14 @@ fun EditorScreen(
                         icon = Icons.Outlined.Image,
                         onClick = {
                             showOverflowSheet = false
-                            notImplemented()
+                            onGenerateLongImage(
+                                LongImageRequest(
+                                    markdown = content.text,
+                                    vaultRootUri = vaultRootUri,
+                                    fontScale = (editorFontSizeSpValue / 16f).coerceIn(0.75f, 1.75f),
+                                    title = title.ifBlank { originalFileName.removeSuffix(".md") },
+                                ),
+                            )
                         },
                         modifier = Modifier.weight(1f),
                     )
