@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.zhixu.android.R
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.Ionicons
+import com.zhixu.android.sync.VaultAutoSync
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -104,6 +105,16 @@ fun NewDocScreen(
                                         .onFailure {
                                             snackbarHostState.showSnackbar(context.getString(R.string.new_doc_error_write_failed))
                                         }
+
+                                    runCatching {
+                                        VaultAutoSync.maybeUploadDoc(
+                                            context = context,
+                                            repository = repository,
+                                            vaultRootUri = vaultRootUri,
+                                            docUri = created.uri,
+                                            force = true,
+                                        )
+                                    }
 
                                     onCreated(created.uri.toString())
                                 }

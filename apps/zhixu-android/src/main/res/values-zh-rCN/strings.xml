@@ -24,6 +24,7 @@
     <string name="vault_settings_third_party_password">密码</string>
     <string name="vault_settings_third_party_e2ee">加密同步内容（E2EE）</string>
     <string name="vault_settings_third_party_master_password">加密主密码</string>
+    <string name="vault_settings_third_party_desc">进入应用后可在 Vault 设置中配置。</string>
     <string name="vault_settings_third_party_e2ee_warning">开启后所有同步笔记将加密存储，服务器无法查看内容，丢失主密码将无法恢复数据</string>
     <string name="vault_settings_saved">已保存</string>
 
@@ -42,6 +43,7 @@
     <string name="action_delete">删除</string>
     <string name="action_show">显示</string>
     <string name="action_hide">隐藏</string>
+    <string name="action_continue">继续</string>
     <string name="edited_at_fmt">%1$s</string>
     <string name="search_empty">无结果</string>
     <string name="search_task_hit">任务命中</string>
@@ -118,8 +120,10 @@
     <string name="account_device_id">设备 ID</string>
     <string name="account_device_bind">绑定</string>
     <string name="account_device_unbind">解绑</string>
+    <string name="account_device_regenerate">重新生成设备 ID</string>
     <string name="account_device_bound">设备已绑定</string>
     <string name="account_device_unbound">设备已解绑</string>
+    <string name="account_device_regenerated">设备 ID 已重新生成</string>
     <string name="account_device_remote_list">已绑定设备</string>
     <string name="account_device_remote_empty">无</string>
 

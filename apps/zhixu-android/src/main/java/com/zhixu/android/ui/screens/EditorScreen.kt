@@ -144,6 +144,7 @@ import com.zhixu.android.R
 import com.zhixu.android.data.dataStore
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.Ionicons
+import com.zhixu.android.sync.VaultAutoSync
 import com.zhixu.android.plugins.InstalledPlugin
 import com.zhixu.android.plugins.FrontMatterParser
 import com.zhixu.android.plugins.PluginRepository
@@ -336,6 +337,16 @@ fun EditorScreen(
                 }
             }.isSuccess
         if (!ok) return false
+
+        runCatching {
+            VaultAutoSync.maybeUploadDoc(
+                context = context,
+                repository = repository,
+                vaultRootUri = vaultRootUri,
+                docUri = uri,
+                force = false,
+            )
+        }
 
         lastPersistedText = text
         EditorScreenCache.put(
@@ -1760,6 +1771,13 @@ fun EditorScreen(
                         scope.launch {
                             val ok = withContext(Dispatchers.IO) { repository.deleteDoc(latestDocUri) }
                             if (ok) {
+                                runCatching {
+                                    VaultAutoSync.maybeDeleteDoc(
+                                        context = context,
+                                        vaultRootUri = vaultRootUri,
+                                        docUri = latestDocUri,
+                                    )
+                                }
                                 onDocListMutated()
                                 latestOnBack()
                                 Toast.makeText(context, "已删除", Toast.LENGTH_SHORT).show()

@@ -6,6 +6,7 @@ import androidx.documentfile.provider.DocumentFile
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.data.WebDavClient
 import com.zhixu.android.data.WebDavConfig
+import com.zhixu.android.data.vaultRootToDocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -46,7 +47,7 @@ class WebDavSyncEngine(
             repository.exportIndexSqlite(rootUri)
         }
 
-        val root = DocumentFile.fromTreeUri(context, rootUri) ?: error("Invalid vault root Uri")
+        val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
         val logFile = ensureLocalFile(root, ".zhixu/sync/log.jsonl")
         val conflictsFile = ensureLocalFile(root, ".zhixu/sync/conflicts.jsonl")
         val logger = SyncLogger(logFile?.uri, conflictsFile?.uri)
@@ -448,6 +449,17 @@ class WebDavSyncEngine(
     private fun ensureLocalFile(root: DocumentFile, path: String): DocumentFile? {
         val parts = path.split('/').filter { it.isNotBlank() }
         if (parts.isEmpty()) return null
+        if (root.uri.scheme.equals("file", ignoreCase = true)) {
+            val base = root.uri.path?.let { java.io.File(it) } ?: return null
+            var dir = base
+            for (i in 0 until parts.size - 1) {
+                dir = java.io.File(dir, parts[i])
+            }
+            dir.mkdirs()
+            val file = java.io.File(dir, parts.last())
+            runCatching { if (!file.exists()) file.createNewFile() }
+            return DocumentFile.fromFile(file)
+        }
         var dir = root
         for (i in 0 until parts.size - 1) {
             val name = parts[i]

@@ -43,6 +43,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberUpdatedState
@@ -61,11 +63,13 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import com.zhixu.android.R
 import com.zhixu.android.ui.Ionicons
 import com.zhixu.android.data.UiTask
 import com.zhixu.android.data.VaultIndexRepository
 import com.zhixu.android.data.VaultRepository
+import com.zhixu.android.sync.VaultAutoSync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -88,6 +92,7 @@ fun TasksScreen(
     onOpenDoc: (String, String?, Int?) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var tasks by
         remember(vaultRootUri) {
             mutableStateOf(TasksScreenCache.get(vaultRootUri)?.tasks ?: emptyList())
@@ -101,18 +106,24 @@ fun TasksScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val dueFormatter = remember { DateTimeFormatter.ofPattern("MM-dd HH:mm") }
     var lastRefreshAtMs by remember { mutableStateOf(0L) }
+    var isPullRefreshing by remember(vaultRootUri) { mutableStateOf(false) }
 
     suspend fun refresh(force: Boolean) {
         val root = vaultRootUri ?: return
         val now = android.os.SystemClock.uptimeMillis()
         if (!force && now - lastRefreshAtMs in 0..500) return
 
+        isPullRefreshing = true
         val (nextTasks, nextCompleted) =
-            withContext(Dispatchers.IO) {
-                runCatching { repository.ensureIndexBuilt(root) }
-                val t = repository.getAllTasks(status = VaultIndexRepository.TaskStatusFilter.Undone)
-                val c = repository.getRecentCompletedTasks(limit = 50)
-                t to c
+            try {
+                withContext(Dispatchers.IO) {
+                    runCatching { repository.ensureIndexBuilt(root) }
+                    val t = repository.getAllTasks(status = VaultIndexRepository.TaskStatusFilter.Undone)
+                    val c = repository.getRecentCompletedTasks(limit = 50)
+                    t to c
+                }
+            } finally {
+                isPullRefreshing = false
             }
 
         tasks = nextTasks
@@ -141,6 +152,15 @@ fun TasksScreen(
                     snackbarHostState.showSnackbar("添加失败")
                     return@launch
                 }
+
+                runCatching {
+                    VaultAutoSync.maybeUploadInbox(
+                        context = context,
+                        repository = repository,
+                        vaultRootUri = root,
+                        force = true,
+                    )
+                }
                 refresh(force = true)
             }
     }
@@ -161,66 +181,82 @@ fun TasksScreen(
                 .padding(padding)
                 .fillMaxSize(),
         ) {
-            LazyColumn(
+            val pullState = rememberPullToRefreshState()
+            PullToRefreshBox(
+                isRefreshing = isPullRefreshing,
+                onRefresh = { scope.launch { refresh(force = true) } },
+                state = pullState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
-                if (vaultRootUri == null) {
-                    item { Text(stringResource(R.string.settings_vault_not_selected), modifier = Modifier.padding(16.dp)) }
-                    return@LazyColumn
-                }
-
-                item {
-                    TaskComposer(
-                        onSubmit = { draft -> submitTaskDraft(draft) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-
-                item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp) }
-
-                if (tasks.isEmpty()) {
-                    item { Text(stringResource(R.string.tasks_empty), modifier = Modifier.padding(16.dp)) }
-                }
-                items(tasks, key = { it.taskId ?: "${it.docUri}:${it.lineIndex}" }) { task ->
-                    val dueLabel =
-                        remember(task.dueEpochMillis) {
-                            task.dueEpochMillis?.let(::formatDueLabel)
-                        }
-                    TaskRow(
-                        task = task,
-                        dueLabel = dueLabel,
-                        onToggle = {
-                            scope.launch {
-                                repository.toggleTask(task.docUri, task.lineIndex)
-                                refresh(force = true)
-                            }
-                        },
-                        onOpen = { onOpenDoc(task.docUri.toString(), null, task.lineIndex) },
-                        dimmed = false,
-                    )
-                    HorizontalDivider(thickness = 0.5.dp)
-                }
-
-                item {
-                    val count = completed.size
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showCompleted = !showCompleted }
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(if (showCompleted) Ionicons.ChevronDown else Ionicons.ChevronForward),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(stringResource(R.string.tasks_completed))
-                        Text(text = count.toString(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
+                ) {
+                    if (vaultRootUri == null) {
+                        item { Text(stringResource(R.string.settings_vault_not_selected), modifier = Modifier.padding(16.dp)) }
+                        return@LazyColumn
                     }
-                }
+
+                    item {
+                        TaskComposer(
+                            onSubmit = { draft -> submitTaskDraft(draft) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+
+                    item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp) }
+
+                    if (tasks.isEmpty()) {
+                        item { Text(stringResource(R.string.tasks_empty), modifier = Modifier.padding(16.dp)) }
+                    }
+                    items(tasks, key = { it.taskId ?: "${it.docUri}:${it.lineIndex}" }) { task ->
+                        val dueLabel =
+                            remember(task.dueEpochMillis) {
+                                task.dueEpochMillis?.let(::formatDueLabel)
+                            }
+                        TaskRow(
+                            task = task,
+                            dueLabel = dueLabel,
+                            onToggle = {
+                                scope.launch {
+                                    repository.toggleTask(task.docUri, task.lineIndex)
+                                    runCatching {
+                                        VaultAutoSync.maybeUploadDoc(
+                                            context = context,
+                                            repository = repository,
+                                            vaultRootUri = vaultRootUri,
+                                            docUri = task.docUri,
+                                            force = false,
+                                        )
+                                    }
+                                    refresh(force = true)
+                                }
+                            },
+                            onOpen = { onOpenDoc(task.docUri.toString(), null, task.lineIndex) },
+                            dimmed = false,
+                        )
+                        HorizontalDivider(thickness = 0.5.dp)
+                    }
+
+                    item {
+                        val count = completed.size
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showCompleted = !showCompleted }
+                                .padding(vertical = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(if (showCompleted) Ionicons.ChevronDown else Ionicons.ChevronForward),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(stringResource(R.string.tasks_completed))
+                            Text(text = count.toString(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
 
                 if (showCompleted) {
                     items(completed, key = { "c:${it.docUri}:${it.lineIndex}:${it.taskId}" }) { task ->
@@ -230,6 +266,15 @@ fun TasksScreen(
                             onToggle = {
                                 scope.launch {
                                     repository.toggleTask(task.docUri, task.lineIndex)
+                                    runCatching {
+                                        VaultAutoSync.maybeUploadDoc(
+                                            context = context,
+                                            repository = repository,
+                                            vaultRootUri = vaultRootUri,
+                                            docUri = task.docUri,
+                                            force = false,
+                                        )
+                                    }
                                     refresh(force = true)
                                 }
                             },
@@ -242,6 +287,7 @@ fun TasksScreen(
             }
         }
     }
+}
 }
 
 private object TasksScreenCache {

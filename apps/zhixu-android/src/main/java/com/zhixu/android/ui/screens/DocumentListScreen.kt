@@ -45,6 +45,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -127,6 +129,7 @@ fun DocumentListScreen(
     var lastRefreshAtMs by remember { mutableStateOf(0L) }
     var cacheUpdatedAtMs by remember(vaultRootUri) { mutableLongStateOf(initialCacheEntry?.updatedAtMs ?: 0L) }
     var ensuredVaultThisSession by remember(vaultRootUri) { mutableStateOf(false) }
+    var isPullRefreshing by remember(vaultRootUri) { mutableStateOf(false) }
     var showSearchSheet by remember { mutableStateOf(false) }
     var pendingOpenSearch by remember { mutableStateOf(false) }
     var lastSearchToken by remember { mutableLongStateOf(searchRequestToken) }
@@ -168,37 +171,42 @@ fun DocumentListScreen(
         }
         refreshJob?.cancel()
         val needEnsure = !ensuredVaultThisSession && docs.isEmpty() && cacheUpdatedAtMs == 0L
+        isPullRefreshing = true
         refreshJob =
             scope.launch {
-                val now = SystemClock.uptimeMillis()
-                val elapsed = now - lastRefreshAtMs
-                if (elapsed in 0..250) delay(250 - elapsed)
+                try {
+                    val now = SystemClock.uptimeMillis()
+                    val elapsed = now - lastRefreshAtMs
+                    if (elapsed in 0..250) delay(250 - elapsed)
 
-                val (nextDocs, nextSig, didEnsure) =
-                    withContext(Dispatchers.IO) {
-                        if (needEnsure) runCatching { repository.ensureVaultStructure(root) }
-                        val listed = repository.listMarkdownDocsCached(root, force = effectiveForce)
-                        Triple(listed, docListSignature(listed), needEnsure)
+                    val (nextDocs, nextSig, didEnsure) =
+                        withContext(Dispatchers.IO) {
+                            if (needEnsure) runCatching { repository.ensureVaultStructure(root) }
+                            val listed = repository.listMarkdownDocsCached(root, force = effectiveForce)
+                            Triple(listed, docListSignature(listed), needEnsure)
+                        }
+                    if (didEnsure) ensuredVaultThisSession = true
+                    docsDirUri = runCatching { withContext(Dispatchers.IO) { repository.getDocsDirUri(root) } }.getOrNull()
+                    val validatedAtMs = System.currentTimeMillis()
+                    if (nextSig != docsSig) {
+                        docs = nextDocs
+                        docsSig = nextSig
+                        cacheUpdatedAtMs = validatedAtMs
+                        DocumentListCache.put(root, docs = nextDocs, updatedAtMs = validatedAtMs)
+                        runCatching { prefs.setDocListCache(root, nextDocs, updatedAtMs = validatedAtMs) }
+                    } else {
+                        cacheUpdatedAtMs = validatedAtMs
+                        DocumentListCache.put(root, docs = docs, updatedAtMs = validatedAtMs)
+                        runCatching { prefs.touchDocListCacheUpdatedAt(root, updatedAtMs = validatedAtMs) }
                     }
-                if (didEnsure) ensuredVaultThisSession = true
-                docsDirUri = runCatching { withContext(Dispatchers.IO) { repository.getDocsDirUri(root) } }.getOrNull()
-                val validatedAtMs = System.currentTimeMillis()
-                if (nextSig != docsSig) {
-                    docs = nextDocs
-                    docsSig = nextSig
-                    cacheUpdatedAtMs = validatedAtMs
-                    DocumentListCache.put(root, docs = nextDocs, updatedAtMs = validatedAtMs)
-                    runCatching { prefs.setDocListCache(root, nextDocs, updatedAtMs = validatedAtMs) }
-                } else {
-                    cacheUpdatedAtMs = validatedAtMs
-                    DocumentListCache.put(root, docs = docs, updatedAtMs = validatedAtMs)
-                    runCatching { prefs.touchDocListCacheUpdatedAt(root, updatedAtMs = validatedAtMs) }
-                }
 
-                if (reindex) {
-                    withContext(Dispatchers.IO) { runCatching { repository.rebuildIndex(root) } }
+                    if (reindex) {
+                        withContext(Dispatchers.IO) { runCatching { repository.rebuildIndex(root) } }
+                    }
+                    lastRefreshAtMs = SystemClock.uptimeMillis()
+                } finally {
+                    isPullRefreshing = false
                 }
-                lastRefreshAtMs = SystemClock.uptimeMillis()
             }
     }
 
@@ -389,34 +397,42 @@ fun DocumentListScreen(
                 val defaultTitle = stringResource(R.string.new_doc_default_title)
                 val editedAtDash = "—"
                 val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                LazyColumn(
+                val pullState = rememberPullToRefreshState()
+                PullToRefreshBox(
+                    isRefreshing = isPullRefreshing,
+                    onRefresh = { requestRefresh(force = true, reindex = false) },
+                    state = pullState,
                     modifier = Modifier.fillMaxSize(),
-                    state = listState,
-                    contentPadding = PaddingValues(bottom = 12.dp),
                 ) {
-                    if (docs.isEmpty()) {
-                        item {
-                            Text(
-                                text = stringResource(R.string.docs_empty),
-                                modifier = Modifier.padding(16.dp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        state = listState,
+                        contentPadding = PaddingValues(bottom = 12.dp),
+                    ) {
+                        if (docs.isEmpty()) {
+                            item {
+                                Text(
+                                    text = stringResource(R.string.docs_empty),
+                                    modifier = Modifier.padding(16.dp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        itemsIndexed(
+                            items = docs,
+                            key = { _, doc -> doc.uri },
+                            contentType = { _, _ -> "doc" },
+                        ) { index, doc ->
+                            val title = doc.baseName.ifBlank { defaultTitle }
+                            val editedAt = doc.createdAtText.ifBlank { editedAtDash }
+                            DocRow(
+                                title = title,
+                                editedAt = editedAt,
+                                onClick = { onOpenDoc(doc.uri.toString(), null, null) },
+                                showDivider = index != docs.lastIndex,
+                                dividerColor = dividerColor,
                             )
                         }
-                    }
-                    itemsIndexed(
-                        items = docs,
-                        key = { _, doc -> doc.uri },
-                        contentType = { _, _ -> "doc" },
-                    ) { index, doc ->
-                        val title = doc.baseName.ifBlank { defaultTitle }
-                        val editedAt = doc.createdAtText.ifBlank { editedAtDash }
-                        DocRow(
-                            title = title,
-                            editedAt = editedAt,
-                            onClick = { onOpenDoc(doc.uri.toString(), null, null) },
-                            showDivider = index != docs.lastIndex,
-                            dividerColor = dividerColor,
-                        )
                     }
                 }
             }

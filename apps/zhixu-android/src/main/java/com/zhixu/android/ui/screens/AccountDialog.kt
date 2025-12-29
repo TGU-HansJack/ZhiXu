@@ -64,6 +64,7 @@ fun AccountManagementDialog(
     val loggedOutText = stringResource(R.string.account_logged_out)
     val deviceBoundText = stringResource(R.string.account_device_bound)
     val deviceUnboundText = stringResource(R.string.account_device_unbound)
+    val deviceRegeneratedText = stringResource(R.string.account_device_regenerated)
 
     LaunchedEffect(Unit) {
         val ensured = runCatching { accountPrefs.ensureDeviceId() }.getOrNull().orEmpty()
@@ -83,8 +84,16 @@ fun AccountManagementDialog(
             devicesRemote = emptyList()
             return@LaunchedEffect
         }
+        val ensured = runCatching { accountPrefs.ensureDeviceId() }.getOrNull().orEmpty()
+        if (ensured.isNotBlank() && deviceId.isBlank()) deviceId = ensured
+
         val result = SyncServerClient.listDevices(OfficialSync.BASE_URL, state.token)
         devicesRemote = result.value ?: emptyList()
+        if (ensured.isNotBlank() && result.ok && (result.value?.contains(ensured) != true)) {
+            SyncServerClient.bindDevice(OfficialSync.BASE_URL, state.token, ensured)
+            val list = SyncServerClient.listDevices(OfficialSync.BASE_URL, state.token)
+            devicesRemote = list.value ?: devicesRemote
+        }
     }
 
     fun setBusy(on: Boolean) {
@@ -173,6 +182,13 @@ fun AccountManagementDialog(
                                     return@launch
                                 }
                                 accountPrefs.setLoggedIn(token = token, username = me.value.username, userId = me.value.userId)
+                                val id = runCatching { accountPrefs.ensureDeviceId() }.getOrNull().orEmpty()
+                                if (id.isNotBlank()) {
+                                    deviceId = id
+                                    SyncServerClient.bindDevice(OfficialSync.BASE_URL, token, id)
+                                    val list = SyncServerClient.listDevices(OfficialSync.BASE_URL, token)
+                                    devicesRemote = list.value ?: devicesRemote
+                                }
                                 status = loginOkText
                                 setBusy(false)
                             }
@@ -224,13 +240,36 @@ fun AccountManagementDialog(
 
                 TextField(
                     value = deviceId,
-                    onValueChange = { deviceId = it },
-                    enabled = !busy,
+                    onValueChange = {},
+                    enabled = false,
                     label = { Text(stringResource(R.string.account_device_id)) },
                     singleLine = true,
                     colors = transparentTextFieldColors(),
                     modifier = Modifier.fillMaxWidth(),
                 )
+
+                OutlinedButton(
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        scope.launch {
+                            setBusy(true)
+                            val id = runCatching { accountPrefs.regenerateDeviceId() }.getOrNull().orEmpty()
+                            if (id.isNotBlank()) {
+                                deviceId = id
+                                if (state.isLoggedIn) {
+                                    val r = SyncServerClient.bindDevice(OfficialSync.BASE_URL, state.token, id)
+                                    if (r.ok) {
+                                        val list = SyncServerClient.listDevices(OfficialSync.BASE_URL, state.token)
+                                        devicesRemote = list.value ?: devicesRemote
+                                    }
+                                }
+                            }
+                            status = deviceRegeneratedText
+                            setBusy(false)
+                        }
+                    },
+                ) { Text(stringResource(R.string.account_device_regenerate)) }
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(

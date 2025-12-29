@@ -62,6 +62,8 @@ import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.data.VaultStorageLocation
 import com.zhixu.android.data.VaultSyncConfig
 import com.zhixu.android.data.VaultSyncPreferences
+import com.zhixu.android.data.appManagedVaultRootUri
+import com.zhixu.android.data.vaultRootToDocumentFile
 import com.zhixu.android.sync.OfficialSync
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -199,7 +201,15 @@ fun VaultSettingsScreen(
                     selected = location,
                     onSelected = { next ->
                         location = next
-                        scope.launch { syncPrefs.setLocation(next) }
+                        scope.launch {
+                            syncPrefs.setLocation(next)
+                            if (next != VaultStorageLocation.LOCAL) {
+                                val uri = appManagedVaultRootUri(context.applicationContext)
+                                runCatching { repository.ensureVaultStructure(uri) }
+                                vaultPrefs.setVaultRootUri(uri.toString())
+                                status = context.getString(R.string.vault_settings_saved)
+                            }
+                        }
                     },
                 )
             }
@@ -216,7 +226,7 @@ fun VaultSettingsScreen(
                     }
                     item {
                         val root = vaultRootUri
-                        val folderName = root?.let { DocumentFile.fromTreeUri(context, it)?.name }.orEmpty()
+                        val folderName = root?.let { vaultRootToDocumentFile(context, it)?.name }.orEmpty()
                         val pathText =
                             when {
                                 root == null -> stringResource(R.string.settings_vault_not_selected)

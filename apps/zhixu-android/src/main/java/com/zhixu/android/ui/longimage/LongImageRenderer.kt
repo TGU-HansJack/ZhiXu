@@ -257,7 +257,7 @@ private fun resolveVaultPath(
 ): Uri? {
     val cleaned = vaultRelativePath.trim().trimStart('/')
     if (cleaned.isBlank()) return null
-    val root = DocumentFile.fromTreeUri(context, vaultRootUri) ?: return null
+    val root = com.zhixu.android.data.vaultRootToDocumentFile(context, vaultRootUri) ?: return null
     var current: DocumentFile = root
     val normalized =
         buildList {

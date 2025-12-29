@@ -74,7 +74,7 @@ class VaultRepository(
             val cached = synchronized(docListCache) { docListCache[key]?.docsDirUri }
             if (cached != null) return@withLock cached
 
-            val root = DocumentFile.fromTreeUri(context, rootUri) ?: return@withLock null
+            val root = vaultRootToDocumentFile(context, rootUri) ?: return@withLock null
             val docsDir = findChild(root, "docs") ?: return@withLock null
             val uri = docsDir.uri
             synchronized(docListCache) {
@@ -112,7 +112,7 @@ class VaultRepository(
             val listed = listMarkdownDocs(rootUri)
             val docsDirUri =
                 runCatching {
-                    val root = DocumentFile.fromTreeUri(context, rootUri) ?: return@runCatching null
+                    val root = vaultRootToDocumentFile(context, rootUri) ?: return@runCatching null
                     findChild(root, "docs")?.uri
                 }.getOrNull()
 
@@ -137,6 +137,10 @@ class VaultRepository(
 
     suspend fun getDocumentLastModified(uri: Uri): Long =
         withContext(Dispatchers.IO) {
+            if (uri.scheme.equals("file", ignoreCase = true)) {
+                val path = uri.path ?: return@withContext 0L
+                return@withContext runCatching { File(path).lastModified() }.getOrDefault(0L)
+            }
             runCatching {
                 context.contentResolver.query(
                     uri,
@@ -165,7 +169,7 @@ class VaultRepository(
     }
 
     suspend fun ensureVaultStructure(rootUri: Uri) = withContext(Dispatchers.IO) {
-        val root = DocumentFile.fromTreeUri(context, rootUri) ?: error("Invalid vault root Uri")
+        val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
         val docs = findChild(root, "docs") ?: root.createDirectory("docs")
         val attachments = findChild(root, "attachments") ?: root.createDirectory("attachments")
         val zhixu = findChild(root, ".zhixu") ?: root.createDirectory(".zhixu")
@@ -174,19 +178,14 @@ class VaultRepository(
         val pluginsDir = zhixu?.let { findChild(it, "plugins") ?: it.createDirectory("plugins") }
         val pluginState =
             pluginsDir?.let {
-                findChild(it, "state.json") ?: it.createFile("application/json", "state.json")
+                findChild(it, "state.json") ?: createFileExact(it, "application/json", "state.json")
             }
-        val settings = zhixu?.let { findChild(it, "settings.json") ?: it.createFile("application/json", "settings.json") }
+        val settings = zhixu?.let { findChild(it, "settings.json") ?: createFileExact(it, "application/json", "settings.json") }
         if (settings != null && settings.length() == 0L) {
             writeText(settings.uri, "{}\n")
         }
         if (pluginState != null && pluginState.length() == 0L) {
             writeText(pluginState.uri, "{\n  \"enabled\": []\n}\n")
-        }
-
-        if (docs != null && findChild(docs, "Inbox.md") == null) {
-            val inbox = createMarkdownFile(docs, "Inbox.md")
-            if (inbox != null) writeText(inbox.uri, "# Inbox\n\n- [ ] First task\n")
         }
 
         // Touch to keep variables used (and validate creation).
@@ -200,7 +199,7 @@ class VaultRepository(
     }
 
     suspend fun computeVaultTotalSizeBytes(rootUri: Uri): Long = withContext(Dispatchers.IO) {
-        val root = DocumentFile.fromTreeUri(context, rootUri) ?: return@withContext 0L
+        val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext 0L
 
         var total = 0L
         val stack = ArrayDeque<DocumentFile>()
@@ -225,7 +224,7 @@ class VaultRepository(
     }
 
     suspend fun listMarkdownDocs(rootUri: Uri): List<UiDoc> = withContext(Dispatchers.IO) {
-        val root = DocumentFile.fromTreeUri(context, rootUri) ?: return@withContext emptyList()
+        val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext emptyList()
         val docsDir = findChild(root, "docs") ?: return@withContext emptyList()
         val docs =
             docsDir.listFiles()
@@ -376,7 +375,7 @@ class VaultRepository(
         val trimmed = title.trim()
         if (trimmed.isBlank()) return@withContext false
         ensureVaultStructure(rootUri)
-        val root = DocumentFile.fromTreeUri(context, rootUri) ?: return@withContext false
+        val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext false
         val docs = findChild(root, "docs") ?: return@withContext false
         val inbox = findChild(docs, "Inbox.md") ?: createMarkdownFile(docs, "Inbox.md") ?: return@withContext false
 
@@ -416,7 +415,7 @@ class VaultRepository(
     }
 
     suspend fun createDoc(rootUri: Uri, fileName: String): UiDoc = withContext(Dispatchers.IO) {
-        val root = DocumentFile.fromTreeUri(context, rootUri) ?: error("Invalid vault root Uri")
+        val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
         val docsDir = findChild(root, "docs") ?: root.createDirectory("docs") ?: error("Missing docs directory")
         val baseName = sanitizeFileName(fileName).removeSuffix(".md").trim().ifBlank { "Untitled" }
         val createdName = createUniqueMarkdownName(docsDir, baseName)
@@ -458,6 +457,15 @@ class VaultRepository(
     }
 
     suspend fun deleteDoc(docUri: Uri): Boolean = withContext(Dispatchers.IO) {
+        if (docUri.scheme.equals("file", ignoreCase = true)) {
+            val path = docUri.path ?: return@withContext false
+            val ok = runCatching { File(path).delete() }.getOrDefault(false)
+            if (ok) {
+                indexRepository.deleteDocument(docUri)
+            }
+            return@withContext ok
+        }
+
         // DocumentFile.fromSingleUri().delete() can be unreliable across providers; DocumentsContract is more direct.
         val ok = runCatching { DocumentsContract.deleteDocument(context.contentResolver, docUri) }.getOrDefault(false)
         if (ok) {
@@ -467,6 +475,10 @@ class VaultRepository(
     }
 
     suspend fun readText(uri: Uri): String = withContext(Dispatchers.IO) {
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            val path = uri.path ?: return@withContext ""
+            return@withContext runCatching { File(path).readText(Charsets.UTF_8) }.getOrDefault("")
+        }
         val resolver: ContentResolver = context.contentResolver
         resolver.openInputStream(uri)?.use { input ->
             input.readBytes().toString(StandardCharsets.UTF_8)
@@ -474,11 +486,21 @@ class VaultRepository(
     }
 
     suspend fun readBytes(uri: Uri): ByteArray? = withContext(Dispatchers.IO) {
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            val path = uri.path ?: return@withContext null
+            return@withContext runCatching { File(path).readBytes() }.getOrNull()
+        }
         val resolver: ContentResolver = context.contentResolver
         resolver.openInputStream(uri)?.use { it.readBytes() }
     }
 
     suspend fun writeText(uri: Uri, text: String) = withContext(Dispatchers.IO) {
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            val path = uri.path ?: error("Invalid file uri: $uri")
+            File(path).parentFile?.mkdirs()
+            File(path).writeText(text, Charsets.UTF_8)
+            return@withContext
+        }
         val resolver: ContentResolver = context.contentResolver
         resolver.openOutputStream(uri, "wt")?.use { output ->
             output.write(text.toByteArray(StandardCharsets.UTF_8))
@@ -501,6 +523,12 @@ class VaultRepository(
     }
 
     suspend fun appendText(uri: Uri, text: String) = withContext(Dispatchers.IO) {
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            val path = uri.path ?: error("Invalid file uri: $uri")
+            File(path).parentFile?.mkdirs()
+            File(path).appendText(text, Charsets.UTF_8)
+            return@withContext
+        }
         val bytes = text.toByteArray(StandardCharsets.UTF_8)
         val resolver: ContentResolver = context.contentResolver
         val appended =
@@ -610,6 +638,12 @@ class VaultRepository(
         runCatching { indexRepository.getTasksCreatedOn(day = day) }.getOrElse { emptyList() }
 
     suspend fun writeBytes(uri: Uri, bytes: ByteArray) = withContext(Dispatchers.IO) {
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            val path = uri.path ?: error("Invalid file uri: $uri")
+            File(path).parentFile?.mkdirs()
+            File(path).writeBytes(bytes)
+            return@withContext
+        }
         val resolver: ContentResolver = context.contentResolver
         resolver.openOutputStream(uri, "wt")?.use { output ->
             output.write(bytes)
@@ -659,9 +693,9 @@ class VaultRepository(
 
     suspend fun exportIndexSqlite(rootUri: Uri) = withContext(Dispatchers.IO) {
         runCatching {
-            val root = DocumentFile.fromTreeUri(context, rootUri) ?: return@runCatching
+            val root = vaultRootToDocumentFile(context, rootUri) ?: return@runCatching
             val zhixu = findChild(root, ".zhixu") ?: root.createDirectory(".zhixu") ?: return@runCatching
-            val indexFile = findChild(zhixu, "index.sqlite") ?: zhixu.createFile("application/x-sqlite3", "index.sqlite")
+            val indexFile = findChild(zhixu, "index.sqlite") ?: createFileExact(zhixu, "application/x-sqlite3", "index.sqlite")
             val dbFile: File = context.getDatabasePath("vault_index.db")
             if (indexFile != null && dbFile.exists()) {
                 writeBytes(indexFile.uri, dbFile.readBytes())
@@ -731,7 +765,25 @@ class VaultRepository(
 
     private fun createMarkdownFile(parent: DocumentFile, displayName: String): DocumentFile? {
         val mdName = displayName.trim().let { if (it.endsWith(".md", ignoreCase = true)) it else "$it.md" }
+        if (parent.uri.scheme.equals("file", ignoreCase = true)) {
+            val dir = parent.uri.path?.let(::File) ?: return null
+            if (!dir.exists()) dir.mkdirs()
+            val file = File(dir, mdName)
+            runCatching { if (!file.exists()) file.createNewFile() }
+            return DocumentFile.fromFile(file)
+        }
         return parent.createFile("text/markdown", mdName) ?: parent.createFile("text/plain", mdName)
+    }
+
+    private fun createFileExact(parent: DocumentFile, mimeType: String, displayName: String): DocumentFile? {
+        if (parent.uri.scheme.equals("file", ignoreCase = true)) {
+            val dir = parent.uri.path?.let(::File) ?: return null
+            if (!dir.exists()) dir.mkdirs()
+            val file = File(dir, displayName)
+            runCatching { if (!file.exists()) file.createNewFile() }
+            return DocumentFile.fromFile(file)
+        }
+        return parent.createFile(mimeType, displayName)
     }
 }
 

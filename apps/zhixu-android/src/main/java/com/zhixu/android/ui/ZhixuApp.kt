@@ -74,8 +74,11 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.zhixu.android.R
+import com.zhixu.android.data.VaultStorageLocation
 import com.zhixu.android.data.VaultPreferences
 import com.zhixu.android.data.VaultRepository
+import com.zhixu.android.data.VaultSyncPreferences
+import com.zhixu.android.data.appManagedVaultRootUri
 import com.zhixu.android.ui.screens.DocumentListScreen
 import com.zhixu.android.ui.screens.EditorScreen
 import com.zhixu.android.ui.screens.LongImageScreen
@@ -110,6 +113,7 @@ fun ZhixuApp() {
     }
 
     val prefs = remember(appContext) { VaultPreferences(appContext) }
+    val vaultSyncPrefs = remember(appContext) { VaultSyncPreferences(appContext) }
     val repository = remember(appContext) { VaultRepository(appContext) }
     val scope = rememberCoroutineScope()
 
@@ -260,13 +264,32 @@ fun ZhixuApp() {
             ) {
                 composable("vault") {
                     VaultGateScreen(
-                        onVaultSelected = { uri ->
+                        onSelectLocalFolder = { uri ->
+                            repository.ensureVaultStructure(uri)
+                            vaultSyncPrefs.setLocation(VaultStorageLocation.LOCAL)
                             prefs.setVaultRootUri(uri.toString())
                             navController.navigate("home") {
                                 popUpTo("vault") { inclusive = true }
                             }
                         },
-                        onEnsureVault = { uri -> repository.ensureVaultStructure(uri) },
+                        onSelectOfficialServer = {
+                            val uri = appManagedVaultRootUri(appContext)
+                            repository.ensureVaultStructure(uri)
+                            vaultSyncPrefs.setLocation(VaultStorageLocation.OFFICIAL_SERVER)
+                            prefs.setVaultRootUri(uri.toString())
+                            navController.navigate("home") {
+                                popUpTo("vault") { inclusive = true }
+                            }
+                        },
+                        onSelectThirdPartyService = {
+                            val uri = appManagedVaultRootUri(appContext)
+                            repository.ensureVaultStructure(uri)
+                            vaultSyncPrefs.setLocation(VaultStorageLocation.THIRD_PARTY_SERVICE)
+                            prefs.setVaultRootUri(uri.toString())
+                            navController.navigate("home") {
+                                popUpTo("vault") { inclusive = true }
+                            }
+                        },
                     )
                 }
                 composable("home") {

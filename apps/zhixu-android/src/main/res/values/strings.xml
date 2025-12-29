@@ -27,6 +27,7 @@
     <string name="vault_settings_third_party_password">Password</string>
     <string name="vault_settings_third_party_e2ee">Encrypt content sync (E2EE)</string>
     <string name="vault_settings_third_party_master_password">Encryption master password</string>
+    <string name="vault_settings_third_party_desc">Configure in Vault settings after entering the app.</string>
     <string name="vault_settings_third_party_e2ee_warning">Once enabled, all synced notes will be stored encrypted and the server cannot read content. If you lose the master password, data cannot be recovered.</string>
     <string name="vault_settings_saved">Saved</string>
 
@@ -45,6 +46,7 @@
     <string name="action_delete">Delete</string>
     <string name="action_show">Show</string>
     <string name="action_hide">Hide</string>
+    <string name="action_continue">Continue</string>
     <string name="edited_at_fmt">%1$s</string>
     <string name="search_empty">No results</string>
     <string name="search_task_hit">Task match</string>
@@ -139,8 +141,10 @@
     <string name="account_device_id">Device ID</string>
     <string name="account_device_bind">Bind</string>
     <string name="account_device_unbind">Unbind</string>
+    <string name="account_device_regenerate">Regenerate device ID</string>
     <string name="account_device_bound">Device bound</string>
     <string name="account_device_unbound">Device unbound</string>
+    <string name="account_device_regenerated">Device ID regenerated</string>
     <string name="account_device_remote_list">Bound devices</string>
     <string name="account_device_remote_empty">None</string>
 

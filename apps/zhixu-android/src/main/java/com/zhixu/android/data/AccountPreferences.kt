@@ -1,6 +1,7 @@
 package com.zhixu.android.data
 
 import android.content.Context
+import android.provider.Settings
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -9,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import java.security.MessageDigest
 import java.util.UUID
 
 data class AccountState(
@@ -42,7 +44,14 @@ class AccountPreferences(
         withContext(Dispatchers.IO) {
             val current = state.first().deviceId
             if (current.isNotBlank()) return@withContext current
-            val id = "android-" + UUID.randomUUID().toString()
+            val id = generateDeviceId()
+            context.dataStore.edit { it[deviceIdKey] = id }
+            id
+        }
+
+    suspend fun regenerateDeviceId(): String =
+        withContext(Dispatchers.IO) {
+            val id = generateDeviceId()
             context.dataStore.edit { it[deviceIdKey] = id }
             id
         }
@@ -69,5 +78,19 @@ class AccountPreferences(
             prefs.remove(usernameKey)
             prefs.remove(userIdKey)
         }
+    }
+
+    private fun generateDeviceId(): String {
+        val androidId =
+            runCatching { Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) }
+                .getOrNull()
+                .orEmpty()
+        val rand = UUID.randomUUID().toString()
+        val raw = "android|${context.packageName}|$androidId|$rand"
+        val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
+        val hex = buildString(digest.size * 2) {
+            for (b in digest) append(((b.toInt() and 0xff) + 0x100).toString(16).substring(1))
+        }
+        return "android-$hex"
     }
 }
