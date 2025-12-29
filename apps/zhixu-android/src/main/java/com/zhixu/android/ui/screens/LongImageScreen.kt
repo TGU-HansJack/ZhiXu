@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -68,6 +69,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.core.content.FileProvider
 import com.zhixu.android.R
 import com.zhixu.android.data.SyncPreferences
+import com.zhixu.android.ui.Ionicons
 import com.zhixu.android.data.WebDavConfig
 import com.zhixu.android.ui.longimage.LongImageRenderInput
 import com.zhixu.android.ui.longimage.renderLongImage
@@ -238,7 +240,7 @@ fun LongImageScreen(
                     },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Icon(imageVector = Icons.Outlined.Close, contentDescription = null)
+                            Icon(painter = painterResource(Ionicons.Close), contentDescription = null)
                         }
                     },
                 )
@@ -362,7 +364,7 @@ fun LongImageScreen(
                                             ) {
                                                 Box(contentAlignment = Alignment.Center) {
                                                     Icon(
-                                                        imageVector = Icons.Outlined.Check,
+                                                        painter = painterResource(Ionicons.Checkmark),
                                                         contentDescription = null,
                                                         tint = Color.White,
                                                         modifier = Modifier.size(12.dp),

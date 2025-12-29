@@ -17,13 +17,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowForward
-import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.Today
-import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -58,6 +54,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardActions
@@ -65,6 +62,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.zhixu.android.R
+import com.zhixu.android.ui.Ionicons
 import com.zhixu.android.data.UiTask
 import com.zhixu.android.data.VaultIndexRepository
 import com.zhixu.android.data.VaultRepository
@@ -215,7 +213,7 @@ fun TasksScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Icon(
-                            imageVector = if (showCompleted) Icons.Outlined.ExpandMore else Icons.Outlined.ChevronRight,
+                            painter = painterResource(if (showCompleted) Ionicons.ChevronDown else Ionicons.ChevronForward),
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -763,7 +761,7 @@ private fun TaskRow(
         leadingContent = {
             IconButton(onClick = onToggle) {
                 Icon(
-                    imageVector = if (task.checked) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+                    painter = painterResource(if (task.checked) Ionicons.CheckmarkCircle else Ionicons.RadioOff),
                     contentDescription = null,
                     tint = if (task.checked) metaColor else MaterialTheme.colorScheme.onSurface,
                 )

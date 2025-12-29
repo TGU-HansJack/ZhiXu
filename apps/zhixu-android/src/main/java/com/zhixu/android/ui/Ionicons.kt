@@ -1,0 +1,32 @@
+package com.zhixu.android.ui
+
+import androidx.annotation.DrawableRes
+import com.zhixu.android.R
+
+object Ionicons {
+    @DrawableRes val Vault: Int = R.drawable.ic_ion_folder_open_outline
+    @DrawableRes val Home: Int = R.drawable.ic_ion_home_outline
+    @DrawableRes val Add: Int = R.drawable.ic_ion_add_outline
+    @DrawableRes val User: Int = R.drawable.ic_ion_person_outline
+    @DrawableRes val Sync: Int = R.drawable.ic_ion_cloud_upload_outline
+    @DrawableRes val Workshop: Int = R.drawable.ic_ion_extension_puzzle_outline
+    @DrawableRes val Search: Int = R.drawable.ic_ion_search_outline
+    @DrawableRes val Settings: Int = R.drawable.ic_ion_cog_outline
+
+    @DrawableRes val ArrowBack: Int = R.drawable.ic_ion_arrow_back_outline
+    @DrawableRes val ArrowForward: Int = R.drawable.ic_ion_arrow_forward_outline
+    @DrawableRes val ChevronBack: Int = R.drawable.ic_ion_chevron_back_outline
+    @DrawableRes val ChevronForward: Int = R.drawable.ic_ion_chevron_forward_outline
+    @DrawableRes val Menu: Int = R.drawable.ic_ion_menu_outline
+    @DrawableRes val Close: Int = R.drawable.ic_ion_close_outline
+    @DrawableRes val Checkmark: Int = R.drawable.ic_ion_checkmark_outline
+    @DrawableRes val CheckmarkCircle: Int = R.drawable.ic_ion_checkmark_circle_outline
+    @DrawableRes val RadioOff: Int = R.drawable.ic_ion_radio_button_off_outline
+    @DrawableRes val ChevronDown: Int = R.drawable.ic_ion_chevron_down_outline
+
+    @DrawableRes val DocumentText: Int = R.drawable.ic_ion_document_text_outline
+    @DrawableRes val EllipsisHorizontal: Int = R.drawable.ic_ion_ellipsis_horizontal_outline
+
+    @DrawableRes val HomeFilled: Int = R.drawable.ic_ion_home_filled
+    @DrawableRes val UserFilled: Int = R.drawable.ic_ion_person_filled
+}

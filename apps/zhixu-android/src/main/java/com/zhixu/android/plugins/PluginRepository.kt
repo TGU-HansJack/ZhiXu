@@ -182,6 +182,17 @@ class PluginRepository(
             true
         }
 
+    suspend fun readPluginFileText(rootUri: Uri, pluginId: String, fileName: String): String? =
+        withContext(Dispatchers.IO) {
+            val pluginsDir = ensurePluginsDir(rootUri) ?: return@withContext null
+            val pluginDir = pluginsDir.findFile(pluginId) ?: return@withContext null
+            val file = pluginDir.findFile(fileName)?.takeIf { it.isFile } ?: return@withContext null
+            readText(file.uri)
+        }
+
+    suspend fun readPluginReadme(rootUri: Uri, pluginId: String): String? =
+        readPluginFileText(rootUri, pluginId, "README.md") ?: readPluginFileText(rootUri, pluginId, "readme.md")
+
     private fun ensurePluginsDir(rootUri: Uri): DocumentFile? {
         val root = DocumentFile.fromTreeUri(context, rootUri) ?: return null
         val zhixu = root.findFile(".zhixu") ?: root.createDirectory(".zhixu") ?: return null

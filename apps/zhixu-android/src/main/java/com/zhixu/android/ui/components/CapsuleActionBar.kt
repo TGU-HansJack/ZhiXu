@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -21,7 +19,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import com.zhixu.android.ui.Ionicons
 
 object CapsuleActionBarDefaults {
     val Height = 52.dp
@@ -50,12 +50,12 @@ fun CapsuleActionBar(
         ) {
             if (onSearch != null) {
                 IconButton(onClick = onSearch, modifier = Modifier.size(CapsuleActionBarDefaults.ButtonSize)) {
-                    Icon(imageVector = Icons.Outlined.Search, contentDescription = null)
+                    Icon(painter = painterResource(Ionicons.Search), contentDescription = null)
                 }
                 CapsuleDivider()
             }
             IconButton(onClick = onAdd, modifier = Modifier.size(CapsuleActionBarDefaults.ButtonSize)) {
-                Icon(imageVector = Icons.Outlined.Add, contentDescription = null)
+                Icon(painter = painterResource(Ionicons.Add), contentDescription = null)
             }
             CapsuleDivider()
             IconButton(onClick = onAi, modifier = Modifier.size(CapsuleActionBarDefaults.ButtonSize)) {

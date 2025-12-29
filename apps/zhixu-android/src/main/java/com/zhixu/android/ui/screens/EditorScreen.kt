@@ -66,7 +66,6 @@ import androidx.compose.material.icons.outlined.FormatQuote
 import androidx.compose.material.icons.outlined.HorizontalRule
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Link
-import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
@@ -133,6 +132,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -143,6 +143,7 @@ import kotlin.math.abs
 import com.zhixu.android.R
 import com.zhixu.android.data.dataStore
 import com.zhixu.android.data.VaultRepository
+import com.zhixu.android.ui.Ionicons
 import com.zhixu.android.plugins.InstalledPlugin
 import com.zhixu.android.plugins.FrontMatterParser
 import com.zhixu.android.plugins.PluginRepository
@@ -1198,7 +1199,10 @@ fun EditorScreen(
                             navigationIcon = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                        Icon(imageVector = Icons.Outlined.Menu, contentDescription = stringResource(R.string.action_open_drawer))
+                                        Icon(
+                                            painter = painterResource(Ionicons.Menu),
+                                            contentDescription = stringResource(R.string.action_open_drawer),
+                                        )
                                     }
                                     IconButton(onClick = { requestExit() }, enabled = !isExitSaveInProgress) {
                                         Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.action_back))
@@ -1213,7 +1217,7 @@ fun EditorScreen(
                                     )
                                 }
                                 IconButton(onClick = { showOverflowSheet = true }) {
-                                    Icon(imageVector = Icons.Outlined.MoreHoriz, contentDescription = "More")
+                                    Icon(painter = painterResource(Ionicons.EllipsisHorizontal), contentDescription = "More")
                                 }
                             },
                         )
@@ -2227,7 +2231,7 @@ private fun EditorBottomToolbar(
             EditorToolDivider()
 
             Box {
-                EditorToolIcon(onClick = { showMore = true }) { Icon(Icons.Outlined.MoreHoriz, null) }
+                EditorToolIcon(onClick = { showMore = true }) { Icon(painter = painterResource(Ionicons.EllipsisHorizontal), contentDescription = null) }
                 DropdownMenu(
                     expanded = showMore,
                     onDismissRequest = { showMore = false },

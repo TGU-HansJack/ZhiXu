@@ -123,6 +123,7 @@
     <string name="bundled_typecho_desc">通过 XML-RPC 将笔记发布到 Typecho（占位）。</string>
     <string name="workshop_search_hint">搜索插件名称或命令…</string>
     <string name="workshop_view_details">查看详情 &gt;</string>
+    <string name="workshop_plugin_no_readme">该插件没有文档</string>
 
     <!-- Plugin settings -->
     <string name="plugin_typecho_settings_title">Typecho 发布设置</string>

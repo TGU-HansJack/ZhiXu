@@ -32,7 +32,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -74,6 +73,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -84,6 +84,7 @@ import com.zhixu.android.data.TaskSearchResult
 import com.zhixu.android.data.UiDoc
 import com.zhixu.android.data.VaultPreferences
 import com.zhixu.android.data.VaultRepository
+import com.zhixu.android.ui.Ionicons
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Dispatchers
@@ -503,7 +504,7 @@ private fun DocumentSearchSheet(
                             onValueChange = onQueryChange,
                             singleLine = true,
                             placeholder = { Text(stringResource(R.string.action_search)) },
-                            leadingIcon = { Icon(imageVector = Icons.Outlined.Search, contentDescription = null) },
+                            leadingIcon = { Icon(painter = painterResource(com.zhixu.android.ui.Ionicons.Search), contentDescription = null) },
                             modifier = Modifier.weight(1f).focusRequester(focusRequester),
                             shape = MaterialTheme.shapes.extraLarge,
                             colors =
@@ -704,7 +705,7 @@ private fun DocRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = Icons.Outlined.Description,
+            painter = painterResource(Ionicons.DocumentText),
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )

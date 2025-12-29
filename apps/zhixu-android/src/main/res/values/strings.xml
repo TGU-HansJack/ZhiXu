@@ -145,6 +145,7 @@
     <string name="bundled_typecho_desc">Publish notes to a Typecho blog via XML-RPC (placeholder).</string>
     <string name="workshop_search_hint">Search plugins…</string>
     <string name="workshop_view_details">View details &gt;</string>
+    <string name="workshop_plugin_no_readme">This plugin has no documentation.</string>
 
     <!-- Plugin settings -->
     <string name="plugin_typecho_settings_title">Typecho Publisher Settings</string>

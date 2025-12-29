@@ -20,8 +20,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ChevronLeft
-import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
@@ -50,6 +48,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -57,6 +56,7 @@ import androidx.compose.ui.unit.toSize
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import com.zhixu.android.data.dataStore
+import com.zhixu.android.ui.Ionicons
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -697,7 +697,7 @@ fun DraggableRadialFab(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            imageVector = if (dockEdge == DockEdge.Left) Icons.Outlined.ChevronRight else Icons.Outlined.ChevronLeft,
+                            painter = painterResource(if (dockEdge == DockEdge.Left) Ionicons.ChevronForward else Ionicons.ChevronBack),
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.95f),
                             modifier = Modifier.size(22.dp),

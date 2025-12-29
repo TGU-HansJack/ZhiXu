@@ -20,45 +20,30 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.CloudUpload
-import androidx.compose.material.icons.outlined.Extension
-import androidx.compose.material.icons.outlined.Menu
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.zhixu.android.R
-import com.zhixu.android.data.SyncPreferences
 import com.zhixu.android.data.TaskStats
-import com.zhixu.android.data.WebDavClient
-import com.zhixu.android.data.WebDavConfig
 import com.zhixu.android.data.VaultRepository
-import com.zhixu.android.sync.WebDavSyncEngine
-import kotlinx.coroutines.launch
+import com.zhixu.android.ui.Ionicons
 import java.time.LocalDate
 
 @Composable
@@ -68,40 +53,11 @@ fun SettingsScreen(
     repository: VaultRepository,
     onChangeVault: () -> Unit,
     onOpenWorkshop: () -> Unit,
+    onOpenSync: () -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val syncPrefs = remember(context) { SyncPreferences(context) }
-    val savedConfig by syncPrefs.webDavConfig.collectAsState(
-        initial = WebDavConfig(
-            enabled = false,
-            baseUrl = "",
-            username = "",
-            password = "",
-            remoteRoot = "/",
-            includeIndexSqlite = false,
-        ),
-    )
-
-    var enabled by remember { mutableStateOf(savedConfig.enabled) }
-    var baseUrl by remember { mutableStateOf(savedConfig.baseUrl) }
-    var username by remember { mutableStateOf(savedConfig.username) }
-    var password by remember { mutableStateOf(savedConfig.password) }
-    var remoteRoot by remember { mutableStateOf(savedConfig.remoteRoot) }
-    var includeIndexSqlite by remember { mutableStateOf(savedConfig.includeIndexSqlite) }
-    var testStatus by remember { mutableStateOf<String?>(null) }
-    var showPassword by remember { mutableStateOf(false) }
     var docCount by remember { mutableStateOf<Int?>(null) }
     var taskStats by remember { mutableStateOf<TaskStats?>(null) }
-
-    LaunchedEffect(savedConfig) {
-        enabled = savedConfig.enabled
-        baseUrl = savedConfig.baseUrl
-        username = savedConfig.username
-        password = savedConfig.password
-        remoteRoot = savedConfig.remoteRoot
-        includeIndexSqlite = savedConfig.includeIndexSqlite
-    }
 
     LaunchedEffect(vaultRootUri) {
         if (vaultRootUri == null) {
@@ -177,16 +133,15 @@ fun SettingsScreen(
 
         item {
             SettingsNavRow(
-                icon = Icons.Outlined.Menu,
+                iconRes = Ionicons.Vault,
                 title = stringResource(R.string.settings_section_vault),
                 subtitle = vaultRootUri?.toString() ?: stringResource(R.string.settings_vault_not_selected),
                 onClick = onChangeVault,
             )
             HorizontalDivider(color = dividerColor)
             SettingsNavRow(
-                icon = Icons.Outlined.Extension,
+                iconRes = Ionicons.Workshop,
                 title = stringResource(R.string.settings_section_workshop),
-                subtitle = stringResource(R.string.settings_workshop_desc),
                 enabled = vaultRootUri != null,
                 onClick = onOpenWorkshop,
             )
@@ -194,214 +149,21 @@ fun SettingsScreen(
         }
 
         item {
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.settings_section_sync)) },
-                supportingContent = { Text(stringResource(R.string.settings_sync_placeholder)) },
-                leadingContent = { Icon(imageVector = Icons.Outlined.CloudUpload, contentDescription = null) },
-            )
-            HorizontalDivider(color = dividerColor)
-            RowSwitch(
-                title = stringResource(R.string.webdav_enable),
-                checked = enabled,
-                onCheckedChange = { enabled = it },
+            SettingsNavRow(
+                iconRes = Ionicons.Sync,
+                title = stringResource(R.string.settings_section_sync),
+                enabled = vaultRootUri != null,
+                onClick = onOpenSync,
             )
             HorizontalDivider(color = dividerColor)
         }
 
-        if (enabled) {
-            item {
-                Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                    TextField(
-                        value = baseUrl,
-                        onValueChange = { baseUrl = it },
-                        label = { Text(stringResource(R.string.webdav_base_url)) },
-                        singleLine = true,
-                        colors =
-                            TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                disabledContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                            ),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    HorizontalDivider(color = dividerColor)
-                    TextField(
-                        value = username,
-                        onValueChange = { username = it },
-                        label = { Text(stringResource(R.string.webdav_username)) },
-                        singleLine = true,
-                        colors =
-                            TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                disabledContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                            ),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    HorizontalDivider(color = dividerColor)
-                    TextField(
-                        value = password,
-                        onValueChange = { password = it },
-                        label = { Text(stringResource(R.string.webdav_password)) },
-                        singleLine = true,
-                        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            TextButton(onClick = { showPassword = !showPassword }) {
-                                Text(if (showPassword) stringResource(R.string.action_hide) else stringResource(R.string.action_show))
-                            }
-                        },
-                        colors =
-                            TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                disabledContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                            ),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    HorizontalDivider(color = dividerColor)
-                    TextField(
-                        value = remoteRoot,
-                        onValueChange = { remoteRoot = it },
-                        label = { Text(stringResource(R.string.webdav_remote_root)) },
-                        singleLine = true,
-                        colors =
-                            TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                disabledContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                            ),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    HorizontalDivider(color = dividerColor)
-
-                    RowSwitch(
-                        title = stringResource(R.string.webdav_include_index_sqlite),
-                        checked = includeIndexSqlite,
-                        onCheckedChange = { includeIndexSqlite = it },
-                    )
-
-                    Spacer(Modifier.height(12.dp))
-                    if (testStatus != null) {
-                        Text(testStatus!!, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(12.dp))
-                    }
-
-                    Button(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            val config =
-                                WebDavConfig(
-                                    enabled = enabled,
-                                    baseUrl = baseUrl.trim(),
-                                    username = username.trim(),
-                                    password = password,
-                                    remoteRoot = remoteRoot.trim().ifBlank { "/" },
-                                    includeIndexSqlite = includeIndexSqlite,
-                                )
-                            scope.launch {
-                                syncPrefs.saveWebDavConfig(config)
-                                testStatus = context.getString(R.string.webdav_saved)
-                            }
-                        },
-                    ) { Text(stringResource(R.string.action_save)) }
-
-                    Button(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            val config =
-                                WebDavConfig(
-                                    enabled = enabled,
-                                    baseUrl = baseUrl.trim(),
-                                    username = username.trim(),
-                                    password = password,
-                                    remoteRoot = remoteRoot.trim().ifBlank { "/" },
-                                    includeIndexSqlite = includeIndexSqlite,
-                                )
-                            scope.launch {
-                                testStatus = context.getString(R.string.webdav_testing)
-                                val result = WebDavClient.testConnection(config)
-                                testStatus =
-                                    if (result.success) {
-                                        context.getString(R.string.webdav_test_ok, result.statusCode)
-                                    } else {
-                                        context.getString(R.string.webdav_test_fail, result.statusCode, result.message)
-                                    }
-                            }
-                        },
-                    ) { Text(stringResource(R.string.webdav_test)) }
-
-                    Button(
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = vaultRootUri != null,
-                        onClick = {
-                            val root = vaultRootUri ?: return@Button
-                            val config =
-                                WebDavConfig(
-                                    enabled = enabled,
-                                    baseUrl = baseUrl.trim(),
-                                    username = username.trim(),
-                                    password = password,
-                                    remoteRoot = remoteRoot.trim().ifBlank { "/" },
-                                    includeIndexSqlite = includeIndexSqlite,
-                                )
-                            scope.launch {
-                                testStatus = context.getString(R.string.webdav_syncing)
-                                val engine = WebDavSyncEngine(context, repository)
-                                val summary =
-                                    runCatching { engine.syncVault(root, config) }
-                                        .getOrElse { e ->
-                                            testStatus =
-                                                context.getString(
-                                                    R.string.webdav_sync_failed,
-                                                    e.message ?: e.javaClass.simpleName,
-                                                )
-                                            return@launch
-                                        }
-                                testStatus =
-                                    context.getString(
-                                        R.string.webdav_sync_ok,
-                                        summary.uploaded,
-                                        summary.downloaded,
-                                        summary.conflicts,
-                                        summary.failed,
-                                    )
-                            }
-                        },
-                    ) { Text(stringResource(R.string.webdav_sync_now)) }
-                }
-                HorizontalDivider(color = dividerColor)
-            }
-        }
-    }
-}
-
-@Composable
-private fun RowSwitch(
-    title: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(title)
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
 @Composable
 private fun SettingsNavRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconRes: Int,
     title: String,
     subtitle: String? = null,
     enabled: Boolean = true,
@@ -412,14 +174,21 @@ private fun SettingsNavRow(
             Modifier
                 .fillMaxWidth()
                 .let { m -> if (enabled) m.clickable(onClick = onClick) else m },
-        leadingContent = { Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        leadingContent = {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        },
         headlineContent = { Text(title) },
         supportingContent = {
             if (!subtitle.isNullOrBlank()) {
                 Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         },
-        trailingContent = { Icon(imageVector = Icons.Outlined.ChevronRight, contentDescription = null) },
+        trailingContent = { Icon(painter = painterResource(Ionicons.ChevronForward), contentDescription = null, modifier = Modifier.size(18.dp)) },
     )
 }
 

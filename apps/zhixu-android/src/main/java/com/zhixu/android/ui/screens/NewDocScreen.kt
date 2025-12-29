@@ -31,12 +31,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.zhixu.android.R
 import com.zhixu.android.data.VaultRepository
+import com.zhixu.android.ui.Ionicons
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -72,7 +76,7 @@ fun NewDocScreen(
                     navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                                painter = painterResource(if (LocalLayoutDirection.current == LayoutDirection.Rtl) Ionicons.ArrowForward else Ionicons.ArrowBack),
                                 contentDescription = stringResource(R.string.action_back),
                             )
                         }
@@ -105,7 +109,7 @@ fun NewDocScreen(
                                 }
                             },
                         ) {
-                            Icon(imageVector = Icons.Outlined.Check, contentDescription = stringResource(R.string.action_create))
+                            Icon(painter = painterResource(Ionicons.Checkmark), contentDescription = stringResource(R.string.action_create))
                             Text(stringResource(R.string.action_create), modifier = Modifier.padding(start = 6.dp))
                         }
                     },

@@ -33,10 +33,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.SentimentSatisfiedAlt
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -61,6 +58,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -83,6 +81,7 @@ import com.zhixu.android.ui.screens.EditorScreen
 import com.zhixu.android.ui.screens.LongImageScreen
 import com.zhixu.android.ui.screens.NewDocScreen
 import com.zhixu.android.ui.screens.SettingsScreen
+import com.zhixu.android.ui.screens.SyncScreen
 import com.zhixu.android.ui.screens.TasksScreen
 import com.zhixu.android.ui.screens.VaultGateScreen
 import com.zhixu.android.ui.screens.WorkshopScreen
@@ -216,7 +215,10 @@ fun ZhixuApp() {
                                 actions = {
                                     if (settledPage == 0) {
                                         IconButton(onClick = { docSearchRequestToken += 1L }) {
-                                            Icon(imageVector = Icons.Outlined.Search, contentDescription = stringResource(R.string.action_search))
+                                            Icon(
+                                                painter = painterResource(Ionicons.Search),
+                                                contentDescription = stringResource(R.string.action_search),
+                                            )
                                         }
                                     }
                                 },
@@ -300,6 +302,15 @@ fun ZhixuApp() {
                             }
                         },
                         onOpenWorkshop = { navController.navigate("workshop") },
+                        onOpenSync = { navController.navigate("sync") },
+                    )
+                }
+                composable("sync") {
+                    SyncScreen(
+                        contentPadding = padding,
+                        vaultRootUri = vaultRootUri,
+                        repository = repository,
+                        onBack = { navController.popBackStack() },
                     )
                 }
                 composable("workshop") {
@@ -472,53 +483,51 @@ private fun MainBottomBar(
     val unselectedTint = MaterialTheme.colorScheme.onSurfaceVariant
 
     Surface(color = Color.White, tonalElevation = 2.dp) {
-        Box(
+        Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .height(70.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 IconButton(onClick = onHome) {
                     Icon(
-                        imageVector = Icons.Outlined.Home,
+                        painter = painterResource(if (selectedHome) Ionicons.HomeFilled else Ionicons.Home),
                         contentDescription = null,
                         tint = if (selectedHome) selectedTint else unselectedTint,
-                        modifier = Modifier.size(28.dp),
-                    )
-                }
-                Spacer(Modifier.width(72.dp))
-                IconButton(onClick = onMe) {
-                    Icon(
-                        imageVector = Icons.Outlined.SentimentSatisfiedAlt,
-                        contentDescription = null,
-                        tint = if (selectedMe) selectedTint else unselectedTint,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(24.dp),
                     )
                 }
             }
-
-            Surface(
-                color = Color(0xFF141516),
-                shape = RoundedCornerShape(19.dp),
-                modifier =
-                    Modifier
-                        .align(Alignment.Center)
-                        .width(68.dp)
-                        .height(38.dp)
-                        .clickable(onClick = onPlus),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Surface(
+                    color = Color(0xFF141516),
+                    shape = RoundedCornerShape(19.dp),
+                    modifier =
+                        Modifier
+                            .width(68.dp)
+                            .height(38.dp)
+                            .clickable(onClick = onPlus),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(Ionicons.Add),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
+                }
+            }
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                IconButton(onClick = onMe) {
                     Icon(
-                        imageVector = Icons.Outlined.Add,
+                        painter = painterResource(if (selectedMe) Ionicons.UserFilled else Ionicons.User),
                         contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(32.dp),
+                        tint = if (selectedMe) selectedTint else unselectedTint,
+                        modifier = Modifier.size(24.dp),
                     )
                 }
             }

@@ -12,15 +12,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -49,15 +51,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.zhixu.android.R
 import com.zhixu.android.plugins.InstalledPlugin
 import com.zhixu.android.plugins.PluginRepository
+import com.zhixu.android.ui.components.MarkdownPreview
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -79,6 +85,10 @@ fun WorkshopScreen(
     var gitUrl by remember { mutableStateOf("") }
     var searchText by remember { mutableStateOf("") }
 
+    var detailsPlugin by remember { mutableStateOf<InstalledPlugin?>(null) }
+    var detailsReadme by remember { mutableStateOf<String?>(null) }
+    var detailsLoading by remember { mutableStateOf(false) }
+
     var showTypechoSettings by remember { mutableStateOf(false) }
     var typechoEndpoint by remember { mutableStateOf("") }
     var typechoUsername by remember { mutableStateOf("") }
@@ -96,6 +106,14 @@ fun WorkshopScreen(
 
     LaunchedEffect(vaultRootUri) {
         if (vaultRootUri != null) refresh()
+    }
+
+    LaunchedEffect(detailsPlugin, vaultRootUri) {
+        val plugin = detailsPlugin ?: return@LaunchedEffect
+        val root = vaultRootUri ?: return@LaunchedEffect
+        detailsLoading = true
+        detailsReadme = pluginRepo.readPluginReadme(root, plugin.manifest.id)
+        detailsLoading = false
     }
 
     fun loadTypechoConfig(json: JSONObject?) {
@@ -262,6 +280,40 @@ fun WorkshopScreen(
         )
     }
 
+    if (detailsPlugin != null) {
+        val plugin = detailsPlugin!!
+        AlertDialog(
+            onDismissRequest = { detailsPlugin = null },
+            title = { Text(plugin.manifest.name ?: plugin.manifest.id) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val id = plugin.manifest.id
+                    val version = plugin.manifest.version?.let { "v$it" }.orEmpty()
+                    val desc = plugin.manifest.description.orEmpty()
+                    Text(text = "ID: $id", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (version.isNotBlank()) Text(text = version, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (desc.isNotBlank()) Text(text = desc, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                    when {
+                        detailsLoading -> Text(text = "Loading…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        detailsReadme.isNullOrBlank() ->
+                            Text(text = stringResource(R.string.workshop_plugin_no_readme), color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                        else ->
+                            MarkdownPreview(
+                                modifier = Modifier.fillMaxWidth().height(360.dp),
+                                markdown = detailsReadme.orEmpty(),
+                            )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { detailsPlugin = null }) { Text(stringResource(R.string.action_back)) }
+            },
+        )
+    }
+
     Scaffold(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
@@ -272,27 +324,28 @@ fun WorkshopScreen(
                     windowInsets = TopAppBarDefaults.windowInsets,
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
                     title = { Text(stringResource(R.string.workshop_title)) },
-                     navigationIcon = {
-                         IconButton(onClick = onBack) {
-                             Icon(
-                                 imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                                 contentDescription = stringResource(R.string.action_back),
-                             )
-                         }
-                     },
-                 )
-                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-             }
-         },
+                    navigationIcon = {
+                        val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                painter = painterResource(if (isRtl) com.zhixu.android.ui.Ionicons.ArrowForward else com.zhixu.android.ui.Ionicons.ArrowBack),
+                                contentDescription = stringResource(R.string.action_back),
+                            )
+                        }
+                    },
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+        },
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
-                .padding(contentPadding)
                 .padding(innerPadding)
+                .windowInsetsPadding(WindowInsets.navigationBars)
                 .background(MaterialTheme.colorScheme.background)
                 .fillMaxSize()
                 .imePadding(),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (vaultRootUri == null) {
@@ -300,13 +353,15 @@ fun WorkshopScreen(
                 return@LazyColumn
             }
 
+            item { Spacer(modifier = Modifier.height(12.dp)) }
+
             item {
                 OutlinedTextField(
                     value = searchText,
                     onValueChange = { searchText = it },
                     singleLine = true,
                     placeholder = { Text(stringResource(R.string.workshop_search_hint)) },
-                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                    leadingIcon = { Icon(painter = painterResource(com.zhixu.android.ui.Ionicons.Search), contentDescription = null) },
                     shape = MaterialTheme.shapes.extraLarge,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -350,6 +405,10 @@ fun WorkshopScreen(
                                 )
                                 refresh()
                             }
+                        },
+                        onViewDetails = {
+                            detailsReadme = null
+                            detailsPlugin = plugin
                         },
                         onSettings =
                             if (plugin.manifest.id == "typecho-xmlrpc-publisher") {
@@ -417,6 +476,7 @@ private fun PluginRow(
     plugin: InstalledPlugin,
     onToggle: (Boolean) -> Unit,
     onRemove: () -> Unit,
+    onViewDetails: () -> Unit,
     onSettings: (() -> Unit)?,
 ) {
     Card(
@@ -438,7 +498,7 @@ private fun PluginRow(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                TextButton(enabled = onSettings != null, onClick = { onSettings?.invoke() }) {
+                TextButton(onClick = onViewDetails) {
                     Text(stringResource(R.string.workshop_view_details))
                 }
             }
@@ -463,6 +523,9 @@ private fun PluginRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (onSettings != null) {
+                        TextButton(onClick = onSettings) { Text(stringResource(R.string.action_settings)) }
+                    }
                     TextButton(onClick = onRemove) { Text(stringResource(R.string.workshop_remove)) }
                     Switch(checked = plugin.enabled, onCheckedChange = onToggle)
                 }
