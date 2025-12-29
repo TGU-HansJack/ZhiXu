@@ -84,6 +84,7 @@ import com.zhixu.android.ui.screens.SettingsScreen
 import com.zhixu.android.ui.screens.SyncScreen
 import com.zhixu.android.ui.screens.TasksScreen
 import com.zhixu.android.ui.screens.VaultGateScreen
+import com.zhixu.android.ui.screens.VaultSettingsScreen
 import com.zhixu.android.ui.screens.WorkshopScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -304,14 +305,18 @@ fun ZhixuApp() {
                             val lineParam = (lineIndex ?: -1).toString()
                             navController.navigate("edit?uri=$uriParam&q=$qParam&line=$lineParam")
                         },
-                        onChangeVault = {
-                            scope.launch { prefs.setVaultRootUri(null) }
-                            navController.navigate("vault") {
-                                popUpTo("me") { inclusive = true }
-                            }
-                        },
+                        onOpenVaultSettings = { navController.navigate("vaultSettings") },
                         onOpenWorkshop = { navController.navigate("workshop") },
                         onOpenSync = { navController.navigate("sync") },
+                    )
+                }
+                composable("vaultSettings") {
+                    VaultSettingsScreen(
+                        contentPadding = padding,
+                        vaultRootUri = vaultRootUri,
+                        repository = repository,
+                        vaultPrefs = prefs,
+                        onBack = { navController.popBackStack() },
                     )
                 }
                 composable("sync") {

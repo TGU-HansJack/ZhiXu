@@ -11,6 +11,24 @@
     <string name="vault_select_title">Select Vault folder</string>
     <string name="vault_select_desc">Zhixu stores your data as files inside a Vault (portable and exportable).</string>
     <string name="vault_select_button">Choose folder</string>
+    <string name="vault_settings_storage_location">Storage location</string>
+    <string name="vault_settings_location_local">Local storage</string>
+    <string name="vault_settings_location_official">Official server</string>
+    <string name="vault_settings_location_third_party">Third-party service</string>
+    <string name="vault_settings_local_title">Local storage (default)</string>
+    <string name="vault_settings_choose_local_folder">Choose local folder</string>
+    <string name="vault_settings_local_size_fmt">Used storage: %1$s</string>
+    <string name="vault_settings_calculating">Calculating…</string>
+    <string name="vault_settings_official_title">Official server</string>
+    <string name="vault_settings_official_desc_fmt">No configuration required. Server: %1$s</string>
+    <string name="vault_settings_third_party_title">Third-party service</string>
+    <string name="vault_settings_third_party_url">Service URL</string>
+    <string name="vault_settings_third_party_username">Username</string>
+    <string name="vault_settings_third_party_password">Password</string>
+    <string name="vault_settings_third_party_e2ee">Encrypt content sync (E2EE)</string>
+    <string name="vault_settings_third_party_master_password">Encryption master password</string>
+    <string name="vault_settings_third_party_e2ee_warning">Once enabled, all synced notes will be stored encrypted and the server cannot read content. If you lose the master password, data cannot be recovered.</string>
+    <string name="vault_settings_saved">Saved</string>
 
     <!-- Docs -->
     <string name="docs_title">Docs</string>
@@ -100,6 +118,31 @@
     <string name="settings_change_vault">Change Vault</string>
     <string name="settings_section_sync">Sync</string>
     <string name="settings_sync_placeholder">Sync settings. Configure WebDAV and run manual sync below.</string>
+    <string name="action_close">Close</string>
+
+    <!-- Account -->
+    <string name="account_not_logged_in_short">Not logged in</string>
+    <string name="account_manage_title">Account</string>
+    <string name="account_server_fmt">Server: %1$s</string>
+    <string name="account_logged_in_as_fmt">Logged in as: %1$s</string>
+    <string name="account_user_id_fmt">User ID: %1$d</string>
+    <string name="account_not_logged_in">Not logged in.</string>
+    <string name="account_username">Username</string>
+    <string name="account_password">Password</string>
+    <string name="account_login">Login</string>
+    <string name="account_register">Register</string>
+    <string name="account_logout">Logout</string>
+    <string name="account_login_ok">Logged in</string>
+    <string name="account_register_ok">Registered</string>
+    <string name="account_logged_out">Logged out</string>
+    <string name="account_device_title">Device</string>
+    <string name="account_device_id">Device ID</string>
+    <string name="account_device_bind">Bind</string>
+    <string name="account_device_unbind">Unbind</string>
+    <string name="account_device_bound">Device bound</string>
+    <string name="account_device_unbound">Device unbound</string>
+    <string name="account_device_remote_list">Bound devices</string>
+    <string name="account_device_remote_empty">None</string>
 
     <!-- WebDAV -->
     <string name="webdav_enable">Enable WebDAV</string>

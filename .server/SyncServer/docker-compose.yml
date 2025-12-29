@@ -1,0 +1,27 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-zhixu_sync}
+      MYSQL_USER: ${MYSQL_USER:-zhixu}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-zhixu_password}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-3000}:3000"
+
+volumes:
+  mysql_data:
+

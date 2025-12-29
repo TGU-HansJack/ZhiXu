@@ -199,6 +199,31 @@ class VaultRepository(
         requireNotNull(pluginsDir) { ".zhixu/plugins directory missing" }
     }
 
+    suspend fun computeVaultTotalSizeBytes(rootUri: Uri): Long = withContext(Dispatchers.IO) {
+        val root = DocumentFile.fromTreeUri(context, rootUri) ?: return@withContext 0L
+
+        var total = 0L
+        val stack = ArrayDeque<DocumentFile>()
+        stack.add(root)
+
+        var visitedDirs = 0
+        while (stack.isNotEmpty()) {
+            currentCoroutineContext().ensureActive()
+            val dir = stack.removeLast()
+            for (child in dir.listFiles()) {
+                if (child.isDirectory) {
+                    stack.add(child)
+                } else if (child.isFile) {
+                    total += child.length()
+                }
+            }
+            visitedDirs += 1
+            if (visitedDirs % 20 == 0) yield()
+        }
+
+        total
+    }
+
     suspend fun listMarkdownDocs(rootUri: Uri): List<UiDoc> = withContext(Dispatchers.IO) {
         val root = DocumentFile.fromTreeUri(context, rootUri) ?: return@withContext emptyList()
         val docsDir = findChild(root, "docs") ?: return@withContext emptyList()

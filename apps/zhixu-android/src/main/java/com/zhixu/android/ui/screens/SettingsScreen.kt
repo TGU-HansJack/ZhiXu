@@ -30,12 +30,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,6 +45,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhixu.android.R
+import com.zhixu.android.data.AccountPreferences
+import com.zhixu.android.data.AccountState
 import com.zhixu.android.data.DailyContrib
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.Ionicons
@@ -57,10 +61,24 @@ fun SettingsScreen(
     refreshToken: Long,
     repository: VaultRepository,
     onOpenDoc: (String, String?, Int?) -> Unit,
-    onChangeVault: () -> Unit,
+    onOpenVaultSettings: () -> Unit,
     onOpenWorkshop: () -> Unit,
     onOpenSync: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val accountPrefs = remember(context) { AccountPreferences(context.applicationContext) }
+    val accountState by accountPrefs.state.collectAsState(
+        initial = AccountState(token = "", username = "", userId = 0L, deviceId = ""),
+    )
+    var showAccountDialog by remember { mutableStateOf(false) }
+
+    if (showAccountDialog) {
+        AccountManagementDialog(
+            accountPrefs = accountPrefs,
+            onDismiss = { showAccountDialog = false },
+        )
+    }
+
     var contribPerDay by remember { mutableStateOf<Map<LocalDate, DailyContrib>?>(null) }
 
     LaunchedEffect(refreshToken) {
@@ -84,7 +102,13 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         item {
-            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { showAccountDialog = true }
+                        .padding(16.dp),
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
                         modifier = Modifier.size(56.dp),
@@ -97,9 +121,12 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "Zhixu", style = MaterialTheme.typography.titleLarge)
+                        val name =
+                            if (accountState.isLoggedIn) accountState.username.ifBlank { "Zhixu" }
+                            else stringResource(R.string.account_not_logged_in_short)
+                        Text(text = name, style = MaterialTheme.typography.titleLarge)
                         Text(
-                            text = "ID: —",
+                            text = if (accountState.isLoggedIn) "ID: ${accountState.userId}" else "ID: -",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         )
@@ -123,7 +150,7 @@ fun SettingsScreen(
             SettingsNavRow(
                 iconRes = Ionicons.Vault,
                 title = stringResource(R.string.settings_section_vault),
-                onClick = onChangeVault,
+                onClick = onOpenVaultSettings,
             )
             HorizontalDivider(color = dividerColor)
             SettingsNavRow(
