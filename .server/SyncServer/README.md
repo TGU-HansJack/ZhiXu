@@ -122,7 +122,7 @@ This server never decrypts note content. When `encrypted=true`, the server store
 These endpoints sync a Vault as *files* (e.g. `docs/*.md`, `attachments/*`, `.zhixu/settings.json`).
 
 Notes:
-- `path` max length is 512 (to keep MySQL index key length within limits under `utf8mb4`).
+- `path` max length is 1024; uniqueness is enforced by `path_hash = SHA-256(path)` in the DB index.
 
 ### Manifest
 

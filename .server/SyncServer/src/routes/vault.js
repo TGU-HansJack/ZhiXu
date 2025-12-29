@@ -10,7 +10,7 @@ router.use(authRequired);
 function normalizeVaultPath(raw) {
   const value = String(raw || "").trim();
   if (!value) return null;
-  if (value.length > 512) return null;
+  if (value.length > 1024) return null;
   const decoded = (() => {
     try {
       return decodeURIComponent(value);
@@ -31,6 +31,10 @@ function normalizeVaultPath(raw) {
 
 function sha256Hex(bytes) {
   return crypto.createHash("sha256").update(bytes).digest("hex");
+}
+
+function sha256BytesUtf8(text) {
+  return crypto.createHash("sha256").update(String(text), "utf8").digest();
 }
 
 router.get("/manifest", async (req, res) => {
@@ -65,18 +69,20 @@ router.get("/file", async (req, res) => {
 
   const path = normalizeVaultPath(req.query?.path);
   if (!path) return res.status(400).json({ error: "invalid_path" });
+  const pathHash = sha256BytesUtf8(path);
 
   const [rows] = await pool.query(
     `
-SELECT mtime_ms, size_bytes, sha256, deleted, content
+SELECT path, mtime_ms, size_bytes, sha256, deleted, content
 FROM vault_files
-WHERE user_id = ? AND path = ?
-LIMIT 1
+WHERE user_id = ? AND path_hash = ?
+LIMIT 2
 `,
-    [userId, path]
+    [userId, pathHash]
   );
   const row = rows?.[0];
   if (!row) return res.status(404).json({ error: "not_found" });
+  if (String(row.path || "") !== path) return res.status(409).json({ error: "path_hash_collision" });
   if (row.deleted) return res.status(410).json({ error: "deleted" });
 
   const content = row.content || Buffer.alloc(0);
@@ -96,6 +102,7 @@ router.put(
 
     const path = normalizeVaultPath(req.query?.path);
     if (!path) return res.status(400).json({ error: "invalid_path" });
+    const pathHash = sha256BytesUtf8(path);
 
     const mtimeMs = Number(req.query?.mtimeMs || 0);
     const mtime = Number.isFinite(mtimeMs) && mtimeMs > 0 ? mtimeMs : Date.now();
@@ -105,11 +112,24 @@ router.put(
     const now = Date.now();
     const hash = sha256Hex(bytes);
 
+    const [existingRows] = await pool.query(
+      `
+SELECT path
+FROM vault_files
+WHERE user_id = ? AND path_hash = ?
+LIMIT 1
+`,
+      [userId, pathHash]
+    );
+    const existing = existingRows?.[0];
+    if (existing && String(existing.path || "") !== path) return res.status(409).json({ error: "path_hash_collision" });
+
     await pool.query(
       `
-INSERT INTO vault_files (user_id, path, updated_at_ms, mtime_ms, size_bytes, sha256, deleted, content)
-VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+INSERT INTO vault_files (user_id, path, path_hash, updated_at_ms, mtime_ms, size_bytes, sha256, deleted, content)
+VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
 ON DUPLICATE KEY UPDATE
+  path = VALUES(path),
   updated_at_ms = VALUES(updated_at_ms),
   mtime_ms = VALUES(mtime_ms),
   size_bytes = VALUES(size_bytes),
@@ -117,7 +137,7 @@ ON DUPLICATE KEY UPDATE
   deleted = 0,
   content = VALUES(content)
 `,
-      [userId, path, now, mtime, bytes.length, hash, bytes]
+      [userId, path, pathHash, now, mtime, bytes.length, hash, bytes]
     );
 
     return res.json({ ok: true, serverTime: now, sha256: hash, size: bytes.length, mtimeMs: mtime });
@@ -130,38 +150,40 @@ router.delete("/file", async (req, res) => {
 
   const path = normalizeVaultPath(req.query?.path);
   if (!path) return res.status(400).json({ error: "invalid_path" });
+  const pathHash = sha256BytesUtf8(path);
 
   const now = Date.now();
   const [rows] = await pool.query(
     `
-SELECT id, deleted
+SELECT path, deleted
 FROM vault_files
-WHERE user_id = ? AND path = ?
-LIMIT 1
+WHERE user_id = ? AND path_hash = ?
+LIMIT 2
 `,
-    [userId, path]
+    [userId, pathHash]
   );
   const existing = rows?.[0];
   if (!existing) {
     await pool.query(
       `
-INSERT INTO vault_files (user_id, path, updated_at_ms, mtime_ms, size_bytes, sha256, deleted, content)
-VALUES (?, ?, ?, 0, 0, ?, 1, NULL)
+INSERT INTO vault_files (user_id, path, path_hash, updated_at_ms, mtime_ms, size_bytes, sha256, deleted, content)
+VALUES (?, ?, ?, ?, 0, 0, ?, 1, NULL)
 `,
-      [userId, path, now, "0".repeat(64)]
+      [userId, path, pathHash, now, "0".repeat(64)]
     );
     return res.json({ ok: true, deleted: true, serverTime: now });
   }
 
+  if (String(existing.path || "") !== path) return res.status(409).json({ error: "path_hash_collision" });
   if (existing.deleted) return res.json({ ok: true, deleted: true, serverTime: now });
 
   await pool.query(
     `
 UPDATE vault_files
 SET updated_at_ms = ?, deleted = 1, content = NULL
-WHERE user_id = ? AND path = ?
+WHERE user_id = ? AND path_hash = ? AND path = ?
 `,
-    [now, userId, path]
+    [now, userId, pathHash, path]
   );
   return res.json({ ok: true, deleted: true, serverTime: now });
 });
