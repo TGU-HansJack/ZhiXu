@@ -9,8 +9,13 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFontFamilyResolver
+import androidx.compose.ui.text.font.FontFamily
+import java.lang.reflect.Proxy
 
 private val ZhixuLightColorScheme =
     lightColorScheme(
@@ -101,10 +106,31 @@ fun ZhixuTheme(
         } else {
             (if (darkTheme) ZhixuDarkColorScheme else ZhixuLightColorScheme).withFlatSurfaces()
         }
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        shapes = Shapes,
-        content = content,
-    )
+
+    val baseResolver = LocalFontFamilyResolver.current
+    val appResolver =
+        remember(baseResolver) {
+            Proxy.newProxyInstance(
+                FontFamily.Resolver::class.java.classLoader,
+                arrayOf(FontFamily.Resolver::class.java),
+            ) { _, method, argsOrNull ->
+                val args = argsOrNull ?: emptyArray()
+                if (args.isNotEmpty() && args[0] == FontFamily.Default) {
+                    val nextArgs = args.copyOf()
+                    nextArgs[0] = AppFontFamily
+                    method.invoke(baseResolver, *nextArgs)
+                } else {
+                    method.invoke(baseResolver, *args)
+                }
+            } as FontFamily.Resolver
+        }
+
+    CompositionLocalProvider(LocalFontFamilyResolver provides appResolver) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            shapes = Shapes,
+            content = content,
+        )
+    }
 }

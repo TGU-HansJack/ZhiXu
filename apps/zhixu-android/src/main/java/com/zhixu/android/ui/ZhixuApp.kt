@@ -3,9 +3,9 @@ package com.zhixu.android.ui
 import android.net.Uri
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -13,31 +13,40 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.DrawerValue
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.SentimentSatisfiedAlt
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,28 +59,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.navigation.NavType
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -80,9 +75,9 @@ import androidx.navigation.navArgument
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.zhixu.android.R
 import com.zhixu.android.data.VaultPreferences
 import com.zhixu.android.data.VaultRepository
-import com.zhixu.android.R
 import com.zhixu.android.ui.screens.DocumentListScreen
 import com.zhixu.android.ui.screens.EditorScreen
 import com.zhixu.android.ui.screens.NewDocScreen
@@ -102,7 +97,6 @@ fun ZhixuApp() {
     var uiReady by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        // Keep the very first frame light to reduce cold-start traversal/measure spikes.
         withFrameNanos { }
         uiReady = true
     }
@@ -119,7 +113,6 @@ fun ZhixuApp() {
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
-        // Defer background scheduling until at least one frame is rendered to avoid jank on cold start.
         withFrameNanos { }
         withContext(Dispatchers.Default) {
             val request =
@@ -139,14 +132,14 @@ fun ZhixuApp() {
 
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
-    val currentDestination = backStackEntry?.destination
-    val currentRoute = currentDestination?.route
+    val currentRoute = backStackEntry?.destination?.route
 
     var docListRefreshToken by remember { mutableLongStateOf(0L) }
+    var docSearchRequestToken by remember { mutableLongStateOf(0L) }
 
-    val showTopBar = currentRoute in setOf("home", "settings")
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 2 })
+    val showTopBar = currentRoute in setOf("home", "me")
+    val showBottomBar = currentRoute in setOf("home", "me")
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 0, pageCount = { 2 })
     val settledPage by remember { derivedStateOf { pagerState.settledPage } }
 
     fun navigateHome(pageIndex: Int) {
@@ -163,349 +156,248 @@ fun ZhixuApp() {
                     animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
                 )
             }
-            drawerState.close()
         }
     }
 
-    fun navigateSettings() {
-        navController.navigate("settings") {
+    fun navigateMe() {
+        navController.navigate("me") {
             launchSingleTop = true
             restoreState = true
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
         }
-        scope.launch { drawerState.close() }
     }
 
     Surface(color = MaterialTheme.colorScheme.background) {
-        ModalNavigationDrawer(
-            drawerState = drawerState,
-            gesturesEnabled =
-                currentRoute != "vault" &&
-                    currentRoute != "settings" &&
-                    !currentRoute.orEmpty().startsWith("edit"),
-            drawerContent = {
-                ModalDrawerSheet(drawerContainerColor = Color.White) {
-                    Column(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            shape = MaterialTheme.shapes.extraLarge,
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                UserAvatarButton(
-                                    size = 48.dp,
-                                    onClick = { scope.launch { drawerState.close() } },
-                                )
-                                Spacer(Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(text = "Zhixu", style = MaterialTheme.typography.titleLarge)
-                                    Text(
-                                        text = "ID: —",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                IconButton(onClick = ::navigateSettings) {
-                                    Icon(imageVector = Icons.Outlined.Settings, contentDescription = stringResource(R.string.nav_settings))
-                                }
-                            }
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                if (!showTopBar) return@Scaffold
+                Column {
+                    when (currentRoute) {
+                        "home" -> {
+                            TopAppBar(
+                                windowInsets = TopAppBarDefaults.windowInsets,
+                                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                                title = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        TabText(
+                                            text = stringResource(R.string.nav_docs),
+                                            selected = settledPage == 0,
+                                            onClick = {
+                                                if (pagerState.currentPage == 0) return@TabText
+                                                scope.launch {
+                                                    pagerState.animateScrollToPage(
+                                                        page = 0,
+                                                        animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
+                                                    )
+                                                }
+                                            },
+                                        )
+                                        TabText(
+                                            text = stringResource(R.string.nav_tasks),
+                                            selected = settledPage == 1,
+                                            onClick = {
+                                                if (pagerState.currentPage == 1) return@TabText
+                                                scope.launch {
+                                                    pagerState.animateScrollToPage(
+                                                        page = 1,
+                                                        animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
+                                                    )
+                                                }
+                                            },
+                                        )
+                                    }
+                                },
+                                actions = {
+                                    if (settledPage == 0) {
+                                        IconButton(onClick = { docSearchRequestToken += 1L }) {
+                                            Icon(imageVector = Icons.Outlined.Search, contentDescription = stringResource(R.string.action_search))
+                                        }
+                                    }
+                                },
+                            )
                         }
 
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            shape = MaterialTheme.shapes.extraLarge,
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                        ) {
-                            val selectedBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                            ListItem(
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .background(if (currentRoute == "home" && pagerState.currentPage == 0) selectedBg else Color.Transparent, shape = MaterialTheme.shapes.extraLarge)
-                                        .clickable { navigateHome(0) },
-                                leadingContent = { Icon(imageVector = Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                                headlineContent = { Text(stringResource(R.string.nav_docs)) },
-                            )
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-                            ListItem(
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .background(if (currentRoute == "home" && pagerState.currentPage == 1) selectedBg else Color.Transparent, shape = MaterialTheme.shapes.extraLarge)
-                                        .clickable { navigateHome(1) },
-                                leadingContent = { Icon(imageVector = Icons.Outlined.TaskAlt, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                                headlineContent = { Text(stringResource(R.string.nav_tasks)) },
+                        "me" -> {
+                            TopAppBar(
+                                windowInsets = TopAppBarDefaults.windowInsets,
+                                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                                title = { Text(stringResource(R.string.nav_me)) },
                             )
                         }
                     }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
             },
-        ) {
-            Scaffold(
-                contentWindowInsets = WindowInsets(0, 0, 0, 0),
-                containerColor = MaterialTheme.colorScheme.background,
-                topBar = {
-                    if (!showTopBar) return@Scaffold
-
-                    Column {
-                        when (currentRoute) {
-                            "home" -> {
-                                TopAppBar(
-                                    windowInsets = TopAppBarDefaults.windowInsets,
-                                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                                    navigationIcon = {
-                                        UserAvatarButton(
-                                            onClick = { scope.launch { drawerState.open() } },
-                                            modifier = Modifier.padding(start = 12.dp),
-                                        )
-                                    },
-                                    title = {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(start = 10.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            TabText(
-                                                text = stringResource(R.string.nav_docs),
-                                                selected = settledPage == 0,
-                                                onClick = {
-                                                    if (pagerState.currentPage == 0) return@TabText
-                                                    scope.launch {
-                                                        pagerState.animateScrollToPage(
-                                                            page = 0,
-                                                            animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
-                                                        )
-                                                    }
-                                                },
-                                            )
-                                            TabText(
-                                                text = stringResource(R.string.nav_tasks),
-                                                selected = settledPage == 1,
-                                                onClick = {
-                                                    if (pagerState.currentPage == 1) return@TabText
-                                                    scope.launch {
-                                                        pagerState.animateScrollToPage(
-                                                            page = 1,
-                                                            animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
-                                                        )
-                                                    }
-                                                },
-                                            )
-                                        }
-                                    },
-                                )
+            bottomBar = {
+                if (!showBottomBar) return@Scaffold
+                MainBottomBar(
+                    currentRoute = currentRoute,
+                    onHome = { navigateHome(0) },
+                    onPlus = { navController.navigate("newDoc") },
+                    onMe = ::navigateMe,
+                )
+            },
+        ) { padding ->
+            NavHost(
+                navController = navController,
+                startDestination = if (vaultRootUri == null) "vault" else "home",
+                enterTransition = { EnterTransition.None },
+                exitTransition = { ExitTransition.None },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { ExitTransition.None },
+                sizeTransform = null,
+            ) {
+                composable("vault") {
+                    VaultGateScreen(
+                        onVaultSelected = { uri ->
+                            prefs.setVaultRootUri(uri.toString())
+                            navController.navigate("home") {
+                                popUpTo("vault") { inclusive = true }
                             }
-
-                            "settings" -> {
-                                TopAppBar(
-                                    windowInsets = TopAppBarDefaults.windowInsets,
-                                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                                    navigationIcon = {
-                                        IconButton(
-                                            onClick = {
-                                                val popped = navController.popBackStack()
-                                                if (!popped) navigateHome(0)
-                                            },
-                                        ) {
-                                            Icon(imageVector = Icons.Outlined.Close, contentDescription = null)
-                                        }
-                                    },
-                                    title = { Text(stringResource(R.string.nav_settings)) },
-                                )
-                            }
-                        }
-
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    }
-                },
-            ) { padding ->
-                NavHost(
-                    navController = navController,
-                    startDestination = if (vaultRootUri == null) "vault" else "home",
-                    enterTransition = { EnterTransition.None },
-                    exitTransition = { ExitTransition.None },
-                    popEnterTransition = { EnterTransition.None },
-                    popExitTransition = { ExitTransition.None },
-                    sizeTransform = null,
-                ) {
-                    composable("vault") {
-                        VaultGateScreen(
-                            onVaultSelected = { uri ->
-                                prefs.setVaultRootUri(uri.toString())
-                                navController.navigate("home") {
-                                    popUpTo("vault") { inclusive = true }
-                                }
-                            },
-                            onEnsureVault = { uri -> repository.ensureVaultStructure(uri) },
-                        )
-                    }
-                    composable("home") {
-                        HomePager(
-                            contentPadding = padding,
-                            vaultRootUri = vaultRootUri,
-                            prefs = prefs,
-                            repository = repository,
-                            pagerState = pagerState,
-                            docListRefreshToken = docListRefreshToken,
-                            onOpenDoc = { rawUri, query, lineIndex ->
-                                val uriParam = Uri.encode(rawUri)
-                                val qParam = Uri.encode(query ?: "")
-                                val lineParam = (lineIndex ?: -1).toString()
-                                navController.navigate("edit?uri=$uriParam&q=$qParam&line=$lineParam")
-                            },
-                            onNewDoc = { navController.navigate("newDoc") },
-                            onChangeVault = {
-                                scope.launch { prefs.setVaultRootUri(null) }
-                                navController.navigate("vault") {
-                                    popUpTo("home") { inclusive = true }
-                                }
-                            },
-                        )
-                    }
-                    composable("settings") {
-                        SettingsScreen(
-                            contentPadding = padding,
-                            vaultRootUri = vaultRootUri,
-                            repository = repository,
-                            onChangeVault = {
-                                scope.launch { prefs.setVaultRootUri(null) }
-                                navController.navigate("vault") {
-                                    popUpTo("settings") { inclusive = true }
-                                }
-                            },
-                            onOpenWorkshop = {
-                                navController.navigate("workshop")
-                            },
-                        )
-                    }
-                    composable("workshop") {
-                        WorkshopScreen(
-                            contentPadding = padding,
-                            vaultRootUri = vaultRootUri,
-                            onBack = { navController.popBackStack() },
-                        )
-                    }
-                    composable("newDoc") {
-                        val root = vaultRootUri
-                        if (root == null) {
+                        },
+                        onEnsureVault = { uri -> repository.ensureVaultStructure(uri) },
+                    )
+                }
+                composable("home") {
+                    HomePager(
+                        contentPadding = padding,
+                        vaultRootUri = vaultRootUri,
+                        prefs = prefs,
+                        repository = repository,
+                        pagerState = pagerState,
+                        docListRefreshToken = docListRefreshToken,
+                        docSearchRequestToken = docSearchRequestToken,
+                        onOpenDoc = { rawUri, query, lineIndex ->
+                            val uriParam = Uri.encode(rawUri)
+                            val qParam = Uri.encode(query ?: "")
+                            val lineParam = (lineIndex ?: -1).toString()
+                            navController.navigate("edit?uri=$uriParam&q=$qParam&line=$lineParam")
+                        },
+                        onNewDoc = { navController.navigate("newDoc") },
+                        onChangeVault = {
+                            scope.launch { prefs.setVaultRootUri(null) }
                             navController.navigate("vault") {
-                                popUpTo("newDoc") { inclusive = true }
+                                popUpTo("home") { inclusive = true }
                             }
-                            return@composable
+                        },
+                    )
+                }
+                composable("me") {
+                    SettingsScreen(
+                        contentPadding = padding,
+                        vaultRootUri = vaultRootUri,
+                        repository = repository,
+                        onChangeVault = {
+                            scope.launch { prefs.setVaultRootUri(null) }
+                            navController.navigate("vault") {
+                                popUpTo("me") { inclusive = true }
+                            }
+                        },
+                        onOpenWorkshop = { navController.navigate("workshop") },
+                    )
+                }
+                composable("workshop") {
+                    WorkshopScreen(
+                        contentPadding = padding,
+                        vaultRootUri = vaultRootUri,
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable("newDoc") {
+                    val root = vaultRootUri
+                    if (root == null) {
+                        navController.navigate("vault") {
+                            popUpTo("newDoc") { inclusive = true }
                         }
-                        NewDocScreen(
-                            vaultRootUri = root,
-                            repository = repository,
-                            onCreated = { rawUri ->
-                                docListRefreshToken += 1L
-                                navController.navigate("edit?uri=${Uri.encode(rawUri)}") {
-                                    popUpTo("home") { inclusive = false }
-                                }
-                            },
-                            onBack = { navController.popBackStack() },
-                        )
+                        return@composable
                     }
-                    composable(
-                        route = "edit?uri={uri}&q={q}&line={line}",
-                        arguments = listOf(
-                            navArgument("uri") {
-                                type = NavType.StringType
-                                defaultValue = ""
-                            },
-                            navArgument("q") {
-                                type = NavType.StringType
-                                defaultValue = ""
-                            },
-                            navArgument("line") {
-                                type = NavType.IntType
-                                defaultValue = -1
-                            },
-                        ),
-                        enterTransition = {
-                            val fromEdit = initialState.destination.route?.startsWith("edit") == true
-                            if (fromEdit) {
-                                EnterTransition.None
-                            } else {
-                                slideInVertically(
-                                    animationSpec =
-                                        tween(
-                                            durationMillis = 160,
-                                            easing = LinearOutSlowInEasing,
-                                        ),
-                                    initialOffsetY = { fullHeight -> fullHeight },
-                                ) +
-                                    fadeIn(animationSpec = tween(durationMillis = 100)) +
-                                    scaleIn(
-                                        initialScale = 0.98f,
-                                        animationSpec = tween(durationMillis = 160),
-                                    )
+                    NewDocScreen(
+                        vaultRootUri = root,
+                        repository = repository,
+                        onCreated = { rawUri ->
+                            docListRefreshToken += 1L
+                            navController.navigate("edit?uri=${Uri.encode(rawUri)}") {
+                                popUpTo("home") { inclusive = false }
                             }
                         },
-                        exitTransition = {
-                            val toEdit = targetState.destination.route?.startsWith("edit") == true
-                            if (toEdit) {
-                                ExitTransition.None
-                            } else {
-                                slideOutVertically(
-                                    animationSpec =
-                                        tween(
-                                            durationMillis = 160,
-                                            easing = FastOutLinearInEasing,
-                                        ),
-                                    targetOffsetY = { fullHeight -> fullHeight },
-                                ) +
-                                    fadeOut(animationSpec = tween(durationMillis = 100)) +
-                                    scaleOut(
-                                        targetScale = 0.98f,
-                                        animationSpec = tween(durationMillis = 160),
-                                    )
-                            }
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable(
+                    route = "edit?uri={uri}&q={q}&line={line}",
+                    arguments = listOf(
+                        navArgument("uri") {
+                            type = NavType.StringType
+                            defaultValue = ""
                         },
-                        popEnterTransition = { EnterTransition.None },
-                        popExitTransition = {
+                        navArgument("q") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        },
+                        navArgument("line") {
+                            type = NavType.IntType
+                            defaultValue = -1
+                        },
+                    ),
+                    enterTransition = {
+                        val fromEdit = initialState.destination.route?.startsWith("edit") == true
+                        if (fromEdit) {
+                            EnterTransition.None
+                        } else {
+                            slideInVertically(
+                                animationSpec = tween(durationMillis = 160, easing = LinearOutSlowInEasing),
+                                initialOffsetY = { fullHeight -> fullHeight },
+                            ) +
+                                fadeIn(animationSpec = tween(durationMillis = 100)) +
+                                scaleIn(initialScale = 0.98f, animationSpec = tween(durationMillis = 160))
+                        }
+                    },
+                    exitTransition = {
+                        val toEdit = targetState.destination.route?.startsWith("edit") == true
+                        if (toEdit) {
+                            ExitTransition.None
+                        } else {
                             slideOutVertically(
-                                animationSpec =
-                                    tween(
-                                        durationMillis = 160,
-                                        easing = FastOutLinearInEasing,
-                                    ),
+                                animationSpec = tween(durationMillis = 160, easing = FastOutLinearInEasing),
                                 targetOffsetY = { fullHeight -> fullHeight },
                             ) +
                                 fadeOut(animationSpec = tween(durationMillis = 100)) +
-                                scaleOut(
-                                    targetScale = 0.98f,
-                                    animationSpec = tween(durationMillis = 160),
-                                )
+                                scaleOut(targetScale = 0.98f, animationSpec = tween(durationMillis = 160))
+                        }
+                    },
+                    popEnterTransition = { EnterTransition.None },
+                    popExitTransition = {
+                        slideOutVertically(
+                            animationSpec = tween(durationMillis = 160, easing = FastOutLinearInEasing),
+                            targetOffsetY = { fullHeight -> fullHeight },
+                        ) +
+                            fadeOut(animationSpec = tween(durationMillis = 100)) +
+                            scaleOut(targetScale = 0.98f, animationSpec = tween(durationMillis = 160))
+                    },
+                ) { entry ->
+                    val uriParam = entry.arguments?.getString("uri") ?: ""
+                    val qParam = entry.arguments?.getString("q") ?: ""
+                    val lineParam = entry.arguments?.getInt("line") ?: -1
+                    EditorScreen(
+                        docUri = parseNavUri(uriParam),
+                        vaultRootUri = vaultRootUri,
+                        repository = repository,
+                        onBack = { navController.popBackStack() },
+                        onDocListMutated = { docListRefreshToken += 1L },
+                        onOpenDoc = { rawUri, query, lineIndex ->
+                            val uriParam2 = Uri.encode(rawUri)
+                            val qParam2 = Uri.encode(query ?: "")
+                            val lineParam2 = (lineIndex ?: -1).toString()
+                            navController.navigate("edit?uri=$uriParam2&q=$qParam2&line=$lineParam2")
                         },
-                    ) { entry ->
-                        val uriParam = entry.arguments?.getString("uri") ?: ""
-                        val qParam = entry.arguments?.getString("q") ?: ""
-                        val lineParam = entry.arguments?.getInt("line") ?: -1
-                        EditorScreen(
-                            docUri = parseNavUri(uriParam),
-                            vaultRootUri = vaultRootUri,
-                            repository = repository,
-                            onBack = { navController.popBackStack() },
-                            onDocListMutated = { docListRefreshToken += 1L },
-                            onOpenDoc = { rawUri, query, lineIndex ->
-                                val uriParam2 = Uri.encode(rawUri)
-                                val qParam2 = Uri.encode(query ?: "")
-                                val lineParam2 = (lineIndex ?: -1).toString()
-                                navController.navigate("edit?uri=$uriParam2&q=$qParam2&line=$lineParam2")
-                            },
-                            initialQuery = Uri.decode(qParam).takeIf { it.isNotBlank() },
-                            initialLineIndex = lineParam.takeIf { it >= 0 },
-                        )
-                    }
+                        initialQuery = Uri.decode(qParam).takeIf { it.isNotBlank() },
+                        initialLineIndex = lineParam.takeIf { it >= 0 },
+                    )
                 }
             }
         }
@@ -538,18 +430,68 @@ private fun TabText(
 }
 
 @Composable
-private fun UserAvatarButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    size: androidx.compose.ui.unit.Dp = 36.dp,
+private fun MainBottomBar(
+    currentRoute: String?,
+    onHome: () -> Unit,
+    onPlus: () -> Unit,
+    onMe: () -> Unit,
 ) {
-    Surface(
-        modifier = modifier.size(size).clickable(onClick = onClick),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(text = "Z", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    val selectedHome = currentRoute == "home"
+    val selectedMe = currentRoute == "me"
+    val selectedTint = MaterialTheme.colorScheme.onSurface
+    val unselectedTint = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Surface(color = Color.White, tonalElevation = 2.dp) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .height(70.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                IconButton(onClick = onHome) {
+                    Icon(
+                        imageVector = Icons.Outlined.Home,
+                        contentDescription = null,
+                        tint = if (selectedHome) selectedTint else unselectedTint,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
+                Spacer(Modifier.width(72.dp))
+                IconButton(onClick = onMe) {
+                    Icon(
+                        imageVector = Icons.Outlined.SentimentSatisfiedAlt,
+                        contentDescription = null,
+                        tint = if (selectedMe) selectedTint else unselectedTint,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
+            }
+
+            Surface(
+                color = Color(0xFF141516),
+                shape = RoundedCornerShape(19.dp),
+                modifier =
+                    Modifier
+                        .align(Alignment.Center)
+                        .width(68.dp)
+                        .height(38.dp)
+                        .clickable(onClick = onPlus),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Outlined.Add,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(32.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -562,6 +504,7 @@ private fun HomePager(
     repository: VaultRepository,
     pagerState: androidx.compose.foundation.pager.PagerState,
     docListRefreshToken: Long,
+    docSearchRequestToken: Long,
     onOpenDoc: (String, String?, Int?) -> Unit,
     onNewDoc: () -> Unit,
     onChangeVault: () -> Unit,
@@ -581,6 +524,7 @@ private fun HomePager(
                     repository = repository,
                     isActive = isActive,
                     refreshToken = docListRefreshToken,
+                    searchRequestToken = docSearchRequestToken,
                     onOpenDoc = onOpenDoc,
                     onNewDoc = onNewDoc,
                     onChangeVault = onChangeVault,

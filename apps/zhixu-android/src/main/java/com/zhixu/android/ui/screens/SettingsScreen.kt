@@ -9,32 +9,31 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -45,6 +44,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -113,264 +113,271 @@ fun SettingsScreen(
         }
     }
 
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+
     LazyColumn(
         modifier =
             Modifier
                 .padding(contentPadding)
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                .background(MaterialTheme.colorScheme.background)
                 .fillMaxSize()
                 .imePadding(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(0.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = MaterialTheme.shapes.extraLarge,
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            ) {
-                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            modifier = Modifier.size(56.dp),
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(text = "Z", style = MaterialTheme.typography.titleLarge)
-                            }
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = "Zhixu", style = MaterialTheme.typography.headlineSmall)
-                            Text(text = "ID: —", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        modifier = Modifier.size(56.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(text = "Z", style = MaterialTheme.typography.titleLarge)
                         }
                     }
-
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        text = "当前为普通账户，开通高级版享更多特权",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(12.dp))
-
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        StatCell(title = "使用天数", value = "—", modifier = Modifier.weight(1f))
-                        StatDivider()
-                        StatCell(title = "文档篇数", value = (docCount?.toString() ?: "—"), modifier = Modifier.weight(1f))
-                        StatDivider()
-                        StatCell(title = "编辑字数", value = "—", modifier = Modifier.weight(1f))
-                    }
-                }
-            }
-        }
-
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = MaterialTheme.shapes.extraLarge,
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                    Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        val done = taskStats?.done ?: 0
-                        val total = taskStats?.total ?: 0
-                        Text(
-                            text = stringResource(R.string.todo_done_fmt, done, total),
-                            style = MaterialTheme.typography.headlineSmall,
-                        )
+                        Text(text = "Zhixu", style = MaterialTheme.typography.headlineSmall)
+                        Text(text = "ID: —", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    val levels = remember(taskStats) { buildGitHubHeatmapLevels(taskStats?.donePerDay) }
-                    GitHubHeatmap(levels = levels, rows = 7, cols = 14)
+                }
+
+                Spacer(Modifier.height(12.dp))
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    StatCell(title = "使用天数", value = "—", modifier = Modifier.weight(1f))
+                    StatDivider()
+                    StatCell(title = "文档篇数", value = (docCount?.toString() ?: "—"), modifier = Modifier.weight(1f))
+                    StatDivider()
+                    StatCell(title = "编辑字数", value = "—", modifier = Modifier.weight(1f))
                 }
             }
+            HorizontalDivider(color = dividerColor)
         }
 
         item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = MaterialTheme.shapes.extraLarge,
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                SettingsNavRow(
-                    icon = Icons.Outlined.Menu,
-                    title = stringResource(R.string.settings_section_vault),
-                    subtitle = vaultRootUri?.toString() ?: stringResource(R.string.settings_vault_not_selected),
-                    onClick = onChangeVault,
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-                SettingsNavRow(
-                    icon = Icons.Outlined.Extension,
-                    title = stringResource(R.string.settings_section_workshop),
-                    subtitle = stringResource(R.string.settings_workshop_desc),
-                    enabled = vaultRootUri != null,
-                    onClick = onOpenWorkshop,
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    val done = taskStats?.done ?: 0
+                    val total = taskStats?.total ?: 0
+                    Text(
+                        text = stringResource(R.string.todo_done_fmt, done, total),
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                }
+                val levels = remember(taskStats) { buildGitHubHeatmapLevels(taskStats?.donePerDay) }
+                GitHubHeatmap(levels = levels, rows = 7, cols = 14)
             }
+            HorizontalDivider(color = dividerColor)
         }
 
         item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = MaterialTheme.shapes.extraLarge,
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            ) {
-                ListItem(
-                    headlineContent = { Text(stringResource(R.string.settings_section_sync)) },
-                    supportingContent = { Text(stringResource(R.string.settings_sync_placeholder)) },
-                    leadingContent = { Icon(imageVector = Icons.Outlined.CloudUpload, contentDescription = null) },
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-                RowSwitch(
-                    title = stringResource(R.string.webdav_enable),
-                    checked = enabled,
-                    onCheckedChange = { enabled = it },
-                )
-            }
+            SettingsNavRow(
+                icon = Icons.Outlined.Menu,
+                title = stringResource(R.string.settings_section_vault),
+                subtitle = vaultRootUri?.toString() ?: stringResource(R.string.settings_vault_not_selected),
+                onClick = onChangeVault,
+            )
+            HorizontalDivider(color = dividerColor)
+            SettingsNavRow(
+                icon = Icons.Outlined.Extension,
+                title = stringResource(R.string.settings_section_workshop),
+                subtitle = stringResource(R.string.settings_workshop_desc),
+                enabled = vaultRootUri != null,
+                onClick = onOpenWorkshop,
+            )
+            HorizontalDivider(color = dividerColor)
+        }
+
+        item {
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.settings_section_sync)) },
+                supportingContent = { Text(stringResource(R.string.settings_sync_placeholder)) },
+                leadingContent = { Icon(imageVector = Icons.Outlined.CloudUpload, contentDescription = null) },
+            )
+            HorizontalDivider(color = dividerColor)
+            RowSwitch(
+                title = stringResource(R.string.webdav_enable),
+                checked = enabled,
+                onCheckedChange = { enabled = it },
+            )
+            HorizontalDivider(color = dividerColor)
         }
 
         if (enabled) {
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        OutlinedTextField(
-                            value = baseUrl,
-                            onValueChange = { baseUrl = it },
-                            label = { Text(stringResource(R.string.webdav_base_url)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        OutlinedTextField(
-                            value = username,
-                            onValueChange = { username = it },
-                            label = { Text(stringResource(R.string.webdav_username)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        OutlinedTextField(
-                            value = password,
-                            onValueChange = { password = it },
-                            label = { Text(stringResource(R.string.webdav_password)) },
-                            singleLine = true,
-                            visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                            trailingIcon = {
-                                TextButton(onClick = { showPassword = !showPassword }) {
-                                    Text(if (showPassword) stringResource(R.string.action_hide) else stringResource(R.string.action_show))
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        OutlinedTextField(
-                            value = remoteRoot,
-                            onValueChange = { remoteRoot = it },
-                            label = { Text(stringResource(R.string.webdav_remote_root)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        RowSwitch(
-                            title = stringResource(R.string.webdav_include_index_sqlite),
-                            checked = includeIndexSqlite,
-                            onCheckedChange = { includeIndexSqlite = it },
-                        )
+                Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    TextField(
+                        value = baseUrl,
+                        onValueChange = { baseUrl = it },
+                        label = { Text(stringResource(R.string.webdav_base_url)) },
+                        singleLine = true,
+                        colors =
+                            TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                            ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    TextField(
+                        value = username,
+                        onValueChange = { username = it },
+                        label = { Text(stringResource(R.string.webdav_username)) },
+                        singleLine = true,
+                        colors =
+                            TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                            ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    TextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text(stringResource(R.string.webdav_password)) },
+                        singleLine = true,
+                        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            TextButton(onClick = { showPassword = !showPassword }) {
+                                Text(if (showPassword) stringResource(R.string.action_hide) else stringResource(R.string.action_show))
+                            }
+                        },
+                        colors =
+                            TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                            ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    TextField(
+                        value = remoteRoot,
+                        onValueChange = { remoteRoot = it },
+                        label = { Text(stringResource(R.string.webdav_remote_root)) },
+                        singleLine = true,
+                        colors =
+                            TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                            ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    HorizontalDivider(color = dividerColor)
 
-                        if (testStatus != null) {
-                            Text(testStatus!!, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                    RowSwitch(
+                        title = stringResource(R.string.webdav_include_index_sqlite),
+                        checked = includeIndexSqlite,
+                        onCheckedChange = { includeIndexSqlite = it },
+                    )
 
-                        Button(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = {
-                                val config =
-                                    WebDavConfig(
-                                        enabled = enabled,
-                                        baseUrl = baseUrl.trim(),
-                                        username = username.trim(),
-                                        password = password,
-                                        remoteRoot = remoteRoot.trim().ifBlank { "/" },
-                                        includeIndexSqlite = includeIndexSqlite,
-                                    )
-                                scope.launch {
-                                    syncPrefs.saveWebDavConfig(config)
-                                    testStatus = context.getString(R.string.webdav_saved)
-                                }
-                            },
-                        ) { Text(stringResource(R.string.action_save)) }
-
-                        Button(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = {
-                                val config =
-                                    WebDavConfig(
-                                        enabled = enabled,
-                                        baseUrl = baseUrl.trim(),
-                                        username = username.trim(),
-                                        password = password,
-                                        remoteRoot = remoteRoot.trim().ifBlank { "/" },
-                                        includeIndexSqlite = includeIndexSqlite,
-                                    )
-                                scope.launch {
-                                    testStatus = context.getString(R.string.webdav_testing)
-                                    val result = WebDavClient.testConnection(config)
-                                    testStatus =
-                                        if (result.success) {
-                                            context.getString(R.string.webdav_test_ok, result.statusCode)
-                                        } else {
-                                            context.getString(R.string.webdav_test_fail, result.statusCode, result.message)
-                                        }
-                                }
-                            },
-                        ) { Text(stringResource(R.string.webdav_test)) }
-
-                        Button(
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = vaultRootUri != null,
-                            onClick = {
-                                val root = vaultRootUri ?: return@Button
-                                val config =
-                                    WebDavConfig(
-                                        enabled = enabled,
-                                        baseUrl = baseUrl.trim(),
-                                        username = username.trim(),
-                                        password = password,
-                                        remoteRoot = remoteRoot.trim().ifBlank { "/" },
-                                        includeIndexSqlite = includeIndexSqlite,
-                                    )
-                                scope.launch {
-                                    testStatus = context.getString(R.string.webdav_syncing)
-                                    val engine = WebDavSyncEngine(context, repository)
-                                    val summary =
-                                        runCatching { engine.syncVault(root, config) }
-                                            .getOrElse { e ->
-                                                testStatus =
-                                                    context.getString(
-                                                        R.string.webdav_sync_failed,
-                                                        e.message ?: e.javaClass.simpleName,
-                                                    )
-                                                return@launch
-                                            }
-                                    testStatus =
-                                        context.getString(
-                                            R.string.webdav_sync_ok,
-                                            summary.uploaded,
-                                            summary.downloaded,
-                                            summary.conflicts,
-                                            summary.failed,
-                                        )
-                                }
-                            },
-                        ) { Text(stringResource(R.string.webdav_sync_now)) }
+                    Spacer(Modifier.height(12.dp))
+                    if (testStatus != null) {
+                        Text(testStatus!!, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(12.dp))
                     }
+
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            val config =
+                                WebDavConfig(
+                                    enabled = enabled,
+                                    baseUrl = baseUrl.trim(),
+                                    username = username.trim(),
+                                    password = password,
+                                    remoteRoot = remoteRoot.trim().ifBlank { "/" },
+                                    includeIndexSqlite = includeIndexSqlite,
+                                )
+                            scope.launch {
+                                syncPrefs.saveWebDavConfig(config)
+                                testStatus = context.getString(R.string.webdav_saved)
+                            }
+                        },
+                    ) { Text(stringResource(R.string.action_save)) }
+
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            val config =
+                                WebDavConfig(
+                                    enabled = enabled,
+                                    baseUrl = baseUrl.trim(),
+                                    username = username.trim(),
+                                    password = password,
+                                    remoteRoot = remoteRoot.trim().ifBlank { "/" },
+                                    includeIndexSqlite = includeIndexSqlite,
+                                )
+                            scope.launch {
+                                testStatus = context.getString(R.string.webdav_testing)
+                                val result = WebDavClient.testConnection(config)
+                                testStatus =
+                                    if (result.success) {
+                                        context.getString(R.string.webdav_test_ok, result.statusCode)
+                                    } else {
+                                        context.getString(R.string.webdav_test_fail, result.statusCode, result.message)
+                                    }
+                            }
+                        },
+                    ) { Text(stringResource(R.string.webdav_test)) }
+
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = vaultRootUri != null,
+                        onClick = {
+                            val root = vaultRootUri ?: return@Button
+                            val config =
+                                WebDavConfig(
+                                    enabled = enabled,
+                                    baseUrl = baseUrl.trim(),
+                                    username = username.trim(),
+                                    password = password,
+                                    remoteRoot = remoteRoot.trim().ifBlank { "/" },
+                                    includeIndexSqlite = includeIndexSqlite,
+                                )
+                            scope.launch {
+                                testStatus = context.getString(R.string.webdav_syncing)
+                                val engine = WebDavSyncEngine(context, repository)
+                                val summary =
+                                    runCatching { engine.syncVault(root, config) }
+                                        .getOrElse { e ->
+                                            testStatus =
+                                                context.getString(
+                                                    R.string.webdav_sync_failed,
+                                                    e.message ?: e.javaClass.simpleName,
+                                                )
+                                            return@launch
+                                        }
+                                testStatus =
+                                    context.getString(
+                                        R.string.webdav_sync_ok,
+                                        summary.uploaded,
+                                        summary.downloaded,
+                                        summary.conflicts,
+                                        summary.failed,
+                                    )
+                            }
+                        },
+                    ) { Text(stringResource(R.string.webdav_sync_now)) }
                 }
+                HorizontalDivider(color = dividerColor)
             }
         }
     }

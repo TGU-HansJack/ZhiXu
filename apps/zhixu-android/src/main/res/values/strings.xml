@@ -5,6 +5,7 @@
     <string name="nav_docs">Docs</string>
     <string name="nav_tasks">Tasks</string>
     <string name="nav_settings">Settings</string>
+    <string name="nav_me">我的</string>
 
     <!-- Vault -->
     <string name="vault_select_title">Select Vault folder</string>
@@ -26,7 +27,7 @@
     <string name="action_delete">Delete</string>
     <string name="action_show">Show</string>
     <string name="action_hide">Hide</string>
-    <string name="edited_at_fmt">Edited at %1$s</string>
+    <string name="edited_at_fmt">%1$s</string>
     <string name="search_empty">No results</string>
     <string name="search_task_hit">Task match</string>
 

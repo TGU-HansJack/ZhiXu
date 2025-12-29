@@ -24,7 +24,7 @@
     <string name="action_delete">删除</string>
     <string name="action_show">显示</string>
     <string name="action_hide">隐藏</string>
-    <string name="edited_at_fmt">编辑于 %1$s</string>
+    <string name="edited_at_fmt">%1$s</string>
     <string name="search_empty">无结果</string>
     <string name="search_task_hit">任务命中</string>
 

@@ -33,7 +33,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -85,8 +84,6 @@ import com.zhixu.android.data.TaskSearchResult
 import com.zhixu.android.data.UiDoc
 import com.zhixu.android.data.VaultPreferences
 import com.zhixu.android.data.VaultRepository
-import com.zhixu.android.ui.components.CapsuleActionBar
-import com.zhixu.android.ui.components.CapsuleActionBarDefaults
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Dispatchers
@@ -108,6 +105,7 @@ fun DocumentListScreen(
     repository: VaultRepository,
     isActive: Boolean,
     refreshToken: Long,
+    searchRequestToken: Long,
     onOpenDoc: (String, String?, Int?) -> Unit,
     onNewDoc: () -> Unit,
     onChangeVault: () -> Unit,
@@ -128,14 +126,27 @@ fun DocumentListScreen(
     var lastRefreshAtMs by remember { mutableStateOf(0L) }
     var cacheUpdatedAtMs by remember(vaultRootUri) { mutableLongStateOf(initialCacheEntry?.updatedAtMs ?: 0L) }
     var ensuredVaultThisSession by remember(vaultRootUri) { mutableStateOf(false) }
-    var showAiDialog by remember { mutableStateOf(false) }
     var showSearchSheet by remember { mutableStateOf(false) }
+    var pendingOpenSearch by remember { mutableStateOf(false) }
+    var lastSearchToken by remember { mutableLongStateOf(searchRequestToken) }
     var pendingRefresh by remember(vaultRootUri) { mutableStateOf<PendingRefresh?>(null) }
     var docsDirUri by remember(vaultRootUri) { mutableStateOf<Uri?>(null) }
     var skipNextResumeRefresh by remember(vaultRootUri) { mutableStateOf(true) }
 
     val latestVaultRootUri by rememberUpdatedState(vaultRootUri)
     val latestIsActive by rememberUpdatedState(isActive)
+
+    LaunchedEffect(searchRequestToken) {
+        if (searchRequestToken == lastSearchToken) return@LaunchedEffect
+        lastSearchToken = searchRequestToken
+        pendingOpenSearch = true
+    }
+
+    LaunchedEffect(isActive, pendingOpenSearch) {
+        if (!isActive || !pendingOpenSearch) return@LaunchedEffect
+        pendingOpenSearch = false
+        showSearchSheet = true
+    }
 
     fun requestRefresh(force: Boolean, reindex: Boolean) {
         if (!isActive) return
@@ -331,15 +342,6 @@ fun DocumentListScreen(
         }
     }
 
-    if (showAiDialog) {
-        AlertDialog(
-            onDismissRequest = { showAiDialog = false },
-            title = { Text("AI") },
-            text = { Text("AI 对话（占位）") },
-            confirmButton = { TextButton(onClick = { showAiDialog = false }) { Text(stringResource(R.string.action_cancel)) } },
-        )
-    }
-
     fun clearSearch() {
         query = ""
         results = emptyList()
@@ -389,7 +391,7 @@ fun DocumentListScreen(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     state = listState,
-                    contentPadding = PaddingValues(bottom = 96.dp),
+                    contentPadding = PaddingValues(bottom = 12.dp),
                 ) {
                     if (docs.isEmpty()) {
                         item {
@@ -418,17 +420,6 @@ fun DocumentListScreen(
                 }
             }
         }
-
-        CapsuleActionBar(
-            modifier =
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 18.dp + CapsuleActionBarDefaults.Height)
-                    .windowInsetsPadding(WindowInsets.navigationBars),
-            onSearch = { showSearchSheet = true },
-            onAdd = { if (vaultRootUri == null) onChangeVault() else onNewDoc() },
-            onAi = { showAiDialog = true },
-        )
     }
 
     if (showSearchSheet) {
@@ -733,11 +724,5 @@ private fun DocRow(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        Spacer(modifier = Modifier.size(12.dp))
-        Icon(
-            imageVector = Icons.Outlined.MoreHoriz,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
