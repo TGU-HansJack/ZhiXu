@@ -83,6 +83,7 @@ import com.zhixu.android.ui.screens.DocumentListScreen
 import com.zhixu.android.ui.screens.EditorScreen
 import com.zhixu.android.ui.screens.LongImageScreen
 import com.zhixu.android.ui.screens.NewDocScreen
+import com.zhixu.android.ui.screens.AccountScreen
 import com.zhixu.android.ui.screens.SettingsScreen
 import com.zhixu.android.ui.screens.SyncScreen
 import com.zhixu.android.ui.screens.TasksScreen
@@ -328,9 +329,18 @@ fun ZhixuApp() {
                             val lineParam = (lineIndex ?: -1).toString()
                             navController.navigate("edit?uri=$uriParam&q=$qParam&line=$lineParam")
                         },
+                        onOpenAccount = { navController.navigate("account") },
                         onOpenVaultSettings = { navController.navigate("vaultSettings") },
                         onOpenWorkshop = { navController.navigate("workshop") },
                         onOpenSync = { navController.navigate("sync") },
+                    )
+                }
+                composable("account") {
+                    val accountPrefs = remember(appContext) { com.zhixu.android.data.AccountPreferences(appContext) }
+                    AccountScreen(
+                        contentPadding = padding,
+                        accountPrefs = accountPrefs,
+                        onBack = { navController.popBackStack() },
                     )
                 }
                 composable("vaultSettings") {

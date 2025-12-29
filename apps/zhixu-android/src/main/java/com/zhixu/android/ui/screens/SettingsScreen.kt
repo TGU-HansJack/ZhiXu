@@ -61,6 +61,7 @@ fun SettingsScreen(
     refreshToken: Long,
     repository: VaultRepository,
     onOpenDoc: (String, String?, Int?) -> Unit,
+    onOpenAccount: () -> Unit,
     onOpenVaultSettings: () -> Unit,
     onOpenWorkshop: () -> Unit,
     onOpenSync: () -> Unit,
@@ -70,14 +71,6 @@ fun SettingsScreen(
     val accountState by accountPrefs.state.collectAsState(
         initial = AccountState(token = "", username = "", userId = 0L, deviceId = ""),
     )
-    var showAccountDialog by remember { mutableStateOf(false) }
-
-    if (showAccountDialog) {
-        AccountManagementDialog(
-            accountPrefs = accountPrefs,
-            onDismiss = { showAccountDialog = false },
-        )
-    }
 
     var contribPerDay by remember { mutableStateOf<Map<LocalDate, DailyContrib>?>(null) }
 
@@ -106,7 +99,7 @@ fun SettingsScreen(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .clickable { showAccountDialog = true }
+                        .clickable { onOpenAccount() }
                         .padding(16.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

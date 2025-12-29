@@ -85,8 +85,14 @@ class AccountPreferences(
             runCatching { Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) }
                 .getOrNull()
                 .orEmpty()
-        val rand = UUID.randomUUID().toString()
-        val raw = "android|${context.packageName}|$androidId|$rand"
+        val raw =
+            if (androidId.isNotBlank()) {
+                // Stable and unique per device+app.
+                "android|${context.packageName}|$androidId"
+            } else {
+                // Fallback: still highly unique.
+                "android|${context.packageName}|${UUID.randomUUID()}"
+            }
         val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
         val hex = buildString(digest.size * 2) {
             for (b in digest) append(((b.toInt() and 0xff) + 0x100).toString(16).substring(1))

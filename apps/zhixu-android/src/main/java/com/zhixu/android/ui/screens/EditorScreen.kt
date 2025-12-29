@@ -648,7 +648,12 @@ fun EditorScreen(
         val (fileName, loaded) =
             runCatching {
                 withContext(Dispatchers.IO) {
-                    val name = DocumentFile.fromSingleUri(context, docUri)?.name.orEmpty()
+                    val name =
+                        if (docUri.scheme.equals("file", ignoreCase = true)) {
+                            docUri.path?.let { java.io.File(it).name }.orEmpty()
+                        } else {
+                            DocumentFile.fromSingleUri(context, docUri)?.name.orEmpty()
+                        }
                     val text = repository.readText(docUri)
                     name to text
                 }
@@ -1112,7 +1117,11 @@ fun EditorScreen(
         onDocListMutated()
         originalFileName =
             withContext(Dispatchers.IO) {
-                DocumentFile.fromSingleUri(context, renamedUri)?.name.orEmpty()
+                if (renamedUri.scheme.equals("file", ignoreCase = true)) {
+                    renamedUri.path?.let { java.io.File(it).name }.orEmpty()
+                } else {
+                    DocumentFile.fromSingleUri(context, renamedUri)?.name.orEmpty()
+                }
             }
     }
 

@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
+import com.zhixu.android.data.vaultRootToDocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.Git
@@ -194,7 +195,7 @@ class PluginRepository(
         readPluginFileText(rootUri, pluginId, "README.md") ?: readPluginFileText(rootUri, pluginId, "readme.md")
 
     private fun ensurePluginsDir(rootUri: Uri): DocumentFile? {
-        val root = DocumentFile.fromTreeUri(context, rootUri) ?: return null
+        val root = vaultRootToDocumentFile(context, rootUri) ?: return null
         val zhixu = root.findFile(".zhixu") ?: root.createDirectory(".zhixu") ?: return null
         return zhixu.findFile("plugins") ?: zhixu.createDirectory("plugins")
     }
@@ -202,17 +203,28 @@ class PluginRepository(
     private fun ensurePluginConfigFile(rootUri: Uri, pluginId: String, fileName: String): DocumentFile? {
         val pluginsDir = ensurePluginsDir(rootUri) ?: return null
         val pluginDir = pluginsDir.findFile(pluginId) ?: return null
-        return pluginDir.findFile(fileName) ?: pluginDir.createFile("application/json", fileName)
+        return pluginDir.findFile(fileName) ?: createFileExact(pluginDir, "application/json", fileName)
     }
 
     private fun ensurePluginStateFile(pluginsDir: DocumentFile): DocumentFile? {
         val state = pluginsDir.findFile("state.json")
-            ?: pluginsDir.createFile("application/json", "state.json")
+            ?: createFileExact(pluginsDir, "application/json", "state.json")
             ?: return null
         if (state.length() == 0L) {
             writeJsonObject(state.uri, JSONObject().put("enabled", JSONArray()))
         }
         return state
+    }
+
+    private fun createFileExact(parent: DocumentFile, mimeType: String, displayName: String): DocumentFile? {
+        if (parent.uri.scheme.equals("file", ignoreCase = true)) {
+            val dir = parent.uri.path?.let(::File) ?: return null
+            if (!dir.exists()) dir.mkdirs()
+            val file = File(dir, displayName)
+            runCatching { if (!file.exists()) file.createNewFile() }
+            return DocumentFile.fromFile(file)
+        }
+        return parent.createFile(mimeType, displayName)
     }
 
     private fun readEnabledSet(pluginsDir: DocumentFile): Set<String> {
