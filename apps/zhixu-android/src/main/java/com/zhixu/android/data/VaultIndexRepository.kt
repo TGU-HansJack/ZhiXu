@@ -450,6 +450,95 @@ class VaultIndexRepository(
         }.getOrNull()
     }
 
+    suspend fun recordDailyDocEdited(
+        docUri: String,
+        day: LocalDate = LocalDate.now(),
+    ) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val database = db.writableDatabase
+            ensureDailyContribTables(database)
+            val dayStr = day.toString()
+
+            val prevDay =
+                database.rawQuery(
+                    "SELECT day FROM doc_daily_edited WHERE doc_uri = ?",
+                    arrayOf(docUri),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null else cursor.getString(0)
+                }
+            if (prevDay == dayStr) return@withContext
+
+            database.execSQL(
+                "INSERT OR REPLACE INTO doc_daily_edited(doc_uri, day) VALUES(?, ?)",
+                arrayOf(docUri, dayStr),
+            )
+            database.execSQL("INSERT OR IGNORE INTO daily_contrib(day, docs_edited, tasks_done) VALUES(?, 0, 0)", arrayOf(dayStr))
+            database.execSQL("UPDATE daily_contrib SET docs_edited = docs_edited + 1 WHERE day = ?", arrayOf(dayStr))
+        }
+    }
+
+    suspend fun incrementDailyTasksDone(
+        day: LocalDate = LocalDate.now(),
+        delta: Int,
+    ) = withContext(Dispatchers.IO) {
+        if (delta <= 0) return@withContext
+        mutex.withLock {
+            val database = db.writableDatabase
+            ensureDailyContribTables(database)
+            val dayStr = day.toString()
+            database.execSQL("INSERT OR IGNORE INTO daily_contrib(day, docs_edited, tasks_done) VALUES(?, 0, 0)", arrayOf(dayStr))
+            database.execSQL("UPDATE daily_contrib SET tasks_done = tasks_done + ? WHERE day = ?", arrayOf(delta, dayStr))
+        }
+    }
+
+    suspend fun getDailyContribSince(
+        cutoff: LocalDate,
+    ): Map<LocalDate, DailyContrib> = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val database = db.writableDatabase
+            ensureDailyContribTables(database)
+            val out = HashMap<LocalDate, DailyContrib>()
+            database.rawQuery(
+                "SELECT day, docs_edited, tasks_done FROM daily_contrib WHERE day >= ?",
+                arrayOf(cutoff.toString()),
+            ).use { cursor ->
+                val dayIdx = cursor.getColumnIndexOrThrow("day")
+                val docsIdx = cursor.getColumnIndexOrThrow("docs_edited")
+                val tasksIdx = cursor.getColumnIndexOrThrow("tasks_done")
+                while (cursor.moveToNext()) {
+                    val day = runCatching { LocalDate.parse(cursor.getString(dayIdx)) }.getOrNull() ?: continue
+                    out[day] =
+                        DailyContrib(
+                            day = day,
+                            docsEdited = cursor.getInt(docsIdx),
+                            tasksDone = cursor.getInt(tasksIdx),
+                        )
+                }
+            }
+            out
+        }
+    }
+
+    private fun ensureDailyContribTables(database: android.database.sqlite.SQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS daily_contrib (
+              day TEXT PRIMARY KEY,
+              docs_edited INTEGER NOT NULL DEFAULT 0,
+              tasks_done INTEGER NOT NULL DEFAULT 0
+            );
+            """.trimIndent(),
+        )
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS doc_daily_edited (
+              doc_uri TEXT PRIMARY KEY,
+              day TEXT NOT NULL
+            );
+            """.trimIndent(),
+        )
+    }
+
     private companion object {
         val mutex = Mutex()
     }

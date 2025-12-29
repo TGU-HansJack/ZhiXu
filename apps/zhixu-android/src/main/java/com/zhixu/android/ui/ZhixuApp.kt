@@ -136,8 +136,9 @@ fun ZhixuApp() {
 
     var docListRefreshToken by remember { mutableLongStateOf(0L) }
     var docSearchRequestToken by remember { mutableLongStateOf(0L) }
+    var meRefreshToken by remember { mutableLongStateOf(0L) }
 
-    val showTopBar = currentRoute in setOf("home", "me")
+    val showTopBar = currentRoute in setOf("home")
     val showBottomBar = currentRoute in setOf("home", "me")
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 0, pageCount = { 2 })
     val settledPage by remember { derivedStateOf { pagerState.settledPage } }
@@ -160,6 +161,7 @@ fun ZhixuApp() {
     }
 
     fun navigateMe() {
+        meRefreshToken += 1L
         navController.navigate("me") {
             launchSingleTop = true
             restoreState = true
@@ -294,6 +296,7 @@ fun ZhixuApp() {
                     SettingsScreen(
                         contentPadding = padding,
                         vaultRootUri = vaultRootUri,
+                        refreshToken = meRefreshToken,
                         repository = repository,
                         onChangeVault = {
                             scope.launch { prefs.setVaultRootUri(null) }

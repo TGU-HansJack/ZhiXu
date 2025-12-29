@@ -322,24 +322,40 @@ fun EditorScreen(
     val latestWikiLinks by rememberUpdatedState(wikiLinks)
 
     suspend fun persistNow(uri: Uri, text: String): Boolean {
-        return runCatching {
-            withContext(Dispatchers.IO) {
-                repository.writeText(uri, text)
-                repository.indexDocUri(uri)
-            }
-        }.onSuccess {
-            lastPersistedText = text
-            EditorScreenCache.put(
-                uri,
-                EditorScreenCache.Entry(
-                    text = text,
-                    title = latestTitle,
-                    originalFileName = latestOriginalFileName,
-                    outline = latestOutline,
-                    wikiLinks = latestWikiLinks,
-                ),
-            )
-        }.isSuccess
+        val beforeCached = lastPersistedText
+        val beforeForDelta =
+            beforeCached
+                ?: runCatching {
+                    withContext(Dispatchers.IO) { repository.readText(uri) }
+                }.getOrNull()
+        val ok =
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    repository.writeText(uri, text)
+                    repository.indexDocUri(uri)
+                }
+            }.isSuccess
+        if (!ok) return false
+
+        lastPersistedText = text
+        EditorScreenCache.put(
+            uri,
+            EditorScreenCache.Entry(
+                text = text,
+                title = latestTitle,
+                originalFileName = latestOriginalFileName,
+                outline = latestOutline,
+                wikiLinks = latestWikiLinks,
+            ),
+        )
+
+        repository.recordDailyDocEdited(docUri = uri)
+        val beforeDone = beforeForDelta?.let { runCatching { com.zhixu.core.tasks.TaskSyntax.parseTasks(it).count { t -> t.checked } }.getOrNull() } ?: 0
+        val afterDone = runCatching { com.zhixu.core.tasks.TaskSyntax.parseTasks(text).count { t -> t.checked } }.getOrNull() ?: 0
+        val deltaDone = (afterDone - beforeDone).coerceAtLeast(0)
+        if (deltaDone > 0) repository.recordDailyTasksDone(delta = deltaDone)
+
+        return true
     }
 
     fun requestExit() {

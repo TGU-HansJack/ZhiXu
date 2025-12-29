@@ -496,6 +496,42 @@ class VaultRepository(
         TaskStats(done = done, total = total, donePerDay = donePerDay)
     }
 
+    suspend fun recordDailyDocEdited(
+        docUri: Uri,
+        day: LocalDate = LocalDate.now(),
+    ) {
+        runCatching {
+            indexRepository.recordDailyDocEdited(docUri = docUri.toString(), day = day)
+        }.onFailure {
+            Log.e("Zhixu", "recordDailyDocEdited failed", it)
+        }
+    }
+
+    suspend fun recordDailyTasksDone(
+        delta: Int,
+        day: LocalDate = LocalDate.now(),
+    ) {
+        if (delta <= 0) return
+        runCatching {
+            indexRepository.incrementDailyTasksDone(day = day, delta = delta)
+        }.onFailure {
+            Log.e("Zhixu", "recordDailyTasksDone failed", it)
+        }
+    }
+
+    suspend fun getDailyContribForYear(
+        year: Int,
+    ): Map<LocalDate, DailyContrib> = withContext(Dispatchers.IO) {
+        val yearStart = LocalDate.of(year, 1, 1)
+        val yearEnd = LocalDate.of(year, 12, 31)
+        runCatching { indexRepository.getDailyContribSince(yearStart) }
+            .getOrElse {
+                Log.e("Zhixu", "getDailyContribForYear failed", it)
+                emptyMap()
+            }
+            .filterKeys { d -> !d.isAfter(yearEnd) }
+    }
+
     suspend fun writeBytes(uri: Uri, bytes: ByteArray) = withContext(Dispatchers.IO) {
         val resolver: ContentResolver = context.contentResolver
         resolver.openOutputStream(uri, "wt")?.use { output ->
@@ -562,6 +598,14 @@ class VaultRepository(
         val before = readText(docUri)
         val after = TaskSyntax.toggleTaskAtLine(before, lineIndex)
         if (after != before) {
+            val beforeChecked =
+                runCatching { TaskSyntax.parseTasks(before).firstOrNull { it.lineIndex == lineIndex }?.checked }
+                    .getOrNull()
+                    ?: false
+            val afterChecked =
+                runCatching { TaskSyntax.parseTasks(after).firstOrNull { it.lineIndex == lineIndex }?.checked }
+                    .getOrNull()
+                    ?: false
             writeText(docUri, after)
             val docName = DocumentFile.fromSingleUri(context, docUri)?.name ?: "Document"
             val stat = DocumentFile.fromSingleUri(context, docUri)
@@ -577,6 +621,11 @@ class VaultRepository(
                 )
             runCatching { indexRepository.indexDocument(uiDoc, after) }
                 .onFailure { Log.e("Zhixu", "Index update failed for $docUri", it) }
+
+            recordDailyDocEdited(docUri = docUri)
+            if (!beforeChecked && afterChecked) {
+                recordDailyTasksDone(delta = 1)
+            }
         }
         after
     }

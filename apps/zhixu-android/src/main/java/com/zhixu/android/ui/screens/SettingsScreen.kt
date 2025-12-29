@@ -3,6 +3,7 @@ package com.zhixu.android.ui.screens
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,13 +14,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -34,39 +36,37 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zhixu.android.R
-import com.zhixu.android.data.TaskStats
+import com.zhixu.android.data.DailyContrib
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.Ionicons
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
 @Composable
 fun SettingsScreen(
     contentPadding: PaddingValues,
     vaultRootUri: Uri?,
+    refreshToken: Long,
     repository: VaultRepository,
     onChangeVault: () -> Unit,
     onOpenWorkshop: () -> Unit,
     onOpenSync: () -> Unit,
 ) {
-    val context = LocalContext.current
-    var docCount by remember { mutableStateOf<Int?>(null) }
-    var taskStats by remember { mutableStateOf<TaskStats?>(null) }
+    var contribPerDay by remember { mutableStateOf<Map<LocalDate, DailyContrib>?>(null) }
 
-    LaunchedEffect(vaultRootUri) {
-        if (vaultRootUri == null) {
-            docCount = null
-            taskStats = null
-        } else {
-            docCount = runCatching { repository.listMarkdownDocs(vaultRootUri).size }.getOrNull()
-            taskStats = runCatching { repository.taskStats(vaultRootUri) }.getOrNull()
-        }
+    LaunchedEffect(refreshToken) {
+        val year = LocalDate.now().year
+        contribPerDay =
+            runCatching { repository.getDailyContribForYear(year = year) }
+                .getOrNull()
+                ?: emptyMap()
     }
 
     val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
@@ -95,39 +95,23 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "Zhixu", style = MaterialTheme.typography.headlineSmall)
-                        Text(text = "ID: —", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(text = "Zhixu", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            text = "ID: —",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        )
                     }
-                }
-
-                Spacer(Modifier.height(12.dp))
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    StatCell(title = "使用天数", value = "—", modifier = Modifier.weight(1f))
-                    StatDivider()
-                    StatCell(title = "文档篇数", value = (docCount?.toString() ?: "—"), modifier = Modifier.weight(1f))
-                    StatDivider()
-                    StatCell(title = "编辑字数", value = "—", modifier = Modifier.weight(1f))
                 }
             }
             HorizontalDivider(color = dividerColor)
         }
 
         item {
-            Row(
+            ContribHeatmapCard(
+                contribPerDay = contribPerDay ?: emptyMap(),
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    val done = taskStats?.done ?: 0
-                    val total = taskStats?.total ?: 0
-                    Text(
-                        text = stringResource(R.string.todo_done_fmt, done, total),
-                        style = MaterialTheme.typography.headlineSmall,
-                    )
-                }
-                val levels = remember(taskStats) { buildGitHubHeatmapLevels(taskStats?.donePerDay) }
-                GitHubHeatmap(levels = levels, rows = 7, cols = 14)
-            }
+            )
             HorizontalDivider(color = dividerColor)
         }
 
@@ -135,7 +119,6 @@ fun SettingsScreen(
             SettingsNavRow(
                 iconRes = Ionicons.Vault,
                 title = stringResource(R.string.settings_section_vault),
-                subtitle = vaultRootUri?.toString() ?: stringResource(R.string.settings_vault_not_selected),
                 onClick = onChangeVault,
             )
             HorizontalDivider(color = dividerColor)
@@ -157,7 +140,6 @@ fun SettingsScreen(
             )
             HorizontalDivider(color = dividerColor)
         }
-
     }
 }
 
@@ -188,43 +170,180 @@ private fun SettingsNavRow(
                 Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         },
-        trailingContent = { Icon(painter = painterResource(Ionicons.ChevronForward), contentDescription = null, modifier = Modifier.size(18.dp)) },
+        trailingContent = {
+            Icon(
+                painter = painterResource(Ionicons.ChevronForward),
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+        },
     )
 }
 
 @Composable
-private fun StatCell(
-    title: String,
-    value: String,
+private fun ContribHeatmapCard(
+    contribPerDay: Map<LocalDate, DailyContrib>,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(title, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(4.dp))
-        Text(value, style = MaterialTheme.typography.headlineMedium)
+    val rows = 7
+    val today = LocalDate.now()
+    val year = today.year
+    val yearStart = LocalDate.of(year, 1, 1)
+    val yearEnd = LocalDate.of(year, 12, 31)
+
+    val startSunday = yearStart.minusDays((yearStart.dayOfWeek.value % 7).toLong())
+    val endSaturday = yearEnd.plusDays((6 - (yearEnd.dayOfWeek.value % 7)).toLong())
+    val cols = ((ChronoUnit.DAYS.between(startSunday, endSaturday) + 1L) / 7L).toInt().coerceAtLeast(1)
+
+    val totalsPerDay = remember(contribPerDay) { contribPerDay.mapValues { (_, v) -> v.total } }
+
+    val max =
+        totalsPerDay
+            .asSequence()
+            .filter { (d, _) -> !d.isBefore(yearStart) && !d.isAfter(yearEnd) }
+            .map { it.value }
+            .maxOrNull()
+            ?: 0
+
+    val levels =
+        remember(totalsPerDay, year) {
+            buildGitHubYearHeatmapLevels(
+                countsPerDay = totalsPerDay,
+                yearStart = yearStart,
+                yearEnd = yearEnd,
+                startSunday = startSunday,
+                rows = rows,
+                cols = cols,
+                max = max,
+            )
+        }
+
+    val dayLabelWidth = 44.dp
+    val cellSize = 11.dp
+    val gap = 4.dp
+    val weekPitch = cellSize + gap
+    val textColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val dayLabelStyle =
+        MaterialTheme.typography.labelSmall.copy(
+            fontSize = 9.sp,
+            lineHeight = 9.sp,
+        )
+
+    val monthStarts =
+        remember(year, cols, startSunday) {
+            (1..12).mapNotNull { month ->
+                val date = LocalDate.of(year, month, 1)
+                val col = (ChronoUnit.DAYS.between(startSunday, date) / 7L).toInt()
+                if (col !in 0 until cols) return@mapNotNull null
+                col to "${month}月"
+            }
+        }
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+            val scrollState = rememberScrollState()
+            LaunchedEffect(levels.size) {
+                scrollState.scrollTo(scrollState.maxValue)
+            }
+
+            Row(verticalAlignment = Alignment.Bottom) {
+                Spacer(Modifier.width(dayLabelWidth))
+                Box(modifier = Modifier.horizontalScroll(scrollState)) {
+                    Box(modifier = Modifier.width(weekPitch * cols).height(18.dp)) {
+                        for ((col, label) in monthStarts) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = textColor.copy(alpha = 0.75f),
+                                modifier = Modifier.offset(x = weekPitch * col, y = 1.dp),
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(6.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(
+                    modifier = Modifier.width(dayLabelWidth),
+                    verticalArrangement = Arrangement.spacedBy(gap),
+                ) {
+                    for (row in 0 until rows) {
+                        val label =
+                            when (row) {
+                                1 -> "周一"
+                                3 -> "周三"
+                                5 -> "周五"
+                                else -> ""
+                            }
+                        Box(
+                            modifier = Modifier.height(cellSize).fillMaxWidth(),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            if (label.isNotBlank()) {
+                                Text(
+                                    text = label,
+                                    style = dayLabelStyle,
+                                    color = textColor.copy(alpha = 0.75f),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Box(modifier = Modifier.horizontalScroll(scrollState)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                        for (col in 0 until cols) {
+                            Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+                                for (row in 0 until rows) {
+                                    val idx = col * rows + row
+                                    val level = levels.getOrNull(idx)?.coerceIn(0, 4) ?: 0
+                                    val date = startSunday.plusDays((col * rows + row).toLong())
+                                    if (date.isBefore(yearStart) || date.isAfter(yearEnd)) {
+                                        Spacer(Modifier.size(cellSize))
+                                    } else {
+                                        ContributionCell(level = level, size = cellSize)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("更少的", style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.75f))
+                    Spacer(Modifier.width(6.dp))
+                    for (level in 0..4) {
+                        ContributionCell(level = level, size = 10.dp)
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    Text("更多的", style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.75f))
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun StatDivider() {
-    Spacer(
-        Modifier
-            .width(1.dp)
-            .height(42.dp)
-            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f)),
-    )
-}
-
-@Composable
-private fun GitHubHeatmap(
-    levels: IntArray,
-    rows: Int,
-    cols: Int,
+private fun ContributionCell(
+    level: Int,
+    size: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val size = 11.dp
-    val gap = 4.dp
-    val shape = androidx.compose.foundation.shape.RoundedCornerShape(3.dp)
+    val shape = RoundedCornerShape(3.dp)
     val colors =
         listOf(
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
@@ -233,67 +352,43 @@ private fun GitHubHeatmap(
             MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
             MaterialTheme.colorScheme.primary.copy(alpha = 0.90f),
         )
-
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
-        for (r in 0 until rows) {
-            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                for (c in 0 until cols) {
-                    val idx = c * rows + r
-                    val level = levels.getOrNull(idx)?.coerceIn(0, 4) ?: 0
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(size)
-                                .background(color = colors[level], shape = shape),
-                    )
-                }
-            }
-        }
-    }
+    val safeLevel = level.coerceIn(0, 4)
+    Box(
+        modifier =
+            modifier
+                .size(size)
+                .background(color = colors[safeLevel], shape = shape),
+    )
 }
 
-private fun buildGitHubHeatmapLevels(
-    donePerDay: Map<LocalDate, Int>?,
-    rows: Int = 7,
-    cols: Int = 14,
+private fun buildGitHubYearHeatmapLevels(
+    countsPerDay: Map<LocalDate, Int>,
+    yearStart: LocalDate,
+    yearEnd: LocalDate,
+    startSunday: LocalDate,
+    rows: Int,
+    cols: Int,
+    max: Int,
 ): IntArray {
-    val days = rows * cols
-    val out = IntArray(days) { 0 }
-    if (days <= 0) return out
-    val counts = donePerDay ?: emptyMap()
+    val out = IntArray(rows * cols) { 0 }
+    if (rows <= 0 || cols <= 0) return out
 
-    val today = LocalDate.now()
-    val start = today.minusDays((days - 1).toLong())
-    var row = start.dayOfWeek.value % 7 // Sunday=0
-    var col = 0
-
-    var max = 0
-    for (i in 0 until days) {
-        val date = start.plusDays(i.toLong())
-        val v = counts[date] ?: 0
-        if (v > max) max = v
+    fun levelFor(v: Int): Int {
+        if (v <= 0) return 0
+        if (max <= 1) return 1
+        return (1 + ((v - 1) * 3 / (max - 1))).coerceIn(1, 4)
     }
 
-    for (i in 0 until days) {
-        val date = start.plusDays(i.toLong())
-        val v = counts[date] ?: 0
-        val level =
-            when {
-                v <= 0 -> 0
-                max <= 1 -> 1
-                else -> (1 + ((v - 1) * 3 / (max - 1))).coerceIn(1, 4)
-            }
-
-        val idx = col * rows + row
-        if (idx in out.indices) out[idx] = level
-
-        row++
-        if (row == rows) {
-            row = 0
-            col++
-            if (col == cols) break
+    for (col in 0 until cols) {
+        val weekStart = startSunday.plusDays((col * rows).toLong())
+        for (row in 0 until rows) {
+            val date = weekStart.plusDays(row.toLong())
+            if (date.isBefore(yearStart) || date.isAfter(yearEnd)) continue
+            val v = countsPerDay[date] ?: 0
+            out[col * rows + row] = levelFor(v)
         }
     }
 
     return out
 }
+

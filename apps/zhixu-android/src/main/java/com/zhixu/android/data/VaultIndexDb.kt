@@ -66,19 +66,61 @@ internal class VaultIndexDb(
             );
             """.trimIndent(),
         )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS daily_contrib (
+              day TEXT PRIMARY KEY,
+              docs_edited INTEGER NOT NULL DEFAULT 0,
+              tasks_done INTEGER NOT NULL DEFAULT 0
+            );
+            """.trimIndent(),
+        )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS doc_daily_edited (
+              doc_uri TEXT PRIMARY KEY,
+              day TEXT NOT NULL
+            );
+            """.trimIndent(),
+        )
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // v0.2: destructive rebuild is acceptable (index is derived).
+        if (oldVersion < 6) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS daily_contrib (
+                  day TEXT PRIMARY KEY,
+                  docs_edited INTEGER NOT NULL DEFAULT 0,
+                  tasks_done INTEGER NOT NULL DEFAULT 0
+                );
+                """.trimIndent(),
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS doc_daily_edited (
+                  doc_uri TEXT PRIMARY KEY,
+                  day TEXT NOT NULL
+                );
+                """.trimIndent(),
+            )
+            return
+        }
+
+        // For future incompatible versions: destructive rebuild is acceptable (index is derived).
         db.execSQL("DROP TABLE IF EXISTS tasks;")
         db.execSQL("DROP TABLE IF EXISTS docs_fts;")
         db.execSQL("DROP TABLE IF EXISTS tasks_fts;")
         db.execSQL("DROP TABLE IF EXISTS meta;")
+        db.execSQL("DROP TABLE IF EXISTS daily_contrib;")
+        db.execSQL("DROP TABLE IF EXISTS doc_daily_edited;")
         onCreate(db)
     }
 
     companion object {
         private const val DB_NAME = "vault_index.db"
-        private const val DB_VERSION = 5
+        private const val DB_VERSION = 6
     }
 }
