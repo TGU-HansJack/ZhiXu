@@ -42,7 +42,25 @@ CREATE TABLE IF NOT EXISTS notes (
   CONSTRAINT fk_notes_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `);
+
+  await pool.query(`
+CREATE TABLE IF NOT EXISTS vault_files (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  path VARCHAR(512) NOT NULL,
+  updated_at_ms BIGINT NOT NULL,
+  mtime_ms BIGINT NOT NULL,
+  size_bytes BIGINT NOT NULL,
+  sha256 CHAR(64) NOT NULL,
+  deleted TINYINT(1) NOT NULL DEFAULT 0,
+  content LONGBLOB NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_vault_files_user_path (user_id, path),
+  KEY idx_vault_files_user_updated (user_id, updated_at_ms),
+  CONSTRAINT fk_vault_files_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+`);
 }
 
 module.exports = { initDb };
-

@@ -51,10 +51,18 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.zhixu.android.R
+import com.zhixu.android.data.AccountPreferences
+import com.zhixu.android.data.AccountState
 import com.zhixu.android.data.SyncPreferences
+import com.zhixu.android.data.ThirdPartyServiceConfig
+import com.zhixu.android.data.VaultStorageLocation
+import com.zhixu.android.data.VaultSyncConfig
+import com.zhixu.android.data.VaultSyncPreferences
 import com.zhixu.android.data.WebDavClient
 import com.zhixu.android.data.WebDavConfig
 import com.zhixu.android.data.VaultRepository
+import com.zhixu.android.sync.OfficialSync
+import com.zhixu.android.sync.OfficialVaultSyncEngine
 import com.zhixu.android.sync.WebDavSyncEngine
 import kotlinx.coroutines.launch
 
@@ -69,6 +77,26 @@ fun SyncScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val syncPrefs = remember(context) { SyncPreferences(context) }
+    val vaultSyncPrefs = remember(context) { VaultSyncPreferences(context.applicationContext) }
+    val vaultSyncConfig by vaultSyncPrefs.config.collectAsState(
+        initial =
+            VaultSyncConfig(
+                location = VaultStorageLocation.LOCAL,
+                thirdParty =
+                    ThirdPartyServiceConfig(
+                        url = "",
+                        username = "",
+                        password = "",
+                        e2eeEnabled = false,
+                        e2eeMasterPassword = "",
+                    ),
+            ),
+    )
+
+    val accountPrefs = remember(context) { AccountPreferences(context.applicationContext) }
+    val accountState by accountPrefs.state.collectAsState(
+        initial = AccountState(token = "", username = "", userId = 0L, deviceId = ""),
+    )
     val savedConfig by syncPrefs.webDavConfig.collectAsState(
         initial =
             WebDavConfig(
@@ -146,6 +174,83 @@ fun SyncScreen(
                     supportingContent = { Text(stringResource(R.string.settings_sync_placeholder)) },
                     leadingContent = { Icon(painter = painterResource(com.zhixu.android.ui.Ionicons.Sync), contentDescription = null) },
                 )
+            }
+
+            if (vaultSyncConfig.location == VaultStorageLocation.OFFICIAL_SERVER) {
+                item {
+                    ListItem(
+                        headlineContent = { Text(stringResource(R.string.official_sync_title)) },
+                        supportingContent = { Text(stringResource(R.string.vault_settings_official_desc_fmt, OfficialSync.BASE_URL)) },
+                    )
+                }
+
+                item {
+                    val msg =
+                        if (!accountState.isLoggedIn) stringResource(R.string.official_sync_not_logged_in)
+                        else stringResource(R.string.official_sync_logged_in_as_fmt, accountState.username.ifBlank { "-" })
+                    Text(
+                        text = msg,
+                        color = if (accountState.isLoggedIn) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                    )
+                }
+
+                item {
+                    RowSwitch(
+                        title = stringResource(R.string.webdav_include_index_sqlite),
+                        checked = includeIndexSqlite,
+                        onCheckedChange = { checked ->
+                            includeIndexSqlite = checked
+                            scope.launch { syncPrefs.setIncludeIndexSqlite(checked) }
+                        },
+                    )
+                }
+
+                if (testStatus != null) {
+                    item { Text(testStatus!!, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+
+                item {
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = accountState.isLoggedIn,
+                        onClick = {
+                            val root = vaultRootUri ?: return@Button
+                            val token = accountState.token
+                            scope.launch {
+                                testStatus = context.getString(R.string.official_sync_syncing)
+                                val engine = OfficialVaultSyncEngine(context, repository)
+                                val summary =
+                                    runCatching {
+                                        engine.syncVault(
+                                            rootUri = root,
+                                            baseUrl = OfficialSync.BASE_URL,
+                                            token = token,
+                                            includeIndexSqlite = includeIndexSqlite,
+                                        )
+                                    }.getOrElse { e ->
+                                        testStatus =
+                                            context.getString(
+                                                R.string.official_sync_failed,
+                                                e.message ?: e.javaClass.simpleName,
+                                            )
+                                        return@launch
+                                    }
+                                testStatus =
+                                    context.getString(
+                                        R.string.official_sync_ok,
+                                        summary.uploaded,
+                                        summary.downloaded,
+                                        summary.deletedRemote,
+                                        summary.deletedLocal,
+                                        summary.conflicts,
+                                        summary.failed,
+                                    )
+                            }
+                        },
+                    ) { Text(stringResource(R.string.official_sync_now)) }
+                }
+
+                return@LazyColumn
             }
 
             item {

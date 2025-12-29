@@ -117,7 +117,7 @@
     <string name="settings_vault_not_selected">Not selected</string>
     <string name="settings_change_vault">Change Vault</string>
     <string name="settings_section_sync">Sync</string>
-    <string name="settings_sync_placeholder">Sync settings. Configure WebDAV and run manual sync below.</string>
+    <string name="settings_sync_placeholder">Sync settings. Use Official server sync or configure WebDAV below.</string>
     <string name="action_close">Close</string>
 
     <!-- Account -->
@@ -162,6 +162,15 @@
     <string name="webdav_syncing">Syncing…</string>
     <string name="webdav_sync_ok">Synced: up %1$d, down %2$d, conflicts %3$d, failed %4$d</string>
     <string name="webdav_sync_failed">Sync failed: %1$s</string>
+
+    <!-- Official server sync -->
+    <string name="official_sync_title">Official server</string>
+    <string name="official_sync_now">Sync now</string>
+    <string name="official_sync_syncing">Syncing…</string>
+    <string name="official_sync_ok">Sync complete: up %1$d, down %2$d, delRemote %3$d, delLocal %4$d, conflict %5$d, fail %6$d</string>
+    <string name="official_sync_failed">Sync failed: %1$s</string>
+    <string name="official_sync_not_logged_in">Not logged in. Login in Account first.</string>
+    <string name="official_sync_logged_in_as_fmt">Logged in as: %1$s</string>
 
     <!-- Reminders -->
     <string name="reminder_channel_name">Task reminders</string>

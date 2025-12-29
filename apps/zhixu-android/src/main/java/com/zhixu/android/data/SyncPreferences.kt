@@ -40,9 +40,14 @@ class SyncPreferences(
             }
 
     val webDavEnabled: Flow<Boolean> = context.dataStore.data.map { it[webdavEnabledKey] ?: false }
+    val includeIndexSqlite: Flow<Boolean> = context.dataStore.data.map { it[includeIndexSqliteKey] ?: false }
 
     suspend fun setWebDavEnabled(enabled: Boolean) {
         context.dataStore.edit { it[webdavEnabledKey] = enabled }
+    }
+
+    suspend fun setIncludeIndexSqlite(include: Boolean) {
+        context.dataStore.edit { it[includeIndexSqliteKey] = include }
     }
 
     suspend fun saveWebDavConfig(config: WebDavConfig) {

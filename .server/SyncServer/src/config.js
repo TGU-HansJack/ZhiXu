@@ -19,6 +19,7 @@ module.exports = {
   port: parseIntEnv("PORT", 3000),
   nodeEnv: process.env.NODE_ENV || "development",
   jsonBodyLimit: process.env.JSON_BODY_LIMIT || "10mb",
+  rawBodyLimitBytes: parseIntEnv("RAW_BODY_LIMIT_BYTES", 50 * 1024 * 1024),
   corsOrigin: process.env.CORS_ORIGIN || "*",
   mysql: {
     host: requireEnv("MYSQL_HOST", "127.0.0.1"),
@@ -30,4 +31,3 @@ module.exports = {
   jwtSecret: requireEnv("JWT_SECRET", "dev_secret_change_me"),
   bcryptRounds: parseIntEnv("BCRYPT_ROUNDS", 12)
 };
-

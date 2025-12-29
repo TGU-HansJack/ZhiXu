@@ -96,7 +96,7 @@
     <string name="settings_vault_not_selected">未选择</string>
     <string name="settings_change_vault">更换 Vault</string>
     <string name="settings_section_sync">同步</string>
-    <string name="settings_sync_placeholder">同步设置：配置 WebDAV，并可在下方手动同步。</string>
+    <string name="settings_sync_placeholder">同步设置：使用官方服务器同步，或在下方配置 WebDAV。</string>
     <string name="action_close">关闭</string>
 
     <!-- Account -->
@@ -141,6 +141,15 @@
     <string name="webdav_syncing">同步中…</string>
     <string name="webdav_sync_ok">同步完成：上传 %1$d，下载 %2$d，冲突 %3$d，失败 %4$d</string>
     <string name="webdav_sync_failed">同步失败：%1$s</string>
+
+    <!-- 官方服务器同步 -->
+    <string name="official_sync_title">官方服务器</string>
+    <string name="official_sync_now">立即同步</string>
+    <string name="official_sync_syncing">同步中…</string>
+    <string name="official_sync_ok">同步完成：上传 %1$d，下载 %2$d，远端删除 %3$d，本地删除 %4$d，冲突 %5$d，失败 %6$d</string>
+    <string name="official_sync_failed">同步失败：%1$s</string>
+    <string name="official_sync_not_logged_in">未登录，请先在「账号」里登录。</string>
+    <string name="official_sync_logged_in_as_fmt">已登录：%1$s</string>
 
     <!-- Reminders -->
     <string name="reminder_channel_name">任务提醒</string>

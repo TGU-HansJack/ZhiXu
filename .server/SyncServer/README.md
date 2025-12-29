@@ -116,3 +116,41 @@ Returns:
 ## E2EE
 
 This server never decrypts note content. When `encrypted=true`, the server stores the note as an opaque blob (`payloadBase64`).
+
+## Vault file sync (experimental)
+
+These endpoints sync a Vault as *files* (e.g. `docs/*.md`, `attachments/*`, `.zhixu/settings.json`).
+
+Notes:
+- `path` max length is 512 (to keep MySQL index key length within limits under `utf8mb4`).
+
+### Manifest
+
+`GET /api/vault/manifest` (Bearer token required)
+
+Returns:
+
+```json
+{
+  "serverTime": 1730000000000,
+  "files": [
+    { "path": "docs/Inbox.md", "updatedAt": 1730000000000, "mtimeMs": 1730000000000, "size": 123, "sha256": "...", "deleted": false }
+  ]
+}
+```
+
+### Download file
+
+`GET /api/vault/file?path=docs/Inbox.md` (Bearer token required)
+
+Returns raw bytes with headers `X-Zhixu-Mtime-Ms`, `X-Zhixu-Size`, `X-Zhixu-Sha256`.
+
+### Upload file
+
+`PUT /api/vault/file?path=docs/Inbox.md&mtimeMs=1730000000000` (Bearer token required)
+
+Body: raw bytes (e.g. `application/octet-stream`).
+
+### Delete file (tombstone)
+
+`DELETE /api/vault/file?path=docs/Inbox.md` (Bearer token required)
