@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,6 +55,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -66,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import com.zhixu.android.R
 import com.zhixu.android.ui.Ionicons
+import com.zhixu.android.ui.components.RefreshStatusBanner
 import com.zhixu.android.data.UiTask
 import com.zhixu.android.data.VaultIndexRepository
 import com.zhixu.android.data.VaultRepository
@@ -188,106 +191,116 @@ fun TasksScreen(
                 state = pullState,
                 modifier = Modifier.fillMaxSize(),
             ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(0.dp),
-                ) {
-                    if (vaultRootUri == null) {
-                        item { Text(stringResource(R.string.settings_vault_not_selected), modifier = Modifier.padding(16.dp)) }
-                        return@LazyColumn
-                    }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(0.dp),
+                    ) {
+                        if (vaultRootUri == null) {
+                            item { Text(stringResource(R.string.settings_vault_not_selected), modifier = Modifier.padding(16.dp)) }
+                            return@LazyColumn
+                        }
 
-                    item {
-                        TaskComposer(
-                            onSubmit = { draft -> submitTaskDraft(draft) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-
-                    item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp) }
-
-                    if (tasks.isEmpty()) {
-                        item { Text(stringResource(R.string.tasks_empty), modifier = Modifier.padding(16.dp)) }
-                    }
-                    items(tasks, key = { it.taskId ?: "${it.docUri}:${it.lineIndex}" }) { task ->
-                        val dueLabel =
-                            remember(task.dueEpochMillis) {
-                                task.dueEpochMillis?.let(::formatDueLabel)
-                            }
-                        TaskRow(
-                            task = task,
-                            dueLabel = dueLabel,
-                            onToggle = {
-                                scope.launch {
-                                    repository.toggleTask(task.docUri, task.lineIndex)
-                                    runCatching {
-                                        VaultAutoSync.maybeUploadDoc(
-                                            context = context,
-                                            repository = repository,
-                                            vaultRootUri = vaultRootUri,
-                                            docUri = task.docUri,
-                                            force = false,
-                                        )
-                                    }
-                                    refresh(force = true)
-                                }
-                            },
-                            onOpen = { onOpenDoc(task.docUri.toString(), null, task.lineIndex) },
-                            dimmed = false,
-                        )
-                        HorizontalDivider(thickness = 0.5.dp)
-                    }
-
-                    item {
-                        val count = completed.size
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showCompleted = !showCompleted }
-                                .padding(vertical = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Icon(
-                                painter = painterResource(if (showCompleted) Ionicons.ChevronDown else Ionicons.ChevronForward),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        item {
+                            TaskComposer(
+                                onSubmit = { draft -> submitTaskDraft(draft) },
+                                modifier = Modifier.fillMaxWidth(),
                             )
-                            Text(stringResource(R.string.tasks_completed))
-                            Text(text = count.toString(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+
+                        item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp) }
+
+                        if (tasks.isEmpty()) {
+                            item { Text(stringResource(R.string.tasks_empty), modifier = Modifier.padding(16.dp)) }
+                        }
+                        items(tasks, key = { it.taskId ?: "${it.docUri}:${it.lineIndex}" }) { task ->
+                            val dueLabel =
+                                remember(task.dueEpochMillis) {
+                                    task.dueEpochMillis?.let(::formatDueLabel)
+                                }
+                            TaskRow(
+                                task = task,
+                                dueLabel = dueLabel,
+                                onToggle = {
+                                    scope.launch {
+                                        repository.toggleTask(task.docUri, task.lineIndex)
+                                        runCatching {
+                                            VaultAutoSync.maybeUploadDoc(
+                                                context = context,
+                                                repository = repository,
+                                                vaultRootUri = vaultRootUri,
+                                                docUri = task.docUri,
+                                                force = false,
+                                            )
+                                        }
+                                        refresh(force = true)
+                                    }
+                                },
+                                onOpen = { onOpenDoc(task.docUri.toString(), null, task.lineIndex) },
+                                dimmed = false,
+                            )
+                            HorizontalDivider(thickness = 0.5.dp)
+                        }
+
+                        item {
+                            val count = completed.size
+                            Row(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable { showCompleted = !showCompleted }
+                                        .padding(vertical = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Icon(
+                                    painter = painterResource(if (showCompleted) Ionicons.ChevronDown else Ionicons.ChevronForward),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(stringResource(R.string.tasks_completed))
+                                Text(text = count.toString(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+
+                        if (showCompleted) {
+                            items(completed, key = { "c:${it.docUri}:${it.lineIndex}:${it.taskId}" }) { task ->
+                                TaskRow(
+                                    task = task,
+                                    dueLabel =
+                                        task.dueEpochMillis?.let { dueFormatter.format(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault())) },
+                                    onToggle = {
+                                        scope.launch {
+                                            repository.toggleTask(task.docUri, task.lineIndex)
+                                            runCatching {
+                                                VaultAutoSync.maybeUploadDoc(
+                                                    context = context,
+                                                    repository = repository,
+                                                    vaultRootUri = vaultRootUri,
+                                                    docUri = task.docUri,
+                                                    force = false,
+                                                )
+                                            }
+                                            refresh(force = true)
+                                        }
+                                    },
+                                    onOpen = { onOpenDoc(task.docUri.toString(), null, task.lineIndex) },
+                                    dimmed = true,
+                                )
+                                HorizontalDivider(thickness = 0.5.dp)
+                            }
                         }
                     }
 
-                if (showCompleted) {
-                    items(completed, key = { "c:${it.docUri}:${it.lineIndex}:${it.taskId}" }) { task ->
-                        TaskRow(
-                            task = task,
-                            dueLabel = task.dueEpochMillis?.let { dueFormatter.format(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault())) },
-                            onToggle = {
-                                scope.launch {
-                                    repository.toggleTask(task.docUri, task.lineIndex)
-                                    runCatching {
-                                        VaultAutoSync.maybeUploadDoc(
-                                            context = context,
-                                            repository = repository,
-                                            vaultRootUri = vaultRootUri,
-                                            docUri = task.docUri,
-                                            force = false,
-                                        )
-                                    }
-                                    refresh(force = true)
-                                }
-                            },
-                            onOpen = { onOpenDoc(task.docUri.toString(), null, task.lineIndex) },
-                            dimmed = true,
-                        )
-                        HorizontalDivider(thickness = 0.5.dp)
-                    }
+                    RefreshStatusBanner(
+                        isRefreshing = isPullRefreshing,
+                        lastRefreshedAtMs = lastRefreshAtMs,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
+                    )
                 }
             }
         }
     }
-}
 }
 
 private object TasksScreenCache {

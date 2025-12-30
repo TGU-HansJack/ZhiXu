@@ -74,11 +74,19 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.zhixu.android.R
+import com.zhixu.android.data.AccountPreferences
+import com.zhixu.android.data.AccountState
+import com.zhixu.android.data.SyncPreferences
+import com.zhixu.android.data.ThirdPartyServiceConfig
 import com.zhixu.android.data.VaultStorageLocation
 import com.zhixu.android.data.VaultPreferences
 import com.zhixu.android.data.VaultRepository
+import com.zhixu.android.data.VaultSyncConfig
 import com.zhixu.android.data.VaultSyncPreferences
+import com.zhixu.android.data.WebDavConfig
 import com.zhixu.android.data.appManagedVaultRootUri
+import com.zhixu.android.sync.VaultAutoSync
+import com.zhixu.android.sync.WebDavAutoSync
 import com.zhixu.android.ui.screens.DocumentListScreen
 import com.zhixu.android.ui.screens.EditorScreen
 import com.zhixu.android.ui.screens.LongImageScreen
@@ -118,6 +126,37 @@ fun ZhixuApp() {
     val repository = remember(appContext) { VaultRepository(appContext) }
     val scope = rememberCoroutineScope()
 
+    val vaultSyncConfig by vaultSyncPrefs.config.collectAsState(
+        initial =
+            VaultSyncConfig(
+                location = VaultStorageLocation.LOCAL,
+                thirdParty =
+                    ThirdPartyServiceConfig(
+                        url = "",
+                        username = "",
+                        password = "",
+                        e2eeEnabled = false,
+                        e2eeMasterPassword = "",
+                    ),
+            ),
+    )
+    val accountPrefs = remember(appContext) { AccountPreferences(appContext) }
+    val accountState by accountPrefs.state.collectAsState(
+        initial = AccountState(token = "", username = "", userId = 0L, deviceId = ""),
+    )
+    val syncPrefs = remember(appContext) { SyncPreferences(appContext) }
+    val webDavConfig by syncPrefs.webDavConfig.collectAsState(
+        initial =
+            WebDavConfig(
+                enabled = false,
+                baseUrl = "",
+                username = "",
+                password = "",
+                remoteRoot = "/",
+                includeIndexSqlite = true,
+            ),
+    )
+
     LaunchedEffect(Unit) {
         withFrameNanos { }
         withContext(Dispatchers.Default) {
@@ -135,6 +174,47 @@ fun ZhixuApp() {
 
     val vaultRootUriString by prefs.vaultRootUri.collectAsState(initial = null)
     val vaultRootUri = vaultRootUriString?.let(Uri::parse)
+
+    LaunchedEffect(
+        vaultRootUriString,
+        vaultSyncConfig.location,
+        accountState.token,
+        vaultSyncConfig.thirdParty.url,
+        vaultSyncConfig.thirdParty.username,
+        vaultSyncConfig.thirdParty.password,
+    ) {
+        val root = vaultRootUri ?: return@LaunchedEffect
+        runCatching {
+            VaultAutoSync.maybeSyncVault(
+                context = context,
+                repository = repository,
+                vaultRootUri = root,
+                force = false,
+            )
+        }
+    }
+
+    LaunchedEffect(
+        vaultRootUriString,
+        vaultSyncConfig.location,
+        webDavConfig.enabled,
+        webDavConfig.baseUrl,
+        webDavConfig.username,
+        webDavConfig.password,
+        webDavConfig.remoteRoot,
+        webDavConfig.includeIndexSqlite,
+    ) {
+        if (vaultSyncConfig.location != VaultStorageLocation.LOCAL) return@LaunchedEffect
+        runCatching {
+            WebDavAutoSync.maybeSyncVault(
+                context = context,
+                repository = repository,
+                vaultRootUri = vaultRootUri,
+                config = webDavConfig,
+                force = false,
+            )
+        }
+    }
 
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()

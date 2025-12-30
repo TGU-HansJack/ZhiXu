@@ -216,4 +216,25 @@
     <string name="plugin_save">Save</string>
     <string name="plugin_saved">Saved</string>
     <string name="plugin_save_failed">Save failed</string>
+
+    <!-- Pull-to-refresh -->
+    <string name="pull_refresh_refreshing">Refreshing...</string>
+    <string name="pull_refresh_updated">Updated</string>
+
+    <!-- Sync logs -->
+    <string name="sync_logs_title">Sync logs</string>
+    <string name="sync_logs_loading">Loading...</string>
+    <string name="sync_logs_empty">No sync logs yet.</string>
+    <string name="sync_logs_tap_to_view">Tap to view</string>
+    <string name="sync_logs_copy">Copy</string>
+    <string name="sync_logs_export">Export</string>
+    <string name="sync_logs_close">Close</string>
+
+    <!-- Settings placeholders -->
+    <string name="settings_placeholder_coming_soon">Coming soon</string>
+    <string name="settings_placeholder_ui">User interface</string>
+    <string name="settings_placeholder_accessibility">Accessibility</string>
+    <string name="settings_placeholder_notifications">Notifications</string>
+    <string name="settings_placeholder_update">Update software</string>
+    <string name="settings_placeholder_about">About</string>
 </resources>

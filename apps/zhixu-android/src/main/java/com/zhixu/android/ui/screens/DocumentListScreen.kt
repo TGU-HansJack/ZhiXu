@@ -87,6 +87,7 @@ import com.zhixu.android.data.UiDoc
 import com.zhixu.android.data.VaultPreferences
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.Ionicons
+import com.zhixu.android.ui.components.RefreshStatusBanner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Dispatchers
@@ -404,35 +405,43 @@ fun DocumentListScreen(
                     state = pullState,
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        state = listState,
-                        contentPadding = PaddingValues(bottom = 12.dp),
-                    ) {
-                        if (docs.isEmpty()) {
-                            item {
-                                Text(
-                                    text = stringResource(R.string.docs_empty),
-                                    modifier = Modifier.padding(16.dp),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            state = listState,
+                            contentPadding = PaddingValues(bottom = 12.dp),
+                        ) {
+                            if (docs.isEmpty()) {
+                                item {
+                                    Text(
+                                        text = stringResource(R.string.docs_empty),
+                                        modifier = Modifier.padding(16.dp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            itemsIndexed(
+                                items = docs,
+                                key = { _, doc -> doc.uri },
+                                contentType = { _, _ -> "doc" },
+                            ) { index, doc ->
+                                val title = doc.baseName.ifBlank { defaultTitle }
+                                val editedAt = doc.createdAtText.ifBlank { editedAtDash }
+                                DocRow(
+                                    title = title,
+                                    editedAt = editedAt,
+                                    onClick = { onOpenDoc(doc.uri.toString(), null, null) },
+                                    showDivider = index != docs.lastIndex,
+                                    dividerColor = dividerColor,
                                 )
                             }
                         }
-                        itemsIndexed(
-                            items = docs,
-                            key = { _, doc -> doc.uri },
-                            contentType = { _, _ -> "doc" },
-                        ) { index, doc ->
-                            val title = doc.baseName.ifBlank { defaultTitle }
-                            val editedAt = doc.createdAtText.ifBlank { editedAtDash }
-                            DocRow(
-                                title = title,
-                                editedAt = editedAt,
-                                onClick = { onOpenDoc(doc.uri.toString(), null, null) },
-                                showDivider = index != docs.lastIndex,
-                                dividerColor = dividerColor,
-                            )
-                        }
+
+                        RefreshStatusBanner(
+                            isRefreshing = isPullRefreshing,
+                            lastRefreshedAtMs = lastRefreshAtMs,
+                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
+                        )
                     }
                 }
             }

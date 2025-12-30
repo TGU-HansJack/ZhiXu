@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -66,6 +68,7 @@ import com.zhixu.android.data.appManagedVaultRootUri
 import com.zhixu.android.data.vaultRootToDocumentFile
 import com.zhixu.android.sync.OfficialSync
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.map
 import kotlin.math.abs
 import kotlin.math.log10
 import kotlin.math.pow
@@ -82,27 +85,57 @@ fun VaultSettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val syncPrefs = remember(context) { VaultSyncPreferences(context.applicationContext) }
-    val saved by syncPrefs.config.collectAsState(
-        initial =
-            VaultSyncConfig(
-                location = VaultStorageLocation.LOCAL,
-                thirdParty =
-                    ThirdPartyServiceConfig(
-                        url = "",
-                        username = "",
-                        password = "",
-                        e2eeEnabled = false,
-                        e2eeMasterPassword = "",
-                    ),
-            ),
-    )
+    val saved by
+        syncPrefs.config
+            .map { it as VaultSyncConfig? }
+            .collectAsState(initial = null)
 
-    var location by remember { mutableStateOf(saved.location) }
-    var thirdPartyUrl by remember { mutableStateOf(saved.thirdParty.url) }
-    var thirdPartyUsername by remember { mutableStateOf(saved.thirdParty.username) }
-    var thirdPartyPassword by remember { mutableStateOf(saved.thirdParty.password) }
-    var thirdPartyE2eeEnabled by remember { mutableStateOf(saved.thirdParty.e2eeEnabled) }
-    var thirdPartyE2eeMasterPassword by remember { mutableStateOf(saved.thirdParty.e2eeMasterPassword) }
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+
+    val savedConfig = saved
+    if (savedConfig == null) {
+        Scaffold(
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                Column {
+                    TopAppBar(
+                        windowInsets = TopAppBarDefaults.windowInsets,
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                        title = { Text(stringResource(R.string.settings_section_vault)) },
+                        navigationIcon = {
+                            val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    painter = painterResource(if (isRtl) com.zhixu.android.ui.Ionicons.ArrowForward else com.zhixu.android.ui.Ionicons.ArrowBack),
+                                    contentDescription = stringResource(R.string.action_back),
+                                )
+                            }
+                        },
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+            },
+        ) { innerPadding ->
+            Box(
+                modifier =
+                    Modifier
+                        .padding(innerPadding)
+                        .fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+        return
+    }
+
+    var location by remember { mutableStateOf(savedConfig.location) }
+    var thirdPartyUrl by remember { mutableStateOf(savedConfig.thirdParty.url) }
+    var thirdPartyUsername by remember { mutableStateOf(savedConfig.thirdParty.username) }
+    var thirdPartyPassword by remember { mutableStateOf(savedConfig.thirdParty.password) }
+    var thirdPartyE2eeEnabled by remember { mutableStateOf(savedConfig.thirdParty.e2eeEnabled) }
+    var thirdPartyE2eeMasterPassword by remember { mutableStateOf(savedConfig.thirdParty.e2eeMasterPassword) }
     var showThirdPartyPassword by remember { mutableStateOf(false) }
     var showMasterPassword by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
@@ -110,13 +143,13 @@ fun VaultSettingsScreen(
     var vaultSizeBytes by remember { mutableStateOf<Long?>(null) }
     var vaultSizeLoading by remember { mutableStateOf(false) }
 
-    LaunchedEffect(saved) {
-        location = saved.location
-        thirdPartyUrl = saved.thirdParty.url
-        thirdPartyUsername = saved.thirdParty.username
-        thirdPartyPassword = saved.thirdParty.password
-        thirdPartyE2eeEnabled = saved.thirdParty.e2eeEnabled
-        thirdPartyE2eeMasterPassword = saved.thirdParty.e2eeMasterPassword
+    LaunchedEffect(savedConfig) {
+        location = savedConfig.location
+        thirdPartyUrl = savedConfig.thirdParty.url
+        thirdPartyUsername = savedConfig.thirdParty.username
+        thirdPartyPassword = savedConfig.thirdParty.password
+        thirdPartyE2eeEnabled = savedConfig.thirdParty.e2eeEnabled
+        thirdPartyE2eeMasterPassword = savedConfig.thirdParty.e2eeMasterPassword
     }
 
     suspend fun refreshVaultSize(root: Uri) {
@@ -152,8 +185,6 @@ fun VaultSettingsScreen(
                 status = context.getString(R.string.vault_settings_saved)
             }
         }
-
-    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),

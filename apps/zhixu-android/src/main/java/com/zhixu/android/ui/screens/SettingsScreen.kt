@@ -1,6 +1,7 @@
 package com.zhixu.android.ui.screens
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -161,6 +162,52 @@ fun SettingsScreen(
                 title = stringResource(R.string.settings_section_sync),
                 enabled = vaultRootUri != null,
                 onClick = onOpenSync,
+            )
+            HorizontalDivider(color = dividerColor)
+        }
+
+        item {
+            fun comingSoon() {
+                Toast.makeText(context, context.getString(R.string.settings_placeholder_coming_soon), Toast.LENGTH_SHORT).show()
+            }
+
+            SettingsNavRow(
+                iconRes = Ionicons.Settings,
+                title = stringResource(R.string.settings_placeholder_ui),
+                subtitle = stringResource(R.string.settings_placeholder_coming_soon),
+                onClick = ::comingSoon,
+            )
+            HorizontalDivider(color = dividerColor)
+
+            SettingsNavRow(
+                iconRes = Ionicons.Settings,
+                title = stringResource(R.string.settings_placeholder_accessibility),
+                subtitle = stringResource(R.string.settings_placeholder_coming_soon),
+                onClick = ::comingSoon,
+            )
+            HorizontalDivider(color = dividerColor)
+
+            SettingsNavRow(
+                iconRes = Ionicons.Settings,
+                title = stringResource(R.string.settings_placeholder_notifications),
+                subtitle = stringResource(R.string.settings_placeholder_coming_soon),
+                onClick = ::comingSoon,
+            )
+            HorizontalDivider(color = dividerColor)
+
+            SettingsNavRow(
+                iconRes = Ionicons.Settings,
+                title = stringResource(R.string.settings_placeholder_update),
+                subtitle = stringResource(R.string.settings_placeholder_coming_soon),
+                onClick = ::comingSoon,
+            )
+            HorizontalDivider(color = dividerColor)
+
+            SettingsNavRow(
+                iconRes = Ionicons.Settings,
+                title = stringResource(R.string.settings_placeholder_about),
+                subtitle = stringResource(R.string.settings_placeholder_coming_soon),
+                onClick = ::comingSoon,
             )
             HorizontalDivider(color = dividerColor)
         }

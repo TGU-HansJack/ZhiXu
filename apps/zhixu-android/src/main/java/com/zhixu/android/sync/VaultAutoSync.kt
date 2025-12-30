@@ -3,6 +3,7 @@ package com.zhixu.android.sync
 import android.content.Context
 import android.net.Uri
 import com.zhixu.android.data.AccountPreferences
+import com.zhixu.android.data.SyncPreferences
 import com.zhixu.android.data.ThirdPartyServiceConfig
 import com.zhixu.android.data.ThirdPartyAuthPreferences
 import com.zhixu.android.data.VaultRepository
@@ -19,6 +20,9 @@ object VaultAutoSync {
     private val lock = Mutex()
     private val lastSyncedAt = HashMap<String, Long>()
     private const val minIntervalMs: Long = 3_000
+
+    private val lastFullSyncedAt = HashMap<String, Long>()
+    private const val minFullSyncIntervalMs: Long = 30_000
 
     suspend fun maybeUploadDoc(
         context: Context,
@@ -52,6 +56,40 @@ object VaultAutoSync {
         val auth = resolveAuth(context) ?: return
         withContext(Dispatchers.IO) {
             SyncServerClient.deleteVaultFile(auth.baseUrl, auth.token, relPath)
+        }
+    }
+
+    suspend fun maybeSyncVault(
+        context: Context,
+        repository: VaultRepository,
+        vaultRootUri: Uri?,
+        force: Boolean = false,
+    ) {
+        val root = vaultRootUri ?: return
+        val auth = resolveAuth(context) ?: return
+        val includeIndexSqlite = SyncPreferences(context.applicationContext).includeIndexSqlite.first()
+
+        val key = "${auth.baseUrl}|${root}"
+        val now = System.currentTimeMillis()
+        val shouldRun =
+            lock.withLock {
+                val last = lastFullSyncedAt[key] ?: 0L
+                if (!force && now - last in 0..minFullSyncIntervalMs) {
+                    false
+                } else {
+                    lastFullSyncedAt[key] = now
+                    true
+                }
+            }
+        if (!shouldRun) return
+
+        withContext(Dispatchers.IO) {
+            OfficialVaultSyncEngine(context, repository).syncVault(
+                rootUri = root,
+                baseUrl = auth.baseUrl,
+                token = auth.token,
+                includeIndexSqlite = includeIndexSqlite,
+            )
         }
     }
 

@@ -1,7 +1,12 @@
 package com.zhixu.android.ui.screens
 
+import android.content.Intent
 import android.net.Uri
+import android.os.SystemClock
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,9 +20,13 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -42,10 +51,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.LayoutDirection
@@ -61,10 +73,15 @@ import com.zhixu.android.data.VaultSyncPreferences
 import com.zhixu.android.data.WebDavClient
 import com.zhixu.android.data.WebDavConfig
 import com.zhixu.android.data.VaultRepository
+import com.zhixu.android.data.vaultRootToDocumentFile
 import com.zhixu.android.sync.OfficialSync
 import com.zhixu.android.sync.OfficialVaultSyncEngine
 import com.zhixu.android.sync.WebDavSyncEngine
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,58 +93,121 @@ fun SyncScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
     val syncPrefs = remember(context) { SyncPreferences(context) }
     val vaultSyncPrefs = remember(context) { VaultSyncPreferences(context.applicationContext) }
-    val vaultSyncConfig by vaultSyncPrefs.config.collectAsState(
-        initial =
-            VaultSyncConfig(
-                location = VaultStorageLocation.LOCAL,
-                thirdParty =
-                    ThirdPartyServiceConfig(
-                        url = "",
-                        username = "",
-                        password = "",
-                        e2eeEnabled = false,
-                        e2eeMasterPassword = "",
-                    ),
-            ),
-    )
+    val vaultSyncConfig by
+        vaultSyncPrefs.config
+            .map { it as VaultSyncConfig? }
+            .collectAsState(initial = null)
 
     val accountPrefs = remember(context) { AccountPreferences(context.applicationContext) }
     val accountState by accountPrefs.state.collectAsState(
         initial = AccountState(token = "", username = "", userId = 0L, deviceId = ""),
     )
-    val savedConfig by syncPrefs.webDavConfig.collectAsState(
-        initial =
-            WebDavConfig(
-                enabled = false,
-                baseUrl = "",
-                username = "",
-                password = "",
-                remoteRoot = "/",
-                includeIndexSqlite = false,
-            ),
-    )
+    val savedConfig by
+        syncPrefs.webDavConfig
+            .map { it as WebDavConfig? }
+            .collectAsState(initial = null)
 
-    var enabled by remember { mutableStateOf(savedConfig.enabled) }
-    var baseUrl by remember { mutableStateOf(savedConfig.baseUrl) }
-    var username by remember { mutableStateOf(savedConfig.username) }
-    var password by remember { mutableStateOf(savedConfig.password) }
-    var remoteRoot by remember { mutableStateOf(savedConfig.remoteRoot) }
-    var includeIndexSqlite by remember { mutableStateOf(savedConfig.includeIndexSqlite) }
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+
+    val loadedVaultSyncConfig = vaultSyncConfig
+    val loadedWebDavConfig = savedConfig
+    if (loadedVaultSyncConfig == null || loadedWebDavConfig == null) {
+        Scaffold(
+            contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                Column {
+                    TopAppBar(
+                        windowInsets = TopAppBarDefaults.windowInsets,
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                        title = { Text(stringResource(R.string.settings_section_sync)) },
+                        navigationIcon = {
+                            val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    painter = painterResource(if (isRtl) com.zhixu.android.ui.Ionicons.ArrowForward else com.zhixu.android.ui.Ionicons.ArrowBack),
+                                    contentDescription = stringResource(R.string.action_back),
+                                )
+                            }
+                        },
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+            },
+        ) { innerPadding ->
+            Box(
+                modifier =
+                    Modifier
+                        .padding(innerPadding)
+                        .fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+        return
+    }
+
+    var enabled by remember { mutableStateOf(loadedWebDavConfig.enabled) }
+    var baseUrl by remember { mutableStateOf(loadedWebDavConfig.baseUrl) }
+    var username by remember { mutableStateOf(loadedWebDavConfig.username) }
+    var password by remember { mutableStateOf(loadedWebDavConfig.password) }
+    var remoteRoot by remember { mutableStateOf(loadedWebDavConfig.remoteRoot) }
+    var includeIndexSqlite by remember { mutableStateOf(loadedWebDavConfig.includeIndexSqlite) }
     var testStatus by remember { mutableStateOf<String?>(null) }
     var showPassword by remember { mutableStateOf(false) }
 
-    LaunchedEffect(savedConfig) {
-        enabled = savedConfig.enabled
-        baseUrl = savedConfig.baseUrl
-        username = savedConfig.username
-        password = savedConfig.password
-        remoteRoot = savedConfig.remoteRoot
-        includeIndexSqlite = savedConfig.includeIndexSqlite
+    LaunchedEffect(loadedWebDavConfig) {
+        enabled = loadedWebDavConfig.enabled
+        baseUrl = loadedWebDavConfig.baseUrl
+        username = loadedWebDavConfig.username
+        password = loadedWebDavConfig.password
+        remoteRoot = loadedWebDavConfig.remoteRoot
+        includeIndexSqlite = loadedWebDavConfig.includeIndexSqlite
     }
 
-    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+    suspend fun resolveRelativeUri(rootUri: Uri, relativePath: String): Uri? =
+        withContext(Dispatchers.IO) {
+            if (rootUri.scheme.equals("file", ignoreCase = true)) {
+                val rootPath = rootUri.path ?: return@withContext null
+                val file = File(rootPath, relativePath)
+                return@withContext if (file.exists()) Uri.fromFile(file) else null
+            }
+            val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext null
+            var current = root
+            val parts = relativePath.split('/').filter { it.isNotBlank() }
+            for (part in parts) {
+                val next = current.listFiles().firstOrNull { it.name == part } ?: return@withContext null
+                current = next
+            }
+            current.uri
+        }
+
+    var showSyncLog by remember { mutableStateOf(false) }
+    var syncLogLoading by remember { mutableStateOf(false) }
+    var syncLogText by remember { mutableStateOf("") }
+    var syncLogLoadedAtMs by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(showSyncLog, vaultRootUri) {
+        val root = vaultRootUri ?: return@LaunchedEffect
+        if (!showSyncLog) return@LaunchedEffect
+        val now = SystemClock.uptimeMillis()
+        if (syncLogLoadedAtMs > 0L && now - syncLogLoadedAtMs in 0..800) return@LaunchedEffect
+
+        syncLogLoading = true
+        syncLogText =
+            runCatching {
+                val uri = resolveRelativeUri(root, ".zhixu/sync/log.jsonl") ?: return@runCatching ""
+                val all = repository.readText(uri).trim()
+                val lines = all.lines()
+                if (lines.size <= 800) all else lines.takeLast(800).joinToString("\n")
+            }.getOrDefault("")
+        syncLogLoadedAtMs = SystemClock.uptimeMillis()
+        syncLogLoading = false
+    }
 
     Scaffold(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
@@ -176,7 +256,36 @@ fun SyncScreen(
                 )
             }
 
-            if (vaultSyncConfig.location == VaultStorageLocation.OFFICIAL_SERVER) {
+            item {
+                ListItem(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { showSyncLog = true },
+                    headlineContent = { Text(stringResource(R.string.sync_logs_title)) },
+                    supportingContent = {
+                        val hint =
+                            if (syncLogLoading) stringResource(R.string.sync_logs_loading)
+                            else if (syncLogText.isBlank()) stringResource(R.string.sync_logs_empty)
+                            else stringResource(R.string.sync_logs_tap_to_view)
+                        Text(hint)
+                    },
+                    leadingContent = {
+                        Icon(
+                            painter = painterResource(com.zhixu.android.ui.Ionicons.DocumentText),
+                            contentDescription = null,
+                        )
+                    },
+                    trailingContent = {
+                        Icon(
+                            painter = painterResource(com.zhixu.android.ui.Ionicons.ChevronForward),
+                            contentDescription = null,
+                        )
+                    },
+                )
+            }
+
+            if (loadedVaultSyncConfig.location == VaultStorageLocation.OFFICIAL_SERVER) {
                 item {
                     ListItem(
                         headlineContent = { Text(stringResource(R.string.official_sync_title)) },
@@ -432,6 +541,69 @@ fun SyncScreen(
                 }
             }
         }
+    }
+
+    if (showSyncLog) {
+        val exportText = if (syncLogText.isBlank()) stringResource(R.string.sync_logs_empty) else syncLogText
+        AlertDialog(
+            onDismissRequest = { showSyncLog = false },
+            title = { Text(stringResource(R.string.sync_logs_title)) },
+            text = {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(420.dp),
+                ) {
+                    if (syncLogLoading) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    } else {
+                        val v = rememberScrollState()
+                        val h = rememberScrollState()
+                        Text(
+                            text = exportText,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(v)
+                                    .horizontalScroll(h),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.foundation.layout.Row {
+                    TextButton(
+                        enabled = !syncLogLoading,
+                        onClick = {
+                            clipboard.setText(AnnotatedString(exportText))
+                        },
+                    ) { Text(stringResource(R.string.sync_logs_copy)) }
+                    TextButton(
+                        enabled = !syncLogLoading,
+                        onClick = {
+                            val intent =
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.sync_logs_title))
+                                    putExtra(Intent.EXTRA_TEXT, exportText)
+                                }
+                            context.startActivity(Intent.createChooser(intent, context.getString(R.string.sync_logs_export)))
+                        },
+                    ) { Text(stringResource(R.string.sync_logs_export)) }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showSyncLog = false },
+                ) { Text(stringResource(R.string.sync_logs_close)) }
+            },
+        )
     }
 }
 

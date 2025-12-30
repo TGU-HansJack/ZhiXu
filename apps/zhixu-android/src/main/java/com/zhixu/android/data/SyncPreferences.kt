@@ -35,12 +35,12 @@ class SyncPreferences(
                     username = prefs[webdavUsernameKey] ?: "",
                     password = prefs[webdavPasswordKey] ?: "",
                     remoteRoot = prefs[webdavRemoteRootKey] ?: "/",
-                    includeIndexSqlite = prefs[includeIndexSqliteKey] ?: false,
+                    includeIndexSqlite = prefs[includeIndexSqliteKey] ?: true,
                 )
             }
 
     val webDavEnabled: Flow<Boolean> = context.dataStore.data.map { it[webdavEnabledKey] ?: false }
-    val includeIndexSqlite: Flow<Boolean> = context.dataStore.data.map { it[includeIndexSqliteKey] ?: false }
+    val includeIndexSqlite: Flow<Boolean> = context.dataStore.data.map { it[includeIndexSqliteKey] ?: true }
 
     suspend fun setWebDavEnabled(enabled: Boolean) {
         context.dataStore.edit { it[webdavEnabledKey] = enabled }
