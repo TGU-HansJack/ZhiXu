@@ -1575,7 +1575,7 @@ fun EditorScreen(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.Start),
                 ) {
                     EditorOverflowQuickAction(
                         title = stringResource(R.string.editor_overflow_generate_long_image),
@@ -1591,7 +1591,6 @@ fun EditorScreen(
                                 ),
                             )
                         },
-                        modifier = Modifier.weight(1f),
                     )
                     EditorOverflowQuickAction(
                         title = stringResource(R.string.editor_overflow_share),
@@ -1614,12 +1613,12 @@ fun EditorScreen(
                                 scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.editor_share_failed)) }
                             }
                         },
-                        modifier = Modifier.weight(1f),
                     )
+                    Spacer(modifier = Modifier.weight(1f))
                 }
 
                 Surface(
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = Color.White,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
@@ -1628,7 +1627,7 @@ fun EditorScreen(
                     Column {
                         EditorOverflowRow(
                             title = stringResource(R.string.editor_overflow_font_size),
-                            trailing = { Text("A+", style = MaterialTheme.typography.titleLarge) },
+                            trailing = { Text("A+", style = MaterialTheme.typography.bodyMedium) },
                             onClick = {
                                 showOverflowSheet = false
                                 showFontSizeSheet = true
@@ -1693,7 +1692,7 @@ fun EditorScreen(
                 }
 
                 Surface(
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = Color.White,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
@@ -1704,10 +1703,10 @@ fun EditorScreen(
                             Modifier
                                 .fillMaxWidth()
                                 .clickable { showOverflowSheet = false }
-                                .padding(vertical = 16.dp),
+                                .padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(text = "取消", style = MaterialTheme.typography.titleMedium)
+                        Text(text = "取消", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
@@ -2237,29 +2236,28 @@ private fun EditorOverflowQuickAction(
 ) {
     Surface(
         modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(10.dp),
         color = Color.White,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(20.dp),
                 tint = Color(0xFF111111),
             )
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.bodyMedium,
                 color = Color(0xFF111111),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -2278,12 +2276,12 @@ private fun EditorOverflowRow(
             modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .padding(horizontal = 18.dp, vertical = 18.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.bodyMedium,
             color = titleColor,
         )
         Spacer(modifier = Modifier.weight(1f))
