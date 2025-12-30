@@ -12,6 +12,12 @@ object Ionicons {
     @DrawableRes val Workshop: Int = R.drawable.ic_ion_extension_puzzle_outline
     @DrawableRes val Search: Int = R.drawable.ic_ion_search_outline
     @DrawableRes val Settings: Int = R.drawable.ic_ion_cog_outline
+    @DrawableRes val LanguageOutline: Int = R.drawable.ic_ion_language_outline
+    @DrawableRes val LayersOutline: Int = R.drawable.ic_ion_layers_outline
+    @DrawableRes val AccessibilityOutline: Int = R.drawable.ic_ion_accessibility_outline
+    @DrawableRes val NotificationsOutline: Int = R.drawable.ic_ion_notifications_outline
+    @DrawableRes val ArrowUpCircleOutline: Int = R.drawable.ic_ion_arrow_up_circle_outline
+    @DrawableRes val HelpCircleOutline: Int = R.drawable.ic_ion_help_circle_outline
     @DrawableRes val ImageOutline: Int = R.drawable.ic_ion_image_outline
     @DrawableRes val TextOutline: Int = R.drawable.ic_ion_text_outline
     @DrawableRes val HourglassOutline: Int = R.drawable.ic_ion_hourglass_outline

@@ -175,16 +175,9 @@ fun SettingsScreen(
         }
 
         item {
-            val label =
-                when (languageTag.trim()) {
-                    "zh-CN" -> stringResource(R.string.settings_language_zh_cn)
-                    "en" -> stringResource(R.string.settings_language_en)
-                    else -> stringResource(R.string.settings_language_system)
-                }
             SettingsNavRow(
-                iconRes = Ionicons.Settings,
+                iconRes = Ionicons.LanguageOutline,
                 title = stringResource(R.string.settings_language_title),
-                subtitle = label,
                 onClick = { showLanguageDialog = true },
             )
             HorizontalDivider(color = dividerColor)
@@ -196,41 +189,36 @@ fun SettingsScreen(
             }
 
             SettingsNavRow(
-                iconRes = Ionicons.Settings,
+                iconRes = Ionicons.LayersOutline,
                 title = stringResource(R.string.settings_placeholder_ui),
-                subtitle = stringResource(R.string.settings_placeholder_coming_soon),
                 onClick = ::comingSoon,
             )
             HorizontalDivider(color = dividerColor)
 
             SettingsNavRow(
-                iconRes = Ionicons.Settings,
+                iconRes = Ionicons.AccessibilityOutline,
                 title = stringResource(R.string.settings_placeholder_accessibility),
-                subtitle = stringResource(R.string.settings_placeholder_coming_soon),
                 onClick = ::comingSoon,
             )
             HorizontalDivider(color = dividerColor)
 
             SettingsNavRow(
-                iconRes = Ionicons.Settings,
+                iconRes = Ionicons.NotificationsOutline,
                 title = stringResource(R.string.settings_placeholder_notifications),
-                subtitle = stringResource(R.string.settings_placeholder_coming_soon),
                 onClick = ::comingSoon,
             )
             HorizontalDivider(color = dividerColor)
 
             SettingsNavRow(
-                iconRes = Ionicons.Settings,
+                iconRes = Ionicons.ArrowUpCircleOutline,
                 title = stringResource(R.string.settings_placeholder_update),
-                subtitle = stringResource(R.string.settings_placeholder_coming_soon),
                 onClick = ::comingSoon,
             )
             HorizontalDivider(color = dividerColor)
 
             SettingsNavRow(
-                iconRes = Ionicons.Settings,
+                iconRes = Ionicons.HelpCircleOutline,
                 title = stringResource(R.string.settings_placeholder_about),
-                subtitle = stringResource(R.string.settings_placeholder_coming_soon),
                 onClick = ::comingSoon,
             )
             HorizontalDivider(color = dividerColor)
