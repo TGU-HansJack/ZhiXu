@@ -149,11 +149,10 @@ import com.zhixu.android.sync.VaultAutoSync
 import com.zhixu.android.plugins.InstalledPlugin
 import com.zhixu.android.plugins.FrontMatterParser
 import com.zhixu.android.plugins.PluginRepository
-import com.zhixu.android.plugins.typecho.TypechoPublishPayload
-import com.zhixu.android.plugins.typecho.TypechoXmlRpcClient
+import com.zhixu.android.plugins.runtime.EditorActionContext
+import com.zhixu.android.plugins.runtime.JsPluginRuntime
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
-import com.zhixu.android.plugins.typecho.TypechoXmlRpcConfig
 import com.zhixu.android.ui.components.MarkdownPreview
 import com.zhixu.android.ui.components.RadialFabAction
 import com.zhixu.android.ui.components.LineDiff
@@ -477,99 +476,60 @@ fun EditorScreen(
         pluginFabActions = buildPluginFabActions(installed)
     }
 
-    fun typechoConfigFromJson(json: JSONObject?): TypechoXmlRpcConfig? {
-        if (json == null) return null
-        val endpoint = json.optString("endpointUrl").trim()
-        val username = json.optString("username").trim()
-        val password = json.optString("password")
-        val blogId = json.optString("blogId").trim().ifBlank { "1" }
-        val defaultCategories =
-            json.optJSONArray("defaultCategories")?.let { arr ->
-                (0 until arr.length()).mapNotNull { idx -> arr.optString(idx).trim().takeIf { it.isNotBlank() } }
-            } ?: json.optString("categories").split(',').map { it.trim() }.filter { it.isNotBlank() }
-        val defaultTags =
-            json.optJSONArray("defaultTags")?.let { arr ->
-                (0 until arr.length()).mapNotNull { idx -> arr.optString(idx).trim().takeIf { it.isNotBlank() } }
-            } ?: json.optString("tags").split(',').map { it.trim() }.filter { it.isNotBlank() }
-
-        if (endpoint.isBlank() || username.isBlank() || password.isBlank()) return null
-        return TypechoXmlRpcConfig(
-            endpointUrl = endpoint,
-            username = username,
-            password = password,
-            blogId = blogId,
-            defaultCategories = defaultCategories,
-            defaultTags = defaultTags,
-        )
-    }
-
     fun handlePluginAction(action: RadialFabAction) {
         when {
             action.id == "plugins:none" -> {
                 scope.launch { snackbarHostState.showSnackbar("请到 设置 -> 创意工坊 启用/安装插件") }
             }
 
-            action.id.startsWith("plugin:typecho-xmlrpc-publisher/") -> {
+            action.id.startsWith("plugin:") -> {
                 val root = vaultRootUri
                 if (root == null) {
                     scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.settings_vault_not_selected)) }
-                } else {
-                    scope.launch {
-                        val cfgJson =
-                            withContext(Dispatchers.IO) {
-                                pluginRepo.readPluginConfig(root, "typecho-xmlrpc-publisher")
-                            }
-                        val cfg = typechoConfigFromJson(cfgJson)
-                        if (cfg == null) {
-                            snackbarHostState.showSnackbar("请先到 设置 -> 创意工坊 -> Typecho 插件 设置")
-                            return@launch
-                        }
+                    return
+                }
 
-                        val fm = FrontMatterParser.parse(content.text)
-                        val fmTitle = fm.string("title")
-                        val fmSlug = fm.string("slug") ?: fm.string("permalink")
-                        val fmTags = fm.stringList("tags")
-                        val fmCategories = fm.stringList("categories")
-                        val fmPostId = fm.string("typechoPostId") ?: fm.string("postId")
-                        val draft = fm.bool("draft") == true
+                val raw = action.id.removePrefix("plugin:")
+                val slash = raw.indexOf('/')
+                if (slash <= 0 || slash >= raw.length - 1) {
+                    scope.launch { snackbarHostState.showSnackbar("Invalid plugin action: ${action.id}") }
+                    return
+                }
+                val pluginId = raw.substring(0, slash)
+                val actionId = raw.substring(slash + 1)
 
-                        val payload =
-                            TypechoPublishPayload(
-                                title = (fmTitle ?: title).ifBlank { originalFileName.removeSuffix(".md") },
-                                markdown = fm.body,
-                                categories = fmCategories,
-                                tags = fmTags,
-                                slug = fmSlug,
-                                publish = !draft,
-                                postId = fmPostId,
+                scope.launch {
+                    val result =
+                        withContext(Dispatchers.IO) {
+                            JsPluginRuntime(
+                                appContext = context.applicationContext,
+                                pluginRepo = pluginRepo,
+                            ).runEditorAction(
+                                rootUri = root,
+                                pluginId = pluginId,
+                                actionId = actionId,
+                                ctx =
+                                    EditorActionContext(
+                                        docUri = currentDocUri,
+                                        title = title,
+                                        fileName = originalFileName,
+                                        text = content.text,
+                                    ),
                             )
-
-                        snackbarHostState.showSnackbar("发布中…")
-                        val result =
-                            withContext(Dispatchers.IO) {
-                                TypechoXmlRpcClient().publish(cfg, payload)
-                            }
-                        if (result.ok && !result.postId.isNullOrBlank()) {
-                            val updated = FrontMatterParser.upsert(content.text, mapOf("typechoPostId" to result.postId))
-                            withContext(Dispatchers.IO) {
-                                repository.writeText(currentDocUri, updated)
-                                repository.indexDocUri(currentDocUri)
-                            }
-                            content = content.copy(text = updated)
-                            lastPersistedText = updated
                         }
-                        snackbarHostState.showSnackbar(
-                            if (result.ok) {
-                                if (result.postId != null) "${result.message} (postId=${result.postId})" else result.message
-                            } else {
-                                result.message
-                            },
-                        )
+
+                    if (result.ok && result.setText != null) {
+                        withContext(Dispatchers.IO) {
+                            repository.writeText(currentDocUri, result.setText)
+                            repository.indexDocUri(currentDocUri)
+                        }
+                        content = content.copy(text = result.setText)
+                        lastPersistedText = result.setText
                     }
+
+                    snackbarHostState.showSnackbar(result.message)
                 }
             }
-
-            action.id.startsWith("plugin:") -> scope.launch { snackbarHostState.showSnackbar(action.label) }
 
             else -> Unit
         }

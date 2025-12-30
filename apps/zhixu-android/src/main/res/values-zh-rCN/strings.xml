@@ -165,7 +165,6 @@
     <string name="workshop_no_vault">请先选择 Vault 文件夹。</string>
     <string name="workshop_section_installed">已安装</string>
     <string name="workshop_section_install">安装插件</string>
-    <string name="workshop_section_bundled">随附</string>
     <string name="workshop_no_plugins">暂无插件。</string>
     <string name="workshop_install_from_git">Git 地址</string>
     <string name="workshop_install_from_folder">本地文件夹</string>
@@ -174,21 +173,18 @@
     <string name="workshop_remove">移除</string>
     <string name="workshop_removed">已移除：%1$s</string>
     <string name="workshop_remove_failed">移除失败：%1$s</string>
+    <string name="workshop_section_official">官方插件</string>
+    <string name="workshop_refresh">刷新</string>
+    <string name="workshop_installed">已安装</string>
+    <string name="workshop_official_loading">加载官方插件中…</string>
+    <string name="workshop_official_empty">暂无官方插件。</string>
+    <string name="workshop_official_failed">加载官方插件失败：%1$s</string>
     <string name="todo_done_fmt">待办完成 %1$d/%2$d</string>
-    <string name="bundled_typecho_name">Typecho XML-RPC 发布插件</string>
-    <string name="bundled_typecho_desc">通过 XML-RPC 将笔记发布到 Typecho（占位）。</string>
     <string name="workshop_search_hint">搜索插件名称或命令…</string>
     <string name="workshop_view_details">查看详情 &gt;</string>
     <string name="workshop_plugin_no_readme">该插件没有文档</string>
 
     <!-- Plugin settings -->
-    <string name="plugin_typecho_settings_title">Typecho 发布设置</string>
-    <string name="plugin_typecho_endpoint">XML-RPC 地址</string>
-    <string name="plugin_typecho_username">用户名</string>
-    <string name="plugin_typecho_password">密码</string>
-    <string name="plugin_typecho_blog_id">BlogId（一般为 1）</string>
-    <string name="plugin_typecho_default_categories">默认分类（逗号分隔）</string>
-    <string name="plugin_typecho_default_tags">默认标签（逗号分隔）</string>
     <string name="plugin_show_password">显示密码</string>
     <string name="plugin_hide_password">隐藏密码</string>
     <string name="plugin_save">保存</string>

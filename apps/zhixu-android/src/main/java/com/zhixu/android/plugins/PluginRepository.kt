@@ -8,6 +8,8 @@ import androidx.documentfile.provider.DocumentFile
 import com.zhixu.android.data.vaultRootToDocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.eclipse.jgit.api.Git
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,6 +21,8 @@ data class PluginManifest(
     val name: String?,
     val version: String?,
     val description: String?,
+    val entry: String? = null,
+    val files: List<String> = emptyList(),
     val actions: List<PluginActionSpec> = emptyList(),
 )
 
@@ -43,7 +47,10 @@ data class InstallResult(
 
 class PluginRepository(
     private val context: Context,
+    private val http: OkHttpClient = OkHttpClient(),
 ) {
+    private val officialBaseUrl = "https://zhixu.app"
+
     suspend fun listInstalled(rootUri: Uri): List<InstalledPlugin> = withContext(Dispatchers.IO) {
         val pluginsDir = ensurePluginsDir(rootUri) ?: return@withContext emptyList()
         val enabledIds = readEnabledSet(pluginsDir)
@@ -80,29 +87,6 @@ class PluginRepository(
             setEnabled(rootUri, pluginId, enabled = false)
         }
         removed
-    }
-
-    suspend fun installBundledPlugin(rootUri: Uri, pluginId: String): InstallResult = withContext(Dispatchers.IO) {
-        val pluginsDir = ensurePluginsDir(rootUri) ?: return@withContext InstallResult(false, "Missing plugins directory")
-        val already = pluginsDir.findFile(pluginId)
-        if (already != null) return@withContext InstallResult(false, "Plugin already installed", pluginId)
-
-        val assetRoot = "bundled-plugins/$pluginId"
-        val manifestText = readAssetTextOrNull("$assetRoot/manifest.json")
-            ?: return@withContext InstallResult(false, "Bundled plugin manifest not found: $pluginId")
-        val manifest = parseManifestFromText(manifestText)
-            ?: return@withContext InstallResult(false, "Invalid bundled plugin manifest.json")
-
-        val destDir = pluginsDir.createDirectory(pluginId)
-            ?: return@withContext InstallResult(false, "Failed to create plugin folder: $pluginId")
-
-        val ok = copyAssetsDirRecursively(assetRoot, destDir)
-        if (!ok) {
-            destDir.delete()
-            return@withContext InstallResult(false, "Failed to copy bundled plugin files")
-        }
-
-        InstallResult(true, "Installed: ${manifest.name ?: manifest.id}", manifest.id)
     }
 
     suspend fun installFromLocalFolder(rootUri: Uri, folderUri: Uri): InstallResult = withContext(Dispatchers.IO) {
@@ -170,10 +154,85 @@ class PluginRepository(
         }
     }
 
+    suspend fun listOfficialPluginIds(): Result<List<String>> =
+        withContext(Dispatchers.IO) {
+            val endpoints =
+                listOf(
+                    "$officialBaseUrl/plugins/index.json",
+                    "$officialBaseUrl/plugins/plugins.json",
+                    "$officialBaseUrl/plugins/list.json",
+                )
+            for (url in endpoints) {
+                val text = httpGetText(url) ?: continue
+                val ids =
+                    runCatching {
+                        val arr = JSONArray(text)
+                        (0 until arr.length()).mapNotNull { idx -> arr.optString(idx).trim().takeIf { it.isNotBlank() } }
+                    }.getOrNull()
+                if (!ids.isNullOrEmpty()) return@withContext Result.success(ids.distinct())
+            }
+            Result.failure(IllegalStateException("Official plugin index not available"))
+        }
+
+    suspend fun fetchOfficialManifest(pluginId: String): PluginManifest? =
+        withContext(Dispatchers.IO) {
+            val url = "$officialBaseUrl/plugins/${pluginId.trim()}/manifest.json"
+            val text = httpGetText(url) ?: return@withContext null
+            parseManifestFromText(text)
+        }
+
+    suspend fun installFromOfficial(rootUri: Uri, pluginId: String): InstallResult =
+        withContext(Dispatchers.IO) {
+            val pluginsDir = ensurePluginsDir(rootUri) ?: return@withContext InstallResult(false, "Missing plugins directory")
+            val id = pluginId.trim()
+            if (id.isBlank()) return@withContext InstallResult(false, "Invalid plugin id")
+            if (pluginsDir.findFile(id) != null) return@withContext InstallResult(false, "Plugin already installed", id)
+
+            val base = "$officialBaseUrl/plugins/$id"
+            val manifestText = httpGetText("$base/manifest.json") ?: return@withContext InstallResult(false, "Failed to download manifest.json", id)
+            val manifestJson = runCatching { JSONObject(manifestText) }.getOrNull() ?: return@withContext InstallResult(false, "Invalid manifest.json", id)
+            val manifest = parseManifestFromText(manifestText) ?: return@withContext InstallResult(false, "Invalid manifest.json", id)
+
+            val destDir = pluginsDir.createDirectory(id) ?: return@withContext InstallResult(false, "Failed to create plugin folder: $id", id)
+            try {
+                val required = LinkedHashSet<String>()
+                required += "manifest.json"
+                required += resolveEntryFileNames(manifest)
+                required += manifest.files
+
+                for (name in required) {
+                    val bytes = httpGetBytes("$base/$name") ?: return@withContext InstallResult(false, "Failed to download: $name", id)
+                    val outFile = findFileLoose(destDir, name) ?: createFilePreservingName(destDir, mimeTypeForName(name), name) ?: return@withContext InstallResult(false, "Failed to create: $name", id)
+                    if (!writeBytes(outFile.uri, bytes)) return@withContext InstallResult(false, "Failed to write: $name", id)
+                }
+
+                // Optional docs
+                val readmeNames = listOf("README.md", "readme.md")
+                for (n in readmeNames) {
+                    val bytes = httpGetBytes("$base/$n") ?: continue
+                    val outFile = findFileLoose(destDir, n) ?: createFilePreservingName(destDir, mimeTypeForName(n), n) ?: continue
+                    writeBytes(outFile.uri, bytes)
+                    break
+                }
+
+                InstallResult(true, "Installed: ${manifest.name ?: manifest.id}", manifest.id)
+            } catch (e: Throwable) {
+                destDir.delete()
+                InstallResult(false, "Install failed: ${e.message ?: e.javaClass.simpleName}", id)
+            }
+        }
+
     suspend fun readPluginConfig(rootUri: Uri, pluginId: String, fileName: String = "config.json"): JSONObject? =
         withContext(Dispatchers.IO) {
             val file = ensurePluginConfigFile(rootUri, pluginId, fileName) ?: return@withContext null
             readJsonObject(file.uri)
+        }
+
+    suspend fun readPluginManifest(rootUri: Uri, pluginId: String): PluginManifest? =
+        withContext(Dispatchers.IO) {
+            val pluginsDir = ensurePluginsDir(rootUri) ?: return@withContext null
+            val pluginDir = pluginsDir.findFile(pluginId) ?: return@withContext null
+            readManifest(pluginDir)
         }
 
     suspend fun writePluginConfig(rootUri: Uri, pluginId: String, json: JSONObject, fileName: String = "config.json"): Boolean =
@@ -187,7 +246,7 @@ class PluginRepository(
         withContext(Dispatchers.IO) {
             val pluginsDir = ensurePluginsDir(rootUri) ?: return@withContext null
             val pluginDir = pluginsDir.findFile(pluginId) ?: return@withContext null
-            val file = pluginDir.findFile(fileName)?.takeIf { it.isFile } ?: return@withContext null
+            val file = findFileLoose(pluginDir, fileName)?.takeIf { it.isFile } ?: return@withContext null
             readText(file.uri)
         }
 
@@ -203,12 +262,12 @@ class PluginRepository(
     private fun ensurePluginConfigFile(rootUri: Uri, pluginId: String, fileName: String): DocumentFile? {
         val pluginsDir = ensurePluginsDir(rootUri) ?: return null
         val pluginDir = pluginsDir.findFile(pluginId) ?: return null
-        return pluginDir.findFile(fileName) ?: createFileExact(pluginDir, "application/json", fileName)
+        return findFileLoose(pluginDir, fileName) ?: createFilePreservingName(pluginDir, mimeTypeForName(fileName), fileName)
     }
 
     private fun ensurePluginStateFile(pluginsDir: DocumentFile): DocumentFile? {
-        val state = pluginsDir.findFile("state.json")
-            ?: createFileExact(pluginsDir, "application/json", "state.json")
+        val state = findFileLoose(pluginsDir, "state.json")
+            ?: createFilePreservingName(pluginsDir, mimeTypeForName("state.json"), "state.json")
             ?: return null
         if (state.length() == 0L) {
             writeJsonObject(state.uri, JSONObject().put("enabled", JSONArray()))
@@ -216,7 +275,7 @@ class PluginRepository(
         return state
     }
 
-    private fun createFileExact(parent: DocumentFile, mimeType: String, displayName: String): DocumentFile? {
+    private fun createFilePreservingName(parent: DocumentFile, mimeType: String, displayName: String): DocumentFile? {
         if (parent.uri.scheme.equals("file", ignoreCase = true)) {
             val dir = parent.uri.path?.let(::File) ?: return null
             if (!dir.exists()) dir.mkdirs()
@@ -224,7 +283,15 @@ class PluginRepository(
             runCatching { if (!file.exists()) file.createNewFile() }
             return DocumentFile.fromFile(file)
         }
-        return parent.createFile(mimeType, displayName)
+        val created =
+            parent.createFile(mimeType, displayName)
+                ?: parent.createFile("application/octet-stream", displayName)
+                ?: return null
+        if (!created.name.equals(displayName, ignoreCase = false)) {
+            val already = parent.findFile(displayName)
+            if (already == null) runCatching { created.renameTo(displayName) }
+        }
+        return created
     }
 
     private fun readEnabledSet(pluginsDir: DocumentFile): Set<String> {
@@ -235,7 +302,10 @@ class PluginRepository(
     }
 
     private fun readManifest(pluginDir: DocumentFile): PluginManifest? {
-        val manifestFile = pluginDir.findFile("manifest.json")?.takeIf { it.isFile } ?: return null
+        val manifestFile =
+            findFileLoose(pluginDir, "manifest.json")
+                ?.takeIf { it.isFile }
+                ?: return null
         val text = readText(manifestFile.uri) ?: return null
         return parseManifestFromText(text)
     }
@@ -245,11 +315,17 @@ class PluginRepository(
         val id = json.optString("id").trim()
         if (id.isBlank()) return null
         val actions = parseActions(json.optJSONArray("actions"))
+        val files =
+            json.optJSONArray("files")?.let { arr ->
+                (0 until arr.length()).mapNotNull { idx -> arr.optString(idx).trim().takeIf { it.isNotBlank() } }
+            } ?: emptyList()
         return PluginManifest(
             id = id,
             name = json.optString("name").takeIf { it.isNotBlank() },
             version = json.optString("version").takeIf { it.isNotBlank() },
             description = json.optString("description").takeIf { it.isNotBlank() },
+            entry = json.optString("entry").takeIf { it.isNotBlank() },
+            files = files,
             actions = actions,
         )
     }
@@ -271,6 +347,25 @@ class PluginRepository(
             )
         }
         return out
+    }
+
+    private fun resolveEntryFileNames(manifest: PluginManifest): List<String> {
+        val entry = manifest.entry?.trim().orEmpty()
+        if (entry.isBlank()) return listOf("main.js")
+        return if (entry.endsWith(".js", ignoreCase = true)) listOf(entry) else listOf(entry, "$entry.js")
+    }
+
+    private fun httpGetText(url: String): String? =
+        httpGetBytes(url)?.toString(Charsets.UTF_8)
+
+    private fun httpGetBytes(url: String): ByteArray? {
+        val request = Request.Builder().url(url).get().build()
+        return runCatching {
+            http.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return@use null
+                resp.body?.bytes()
+            }
+        }.getOrNull()
     }
 
     private fun readText(uri: Uri): String? {
@@ -305,7 +400,7 @@ class PluginRepository(
                 if (!copyDocumentDirRecursively(src, childDest)) return false
             } else if (src.isFile) {
                 val bytes = readBytes(src.uri) ?: return false
-                val destFile = destDir.findFile(name) ?: destDir.createFile("application/octet-stream", name) ?: return false
+                val destFile = findFileLoose(destDir, name) ?: createFilePreservingName(destDir, mimeTypeForName(name), name) ?: return false
                 if (!writeBytes(destFile.uri, bytes)) return false
             }
         }
@@ -334,38 +429,60 @@ class PluginRepository(
                 if (!copyFileDirRecursively(child, sub, accept)) return false
             } else if (child.isFile) {
                 val bytes = runCatching { child.readBytes() }.getOrNull() ?: return false
-                val destFile =
-                    destDir.findFile(child.name)
-                        ?: destDir.createFile("application/octet-stream", child.name)
-                        ?: return false
+                val destFile = findFileLoose(destDir, child.name) ?: createFilePreservingName(destDir, mimeTypeForName(child.name), child.name) ?: return false
                 if (!writeBytes(destFile.uri, bytes)) return false
             }
         }
         return true
     }
 
-    private fun readAssetTextOrNull(path: String): String? =
-        runCatching {
-            context.assets.open(path).use { it.readBytes().toString(Charsets.UTF_8) }
-        }.getOrNull()
+    private fun findFileLoose(parent: DocumentFile, desiredName: String): DocumentFile? {
+        parent.findFile(desiredName)?.let { return it }
+        val desiredNorm = normalizeFileName(desiredName).lowercase()
+        val candidate =
+            parent.listFiles()
+                .firstOrNull { it.isFile && normalizeFileName(it.name ?: "").lowercase() == desiredNorm }
+                ?: return null
 
-    private fun copyAssetsDirRecursively(assetPath: String, destDir: DocumentFile): Boolean {
-        val assets = context.assets
-        val children = runCatching { assets.list(assetPath)?.toList().orEmpty() }.getOrNull() ?: return false
-        for (name in children) {
-            val childPath = "$assetPath/$name"
-            val grandChildren = runCatching { assets.list(childPath) }.getOrNull()
-            val isDir = grandChildren != null && grandChildren.isNotEmpty()
-            if (isDir) {
-                val sub = destDir.findFile(name) ?: destDir.createDirectory(name) ?: return false
-                if (!copyAssetsDirRecursively(childPath, sub)) return false
-            } else {
-                val bytes = runCatching { assets.open(childPath).use { it.readBytes() } }.getOrNull() ?: return false
-                val destFile = destDir.findFile(name) ?: destDir.createFile("application/octet-stream", name) ?: return false
-                if (!writeBytes(destFile.uri, bytes)) return false
-            }
+        if (!candidate.name.equals(desiredName, ignoreCase = false) && parent.findFile(desiredName) == null) {
+            runCatching { candidate.renameTo(desiredName) }
         }
-        return true
+        return parent.findFile(desiredName) ?: candidate
+    }
+
+    private fun normalizeFileName(name: String): String {
+        var out = name
+        while (out.endsWith(".bin", ignoreCase = true)) {
+            out = out.dropLast(".bin".length)
+        }
+        while (true) {
+            val m = DUPLICATE_EXT_REGEX.matchEntire(out) ?: break
+            out = "${m.groupValues[1]}.${m.groupValues[2]}"
+        }
+        return out
+    }
+
+    private fun mimeTypeForName(name: String): String {
+        val ext = name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+        return when (ext) {
+            "json" -> "application/json"
+            "js" -> "application/javascript"
+            "mjs" -> "application/javascript"
+            "md" -> "text/markdown"
+            "txt" -> "text/plain"
+            "html" -> "text/html"
+            "css" -> "text/css"
+            "svg" -> "image/svg+xml"
+            "png" -> "image/png"
+            "jpg", "jpeg" -> "image/jpeg"
+            "webp" -> "image/webp"
+            "xml" -> "application/xml"
+            else -> "application/octet-stream"
+        }
+    }
+
+    private companion object {
+        val DUPLICATE_EXT_REGEX = Regex("""^(.*)\.([A-Za-z0-9]{1,8})\.\2$""", RegexOption.IGNORE_CASE)
     }
 }
 

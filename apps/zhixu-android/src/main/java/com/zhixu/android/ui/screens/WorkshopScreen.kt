@@ -62,10 +62,10 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.zhixu.android.R
 import com.zhixu.android.plugins.InstalledPlugin
+import com.zhixu.android.plugins.PluginManifest
 import com.zhixu.android.plugins.PluginRepository
 import com.zhixu.android.ui.components.MarkdownPreview
 import kotlinx.coroutines.launch
-import org.json.JSONArray
 import org.json.JSONObject
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,15 +89,14 @@ fun WorkshopScreen(
     var detailsReadme by remember { mutableStateOf<String?>(null) }
     var detailsLoading by remember { mutableStateOf(false) }
 
-    var showTypechoSettings by remember { mutableStateOf(false) }
-    var typechoEndpoint by remember { mutableStateOf("") }
-    var typechoUsername by remember { mutableStateOf("") }
-    var typechoPassword by remember { mutableStateOf("") }
-    var typechoBlogId by remember { mutableStateOf("1") }
-    var typechoDefaultCategories by remember { mutableStateOf("") }
-    var typechoDefaultTags by remember { mutableStateOf("") }
-    var typechoShowPassword by remember { mutableStateOf(false) }
-    var typechoSaving by remember { mutableStateOf(false) }
+    var officialLoading by remember { mutableStateOf(false) }
+    var officialError by remember { mutableStateOf<String?>(null) }
+    var officialPlugins by remember { mutableStateOf<List<PluginManifest>>(emptyList()) }
+
+    var showConfigEditor by remember { mutableStateOf(false) }
+    var configPluginId by remember { mutableStateOf<String?>(null) }
+    var configText by remember { mutableStateOf("") }
+    var configSaving by remember { mutableStateOf(false) }
 
     suspend fun refresh() {
         val root = vaultRootUri ?: return
@@ -108,6 +107,26 @@ fun WorkshopScreen(
         if (vaultRootUri != null) refresh()
     }
 
+    suspend fun refreshOfficial() {
+        officialLoading = true
+        officialError = null
+        val ids =
+            pluginRepo.listOfficialPluginIds()
+                .getOrElse {
+                    officialLoading = false
+                    officialError = it.message ?: "Failed to load"
+                    officialPlugins = emptyList()
+                    return
+                }
+        val manifests = ids.mapNotNull { pluginRepo.fetchOfficialManifest(it) }
+        officialPlugins = manifests.sortedBy { (it.name ?: it.id).lowercase() }
+        officialLoading = false
+    }
+
+    LaunchedEffect(Unit) {
+        refreshOfficial()
+    }
+
     LaunchedEffect(detailsPlugin, vaultRootUri) {
         val plugin = detailsPlugin ?: return@LaunchedEffect
         val root = vaultRootUri ?: return@LaunchedEffect
@@ -116,115 +135,50 @@ fun WorkshopScreen(
         detailsLoading = false
     }
 
-    fun loadTypechoConfig(json: JSONObject?) {
-        if (json == null) return
-        typechoEndpoint = json.optString("endpointUrl", typechoEndpoint)
-        typechoUsername = json.optString("username", typechoUsername)
-        typechoPassword = json.optString("password", typechoPassword)
-        typechoBlogId = json.optString("blogId", typechoBlogId).ifBlank { "1" }
-        typechoDefaultCategories =
-            json.optJSONArray("defaultCategories")?.let { arr ->
-                (0 until arr.length()).mapNotNull { idx -> arr.optString(idx).trim().takeIf { it.isNotBlank() } }.joinToString(", ")
-            } ?: json.optString("categories", typechoDefaultCategories)
-        typechoDefaultTags =
-            json.optJSONArray("defaultTags")?.let { arr ->
-                (0 until arr.length()).mapNotNull { idx -> arr.optString(idx).trim().takeIf { it.isNotBlank() } }.joinToString(", ")
-            } ?: json.optString("tags", typechoDefaultTags)
-    }
-
-    fun buildTypechoConfigJson(): JSONObject {
-        val cats = typechoDefaultCategories.split(',').map { it.trim() }.filter { it.isNotBlank() }
-        val tags = typechoDefaultTags.split(',').map { it.trim() }.filter { it.isNotBlank() }
-        return JSONObject()
-            .put("endpointUrl", typechoEndpoint.trim())
-            .put("username", typechoUsername.trim())
-            .put("password", typechoPassword)
-            .put("blogId", typechoBlogId.trim().ifBlank { "1" })
-            .put("defaultCategories", JSONArray(cats))
-            .put("defaultTags", JSONArray(tags))
-    }
-
-    if (showTypechoSettings) {
+    if (showConfigEditor && configPluginId != null) {
         AlertDialog(
-            onDismissRequest = { if (!typechoSaving) showTypechoSettings = false },
-            title = { Text(stringResource(R.string.plugin_typecho_settings_title)) },
+            onDismissRequest = { if (!configSaving) showConfigEditor = false },
+            title = { Text("${configPluginId!!} - config.json") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.imePadding()) {
-                    OutlinedTextField(
-                        value = typechoEndpoint,
-                        onValueChange = { typechoEndpoint = it },
-                        label = { Text(stringResource(R.string.plugin_typecho_endpoint)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = typechoUsername,
-                        onValueChange = { typechoUsername = it },
-                        label = { Text(stringResource(R.string.plugin_typecho_username)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = typechoPassword,
-                        onValueChange = { typechoPassword = it },
-                        label = { Text(stringResource(R.string.plugin_typecho_password)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        visualTransformation = if (typechoShowPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                    )
-                    TextButton(onClick = { typechoShowPassword = !typechoShowPassword }) {
-                        Text(if (typechoShowPassword) stringResource(R.string.plugin_hide_password) else stringResource(R.string.plugin_show_password))
-                    }
-                    OutlinedTextField(
-                        value = typechoBlogId,
-                        onValueChange = { typechoBlogId = it },
-                        label = { Text(stringResource(R.string.plugin_typecho_blog_id)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = typechoDefaultCategories,
-                        onValueChange = { typechoDefaultCategories = it },
-                        label = { Text(stringResource(R.string.plugin_typecho_default_categories)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = typechoDefaultTags,
-                        onValueChange = { typechoDefaultTags = it },
-                        label = { Text(stringResource(R.string.plugin_typecho_default_tags)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
+                OutlinedTextField(
+                    value = configText,
+                    onValueChange = { configText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 8,
+                    maxLines = 14,
+                    singleLine = false,
+                )
             },
             confirmButton = {
                 TextButton(
-                    enabled = !typechoSaving,
+                    enabled = !configSaving,
                     onClick = {
                         val root = vaultRootUri ?: return@TextButton
-                        typechoSaving = true
+                        val pluginId = configPluginId ?: return@TextButton
+                        val parsed =
+                            runCatching {
+                                val t = configText.trim()
+                                if (t.isBlank()) JSONObject() else JSONObject(t)
+                            }.getOrNull()
+                        if (parsed == null) {
+                            scope.launch { snackbarHostState.showSnackbar("Invalid JSON") }
+                            return@TextButton
+                        }
+
+                        configSaving = true
                         scope.launch {
-                            val ok =
-                                pluginRepo.writePluginConfig(
-                                    rootUri = root,
-                                    pluginId = "typecho-xmlrpc-publisher",
-                                    json = buildTypechoConfigJson(),
-                                )
-                            typechoSaving = false
+                            val ok = pluginRepo.writePluginConfig(root, pluginId, parsed)
+                            configSaving = false
                             snackbarHostState.showSnackbar(
                                 if (ok) context.getString(R.string.plugin_saved) else context.getString(R.string.plugin_save_failed),
                             )
-                            showTypechoSettings = false
+                            showConfigEditor = false
                         }
                     },
                 ) { Text(stringResource(R.string.plugin_save)) }
             },
             dismissButton = {
-                TextButton(
-                    enabled = !typechoSaving,
-                    onClick = { showTypechoSettings = false },
-                ) { Text(stringResource(R.string.action_cancel)) }
+                TextButton(enabled = !configSaving, onClick = { showConfigEditor = false }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }
@@ -410,19 +364,16 @@ fun WorkshopScreen(
                             detailsReadme = null
                             detailsPlugin = plugin
                         },
-                        onSettings =
-                            if (plugin.manifest.id == "typecho-xmlrpc-publisher") {
-                                {
-                                    val root = vaultRootUri ?: return@PluginRow
-                                    scope.launch {
-                                        val cfg = pluginRepo.readPluginConfig(root, "typecho-xmlrpc-publisher")
-                                        loadTypechoConfig(cfg)
-                                        showTypechoSettings = true
-                                    }
-                                }
-                            } else {
-                                null
-                            },
+                        onSettings = {
+                            val root = vaultRootUri ?: return@PluginRow
+                            val pluginId = plugin.manifest.id
+                            scope.launch {
+                                configPluginId = pluginId
+                                val cfg = pluginRepo.readPluginConfig(root, pluginId)
+                                configText = (cfg ?: JSONObject()).toString(2) + "\n"
+                                showConfigEditor = true
+                            }
+                        },
                     )
                 }
             }
@@ -449,21 +400,49 @@ fun WorkshopScreen(
             item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }
 
             item {
-                Text(text = stringResource(R.string.workshop_section_bundled), style = MaterialTheme.typography.titleMedium)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(text = stringResource(R.string.workshop_section_official), style = MaterialTheme.typography.titleMedium)
+                    TextButton(enabled = !officialLoading, onClick = { scope.launch { refreshOfficial() } }) {
+                        Text(stringResource(R.string.workshop_refresh))
+                    }
+                }
             }
-            item {
-                BundledPluginRow(
-                    title = stringResource(R.string.bundled_typecho_name),
-                    desc = stringResource(R.string.bundled_typecho_desc),
-                    onInstall = {
-                        val root = vaultRootUri ?: return@BundledPluginRow
-                        scope.launch {
-                            val result = pluginRepo.installBundledPlugin(root, "typecho-xmlrpc-publisher")
-                            snackbarHostState.showSnackbar(result.message)
-                            refresh()
-                        }
-                    },
-                )
+
+            val installedIds = installed.map { it.manifest.id }.toSet()
+            when {
+                officialLoading -> {
+                    item { Text(stringResource(R.string.workshop_official_loading)) }
+                }
+
+                officialError != null -> {
+                    item { Text(stringResource(R.string.workshop_official_failed, officialError ?: "")) }
+                }
+
+                officialPlugins.isEmpty() -> {
+                    item { Text(stringResource(R.string.workshop_official_empty)) }
+                }
+
+                else -> {
+                    items(officialPlugins.size, key = { officialPlugins[it].id }) { idx ->
+                        val m = officialPlugins[idx]
+                        OfficialPluginRow(
+                            manifest = m,
+                            installed = installedIds.contains(m.id),
+                            onInstall = {
+                                val root = vaultRootUri ?: return@OfficialPluginRow
+                                scope.launch {
+                                    val result = pluginRepo.installFromOfficial(root, m.id)
+                                    snackbarHostState.showSnackbar(result.message)
+                                    refresh()
+                                }
+                            },
+                        )
+                    }
+                }
             }
 
             item { Spacer(modifier = Modifier.height(24.dp)) }
@@ -535,9 +514,9 @@ private fun PluginRow(
 }
 
 @Composable
-private fun BundledPluginRow(
-    title: String,
-    desc: String,
+private fun OfficialPluginRow(
+    manifest: PluginManifest,
+    installed: Boolean,
     onInstall: () -> Unit,
 ) {
     Card(
@@ -552,10 +531,19 @@ private fun BundledPluginRow(
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        text = manifest.name ?: manifest.id,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
-                TextButton(onClick = onInstall) { Text(stringResource(R.string.workshop_install)) }
+                TextButton(enabled = !installed, onClick = onInstall) {
+                    Text(if (installed) stringResource(R.string.workshop_installed) else stringResource(R.string.workshop_install))
+                }
             }
+
+            val desc = manifest.description.orEmpty().ifBlank { manifest.id }
             Text(
                 text = desc,
                 style = MaterialTheme.typography.bodyMedium,
@@ -563,6 +551,14 @@ private fun BundledPluginRow(
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
+
+            if (!manifest.version.isNullOrBlank()) {
+                Text(
+                    text = "v${manifest.version}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
