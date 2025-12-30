@@ -1579,7 +1579,7 @@ fun EditorScreen(
                 ) {
                     EditorOverflowQuickAction(
                         title = stringResource(R.string.editor_overflow_generate_long_image),
-                        icon = Icons.Outlined.Image,
+                        iconRes = Ionicons.ImageOutline,
                         onClick = {
                             showOverflowSheet = false
                             onGenerateLongImage(
@@ -1594,7 +1594,7 @@ fun EditorScreen(
                     )
                     EditorOverflowQuickAction(
                         title = stringResource(R.string.editor_overflow_share),
-                        icon = Icons.Outlined.Share,
+                        iconRes = Ionicons.ImageOutline,
                         onClick = {
                             showOverflowSheet = false
                             val subject =
@@ -1618,7 +1618,7 @@ fun EditorScreen(
                 }
 
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     color = Color.White,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
@@ -1627,7 +1627,7 @@ fun EditorScreen(
                     Column {
                         EditorOverflowRow(
                             title = stringResource(R.string.editor_overflow_font_size),
-                            trailing = { Text("A+", style = MaterialTheme.typography.bodyMedium) },
+                            trailing = { Icon(painter = painterResource(Ionicons.TextOutline), contentDescription = null, tint = Color(0xFF111111), modifier = Modifier.size(18.dp)) },
                             onClick = {
                                 showOverflowSheet = false
                                 showFontSizeSheet = true
@@ -1636,7 +1636,7 @@ fun EditorScreen(
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
                         EditorOverflowRow(
                             title = stringResource(R.string.common_copy),
-                            trailing = { Icon(imageVector = Icons.Outlined.ContentCopy, contentDescription = null) },
+                            trailing = { Icon(painter = painterResource(Ionicons.TextOutline), contentDescription = null, tint = Color(0xFF111111), modifier = Modifier.size(18.dp)) },
                             onClick = {
                                 showOverflowSheet = false
                                 clipboard.setText(AnnotatedString(content.text))
@@ -1646,7 +1646,7 @@ fun EditorScreen(
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
                         EditorOverflowRow(
                             title = "历史版本",
-                            trailing = { Icon(imageVector = Icons.Outlined.History, contentDescription = null) },
+                            trailing = { Icon(painter = painterResource(Ionicons.HourglassOutline), contentDescription = null, tint = Color(0xFF111111), modifier = Modifier.size(18.dp)) },
                             onClick = {
                                 showOverflowSheet = false
                                 showHistorySheet = true
@@ -1660,7 +1660,7 @@ fun EditorScreen(
                                 items(pluginFabActions, key = { it.id }) { action ->
                                     EditorOverflowRow(
                                         title = action.label,
-                                        trailing = { Icon(imageVector = action.icon, contentDescription = null) },
+                                        trailing = { Icon(painter = painterResource(Ionicons.ExtensionPuzzleOutline), contentDescription = null, tint = Color(0xFF111111), modifier = Modifier.size(18.dp)) },
                                         onClick = {
                                             showOverflowSheet = false
                                             handlePluginAction(action)
@@ -1678,9 +1678,10 @@ fun EditorScreen(
                             titleColor = Color(0xFFFF4D4F),
                             trailing = {
                                 Icon(
-                                    imageVector = Icons.Outlined.DeleteOutline,
+                                    painter = painterResource(Ionicons.TrashOutline),
                                     contentDescription = null,
                                     tint = Color(0xFFFF4D4F),
+                                    modifier = Modifier.size(18.dp),
                                 )
                             },
                             onClick = {
@@ -1692,7 +1693,7 @@ fun EditorScreen(
                 }
 
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     color = Color.White,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
@@ -2230,13 +2231,13 @@ fun EditorScreen(
 @Composable
 private fun EditorOverflowQuickAction(
     title: String,
-    icon: ImageVector,
+    iconRes: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
         modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(8.dp),
         color = Color.White,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
@@ -2247,7 +2248,7 @@ private fun EditorOverflowQuickAction(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(
-                imageVector = icon,
+                painter = painterResource(iconRes),
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
                 tint = Color(0xFF111111),
