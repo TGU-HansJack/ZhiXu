@@ -6,20 +6,23 @@ import android.util.Log
 import com.zhixu.android.BuildConfig
 import com.zhixu.android.plugins.PluginManifest
 import com.zhixu.android.plugins.PluginRepository
+import com.eclipsesource.v8.JavaCallback
+import com.eclipsesource.v8.JavaVoidCallback
+import com.eclipsesource.v8.V8
+import com.eclipsesource.v8.V8Array
+import com.eclipsesource.v8.V8Function
+import com.eclipsesource.v8.V8Object
+import com.eclipsesource.v8.V8ResultUndefined
+import com.eclipsesource.v8.V8ScriptCompilationException
+import com.eclipsesource.v8.V8ScriptExecutionException
+import com.eclipsesource.v8.V8Value
+import com.eclipsesource.v8.utils.V8ObjectUtils
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import org.mozilla.javascript.ClassShutter
-import org.mozilla.javascript.ContextFactory
-import org.mozilla.javascript.Function
-import org.mozilla.javascript.NativeArray
-import org.mozilla.javascript.NativeObject
-import org.mozilla.javascript.RhinoException
-import org.mozilla.javascript.Scriptable
-import org.mozilla.javascript.ScriptableObject
 
 data class PluginActionResult(
     val ok: Boolean,
@@ -54,53 +57,66 @@ class JsPluginRuntime(
 
         val cfg = pluginRepo.readPluginConfig(rootUri, pluginId)
 
-        val factory =
-            object : ContextFactory() {
-                override fun hasFeature(cx: org.mozilla.javascript.Context, featureIndex: Int): Boolean =
-                    when (featureIndex) {
-                        org.mozilla.javascript.Context.FEATURE_STRICT_VARS -> true
-                        org.mozilla.javascript.Context.FEATURE_STRICT_EVAL -> true
-                        org.mozilla.javascript.Context.FEATURE_WARNING_AS_ERROR -> false
-                        else -> super.hasFeature(cx, featureIndex)
-                    }
-            }
-
-            val cx = factory.enterContext()
+        val v8 = V8.createV8Runtime()
         try {
-            cx.optimizationLevel = -1
-            cx.languageVersion = org.mozilla.javascript.Context.VERSION_ES6
-            cx.setClassShutter(ClassShutter { _: String? -> false })
+            V8Object(v8).useV8 { module ->
+                V8Object(v8).useV8 { exports ->
+                    module.add("exports", exports)
+                    v8.add("module", module)
+                    v8.add("exports", exports)
 
-            val scope = cx.initStandardObjects()
-            val module = cx.newObject(scope)
-            val exports = cx.newObject(scope)
-            ScriptableObject.putProperty(module, "exports", exports)
-            ScriptableObject.putProperty(scope, "module", module)
-            ScriptableObject.putProperty(scope, "exports", exports)
+                    V8Object(v8).useV8 { api ->
+                        registerApi(api, pluginId = pluginId, http = http)
+                        v8.add("api", api)
 
-            val api = PluginApi(pluginId = pluginId, http = http)
-            ScriptableObject.putProperty(scope, "api", org.mozilla.javascript.Context.javaToJS(api, scope))
+                        v8.executeVoidScript(entryText, entryName, 1)
 
-            cx.evaluateString(scope, entryText, entryName, 1, null)
+                        module.getObject("exports").useV8 { outExports ->
+                            if (outExports.isUndefined) {
+                                return PluginActionResult(false, "Invalid module.exports in $entryName")
+                            }
 
-            val outExports = ScriptableObject.getProperty(module, "exports") as? Scriptable
-                ?: return PluginActionResult(false, "Invalid module.exports in $entryName")
-            val actions = ScriptableObject.getProperty(outExports, "actions") as? Scriptable
-                ?: return PluginActionResult(false, "Missing module.exports.actions in $entryName")
-            val fn = ScriptableObject.getProperty(actions, actionId) as? Function
-                ?: return PluginActionResult(false, "Missing action '$actionId' in $entryName")
+                            outExports.getObject("actions").useV8 { actions ->
+                                if (actions.isUndefined) {
+                                    return PluginActionResult(false, "Missing module.exports.actions in $entryName")
+                                }
 
-            val jsCtx = buildEditorContext(cx, scope, manifest, ctx, cfg)
-            val result = fn.call(cx, scope, actions, arrayOf(jsCtx))
-            return parseResult(result)
-        } catch (e: RhinoException) {
-            val where = e.sourceName()?.let { "$it:${e.lineNumber()}" } ?: "script"
-            val msg = e.details() ?: e.message ?: e.javaClass.simpleName
+                                val fnAny =
+                                    try {
+                                        actions.get(actionId)
+                                    } catch (_: V8ResultUndefined) {
+                                        V8.getUndefined()
+                                    }
+
+                                (fnAny as? V8Function)?.useV8 { fn ->
+                                    buildEditorContext(v8, manifest, ctx, cfg).useV8 { jsCtx ->
+                                        V8Array(v8).useV8 { params ->
+                                            params.push(jsCtx)
+                                            val result = fn.call(actions, params)
+                                            return parseResult(result)
+                                        }
+                                    }
+                                } ?: run {
+                                    releaseIfV8Value(fnAny)
+                                    return PluginActionResult(false, "Missing action '$actionId' in $entryName")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: V8ScriptExecutionException) {
+            val where = e.fileName?.takeIf { it.isNotBlank() }?.let { "$it:${e.lineNumber}" } ?: "script"
+            val msg = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+            return PluginActionResult(false, "Plugin error ($where): $msg")
+        } catch (e: V8ScriptCompilationException) {
+            val where = e.fileName?.takeIf { it.isNotBlank() }?.let { "$it:${e.lineNumber}" } ?: "script"
+            val msg = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
             return PluginActionResult(false, "Plugin error ($where): $msg")
         } catch (e: Throwable) {
             return PluginActionResult(false, "Plugin error: ${e.message ?: e.javaClass.simpleName}")
         } finally {
-            org.mozilla.javascript.Context.exit()
+            v8.close()
         }
     }
 
@@ -116,33 +132,37 @@ class JsPluginRuntime(
     }
 
     private fun buildEditorContext(
-        cx: org.mozilla.javascript.Context,
-        scope: Scriptable,
+        v8: V8,
         manifest: PluginManifest,
         ctx: EditorActionContext,
         cfg: JSONObject?,
-    ): Scriptable {
-        val root = NativeObject()
+    ): V8Object {
+        val root = V8Object(v8)
 
-        val note = NativeObject()
-        note.put("docUri", note, ctx.docUri.toString())
-        note.put("title", note, ctx.title)
-        note.put("fileName", note, ctx.fileName)
-        note.put("text", note, ctx.text)
-        root.put("note", root, note)
+        V8Object(v8).useV8 { note ->
+            note.add("docUri", ctx.docUri.toString())
+            note.add("title", ctx.title)
+            note.add("fileName", ctx.fileName)
+            note.add("text", ctx.text)
+            root.add("note", note)
+        }
 
-        val plugin = NativeObject()
-        plugin.put("id", plugin, manifest.id)
-        plugin.put("name", plugin, manifest.name ?: manifest.id)
-        plugin.put("version", plugin, manifest.version ?: "")
-        root.put("plugin", root, plugin)
+        V8Object(v8).useV8 { plugin ->
+            plugin.add("id", manifest.id)
+            plugin.add("name", manifest.name ?: manifest.id)
+            plugin.add("version", manifest.version ?: "")
+            root.add("plugin", plugin)
+        }
 
-        val app = NativeObject()
-        app.put("platform", app, "android")
-        app.put("versionName", app, BuildConfig.VERSION_NAME)
-        root.put("app", root, app)
+        V8Object(v8).useV8 { app ->
+            app.add("platform", "android")
+            app.add("versionName", BuildConfig.VERSION_NAME)
+            root.add("app", app)
+        }
 
-        root.put("config", root, jsonToJs(cx, scope, cfg ?: JSONObject()))
+        val configValue = jsonToV8Value(v8, cfg ?: JSONObject())
+        addV8Value(root, "config", configValue)
+
         return root
     }
 
@@ -150,40 +170,59 @@ class JsPluginRuntime(
         return when (v) {
             null -> PluginActionResult(ok = true, message = "OK")
             is String -> PluginActionResult(ok = true, message = v)
-            is Scriptable -> {
-                val ok = ScriptableObject.getProperty(v, "ok").let { it == true || it?.toString() == "true" }
-                val message = ScriptableObject.getProperty(v, "message")?.toString()?.takeIf { it.isNotBlank() }
-                    ?: if (ok) "OK" else "Failed"
-                val setText = ScriptableObject.getProperty(v, "setText")?.toString()?.takeIf { it.isNotBlank() }
-                PluginActionResult(ok = ok, message = message, setText = setText)
-            }
+            is V8Value ->
+                when {
+                    v.isUndefined -> PluginActionResult(ok = true, message = "OK")
+                    v is V8Object -> parseResultObject(v)
+                    else -> PluginActionResult(ok = true, message = v.toString())
+                }.also { if (!v.isUndefined) v.close() }
             else -> PluginActionResult(ok = true, message = v.toString())
         }
     }
 
-    private fun jsonToJs(cx: org.mozilla.javascript.Context, scope: Scriptable, value: Any?): Any? {
-        return when (value) {
-            null -> null
-            is JSONObject -> {
-                val obj = NativeObject()
-                val it = value.keys()
-                while (it.hasNext()) {
-                    val k = it.next()
-                    val v = value.opt(k)
-                    obj.put(k, obj, jsonToJs(cx, scope, v))
+    private fun parseResultObject(obj: V8Object): PluginActionResult {
+        val ok =
+            if (!obj.contains("ok")) {
+                true
+            } else {
+                val raw = obj.get("ok")
+                try {
+                    when (val v = coerceJsValue(raw)) {
+                        is Boolean -> v
+                        is Number -> v.toInt() != 0
+                        is String -> v.equals("true", ignoreCase = true)
+                        else -> v != null
+                    }
+                } finally {
+                    releaseIfV8Value(raw)
                 }
-                obj
             }
-            is JSONArray -> {
-                val arr = NativeArray(value.length().toLong())
-                for (i in 0 until value.length()) {
-                    arr.put(i, arr, jsonToJs(cx, scope, value.opt(i)))
+
+        val message =
+            if (!obj.contains("message")) {
+                if (ok) "OK" else "Failed"
+            } else {
+                val raw = obj.get("message")
+                try {
+                    coerceJsValue(raw)?.toString()?.takeIf { it.isNotBlank() } ?: if (ok) "OK" else "Failed"
+                } finally {
+                    releaseIfV8Value(raw)
                 }
-                arr
             }
-            is Boolean, is Int, is Long, is Double, is Float, is String -> value
-            else -> value.toString()
-        }
+
+        val setText =
+            if (!obj.contains("setText")) {
+                null
+            } else {
+                val raw = obj.get("setText")
+                try {
+                    coerceJsValue(raw)?.toString()?.takeIf { it.isNotBlank() }
+                } finally {
+                    releaseIfV8Value(raw)
+                }
+            }
+
+        return PluginActionResult(ok = ok, message = message, setText = setText)
     }
 }
 
@@ -227,4 +266,139 @@ private class PluginApi(
             return text
         }
     }
+}
+
+private fun registerApi(
+    api: V8Object,
+    pluginId: String,
+    http: OkHttpClient,
+) {
+    val impl = PluginApi(pluginId = pluginId, http = http)
+
+    api.registerJavaMethod(
+        JavaVoidCallback { _, parameters ->
+            val msg = readV8Param(parameters, 0)
+            impl.log(msg)
+        },
+        "log",
+    )
+
+    api.registerJavaMethod(
+        JavaCallback { _, parameters ->
+            val method = readV8Param(parameters, 0)?.toString().orEmpty()
+            val url = readV8Param(parameters, 1)?.toString().orEmpty()
+            val body = readV8Param(parameters, 2)?.toString()
+            val contentType = readV8Param(parameters, 3)?.toString()
+            impl.http(method = method, url = url, body = body, contentType = contentType)
+        },
+        "http",
+    )
+}
+
+private fun readV8Param(parameters: V8Array?, index: Int): Any? {
+    if (parameters == null || index < 0 || index >= parameters.length()) return null
+    return when (parameters.getType(index)) {
+        V8Value.UNDEFINED, V8Value.NULL -> null
+        else -> {
+            val raw = parameters.get(index)
+            try {
+                coerceJsValue(raw)
+            } finally {
+                releaseIfV8Value(raw)
+            }
+        }
+    }
+}
+
+private fun coerceJsValue(v: Any?): Any? {
+    if (v == null) return null
+    if (v is V8Value) {
+        if (v.isUndefined) return null
+        return V8ObjectUtils.getValue(v)
+    }
+    if (v == JSONObject.NULL) return null
+    return v
+}
+
+private fun jsonToV8Value(v8: V8, value: Any?): Any? {
+    return when (value) {
+        null, JSONObject.NULL -> null
+        is JSONObject -> {
+            val obj = V8Object(v8)
+            val it = value.keys()
+            while (it.hasNext()) {
+                val k = it.next()
+                addV8Value(obj, k, jsonToV8Value(v8, value.opt(k)))
+            }
+            obj
+        }
+        is JSONArray -> {
+            val arr = V8Array(v8)
+            for (i in 0 until value.length()) {
+                pushV8Value(arr, jsonToV8Value(v8, value.opt(i)))
+            }
+            arr
+        }
+        is Boolean, is Int, is Long, is Double, is Float, is String -> value
+        else -> value.toString()
+    }
+}
+
+private fun addV8Value(obj: V8Object, key: String, value: Any?) {
+    when (value) {
+        null -> obj.addUndefined(key)
+        is Int -> obj.add(key, value)
+        is Long -> obj.add(key, value.toDouble())
+        is Double -> obj.add(key, value)
+        is Float -> obj.add(key, value.toDouble())
+        is Boolean -> obj.add(key, value)
+        is String -> obj.add(key, value)
+        is V8Value -> {
+            if (value.isUndefined) {
+                obj.addUndefined(key)
+            } else {
+                obj.add(key, value)
+            }
+            releaseIfV8Value(value)
+        }
+        else -> obj.add(key, value.toString())
+    }
+}
+
+private fun pushV8Value(arr: V8Array, value: Any?) {
+    when (value) {
+        null -> arr.pushUndefined()
+        is Int -> arr.push(value)
+        is Long -> arr.push(value)
+        is Double -> arr.push(value)
+        is Float -> arr.push(value)
+        is Boolean -> arr.push(value)
+        is String -> arr.push(value)
+        is V8Value -> {
+            if (value.isUndefined) {
+                arr.pushUndefined()
+            } else {
+                arr.push(value)
+            }
+            releaseIfV8Value(value)
+        }
+        else -> arr.push(value.toString())
+    }
+}
+
+private inline fun <T : V8Value, R> T.useV8(block: (T) -> R): R {
+    try {
+        return block(this)
+    } finally {
+        if (!isUndefined) {
+            close()
+        }
+    }
+}
+
+private fun releaseIfV8Value(v: Any?) {
+    if (v !is V8Value) return
+    if (v.isUndefined) return
+    if (v.isReleased) return
+    v.close()
 }

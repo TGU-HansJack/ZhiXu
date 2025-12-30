@@ -73,7 +73,8 @@ dependencies {
     implementation("com.google.guava:listenablefuture:1.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r")
-    implementation("org.mozilla:rhino:1.7.14")
+    // Native V8 for Android (arm64-v8a); if you need emulator support, add an x86/x86_64 artifact too.
+    implementation("com.eclipsesource.j2v8:j2v8_android_arm64-v8a:6.3.0@aar")
     implementation("io.noties.markwon:ext-tables:4.6.2")
     implementation("io.noties.markwon:ext-tasklist:4.6.2")
     implementation("io.noties.markwon:ext-strikethrough:4.6.2")
