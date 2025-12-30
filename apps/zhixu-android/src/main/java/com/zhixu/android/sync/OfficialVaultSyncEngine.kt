@@ -58,28 +58,122 @@ class OfficialVaultSyncEngine(
 
         val logFile = ensureLocalFile(root, ".zhixu/sync/log.jsonl")
         val conflictsFile = ensureLocalFile(root, ".zhixu/sync/conflicts.jsonl")
-        val stateFile = ensureLocalFile(root, ".zhixu/sync/official_state.json")
         val logger = SyncLogger(logFile?.uri, conflictsFile?.uri)
         logger.logEvent("start", mapOf("engine" to "official", "includeIndexSqlite" to includeIndexSqlite.toString()))
 
         runCatching {
-            val prevPaths = readStatePaths(stateFile?.uri)
-            val localFiles = listLocalFiles(root, includeIndexSqlite = includeIndexSqlite).filter { shouldSyncPath(it.path) }
-            val localByPath = localFiles.associateBy { it.path }
+            val store = OfficialVaultSyncStateStore(context, repository)
+            var state = store.load(rootUri)
 
-            val manifestResult = SyncServerClient.vaultManifest(baseUrl, token)
-            val remote = manifestResult.value ?: error(manifestResult.errorMessage ?: "Failed to fetch manifest")
-            val remoteEntries = remote.files.map {
-                OfficialRemoteEntry(
-                    path = it.path,
-                    updatedAt = it.updatedAt,
-                    mtimeMs = it.mtimeMs,
-                    size = it.size,
-                    sha256 = it.sha256,
-                    deleted = it.deleted,
-                )
-            }.filter { shouldSyncPath(it.path) }
-            val remoteByPath = remoteEntries.associateBy { it.path }
+            fun isProbablySame(local: OfficialLocalEntry, st: OfficialVaultSyncFileState): Boolean {
+                val mtimeClose = local.lastModifiedEpochMs > 0 && st.localMtimeMs > 0 && abs(local.lastModifiedEpochMs - st.localMtimeMs) < 2_000
+                return local.size == st.size && mtimeClose
+            }
+
+            suspend fun localSha256(local: OfficialLocalEntry): String {
+                val bytes = repository.readBytes(local.file.uri) ?: return ""
+                return sha256Hex(bytes)
+            }
+
+            suspend fun ensureConflictArtifact(path: String, kind: String, bytes: ByteArray) {
+                val safePath = path.trimStart('/').replace('\\', '/')
+                val now = System.currentTimeMillis()
+                val baseDir = ".zhixu/conflicts/$safePath"
+                val name = "$now-$kind"
+                val destPath = "$baseDir/$name"
+                val dest = ensureLocalFile(root, destPath) ?: return
+                repository.writeBytes(dest.uri, bytes)
+            }
+
+            suspend fun applyRemote(path: String, remoteRev: Long, remoteDeleted: Boolean): Boolean {
+                if (!shouldSyncPath(path)) return true
+
+                val localFilesNow = listLocalFiles(root, includeIndexSqlite = includeIndexSqlite).filter { shouldSyncPath(it.path) }
+                val localByPathNow = localFilesNow.associateBy { it.path }
+                val local = localByPathNow[path]
+                val st = state.files[path]
+
+                val localDirty =
+                    when {
+                        local == null -> st != null && !st.deleted
+                        st == null -> true
+                        st.deleted -> true
+                        isProbablySame(local, st) -> false
+                        st.sha256.isBlank() -> true
+                        else -> localSha256(local) != st.sha256
+                    }
+
+                if (!localDirty) {
+                    if (remoteDeleted) {
+                        val ok = local?.file?.delete() ?: true
+                        if (ok) {
+                            state = state.withDeleted(path, remoteRev)
+                            return true
+                        }
+                        return false
+                    }
+
+                    val download = SyncServerClient.downloadVaultFileV2(baseUrl, token, path)
+                    val bytes = download.value?.bytes ?: return false
+                    val dest = ensureLocalFile(root, path) ?: return false
+                    repository.writeBytes(dest.uri, bytes)
+                    val localMtime = repository.getDocumentLastModified(dest.uri)
+                    val sha = download.value.sha256
+                    state = state.withUploaded(path, rev = remoteRev, sha256 = sha, size = bytes.size.toLong(), localMtimeMs = localMtime)
+                    return true
+                }
+
+                // Conflict: try best-effort text 3-way merge; otherwise keep both by writing remote under .zhixu/conflicts/.
+                if (remoteDeleted) {
+                    val localBytes = local?.let { repository.readBytes(it.file.uri) } ?: ByteArray(0)
+                    if (localBytes.isNotEmpty()) ensureConflictArtifact(path, "local", localBytes)
+                    state = state.withDeleted(path, remoteRev)
+                    return true
+                }
+
+                val remote = SyncServerClient.downloadVaultFileV2(baseUrl, token, path).value ?: return false
+                val localBytes = local?.let { repository.readBytes(it.file.uri) } ?: ByteArray(0)
+                val baseRev = st?.baseRev ?: 0L
+                val baseBytes =
+                    if (baseRev > 0) {
+                        SyncServerClient.downloadVaultVersionV2(baseUrl, token, path, baseRev).value?.bytes ?: ByteArray(0)
+                    } else {
+                        ByteArray(0)
+                    }
+
+                val isText = path.endsWith(".md", ignoreCase = true) || path.endsWith(".txt", ignoreCase = true) || path.endsWith(".json", ignoreCase = true)
+                if (isText) {
+                    val merged =
+                        ThreeWayMerge.mergeText(
+                            base = baseBytes.decodeToString(),
+                            local = localBytes.decodeToString(),
+                            remote = remote.bytes.decodeToString(),
+                        )
+                    if (merged.ok && merged.merged != null) {
+                        val mergedBytes = merged.merged.encodeToByteArray()
+                        val put =
+                            SyncServerClient.uploadVaultFileV2(
+                                baseUrl = baseUrl,
+                                token = token,
+                                path = path,
+                                mtimeMs = local?.lastModifiedEpochMs ?: System.currentTimeMillis(),
+                                bytes = mergedBytes,
+                                baseRev = remote.rev,
+                            )
+                        if (put.ok && put.value != null) {
+                            val dest = ensureLocalFile(root, path) ?: return false
+                            repository.writeBytes(dest.uri, mergedBytes)
+                            val localMtime = repository.getDocumentLastModified(dest.uri)
+                            state = state.withUploaded(path, rev = put.value.rev, sha256 = put.value.sha256, size = mergedBytes.size.toLong(), localMtimeMs = localMtime)
+                            return true
+                        }
+                    }
+                }
+
+                ensureConflictArtifact(path, "remote-r${remote.rev}", remote.bytes)
+                logger.conflict(path, "remote_changed")
+                return true
+            }
 
             var uploaded = 0
             var downloaded = 0
@@ -88,95 +182,98 @@ class OfficialVaultSyncEngine(
             var conflicts = 0
             var failed = 0
 
-            // Apply remote deletions (tombstones), but keep local changes by re-uploading.
-            for (remoteEntry in remoteEntries) {
-                if (!remoteEntry.deleted) continue
-                val local = localByPath[remoteEntry.path] ?: continue
-                val localBytes = repository.readBytes(local.file.uri) ?: ByteArray(0)
-                val sameAsDeleted =
-                    remoteEntry.sha256.isNotBlank() &&
-                        remoteEntry.size >= 0 &&
-                        remoteEntry.size == local.size &&
-                        localBytes.isNotEmpty() &&
-                        sha256Hex(localBytes) == remoteEntry.sha256
-
-                if (prevPaths.contains(remoteEntry.path) && sameAsDeleted) {
-                    val ok = runCatching { local.file.delete() }.getOrDefault(false)
-                    if (ok) deletedLocal++ else failed++
+            // Pull remote changes (snapshot on first run, then incremental).
+            var since = state.serverCursor
+            while (true) {
+                val r = SyncServerClient.vaultChangesV2(baseUrl, token, since = since, limit = 2000)
+                val v = r.value ?: error(r.errorMessage ?: "Failed to pull changes")
+                if (v.snapshot) {
+                    for (c in v.changes) {
+                        val ok = applyRemote(c.path, c.rev, c.deleted)
+                        if (ok) {
+                            if (c.deleted) deletedLocal++ else downloaded++
+                        } else {
+                            failed++
+                        }
+                    }
+                    since = v.cursor
+                    state = state.copy(serverCursor = since)
+                    break
                 } else {
-                    val ok = uploadFile(baseUrl, token, local)
-                    if (ok) {
-                        uploaded++
-                        conflicts++
-                        logger.conflict(remoteEntry.path, "remote_deleted")
-                    } else {
-                        failed++
+                    for (c in v.changes) {
+                        val ok = applyRemote(c.path, c.rev, c.deleted)
+                        if (ok) {
+                            if (c.deleted) deletedLocal++ else downloaded++
+                        } else {
+                            failed++
+                        }
+                        since = maxOf(since, c.changeId)
+                    }
+                    if (!v.hasMore) {
+                        state = state.copy(serverCursor = since)
+                        break
                     }
                 }
             }
 
-            // Handle remote-only files: download new files, or propagate local deletions.
-            for (remoteEntry in remoteEntries) {
-                if (remoteEntry.deleted) continue
-                if (localByPath.containsKey(remoteEntry.path)) continue
-                val ok =
-                    if (prevPaths.contains(remoteEntry.path)) {
-                        // It existed last sync but now missing locally -> treat as local deletion.
-                        deleteRemote(baseUrl, token, remoteEntry.path)
-                            .also { if (it) deletedRemote++ else failed++ }
-                    } else {
-                        downloadFile(root, baseUrl, token, remoteEntry.path)
-                            .also { if (it) downloaded++ else failed++ }
-                    }
-                if (!ok) {
-                    // already counted
-                }
-            }
-
-            // Upload local-only files.
+            // Push local changes (including brand-new files).
+            val localFiles = listLocalFiles(root, includeIndexSqlite = includeIndexSqlite).filter { shouldSyncPath(it.path) }
+            val localByPath = localFiles.associateBy { it.path }
             for (local in localFiles) {
-                if (remoteByPath.containsKey(local.path)) continue
-                val ok = uploadFile(baseUrl, token, local)
-                if (ok) uploaded++ else failed++
-            }
+                val st = state.files[local.path]
+                if (st != null && !st.deleted && isProbablySame(local, st)) continue
 
-            // Resolve mismatches: download remote as conflict, then upload local.
-            for (local in localFiles) {
-                val remoteEntry = remoteByPath[local.path] ?: continue
-                if (remoteEntry.deleted) continue
-                if (sameContent(local, remoteEntry)) continue
-
-                val okConflict =
-                    try {
-                        downloadConflictFile(root, baseUrl, token, local.path)
-                    } catch (_: Throwable) {
-                        false
-                    }
-                if (okConflict) {
-                    conflicts++
-                    logger.conflict(local.path, "download_remote_conflict")
-                } else {
+                val bytes = repository.readBytes(local.file.uri)
+                if (bytes == null) {
                     failed++
                     continue
                 }
+                val sha = sha256Hex(bytes)
+                if (st != null && !st.deleted && st.sha256.isNotBlank() && st.sha256 == sha) continue
 
-                val okUpload = uploadFile(baseUrl, token, local)
-                if (okUpload) uploaded++ else failed++
+                val baseRev = st?.baseRev ?: 0L
+                val put = SyncServerClient.uploadVaultFileV2(baseUrl, token, local.path, local.lastModifiedEpochMs, bytes, baseRev = baseRev)
+                if (put.ok && put.value != null) {
+                    uploaded++
+                    state = state.withUploaded(local.path, rev = put.value.rev, sha256 = put.value.sha256, size = bytes.size.toLong(), localMtimeMs = local.lastModifiedEpochMs)
+                } else if (put.statusCode == 409) {
+                    conflicts++
+                    logger.conflict(local.path, "rev_conflict")
+                    // Resolve via pulling latest and trying merge in applyRemote (which also uploads merged when possible).
+                    val latest = SyncServerClient.downloadVaultFileV2(baseUrl, token, local.path).value
+                    if (latest != null) {
+                        val ok = applyRemote(local.path, latest.rev, remoteDeleted = false)
+                        if (!ok) failed++
+                    } else {
+                        failed++
+                    }
+                } else {
+                    failed++
+                }
+            }
+
+            // Propagate local deletions.
+            for ((path, st) in state.files) {
+                if (st.deleted) continue
+                if (!shouldSyncPath(path)) continue
+                if (localByPath.containsKey(path)) continue
+                val del = SyncServerClient.deleteVaultFileV2(baseUrl, token, path, baseRev = st.baseRev)
+                if (del.ok && del.value != null) {
+                    deletedRemote++
+                    state = state.withDeleted(path, del.value.rev)
+                } else if (del.statusCode == 409) {
+                    conflicts++
+                    logger.conflict(path, "delete_rev_conflict")
+                } else {
+                    failed++
+                }
             }
 
             if (!includeIndexSqlite) {
                 runCatching { repository.rebuildIndex(rootUri) }
             }
 
-            // Save state after sync.
-            runCatching {
-                val currentPaths =
-                    listLocalFiles(root, includeIndexSqlite = includeIndexSqlite)
-                        .map { it.path }
-                        .filter { shouldSyncPath(it) }
-                        .sorted()
-                writeStatePaths(stateFile?.uri, currentPaths)
-            }
+            runCatching { store.save(rootUri, state) }
 
             OfficialVaultSyncSummary(
                 uploaded = uploaded,
@@ -241,9 +338,15 @@ class OfficialVaultSyncEngine(
 
     private fun shouldSyncPath(path: String): Boolean {
         val p = path.trimStart('/')
+        val name = p.substringAfterLast('/', missingDelimiterValue = p)
+        if (name.startsWith("conflict ", ignoreCase = true)) return false
         if (p.equals(".zhixu/sync/log.jsonl", ignoreCase = true)) return false
         if (p.equals(".zhixu/sync/conflicts.jsonl", ignoreCase = true)) return false
         if (p.equals(".zhixu/sync/official_state.json", ignoreCase = true)) return false
+        if (p.equals(".zhixu/sync/official_state_v2.json", ignoreCase = true)) return false
+        if (p.startsWith(".zhixu/sync/", ignoreCase = true)) return false
+        if (p.startsWith(".zhixu/conflicts/", ignoreCase = true)) return false
+        if (p.startsWith(".zhixu/history/", ignoreCase = true)) return false
         return true
     }
 

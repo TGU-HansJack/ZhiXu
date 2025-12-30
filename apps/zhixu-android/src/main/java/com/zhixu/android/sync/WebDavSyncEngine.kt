@@ -10,6 +10,8 @@ import com.zhixu.android.data.vaultRootToDocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import org.json.JSONArray
+import org.json.JSONObject
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.time.ZonedDateTime
@@ -50,11 +52,13 @@ class WebDavSyncEngine(
         val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
         val logFile = ensureLocalFile(root, ".zhixu/sync/log.jsonl")
         val conflictsFile = ensureLocalFile(root, ".zhixu/sync/conflicts.jsonl")
+        val stateFile = ensureLocalFile(root, ".zhixu/sync/webdav_state.json")
         val logger = SyncLogger(logFile?.uri, conflictsFile?.uri)
         logger.logEvent("start", mapOf("includeIndexSqlite" to config.includeIndexSqlite.toString()))
 
         runCatching {
-            val localFiles = listLocalFiles(root, includeIndexSqlite = config.includeIndexSqlite)
+            val prevPaths = readStatePaths(stateFile?.uri)
+            val localFiles = listLocalFiles(root, includeIndexSqlite = config.includeIndexSqlite).filter { shouldSyncPath(it.path) }
             val remoteRootUrl =
                 WebDavClient.normalizeJoin(config.baseUrl.trim(), config.remoteRoot.trim().ifBlank { "/" }).trimEnd('/') + "/"
             logger.logEvent("remote_root", mapOf("url" to remoteRootUrl))
@@ -68,18 +72,29 @@ class WebDavSyncEngine(
             var conflicts = 0
             var failed = 0
 
-            val remoteByPath = remoteFiles.filter { !it.isDir }.associateBy { it.path }
+            val remoteByPath = remoteFiles.filter { !it.isDir }.filter { shouldSyncPath(it.path) }.associateBy { it.path }
             val localByPath = localFiles.associateBy { it.path }
 
-            // Download remote-only files.
+            // Remote-only: download new files, or propagate local deletions.
             for ((path, _) in remoteByPath) {
                 if (localByPath.containsKey(path)) continue
                 val ok =
-                    try {
-                        downloadFile(root, remoteRootUrl, path, config)
-                    } catch (e: Throwable) {
-                        logger.fileFailed("download", path, e)
-                        false
+                    if (prevPaths.contains(path)) {
+                        // It existed last sync but now missing locally -> treat as local deletion.
+                        try {
+                            val code = WebDavClient.delete(config, buildRemoteUrl(remoteRootUrl, path))
+                            code in 200..299 || code == 404
+                        } catch (e: Throwable) {
+                            logger.fileFailed("delete_remote", path, e)
+                            false
+                        }
+                    } else {
+                        try {
+                            downloadFile(root, remoteRootUrl, path, config)
+                        } catch (e: Throwable) {
+                            logger.fileFailed("download", path, e)
+                            false
+                        }
                     }
                 if (ok) downloaded++ else failed++
             }
@@ -107,7 +122,7 @@ class WebDavSyncEngine(
 
                 if (same) continue
 
-                // Conflict: keep local, download remote as conflict file.
+                // Conflict: keep local, snapshot remote under .zhixu/conflicts/, then overwrite remote with local.
                 val conflictResult =
                     try {
                         downloadConflictFile(root, remoteRootUrl, local.path, config)
@@ -120,11 +135,26 @@ class WebDavSyncEngine(
                     logger.conflict(local.path, conflictResult.conflictPath ?: "")
                 } else {
                     failed++
+                    continue
                 }
+
+                val okOverwrite =
+                    try {
+                        uploadFile(remoteRootUrl, local, config, ensuredRemoteDirs)
+                    } catch (e: Throwable) {
+                        logger.fileFailed("upload_conflict_overwrite", local.path, e)
+                        false
+                    }
+                if (okOverwrite) uploaded++ else failed++
             }
 
             if (!config.includeIndexSqlite) {
                 runCatching { repository.rebuildIndex(rootUri) }
+            }
+
+            runCatching {
+                val currentPaths = listLocalFiles(root, includeIndexSqlite = config.includeIndexSqlite).map { it.path }.filter { shouldSyncPath(it) }.sorted()
+                writeStatePaths(stateFile?.uri, currentPaths)
             }
 
             WebDavSyncSummary(
@@ -243,8 +273,6 @@ class WebDavSyncEngine(
             if (settings != null) {
                 out += LocalEntry(".zhixu/settings.json", settings, settings.length(), settings.lastModified())
             }
-            val sync = zhixu.findFile("sync")?.takeIf { it.isDirectory }
-            if (sync != null) walk(sync, ".zhixu/sync")
             if (includeIndexSqlite) {
                 val index = zhixu.findFile("index.sqlite")?.takeIf { it.isFile }
                 if (index != null) {
@@ -254,6 +282,16 @@ class WebDavSyncEngine(
         }
 
         return out
+    }
+
+    private fun shouldSyncPath(path: String): Boolean {
+        val p = path.trimStart('/')
+        val name = p.substringAfterLast('/', missingDelimiterValue = p)
+        if (name.startsWith("conflict ", ignoreCase = true)) return false
+        if (p.startsWith(".zhixu/sync/", ignoreCase = true)) return false
+        if (p.startsWith(".zhixu/conflicts/", ignoreCase = true)) return false
+        if (p.startsWith(".zhixu/history/", ignoreCase = true)) return false
+        return true
     }
 
     private suspend fun ensureRemoteRoot(remoteRootUrl: String, config: WebDavConfig) {
@@ -427,13 +465,34 @@ class WebDavSyncEngine(
         val url = buildRemoteUrl(remoteRootUrl, path)
         val (code, bytes) = WebDavClient.get(config, url)
         if (code !in 200..299) return ConflictDownloadResult(false, null)
-        val parentPath = path.substringBeforeLast('/', missingDelimiterValue = "")
-        val fileName = path.substringAfterLast('/')
-        val conflictName = "conflict ${System.currentTimeMillis()} $fileName"
-        val destPath = if (parentPath.isBlank()) conflictName else "$parentPath/$conflictName"
+        val safe = path.trimStart('/').replace('\\', '/')
+        val destPath = ".zhixu/conflicts/$safe/${System.currentTimeMillis()}-remote"
         val dest = ensureLocalFile(root, destPath) ?: return ConflictDownloadResult(false, null)
         repository.writeBytes(dest.uri, bytes)
         return ConflictDownloadResult(true, destPath)
+    }
+
+    private suspend fun readStatePaths(stateUri: Uri?): Set<String> {
+        val uri = stateUri ?: return emptySet()
+        val text = runCatching { repository.readText(uri) }.getOrNull().orEmpty()
+        val obj = runCatching { JSONObject(text) }.getOrNull() ?: return emptySet()
+        val arr = obj.optJSONArray("paths") ?: JSONArray()
+        val out = HashSet<String>(arr.length())
+        for (i in 0 until arr.length()) {
+            val p = arr.optString(i).orEmpty()
+            if (p.isNotBlank()) out += p
+        }
+        return out
+    }
+
+    private suspend fun writeStatePaths(stateUri: Uri?, paths: List<String>) {
+        val uri = stateUri ?: return
+        val obj =
+            JSONObject()
+                .put("version", 1)
+                .put("savedAt", System.currentTimeMillis())
+                .put("paths", JSONArray(paths))
+        runCatching { repository.writeText(uri, obj.toString()) }
     }
 
     private fun buildRemoteUrl(remoteRootUrl: String, relativePath: String): String {

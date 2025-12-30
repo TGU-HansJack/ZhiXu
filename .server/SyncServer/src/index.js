@@ -9,6 +9,7 @@ const authRoutes = require("./routes/auth");
 const accountRoutes = require("./routes/account");
 const syncRoutes = require("./routes/sync");
 const vaultRoutes = require("./routes/vault");
+const vaultV2Routes = require("./routes/vault_v2");
 
 async function main() {
   await waitForDb();
@@ -25,6 +26,7 @@ async function main() {
   app.use("/api/account", accountRoutes);
   app.use("/api/sync", syncRoutes);
   app.use("/api/vault", vaultRoutes);
+  app.use("/api/v2/vault", vaultV2Routes);
 
   app.listen(port, () => {
     // eslint-disable-next-line no-console

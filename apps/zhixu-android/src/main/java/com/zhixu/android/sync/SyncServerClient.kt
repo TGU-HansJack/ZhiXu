@@ -37,6 +37,65 @@ data class VaultFileDownload(
     val sha256: String,
 )
 
+data class VaultChangeEntry(
+    val changeId: Long,
+    val path: String,
+    val rev: Long,
+    val updatedAt: Long,
+    val mtimeMs: Long,
+    val size: Long,
+    val sha256: String,
+    val deleted: Boolean,
+)
+
+data class VaultChangesV2(
+    val serverTime: Long,
+    val cursor: Long,
+    val snapshot: Boolean,
+    val changes: List<VaultChangeEntry>,
+    val nextSince: Long,
+    val hasMore: Boolean,
+)
+
+data class VaultFileDownloadV2(
+    val bytes: ByteArray,
+    val rev: Long,
+    val mtimeMs: Long,
+    val size: Long,
+    val sha256: String,
+)
+
+data class VaultPutResultV2(
+    val path: String,
+    val rev: Long,
+    val changeId: Long,
+    val sha256: String,
+    val size: Long,
+    val mtimeMs: Long,
+)
+
+data class VaultDeleteResultV2(
+    val path: String,
+    val rev: Long,
+    val changeId: Long,
+    val deleted: Boolean,
+)
+
+data class VaultVersionEntryV2(
+    val rev: Long,
+    val updatedAt: Long,
+    val mtimeMs: Long,
+    val size: Long,
+    val sha256: String,
+    val deleted: Boolean,
+)
+
+data class VaultVersionsV2(
+    val serverTime: Long,
+    val path: String,
+    val versions: List<VaultVersionEntryV2>,
+)
+
 data class SyncServerResult<T>(
     val ok: Boolean,
     val value: T? = null,
@@ -306,6 +365,226 @@ object SyncServerClient {
             val text = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
             else SyncServerResult(true, value = Unit, statusCode = resp.code)
+        }
+    }
+
+    suspend fun vaultChangesV2(
+        baseUrl: String,
+        token: String,
+        since: Long,
+        limit: Int = 2000,
+    ): SyncServerResult<VaultChangesV2> = withContext(Dispatchers.IO) {
+        val safeSince = since.coerceAtLeast(0L)
+        val safeLimit = limit.coerceIn(1, 5000)
+        val url = normalizeJoin(baseUrl, "/api/v2/vault/changes?since=${encodeQuery(safeSince.toString())}&limit=${encodeQuery(safeLimit.toString())}")
+        val req =
+            Request.Builder()
+                .url(url)
+                .get()
+                .header("Authorization", "Bearer $token")
+                .header("User-Agent", "Zhixu-Android")
+                .build()
+        client.newCall(req).execute().use { resp ->
+            val text = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) return@withContext SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
+            val obj = runCatching { JSONObject(text) }.getOrNull() ?: return@withContext SyncServerResult(false, errorMessage = "Invalid response", statusCode = resp.code)
+            val serverTime = obj.optLong("serverTime", 0L)
+            val cursor = obj.optLong("cursor", 0L)
+            val snapshot = obj.optBoolean("snapshot", false)
+            val hasMore = obj.optBoolean("hasMore", false)
+            val nextSince = obj.optLong("nextSince", safeSince)
+            val arr = obj.optJSONArray("changes") ?: JSONArray()
+            val changes = ArrayList<VaultChangeEntry>(arr.length())
+            for (i in 0 until arr.length()) {
+                val item = arr.optJSONObject(i) ?: continue
+                val path = item.optString("path").orEmpty()
+                if (path.isBlank()) continue
+                changes +=
+                    VaultChangeEntry(
+                        changeId = item.optLong("changeId", 0L),
+                        path = path,
+                        rev = item.optLong("rev", 0L),
+                        updatedAt = item.optLong("updatedAt", 0L),
+                        mtimeMs = item.optLong("mtimeMs", 0L),
+                        size = item.optLong("size", 0L),
+                        sha256 = item.optString("sha256").orEmpty(),
+                        deleted = item.optBoolean("deleted", false),
+                    )
+            }
+            val effectiveNextSince = if (snapshot) safeSince else nextSince
+            SyncServerResult(
+                ok = true,
+                value = VaultChangesV2(serverTime = serverTime, cursor = cursor, snapshot = snapshot, changes = changes, nextSince = effectiveNextSince, hasMore = hasMore),
+                statusCode = resp.code,
+            )
+        }
+    }
+
+    suspend fun downloadVaultFileV2(
+        baseUrl: String,
+        token: String,
+        path: String,
+    ): SyncServerResult<VaultFileDownloadV2> = withContext(Dispatchers.IO) {
+        val url = normalizeJoin(baseUrl, "/api/v2/vault/file?path=${encodeQuery(path)}")
+        val req =
+            Request.Builder()
+                .url(url)
+                .get()
+                .header("Authorization", "Bearer $token")
+                .header("User-Agent", "Zhixu-Android")
+                .build()
+        client.newCall(req).execute().use { resp ->
+            val bytes = resp.body?.bytes() ?: ByteArray(0)
+            if (!resp.isSuccessful) {
+                val msg = bytes.decodeToString().ifBlank { "HTTP ${resp.code}" }
+                return@withContext SyncServerResult(false, errorMessage = msg, statusCode = resp.code)
+            }
+            val rev = resp.header("X-Zhixu-Rev")?.toLongOrNull() ?: 0L
+            val mtimeMs = resp.header("X-Zhixu-Mtime-Ms")?.toLongOrNull() ?: 0L
+            val size = resp.header("X-Zhixu-Size")?.toLongOrNull() ?: bytes.size.toLong()
+            val sha = resp.header("X-Zhixu-Sha256").orEmpty()
+            SyncServerResult(ok = true, value = VaultFileDownloadV2(bytes = bytes, rev = rev, mtimeMs = mtimeMs, size = size, sha256 = sha), statusCode = resp.code)
+        }
+    }
+
+    suspend fun downloadVaultVersionV2(
+        baseUrl: String,
+        token: String,
+        path: String,
+        rev: Long,
+    ): SyncServerResult<VaultFileDownloadV2> = withContext(Dispatchers.IO) {
+        val safeRev = rev.coerceAtLeast(0L)
+        val url = normalizeJoin(baseUrl, "/api/v2/vault/version?path=${encodeQuery(path)}&rev=${encodeQuery(safeRev.toString())}")
+        val req =
+            Request.Builder()
+                .url(url)
+                .get()
+                .header("Authorization", "Bearer $token")
+                .header("User-Agent", "Zhixu-Android")
+                .build()
+        client.newCall(req).execute().use { resp ->
+            val bytes = resp.body?.bytes() ?: ByteArray(0)
+            if (!resp.isSuccessful) {
+                val msg = bytes.decodeToString().ifBlank { "HTTP ${resp.code}" }
+                return@withContext SyncServerResult(false, errorMessage = msg, statusCode = resp.code)
+            }
+            val outRev = resp.header("X-Zhixu-Rev")?.toLongOrNull() ?: safeRev
+            val mtimeMs = resp.header("X-Zhixu-Mtime-Ms")?.toLongOrNull() ?: 0L
+            val size = resp.header("X-Zhixu-Size")?.toLongOrNull() ?: bytes.size.toLong()
+            val sha = resp.header("X-Zhixu-Sha256").orEmpty()
+            SyncServerResult(ok = true, value = VaultFileDownloadV2(bytes = bytes, rev = outRev, mtimeMs = mtimeMs, size = size, sha256 = sha), statusCode = resp.code)
+        }
+    }
+
+    suspend fun uploadVaultFileV2(
+        baseUrl: String,
+        token: String,
+        path: String,
+        mtimeMs: Long,
+        bytes: ByteArray,
+        baseRev: Long,
+    ): SyncServerResult<VaultPutResultV2> = withContext(Dispatchers.IO) {
+        val url =
+            normalizeJoin(
+                baseUrl,
+                "/api/v2/vault/file?path=${encodeQuery(path)}&mtimeMs=${encodeQuery(mtimeMs.coerceAtLeast(0L).toString())}&baseRev=${encodeQuery(baseRev.coerceAtLeast(0L).toString())}",
+            )
+        val body = bytes.toRequestBody("application/octet-stream".toMediaType())
+        val req =
+            Request.Builder()
+                .url(url)
+                .put(body)
+                .header("Authorization", "Bearer $token")
+                .header("User-Agent", "Zhixu-Android")
+                .build()
+        client.newCall(req).execute().use { resp ->
+            val text = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) return@withContext SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
+            val obj = runCatching { JSONObject(text) }.getOrNull() ?: return@withContext SyncServerResult(false, errorMessage = "Invalid response", statusCode = resp.code)
+            SyncServerResult(
+                ok = true,
+                value =
+                    VaultPutResultV2(
+                        path = obj.optString("path").orEmpty().ifBlank { path },
+                        rev = obj.optLong("rev", 0L),
+                        changeId = obj.optLong("changeId", 0L),
+                        sha256 = obj.optString("sha256").orEmpty(),
+                        size = obj.optLong("size", bytes.size.toLong()),
+                        mtimeMs = obj.optLong("mtimeMs", mtimeMs),
+                    ),
+                statusCode = resp.code,
+            )
+        }
+    }
+
+    suspend fun deleteVaultFileV2(
+        baseUrl: String,
+        token: String,
+        path: String,
+        baseRev: Long,
+    ): SyncServerResult<VaultDeleteResultV2> = withContext(Dispatchers.IO) {
+        val url = normalizeJoin(baseUrl, "/api/v2/vault/file?path=${encodeQuery(path)}&baseRev=${encodeQuery(baseRev.coerceAtLeast(0L).toString())}")
+        val req =
+            Request.Builder()
+                .url(url)
+                .delete()
+                .header("Authorization", "Bearer $token")
+                .header("User-Agent", "Zhixu-Android")
+                .build()
+        client.newCall(req).execute().use { resp ->
+            val text = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) return@withContext SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
+            val obj = runCatching { JSONObject(text) }.getOrNull() ?: return@withContext SyncServerResult(false, errorMessage = "Invalid response", statusCode = resp.code)
+            SyncServerResult(
+                ok = true,
+                value =
+                    VaultDeleteResultV2(
+                        path = obj.optString("path").orEmpty().ifBlank { path },
+                        rev = obj.optLong("rev", baseRev + 1),
+                        changeId = obj.optLong("changeId", 0L),
+                        deleted = obj.optBoolean("deleted", true),
+                    ),
+                statusCode = resp.code,
+            )
+        }
+    }
+
+    suspend fun vaultVersionsV2(
+        baseUrl: String,
+        token: String,
+        path: String,
+        limit: Int = 50,
+    ): SyncServerResult<VaultVersionsV2> = withContext(Dispatchers.IO) {
+        val safeLimit = limit.coerceIn(1, 200)
+        val url = normalizeJoin(baseUrl, "/api/v2/vault/versions?path=${encodeQuery(path)}&limit=${encodeQuery(safeLimit.toString())}")
+        val req =
+            Request.Builder()
+                .url(url)
+                .get()
+                .header("Authorization", "Bearer $token")
+                .header("User-Agent", "Zhixu-Android")
+                .build()
+        client.newCall(req).execute().use { resp ->
+            val text = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) return@withContext SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
+            val obj = runCatching { JSONObject(text) }.getOrNull() ?: return@withContext SyncServerResult(false, errorMessage = "Invalid response", statusCode = resp.code)
+            val serverTime = obj.optLong("serverTime", 0L)
+            val outPath = obj.optString("path").orEmpty().ifBlank { path }
+            val arr = obj.optJSONArray("versions") ?: JSONArray()
+            val versions = ArrayList<VaultVersionEntryV2>(arr.length())
+            for (i in 0 until arr.length()) {
+                val item = arr.optJSONObject(i) ?: continue
+                versions +=
+                    VaultVersionEntryV2(
+                        rev = item.optLong("rev", 0L),
+                        updatedAt = item.optLong("updatedAt", 0L),
+                        mtimeMs = item.optLong("mtimeMs", 0L),
+                        size = item.optLong("size", 0L),
+                        sha256 = item.optString("sha256").orEmpty(),
+                        deleted = item.optBoolean("deleted", false),
+                    )
+            }
+            SyncServerResult(ok = true, value = VaultVersionsV2(serverTime = serverTime, path = outPath, versions = versions), statusCode = resp.code)
         }
     }
 

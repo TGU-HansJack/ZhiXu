@@ -91,6 +91,10 @@ object WebDavClient {
         }
     }
 
+    suspend fun delete(config: WebDavConfig, targetUrl: String): Int = withContext(Dispatchers.IO) {
+        requestMessage(config, "DELETE", targetUrl, body = null, headers = emptyMap()).first
+    }
+
     fun normalizeJoin(baseUrl: String, remoteRoot: String): String {
         val left = baseUrl.trimEnd('/')
         val right = remoteRoot.trim()

@@ -68,6 +68,47 @@ class VaultRepository(
         }
     }
 
+    fun computeRelativePath(rootUri: Uri, docUri: Uri): String? {
+        if (rootUri.toString().isBlank() || docUri.toString().isBlank()) return null
+
+        if (rootUri.scheme.equals("file", ignoreCase = true) && docUri.scheme.equals("file", ignoreCase = true)) {
+            val rootPath = rootUri.path ?: return null
+            val docPath = docUri.path ?: return null
+            val root =
+                runCatching { File(rootPath).canonicalFile }
+                    .getOrDefault(File(rootPath).absoluteFile)
+            val doc =
+                runCatching { File(docPath).canonicalFile }
+                    .getOrDefault(File(docPath).absoluteFile)
+            val rel = runCatching { doc.relativeTo(root).invariantSeparatorsPath }.getOrNull() ?: return null
+            return rel.trimStart('/').takeIf { it.isNotBlank() }
+        }
+
+        if (rootUri.scheme.equals(ContentResolver.SCHEME_CONTENT, ignoreCase = true) &&
+            docUri.scheme.equals(ContentResolver.SCHEME_CONTENT, ignoreCase = true)
+        ) {
+            val rootId =
+                runCatching {
+                    if (DocumentsContract.isTreeUri(rootUri)) DocumentsContract.getTreeDocumentId(rootUri) else DocumentsContract.getDocumentId(rootUri)
+                }.getOrNull() ?: return null
+            val docId = runCatching { DocumentsContract.getDocumentId(docUri) }.getOrNull() ?: return null
+
+            val normalizedRoot = rootId.trimEnd('/')
+            val normalizedDoc = docId.trimEnd('/')
+            if (normalizedDoc == normalizedRoot) return ""
+
+            val rel =
+                when {
+                    normalizedDoc.startsWith("$normalizedRoot/") -> normalizedDoc.removePrefix("$normalizedRoot/").trimStart('/')
+                    else -> null
+                } ?: return null
+
+            return rel.replace('\\', '/').trimStart('/').takeIf { it.isNotBlank() }
+        }
+
+        return null
+    }
+
     suspend fun getDocsDirUri(rootUri: Uri): Uri? =
         docListCacheLock.withLock {
             val key = rootUri.toString()
@@ -221,6 +262,29 @@ class VaultRepository(
         }
 
         total
+    }
+
+    suspend fun resolveVaultFileUri(rootUri: Uri, relativePath: String): Uri? = withContext(Dispatchers.IO) {
+        val rel = relativePath.replace('\\', '/').trimStart('/').trim()
+        if (rel.isBlank()) return@withContext null
+
+        if (rootUri.scheme.equals("file", ignoreCase = true)) {
+            val rootPath = rootUri.path ?: return@withContext null
+            val file = File(rootPath, rel)
+            if (!file.exists()) return@withContext null
+            return@withContext Uri.fromFile(file)
+        }
+
+        val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext null
+        var current: DocumentFile = root
+        val parts = rel.split('/').filter { it.isNotBlank() }
+        for (i in parts.indices) {
+            val name = parts[i]
+            val next = current.findFile(name) ?: return@withContext null
+            if (i < parts.lastIndex && !next.isDirectory) return@withContext null
+            current = next
+        }
+        current.uri
     }
 
     suspend fun listMarkdownDocs(rootUri: Uri): List<UiDoc> = withContext(Dispatchers.IO) {

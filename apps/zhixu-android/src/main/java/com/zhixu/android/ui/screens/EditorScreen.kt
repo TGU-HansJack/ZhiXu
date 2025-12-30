@@ -73,6 +73,7 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenu
@@ -144,6 +145,9 @@ import com.zhixu.android.R
 import com.zhixu.android.data.dataStore
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.Ionicons
+import com.zhixu.android.sync.SyncServerClient
+import com.zhixu.android.sync.VaultVersionEntryV2
+import com.zhixu.android.sync.resolveSyncServerAuth
 import com.zhixu.android.sync.VaultAutoSync
 import com.zhixu.android.plugins.InstalledPlugin
 import com.zhixu.android.plugins.FrontMatterParser
@@ -219,6 +223,8 @@ fun EditorScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var showOverflowSheet by remember { mutableStateOf(false) }
     val overflowSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showHistorySheet by remember { mutableStateOf(false) }
+    val historySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showFontSizeSheet by remember { mutableStateOf(false) }
     val fontSizeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -1641,7 +1647,7 @@ fun EditorScreen(
                             trailing = { Icon(imageVector = Icons.Outlined.History, contentDescription = null) },
                             onClick = {
                                 showOverflowSheet = false
-                                notImplemented()
+                                showHistorySheet = true
                             },
                         )
                         if (pluginFabActions.isNotEmpty()) {
@@ -1700,6 +1706,197 @@ fun EditorScreen(
                     ) {
                         Text(text = "取消", style = MaterialTheme.typography.titleMedium)
                     }
+                }
+            }
+        }
+    }
+
+    if (showHistorySheet) {
+        var isLoading by remember(showHistorySheet, latestDocUri) { mutableStateOf(true) }
+        var errorText by remember(showHistorySheet, latestDocUri) { mutableStateOf<String?>(null) }
+        var versions by remember(showHistorySheet, latestDocUri) { mutableStateOf<List<VaultVersionEntryV2>>(emptyList()) }
+        var selected by remember(showHistorySheet, latestDocUri) { mutableStateOf<VaultVersionEntryV2?>(null) }
+        var selectedText by remember(showHistorySheet, latestDocUri) { mutableStateOf("") }
+        var historyRelPath by remember(showHistorySheet, latestDocUri) { mutableStateOf<String?>(null) }
+        var historyAuth by remember(showHistorySheet, latestDocUri) { mutableStateOf<com.zhixu.android.sync.SyncServerAuth?>(null) }
+        val currentTextSnapshot by rememberUpdatedState(latestContentText)
+
+        suspend fun loadSelected(v: VaultVersionEntryV2, relPath: String, baseUrl: String, token: String) {
+            if (v.deleted) return
+            val r = SyncServerClient.downloadVaultVersionV2(baseUrl, token, relPath, v.rev)
+            if (!r.ok) {
+                errorText = r.errorMessage ?: "加载版本失败"
+                return
+            }
+            selected = v
+            selectedText = r.value?.bytes?.decodeToString().orEmpty()
+        }
+
+        LaunchedEffect(showHistorySheet, latestDocUri, vaultRootUri) {
+            isLoading = true
+            errorText = null
+            versions = emptyList()
+            selected = null
+            selectedText = ""
+
+            val root = vaultRootUri
+            if (root == null) {
+                errorText = "未选择 Vault"
+                isLoading = false
+                return@LaunchedEffect
+            }
+
+            val relPath = repository.computeRelativePath(root, latestDocUri)
+            if (relPath.isNullOrBlank()) {
+                errorText = "无法计算文档路径（仅支持 Vault 内文件）"
+                isLoading = false
+                return@LaunchedEffect
+            }
+            historyRelPath = relPath
+
+            val auth = resolveSyncServerAuth(context)
+            if (auth == null) {
+                errorText = "未开启同步或未登录"
+                isLoading = false
+                return@LaunchedEffect
+            }
+            historyAuth = auth
+
+            val r = SyncServerClient.vaultVersionsV2(auth.baseUrl, auth.token, relPath, limit = 50)
+            if (!r.ok) {
+                errorText = r.errorMessage ?: "获取版本列表失败"
+                isLoading = false
+                return@LaunchedEffect
+            }
+
+            versions = r.value?.versions.orEmpty()
+            val first = versions.firstOrNull { !it.deleted }
+            if (first != null) loadSelected(first, relPath, auth.baseUrl, auth.token)
+            isLoading = false
+        }
+
+        ModalBottomSheet(
+            onDismissRequest = { showHistorySheet = false },
+            sheetState = historySheetState,
+            containerColor = Color.White,
+            dragHandle = null,
+        ) {
+            val topScroll = rememberScrollState()
+            val bottomScroll = rememberScrollState()
+
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                        .windowInsetsPadding(WindowInsets.navigationBars),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(text = "历史版本", style = MaterialTheme.typography.titleLarge)
+                    TextButton(onClick = { showHistorySheet = false }) { Text("关闭") }
+                }
+
+                if (errorText != null) {
+                    Text(text = errorText.orEmpty(), color = Color(0xFFFF4D4F))
+                }
+
+                if (isLoading) {
+                    Text(text = "加载中…", style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    val relPath = historyRelPath.orEmpty()
+                    val auth = historyAuth
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 220.dp),
+                    ) {
+                        items(versions, key = { it.rev }) { v ->
+                            val label =
+                                buildString {
+                                    append("r")
+                                    append(v.rev)
+                                    if (v.deleted) append(" (deleted)")
+                                }
+                            ListItem(
+                                headlineContent = { Text(label) },
+                                supportingContent = {
+                                    val t =
+                                        if (v.updatedAt > 0L) {
+                                            runCatching { java.time.Instant.ofEpochMilli(v.updatedAt).toString() }.getOrNull()
+                                        } else {
+                                            null
+                                        }
+                                    Text(listOfNotNull(t, "size=${v.size}").joinToString(" · "))
+                                },
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = !v.deleted && auth != null && relPath.isNotBlank()) {
+                                            scope.launch {
+                                                val a = auth ?: return@launch
+                                                loadSelected(v, relPath, a.baseUrl, a.token)
+                                            }
+                                        },
+                            )
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                        }
+                    }
+                }
+
+                val sel = selected
+                val canReplace = sel != null && !sel.deleted
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(
+                        onClick = {
+                            if (canReplace) {
+                                scope.launch {
+                                    val ok = persistNow(latestDocUri, selectedText)
+                                    if (ok) showHistorySheet = false else snackbarHostState.showSnackbar("替换失败")
+                                }
+                            }
+                        },
+                        enabled = canReplace,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("替换为该版本")
+                    }
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                val rel = historyRelPath ?: return@launch
+                                val auth = historyAuth ?: return@launch
+                                val r = SyncServerClient.vaultVersionsV2(auth.baseUrl, auth.token, rel, limit = 50)
+                                if (r.ok) {
+                                    versions = r.value?.versions.orEmpty()
+                                }
+                            }
+                        },
+                    ) { Text("刷新") }
+                }
+
+                Text(text = "选中版本", style = MaterialTheme.typography.titleMedium)
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 120.dp, max = 220.dp)
+                            .background(Color(0xFFF7F7F7), RoundedCornerShape(12.dp))
+                            .verticalScroll(topScroll)
+                            .padding(12.dp),
+                ) {
+                    Text(text = selectedText.ifBlank { "未选择版本" }, style = MaterialTheme.typography.bodySmall)
+                }
+
+                Text(text = "当前内容", style = MaterialTheme.typography.titleMedium)
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 120.dp, max = 220.dp)
+                            .background(Color(0xFFF7F7F7), RoundedCornerShape(12.dp))
+                            .verticalScroll(bottomScroll)
+                            .padding(12.dp),
+                ) {
+                    Text(text = currentTextSnapshot, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -1783,6 +1980,7 @@ fun EditorScreen(
                                 runCatching {
                                     VaultAutoSync.maybeDeleteDoc(
                                         context = context,
+                                        repository = repository,
                                         vaultRootUri = vaultRootUri,
                                         docUri = latestDocUri,
                                     )
