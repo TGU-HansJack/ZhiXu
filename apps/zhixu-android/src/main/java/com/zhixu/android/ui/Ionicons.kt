@@ -15,6 +15,9 @@ object Ionicons {
     @DrawableRes val ImageOutline: Int = R.drawable.ic_ion_image_outline
     @DrawableRes val TextOutline: Int = R.drawable.ic_ion_text_outline
     @DrawableRes val HourglassOutline: Int = R.drawable.ic_ion_hourglass_outline
+    @DrawableRes val TimeOutline: Int = R.drawable.ic_ion_time_outline
+    @DrawableRes val CopyOutline: Int = R.drawable.ic_ion_copy_outline
+    @DrawableRes val ShareSocialOutline: Int = R.drawable.ic_ion_share_social_outline
     @DrawableRes val TrashOutline: Int = R.drawable.ic_ion_trash_outline
     @DrawableRes val ExtensionPuzzleOutline: Int = R.drawable.ic_ion_extension_puzzle_outline
 

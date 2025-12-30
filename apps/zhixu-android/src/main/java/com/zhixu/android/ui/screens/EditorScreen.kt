@@ -67,10 +67,7 @@ import androidx.compose.material.icons.outlined.HorizontalRule
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.TableChart
-import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -1594,7 +1591,7 @@ fun EditorScreen(
                     )
                     EditorOverflowQuickAction(
                         title = stringResource(R.string.editor_overflow_share),
-                        iconRes = Ionicons.ImageOutline,
+                        iconRes = Ionicons.ShareSocialOutline,
                         onClick = {
                             showOverflowSheet = false
                             val subject =
@@ -1636,7 +1633,7 @@ fun EditorScreen(
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
                         EditorOverflowRow(
                             title = stringResource(R.string.common_copy),
-                            trailing = { Icon(painter = painterResource(Ionicons.TextOutline), contentDescription = null, tint = Color(0xFF111111), modifier = Modifier.size(18.dp)) },
+                            trailing = { Icon(painter = painterResource(Ionicons.CopyOutline), contentDescription = null, tint = Color(0xFF111111), modifier = Modifier.size(18.dp)) },
                             onClick = {
                                 showOverflowSheet = false
                                 clipboard.setText(AnnotatedString(content.text))
@@ -1646,7 +1643,7 @@ fun EditorScreen(
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
                         EditorOverflowRow(
                             title = "历史版本",
-                            trailing = { Icon(painter = painterResource(Ionicons.HourglassOutline), contentDescription = null, tint = Color(0xFF111111), modifier = Modifier.size(18.dp)) },
+                            trailing = { Icon(painter = painterResource(Ionicons.TimeOutline), contentDescription = null, tint = Color(0xFF111111), modifier = Modifier.size(18.dp)) },
                             onClick = {
                                 showOverflowSheet = false
                                 showHistorySheet = true
