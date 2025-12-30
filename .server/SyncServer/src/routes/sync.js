@@ -8,8 +8,12 @@ router.use(authRequired);
 async function ensureDevice(userId, deviceId) {
   if (!deviceId) return;
   await pool.query(
-    "INSERT INTO devices (user_id, device_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE device_id = VALUES(device_id)",
-    [userId, deviceId]
+    `
+INSERT INTO devices (user_id, device_id)
+SELECT ?, ? FROM users WHERE id = ?
+ON DUPLICATE KEY UPDATE device_id = VALUES(device_id)
+`,
+    [userId, deviceId, userId]
   );
 }
 
@@ -21,7 +25,11 @@ router.post("/push", async (req, res) => {
   if (!Number.isFinite(userId)) return res.status(401).json({ error: "invalid_user" });
   if (!deviceId) return res.status(400).json({ error: "missing_deviceId" });
 
-  await ensureDevice(userId, deviceId);
+  try {
+    await ensureDevice(userId, deviceId);
+  } catch (e) {
+    return res.status(500).json({ error: "db_error" });
+  }
 
   let accepted = 0;
   let skipped = 0;
@@ -78,7 +86,11 @@ router.get("/pull", async (req, res) => {
   const since = Number(req.query?.since || 0);
   if (!Number.isFinite(userId)) return res.status(401).json({ error: "invalid_user" });
   if (!deviceId) return res.status(400).json({ error: "missing_deviceId" });
-  await ensureDevice(userId, deviceId);
+  try {
+    await ensureDevice(userId, deviceId);
+  } catch (e) {
+    return res.status(500).json({ error: "db_error" });
+  }
 
   const sinceMs = Number.isFinite(since) && since > 0 ? since : 0;
   const [rows] = await pool.query(
@@ -106,4 +118,3 @@ LIMIT 2000
 });
 
 module.exports = router;
-

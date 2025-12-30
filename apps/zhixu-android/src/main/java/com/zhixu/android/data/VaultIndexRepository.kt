@@ -114,6 +114,92 @@ class VaultIndexRepository(
         }
     }
 
+    suspend fun migrateDocUri(
+        oldUri: String,
+        newUri: String,
+        newName: String,
+    ) = withContext(Dispatchers.IO) {
+        if (oldUri.isBlank() || newUri.isBlank() || oldUri == newUri) return@withContext
+
+        mutex.withLock {
+            val database = db.writableDatabase
+            database.beginTransaction()
+            try {
+                ensureDocsMetaTable(database)
+                ensureTasksMetaTable(database)
+                ensureDailyContribTables(database)
+
+                // docs_fts: update primary uri and (optionally) name.
+                runCatching {
+                    database.execSQL(
+                        "UPDATE docs_fts SET uri = ?, name = ? WHERE uri = ?",
+                        arrayOf<Any?>(newUri, newName, oldUri),
+                    )
+                }
+
+                // docs_meta: move primary key (uri).
+                val createdEpochMs =
+                    runCatching {
+                        database.rawQuery(
+                            "SELECT created_epoch_ms FROM docs_meta WHERE uri = ? LIMIT 1",
+                            arrayOf(oldUri),
+                        ).use { cursor ->
+                            if (!cursor.moveToFirst()) 0L else cursor.getLong(0)
+                        }
+                    }.getOrDefault(0L)
+                if (createdEpochMs > 0L) {
+                    database.execSQL(
+                        "INSERT OR IGNORE INTO docs_meta(uri, created_epoch_ms) VALUES(?, ?)",
+                        arrayOf<Any?>(newUri, createdEpochMs),
+                    )
+                }
+                database.execSQL("DELETE FROM docs_meta WHERE uri = ?", arrayOf(oldUri))
+
+                // tasks + tasks_fts + tasks_meta: point to new doc uri.
+                runCatching {
+                    database.execSQL(
+                        "UPDATE tasks SET doc_uri = ?, doc_name = ? WHERE doc_uri = ?",
+                        arrayOf<Any?>(newUri, newName, oldUri),
+                    )
+                }
+                runCatching {
+                    database.execSQL(
+                        "UPDATE tasks_fts SET doc_uri = ? WHERE doc_uri = ?",
+                        arrayOf<Any?>(newUri, oldUri),
+                    )
+                }
+                runCatching {
+                    database.execSQL(
+                        "UPDATE tasks_meta SET doc_uri = ? WHERE doc_uri = ?",
+                        arrayOf<Any?>(newUri, oldUri),
+                    )
+                }
+
+                // doc_daily_edited: move primary key (doc_uri).
+                val lastDay =
+                    runCatching {
+                        database.rawQuery(
+                            "SELECT day FROM doc_daily_edited WHERE doc_uri = ? LIMIT 1",
+                            arrayOf(oldUri),
+                        ).use { cursor ->
+                            if (!cursor.moveToFirst()) "" else cursor.getString(0).orEmpty()
+                        }
+                    }.getOrDefault("")
+                if (lastDay.isNotBlank()) {
+                    database.execSQL(
+                        "INSERT OR IGNORE INTO doc_daily_edited(doc_uri, day) VALUES(?, ?)",
+                        arrayOf<Any?>(newUri, lastDay),
+                    )
+                }
+                database.execSQL("DELETE FROM doc_daily_edited WHERE doc_uri = ?", arrayOf(oldUri))
+
+                database.setTransactionSuccessful()
+            } finally {
+                database.endTransaction()
+            }
+        }
+    }
+
     suspend fun upsertDocCreatedAt(
         docUri: String,
         createdEpochMs: Long,

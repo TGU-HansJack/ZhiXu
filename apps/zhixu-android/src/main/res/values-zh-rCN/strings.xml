@@ -194,4 +194,44 @@
     <string name="plugin_save">保存</string>
     <string name="plugin_saved">已保存</string>
     <string name="plugin_save_failed">保存失败</string>
+
+    <!-- Pull-to-refresh -->
+    <string name="pull_refresh_refreshing">刷新中…</string>
+    <string name="pull_refresh_updated">已同步</string>
+
+    <!-- Common -->
+    <string name="common_loading">加载中…</string>
+    <string name="common_not_implemented">暂未实现</string>
+    <string name="common_copy">复制</string>
+    <string name="common_copied">已复制</string>
+
+    <!-- Settings placeholders -->
+    <string name="settings_placeholder_coming_soon">敬请期待</string>
+    <string name="settings_placeholder_ui">界面</string>
+    <string name="settings_placeholder_accessibility">无障碍</string>
+    <string name="settings_placeholder_notifications">通知</string>
+    <string name="settings_placeholder_update">检查更新</string>
+    <string name="settings_placeholder_about">关于</string>
+
+    <!-- Settings language -->
+    <string name="settings_language_title">语言</string>
+    <string name="settings_language_system">跟随系统</string>
+    <string name="settings_language_zh_cn">简体中文</string>
+    <string name="settings_language_en">English</string>
+
+    <!-- Editor overflow -->
+    <string name="editor_overflow_generate_long_image">生成长图</string>
+    <string name="editor_overflow_share">开启分享</string>
+    <string name="editor_overflow_font_size">调整字号</string>
+    <string name="editor_share_failed">无法打开分享面板</string>
+
+    <!-- Editor history -->
+    <string name="editor_history_title">历史版本</string>
+    <string name="editor_history_diff_title">差异对比</string>
+    <string name="editor_history_show_all">显示全部</string>
+    <string name="editor_history_show_changes">仅变化</string>
+    <string name="editor_history_replace">替换为该版本</string>
+    <string name="editor_history_replace_failed">替换失败</string>
+    <string name="editor_deleted">已删除</string>
+    <string name="editor_delete_failed">删除失败</string>
 </resources>

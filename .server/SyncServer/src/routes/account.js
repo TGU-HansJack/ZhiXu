@@ -8,8 +8,12 @@ router.use(authRequired);
 async function ensureDevice(userId, deviceId) {
   if (!deviceId) return;
   await pool.query(
-    "INSERT INTO devices (user_id, device_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE device_id = VALUES(device_id)",
-    [userId, deviceId]
+    `
+INSERT INTO devices (user_id, device_id)
+SELECT ?, ? FROM users WHERE id = ?
+ON DUPLICATE KEY UPDATE device_id = VALUES(device_id)
+`,
+    [userId, deviceId, userId]
   );
 }
 
@@ -37,7 +41,11 @@ router.post("/devices/bind", async (req, res) => {
   if (!Number.isFinite(userId)) return res.status(401).json({ error: "invalid_user" });
   if (!deviceId) return res.status(400).json({ error: "missing_deviceId" });
 
-  await ensureDevice(userId, deviceId);
+  try {
+    await ensureDevice(userId, deviceId);
+  } catch (e) {
+    return res.status(500).json({ error: "db_error" });
+  }
   return res.json({ ok: true });
 });
 
@@ -52,4 +60,3 @@ router.post("/devices/unbind", async (req, res) => {
 });
 
 module.exports = router;
-

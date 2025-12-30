@@ -128,6 +128,7 @@ fun DocumentListScreen(
     var refreshJob by remember { mutableStateOf<Job?>(null) }
     var scheduleJob by remember { mutableStateOf<Job?>(null) }
     var lastRefreshAtMs by remember { mutableStateOf(0L) }
+    var lastRefreshBannerAtMs by remember { mutableStateOf(0L) }
     var cacheUpdatedAtMs by remember(vaultRootUri) { mutableLongStateOf(initialCacheEntry?.updatedAtMs ?: 0L) }
     var ensuredVaultThisSession by remember(vaultRootUri) { mutableStateOf(false) }
     var isPullRefreshing by remember(vaultRootUri) { mutableStateOf(false) }
@@ -153,7 +154,7 @@ fun DocumentListScreen(
         showSearchSheet = true
     }
 
-    fun requestRefresh(force: Boolean, reindex: Boolean) {
+    fun requestRefresh(force: Boolean, reindex: Boolean, showUpdatedBanner: Boolean) {
         if (!isActive) return
         val root = vaultRootUri ?: return
         if (listState.isScrollInProgress || showSearchSheet) {
@@ -205,6 +206,7 @@ fun DocumentListScreen(
                         withContext(Dispatchers.IO) { runCatching { repository.rebuildIndex(root) } }
                     }
                     lastRefreshAtMs = SystemClock.uptimeMillis()
+                    if (showUpdatedBanner) lastRefreshBannerAtMs = SystemClock.uptimeMillis()
                 } finally {
                     isPullRefreshing = false
                 }
@@ -216,7 +218,7 @@ fun DocumentListScreen(
         scheduleJob =
             scope.launch {
                 if (debounceMs > 0) delay(debounceMs)
-                requestRefresh(force = force, reindex = reindex)
+                requestRefresh(force = force, reindex = reindex, showUpdatedBanner = false)
             }
     }
 
@@ -253,7 +255,7 @@ fun DocumentListScreen(
         if (docs.isEmpty()) {
             // No cached list available: refresh after a short delay.
             delay(120)
-            requestRefresh(force = true, reindex = false)
+            requestRefresh(force = true, reindex = false, showUpdatedBanner = false)
         }
     }
 
@@ -272,7 +274,7 @@ fun DocumentListScreen(
             .filter { busy -> !busy }
             .first()
         pendingRefresh = null
-        requestRefresh(force = req.force, reindex = req.reindex)
+        requestRefresh(force = req.force, reindex = req.reindex, showUpdatedBanner = false)
     }
 
     DisposableEffect(lifecycleOwner, vaultRootUri, isActive) {
@@ -285,7 +287,7 @@ fun DocumentListScreen(
                         skipNextResumeRefresh = false
                         return@LifecycleEventObserver
                     }
-                    requestRefresh(force = false, reindex = false)
+                    requestRefresh(force = false, reindex = false, showUpdatedBanner = false)
                 }
             }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -399,12 +401,12 @@ fun DocumentListScreen(
                 val editedAtDash = "—"
                 val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 val pullState = rememberPullToRefreshState()
-                PullToRefreshBox(
-                    isRefreshing = isPullRefreshing,
-                    onRefresh = { requestRefresh(force = true, reindex = false) },
-                    state = pullState,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
+            PullToRefreshBox(
+                isRefreshing = isPullRefreshing,
+                onRefresh = { requestRefresh(force = true, reindex = false, showUpdatedBanner = true) },
+                state = pullState,
+                modifier = Modifier.fillMaxSize(),
+            ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
@@ -439,7 +441,7 @@ fun DocumentListScreen(
 
                         RefreshStatusBanner(
                             isRefreshing = isPullRefreshing,
-                            lastRefreshedAtMs = lastRefreshAtMs,
+                            lastRefreshedAtMs = lastRefreshBannerAtMs,
                             modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
                         )
                     }

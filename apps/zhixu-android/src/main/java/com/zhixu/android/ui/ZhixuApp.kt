@@ -85,6 +85,7 @@ import com.zhixu.android.data.VaultSyncConfig
 import com.zhixu.android.data.VaultSyncPreferences
 import com.zhixu.android.data.WebDavConfig
 import com.zhixu.android.data.appManagedVaultRootUri
+import com.zhixu.android.data.UiPreferences
 import com.zhixu.android.sync.VaultAutoSync
 import com.zhixu.android.sync.WebDavAutoSync
 import com.zhixu.android.ui.screens.DocumentListScreen
@@ -101,6 +102,8 @@ import com.zhixu.android.ui.screens.WorkshopScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -174,6 +177,15 @@ fun ZhixuApp() {
 
     val vaultRootUriString by prefs.vaultRootUri.collectAsState(initial = null)
     val vaultRootUri = vaultRootUriString?.let(Uri::parse)
+
+    val uiPrefs = remember(appContext) { UiPreferences(appContext) }
+    val languageTag by uiPrefs.languageTag.collectAsState(initial = "")
+
+    LaunchedEffect(languageTag) {
+        val trimmed = languageTag.trim()
+        val locales = if (trimmed.isBlank()) LocaleListCompat.getEmptyLocaleList() else LocaleListCompat.forLanguageTags(trimmed)
+        runCatching { AppCompatDelegate.setApplicationLocales(locales) }
+    }
 
     LaunchedEffect(
         vaultRootUriString,

@@ -5,7 +5,8 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev
 
-COPY src ./src
+COPY src ./server
+COPY bin ./bin
 
 EXPOSE 3000
-CMD ["node", "src/index.js"]
+CMD ["npm", "start"]

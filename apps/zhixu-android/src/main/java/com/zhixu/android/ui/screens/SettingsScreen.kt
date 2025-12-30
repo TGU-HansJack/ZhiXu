@@ -29,6 +29,8 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -49,11 +51,13 @@ import com.zhixu.android.R
 import com.zhixu.android.data.AccountPreferences
 import com.zhixu.android.data.AccountState
 import com.zhixu.android.data.DailyContrib
+import com.zhixu.android.data.UiPreferences
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.Ionicons
 import com.zhixu.android.ui.components.ContribCalendarDialog
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
@@ -67,13 +71,17 @@ fun SettingsScreen(
     onOpenWorkshop: () -> Unit,
     onOpenSync: () -> Unit,
 ) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val context = LocalContext.current
     val accountPrefs = remember(context) { AccountPreferences(context.applicationContext) }
+    val uiPrefs = remember(context) { UiPreferences(context.applicationContext) }
+    val languageTag by uiPrefs.languageTag.collectAsState(initial = "")
     val accountState by accountPrefs.state.collectAsState(
         initial = AccountState(token = "", username = "", userId = 0L, deviceId = ""),
     )
 
     var contribPerDay by remember { mutableStateOf<Map<LocalDate, DailyContrib>?>(null) }
+    var showLanguageDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(refreshToken) {
         val year = LocalDate.now().year
@@ -167,6 +175,22 @@ fun SettingsScreen(
         }
 
         item {
+            val label =
+                when (languageTag.trim()) {
+                    "zh-CN" -> stringResource(R.string.settings_language_zh_cn)
+                    "en" -> stringResource(R.string.settings_language_en)
+                    else -> stringResource(R.string.settings_language_system)
+                }
+            SettingsNavRow(
+                iconRes = Ionicons.Settings,
+                title = stringResource(R.string.settings_language_title),
+                subtitle = label,
+                onClick = { showLanguageDialog = true },
+            )
+            HorizontalDivider(color = dividerColor)
+        }
+
+        item {
             fun comingSoon() {
                 Toast.makeText(context, context.getString(R.string.settings_placeholder_coming_soon), Toast.LENGTH_SHORT).show()
             }
@@ -211,6 +235,47 @@ fun SettingsScreen(
             )
             HorizontalDivider(color = dividerColor)
         }
+    }
+
+    if (showLanguageDialog) {
+        AlertDialog(
+            onDismissRequest = { showLanguageDialog = false },
+            title = { Text(stringResource(R.string.settings_language_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    @Composable
+                    fun optionRow(tag: String, label: String) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showLanguageDialog = false
+                                        scope.launch {
+                                            uiPrefs.setLanguageTag(tag)
+                                        }
+                                        Toast.makeText(context, context.getString(R.string.vault_settings_saved), Toast.LENGTH_SHORT).show()
+                                    }
+                                    .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(text = label, modifier = Modifier.weight(1f))
+                            val selected = languageTag.trim() == tag || (tag.isBlank() && languageTag.trim().isBlank())
+                            if (selected) {
+                                Icon(painter = painterResource(Ionicons.CheckmarkCircle), contentDescription = null, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+
+                    optionRow("", stringResource(R.string.settings_language_system))
+                    optionRow("zh-CN", stringResource(R.string.settings_language_zh_cn))
+                    optionRow("en", stringResource(R.string.settings_language_en))
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLanguageDialog = false }) { Text(stringResource(R.string.action_close)) }
+            },
+        )
     }
 }
 

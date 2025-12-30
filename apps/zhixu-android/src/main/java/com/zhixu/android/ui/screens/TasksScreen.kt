@@ -109,9 +109,10 @@ fun TasksScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val dueFormatter = remember { DateTimeFormatter.ofPattern("MM-dd HH:mm") }
     var lastRefreshAtMs by remember { mutableStateOf(0L) }
+    var lastRefreshBannerAtMs by remember { mutableStateOf(0L) }
     var isPullRefreshing by remember(vaultRootUri) { mutableStateOf(false) }
 
-    suspend fun refresh(force: Boolean) {
+    suspend fun refresh(force: Boolean, showUpdatedBanner: Boolean) {
         val root = vaultRootUri ?: return
         val now = android.os.SystemClock.uptimeMillis()
         if (!force && now - lastRefreshAtMs in 0..500) return
@@ -133,6 +134,7 @@ fun TasksScreen(
         completed = nextCompleted
         TasksScreenCache.put(root, TasksScreenCache.Entry(tasks = nextTasks, completed = nextCompleted))
         lastRefreshAtMs = android.os.SystemClock.uptimeMillis()
+        if (showUpdatedBanner) lastRefreshBannerAtMs = android.os.SystemClock.uptimeMillis()
     }
 
     fun submitTaskDraft(draft: TaskDraft) {
@@ -164,13 +166,13 @@ fun TasksScreen(
                         force = true,
                     )
                 }
-                refresh(force = true)
+                refresh(force = true, showUpdatedBanner = false)
             }
     }
 
     LaunchedEffect(vaultRootUri, isActive) {
         if (!isActive) return@LaunchedEffect
-        refresh(force = false)
+        refresh(force = false, showUpdatedBanner = false)
     }
 
     Scaffold(
@@ -187,7 +189,7 @@ fun TasksScreen(
             val pullState = rememberPullToRefreshState()
             PullToRefreshBox(
                 isRefreshing = isPullRefreshing,
-                onRefresh = { scope.launch { refresh(force = true) } },
+                onRefresh = { scope.launch { refresh(force = true, showUpdatedBanner = true) } },
                 state = pullState,
                 modifier = Modifier.fillMaxSize(),
             ) {
@@ -234,7 +236,7 @@ fun TasksScreen(
                                                 force = false,
                                             )
                                         }
-                                        refresh(force = true)
+                                        refresh(force = true, showUpdatedBanner = false)
                                     }
                                 },
                                 onOpen = { onOpenDoc(task.docUri.toString(), null, task.lineIndex) },
@@ -281,7 +283,7 @@ fun TasksScreen(
                                                     force = false,
                                                 )
                                             }
-                                            refresh(force = true)
+                                            refresh(force = true, showUpdatedBanner = false)
                                         }
                                     },
                                     onOpen = { onOpenDoc(task.docUri.toString(), null, task.lineIndex) },
@@ -294,7 +296,7 @@ fun TasksScreen(
 
                     RefreshStatusBanner(
                         isRefreshing = isPullRefreshing,
-                        lastRefreshedAtMs = lastRefreshAtMs,
+                        lastRefreshedAtMs = lastRefreshBannerAtMs,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
                     )
                 }

@@ -219,7 +219,13 @@
 
     <!-- Pull-to-refresh -->
     <string name="pull_refresh_refreshing">Refreshing...</string>
-    <string name="pull_refresh_updated">Updated</string>
+    <string name="pull_refresh_updated">Synced</string>
+
+    <!-- Common -->
+    <string name="common_loading">Loading...</string>
+    <string name="common_not_implemented">Not implemented</string>
+    <string name="common_copy">Copy</string>
+    <string name="common_copied">Copied</string>
 
     <!-- Sync logs -->
     <string name="sync_logs_title">Sync logs</string>
@@ -237,4 +243,26 @@
     <string name="settings_placeholder_notifications">Notifications</string>
     <string name="settings_placeholder_update">Update software</string>
     <string name="settings_placeholder_about">About</string>
+
+    <!-- Settings language -->
+    <string name="settings_language_title">Language</string>
+    <string name="settings_language_system">System default</string>
+    <string name="settings_language_zh_cn">简体中文</string>
+    <string name="settings_language_en">English</string>
+
+    <!-- Editor overflow -->
+    <string name="editor_overflow_generate_long_image">Generate long image</string>
+    <string name="editor_overflow_share">Share</string>
+    <string name="editor_overflow_font_size">Font size</string>
+    <string name="editor_share_failed">Failed to open share panel</string>
+
+    <!-- Editor history -->
+    <string name="editor_history_title">Version history</string>
+    <string name="editor_history_diff_title">Diff</string>
+    <string name="editor_history_show_all">Show all</string>
+    <string name="editor_history_show_changes">Only changes</string>
+    <string name="editor_history_replace">Replace with this version</string>
+    <string name="editor_history_replace_failed">Replace failed</string>
+    <string name="editor_deleted">Deleted</string>
+    <string name="editor_delete_failed">Delete failed</string>
 </resources>

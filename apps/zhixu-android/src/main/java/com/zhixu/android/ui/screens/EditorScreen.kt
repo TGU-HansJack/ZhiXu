@@ -159,6 +159,8 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import com.zhixu.android.plugins.typecho.TypechoXmlRpcConfig
 import com.zhixu.android.ui.components.MarkdownPreview
 import com.zhixu.android.ui.components.RadialFabAction
+import com.zhixu.android.ui.components.LineDiff
+import com.zhixu.android.ui.components.DiffOp
 import com.zhixu.core.tasks.TaskSyntax
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -1560,7 +1562,7 @@ fun EditorScreen(
             dragHandle = null,
         ) {
             val notImplemented: () -> Unit = {
-                scope.launch { snackbarHostState.showSnackbar("暂未实现") }
+                scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.common_not_implemented)) }
             }
             Column(
                 modifier =
@@ -1575,7 +1577,7 @@ fun EditorScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     EditorOverflowQuickAction(
-                        title = "生成长图",
+                        title = stringResource(R.string.editor_overflow_generate_long_image),
                         icon = Icons.Outlined.Image,
                         onClick = {
                             showOverflowSheet = false
@@ -1591,7 +1593,7 @@ fun EditorScreen(
                         modifier = Modifier.weight(1f),
                     )
                     EditorOverflowQuickAction(
-                        title = "开启分享",
+                        title = stringResource(R.string.editor_overflow_share),
                         icon = Icons.Outlined.Share,
                         onClick = {
                             showOverflowSheet = false
@@ -1608,7 +1610,7 @@ fun EditorScreen(
                             runCatching {
                                 context.startActivity(Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                             }.onFailure {
-                                scope.launch { snackbarHostState.showSnackbar("无法打开分享面板") }
+                                scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.editor_share_failed)) }
                             }
                         },
                         modifier = Modifier.weight(1f),
@@ -1624,7 +1626,7 @@ fun EditorScreen(
                 ) {
                     Column {
                         EditorOverflowRow(
-                            title = "调整字号",
+                            title = stringResource(R.string.editor_overflow_font_size),
                             trailing = { Text("A+", style = MaterialTheme.typography.titleLarge) },
                             onClick = {
                                 showOverflowSheet = false
@@ -1633,12 +1635,12 @@ fun EditorScreen(
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
                         EditorOverflowRow(
-                            title = "复制",
+                            title = stringResource(R.string.common_copy),
                             trailing = { Icon(imageVector = Icons.Outlined.ContentCopy, contentDescription = null) },
                             onClick = {
                                 showOverflowSheet = false
                                 clipboard.setText(AnnotatedString(content.text))
-                                scope.launch { snackbarHostState.showSnackbar("已复制") }
+                                scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.common_copied)) }
                             },
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
@@ -1719,6 +1721,7 @@ fun EditorScreen(
         var selectedText by remember(showHistorySheet, latestDocUri) { mutableStateOf("") }
         var historyRelPath by remember(showHistorySheet, latestDocUri) { mutableStateOf<String?>(null) }
         var historyAuth by remember(showHistorySheet, latestDocUri) { mutableStateOf<com.zhixu.android.sync.SyncServerAuth?>(null) }
+        var showOnlyChanges by remember(showHistorySheet, latestDocUri) { mutableStateOf(true) }
         val currentTextSnapshot by rememberUpdatedState(latestContentText)
 
         suspend fun loadSelected(v: VaultVersionEntryV2, relPath: String, baseUrl: String, token: String) {
@@ -1781,8 +1784,10 @@ fun EditorScreen(
             containerColor = Color.White,
             dragHandle = null,
         ) {
-            val topScroll = rememberScrollState()
-            val bottomScroll = rememberScrollState()
+            val diffLines =
+                remember(selectedText, currentTextSnapshot) {
+                    LineDiff.diff(oldText = currentTextSnapshot, newText = selectedText)
+                }
 
             Column(
                 modifier =
@@ -1792,9 +1797,9 @@ fun EditorScreen(
                         .windowInsetsPadding(WindowInsets.navigationBars),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(text = "历史版本", style = MaterialTheme.typography.titleLarge)
-                    TextButton(onClick = { showHistorySheet = false }) { Text("关闭") }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = stringResource(R.string.editor_history_title), style = MaterialTheme.typography.titleLarge)
+                    TextButton(onClick = { showHistorySheet = false }) { Text(stringResource(R.string.action_close)) }
                 }
 
                 if (errorText != null) {
@@ -1802,7 +1807,7 @@ fun EditorScreen(
                 }
 
                 if (isLoading) {
-                    Text(text = "加载中…", style = MaterialTheme.typography.bodyMedium)
+                    Text(text = stringResource(R.string.common_loading), style = MaterialTheme.typography.bodyMedium)
                 } else {
                     val relPath = historyRelPath.orEmpty()
                     val auth = historyAuth
@@ -1850,14 +1855,14 @@ fun EditorScreen(
                             if (canReplace) {
                                 scope.launch {
                                     val ok = persistNow(latestDocUri, selectedText)
-                                    if (ok) showHistorySheet = false else snackbarHostState.showSnackbar("替换失败")
+                                    if (ok) showHistorySheet = false else snackbarHostState.showSnackbar(context.getString(R.string.editor_history_replace_failed))
                                 }
                             }
                         },
                         enabled = canReplace,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text("替换为该版本")
+                        Text(stringResource(R.string.editor_history_replace))
                     }
                     TextButton(
                         onClick = {
@@ -1870,33 +1875,55 @@ fun EditorScreen(
                                 }
                             }
                         },
-                    ) { Text("刷新") }
+                    ) { Text(stringResource(R.string.action_refresh)) }
                 }
 
-                Text(text = "选中版本", style = MaterialTheme.typography.titleMedium)
-                Box(
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = stringResource(R.string.editor_history_diff_title), style = MaterialTheme.typography.titleMedium)
+                    TextButton(onClick = { showOnlyChanges = !showOnlyChanges }) {
+                        Text(if (showOnlyChanges) stringResource(R.string.editor_history_show_all) else stringResource(R.string.editor_history_show_changes))
+                    }
+                }
+                val codeStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                LazyColumn(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 120.dp, max = 220.dp)
+                            .heightIn(min = 220.dp, max = 420.dp)
                             .background(Color(0xFFF7F7F7), RoundedCornerShape(12.dp))
-                            .verticalScroll(topScroll)
-                            .padding(12.dp),
+                            .padding(vertical = 6.dp),
                 ) {
-                    Text(text = selectedText.ifBlank { "未选择版本" }, style = MaterialTheme.typography.bodySmall)
-                }
-
-                Text(text = "当前内容", style = MaterialTheme.typography.titleMedium)
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 120.dp, max = 220.dp)
-                            .background(Color(0xFFF7F7F7), RoundedCornerShape(12.dp))
-                            .verticalScroll(bottomScroll)
-                            .padding(12.dp),
-                ) {
-                    Text(text = currentTextSnapshot, style = MaterialTheme.typography.bodySmall)
+                    items(diffLines.size) { idx ->
+                        val line = diffLines[idx]
+                        if (showOnlyChanges && line.op == DiffOp.Equal) return@items
+                        val bg =
+                            when (line.op) {
+                                DiffOp.Insert -> Color(0xFF52C41A).copy(alpha = 0.18f)
+                                DiffOp.Delete -> Color(0xFFFF4D4F).copy(alpha = 0.18f)
+                                DiffOp.Equal -> Color.Transparent
+                            }
+                        val prefix =
+                            when (line.op) {
+                                DiffOp.Insert -> "+ "
+                                DiffOp.Delete -> "- "
+                                DiffOp.Equal -> "  "
+                            }
+                        val style =
+                            when (line.op) {
+                                DiffOp.Delete -> codeStyle.copy(color = Color(0xFFFF4D4F), textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough)
+                                DiffOp.Insert -> codeStyle.copy(color = Color(0xFF237804))
+                                DiffOp.Equal -> codeStyle.copy(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f))
+                            }
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .background(bg)
+                                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                        ) {
+                            Text(text = prefix + line.text, style = style)
+                        }
+                    }
                 }
             }
         }
@@ -1987,9 +2014,9 @@ fun EditorScreen(
                                 }
                                 onDocListMutated()
                                 latestOnBack()
-                                Toast.makeText(context, "已删除", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.editor_deleted), Toast.LENGTH_SHORT).show()
                             } else {
-                                snackbarHostState.showSnackbar("删除失败")
+                                snackbarHostState.showSnackbar(context.getString(R.string.editor_delete_failed))
                             }
                         }
                     },

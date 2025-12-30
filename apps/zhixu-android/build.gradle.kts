@@ -67,6 +67,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.markwon.core)
+    implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.concurrent:concurrent-futures:1.2.0")
     implementation("com.google.guava:listenablefuture:1.0")

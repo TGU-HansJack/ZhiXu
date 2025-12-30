@@ -114,10 +114,10 @@ router.get("/changes", async (req, res) => {
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 5000) : 2000;
 
   const [[cursorRow]] = await pool.query(
-    "SELECT COALESCE(MAX(change_id), 0) AS cursor FROM vault_changes WHERE user_id = ?",
+    "SELECT COALESCE(MAX(change_id), 0) AS server_cursor FROM vault_changes WHERE user_id = ?",
     [userId]
   );
-  const serverCursor = Number(cursorRow?.cursor) || 0;
+  const serverCursor = Number(cursorRow?.server_cursor) || 0;
 
   if (sinceId === 0) {
     const [rows] = await pool.query(

@@ -573,16 +573,49 @@ class VaultRepository(
 
     suspend fun renameDoc(docUri: Uri, desiredName: String): Uri? = withContext(Dispatchers.IO) {
         val sanitizedBase = sanitizeFileName(desiredName).removeSuffix(".md").trim().ifBlank { "Untitled" }
-        val finalName = if (sanitizedBase.endsWith(".md", ignoreCase = true)) sanitizedBase else "$sanitizedBase.md"
+        val normalizedBase = sanitizedBase.removeSuffix(".md").trim().ifBlank { "Untitled" }
+        val finalName = if (normalizedBase.endsWith(".md", ignoreCase = true)) normalizedBase else "$normalizedBase.md"
+
+        // file:// vault: handle with java.io.File rename (DocumentsContract doesn't apply).
+        if (docUri.scheme.equals("file", ignoreCase = true)) {
+            val path = docUri.path ?: return@withContext null
+            val file = File(path)
+            val dir = file.parentFile ?: return@withContext null
+            if (!dir.exists()) return@withContext null
+
+            val currentName = file.name
+            var candidate = finalName
+            var index = 1
+            while (File(dir, candidate).exists() && !candidate.equals(currentName, ignoreCase = true)) {
+                candidate = "$normalizedBase ($index).md"
+                index++
+            }
+            if (candidate.equals(currentName, ignoreCase = true)) return@withContext docUri
+
+            val dest = File(dir, candidate)
+            val ok = runCatching { file.renameTo(dest) }.getOrDefault(false)
+            if (!ok) return@withContext null
+
+            val newUri = Uri.fromFile(dest)
+            runCatching { indexRepository.migrateDocUri(oldUri = docUri.toString(), newUri = newUri.toString(), newName = dest.name) }
+            return@withContext newUri
+        }
+
         val resolver: ContentResolver = context.contentResolver
         val renamedUri =
             runCatching { DocumentsContract.renameDocument(resolver, docUri, finalName) }
                 .getOrNull()
-        if (renamedUri != null) return@withContext renamedUri
+        if (renamedUri != null) {
+            val newName = DocumentFile.fromSingleUri(context, renamedUri)?.name ?: finalName
+            runCatching { indexRepository.migrateDocUri(oldUri = docUri.toString(), newUri = renamedUri.toString(), newName = newName) }
+            return@withContext renamedUri
+        }
 
         val doc = DocumentFile.fromSingleUri(context, docUri) ?: return@withContext null
         val ok = runCatching { doc.renameTo(finalName) }.getOrDefault(false)
         if (!ok) return@withContext null
+        // Some providers rename in-place without changing the Uri; refresh the index so doc name updates.
+        runCatching { indexDocUri(docUri) }
         docUri
     }
 
