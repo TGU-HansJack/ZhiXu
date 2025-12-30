@@ -161,6 +161,7 @@ import com.zhixu.android.ui.components.MarkdownPreview
 import com.zhixu.android.ui.components.RadialFabAction
 import com.zhixu.android.ui.components.LineDiff
 import com.zhixu.android.ui.components.DiffOp
+import com.zhixu.android.ui.components.DiffLine
 import com.zhixu.core.tasks.TaskSyntax
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -1723,16 +1724,23 @@ fun EditorScreen(
         var historyAuth by remember(showHistorySheet, latestDocUri) { mutableStateOf<com.zhixu.android.sync.SyncServerAuth?>(null) }
         var showOnlyChanges by remember(showHistorySheet, latestDocUri) { mutableStateOf(true) }
         val currentTextSnapshot by rememberUpdatedState(latestContentText)
+        val offlineText = stringResource(R.string.error_server_unreachable)
+        val notLoggedInText = stringResource(R.string.official_sync_not_logged_in)
 
         suspend fun loadSelected(v: VaultVersionEntryV2, relPath: String, baseUrl: String, token: String) {
             if (v.deleted) return
             val r = SyncServerClient.downloadVaultVersionV2(baseUrl, token, relPath, v.rev)
             if (!r.ok) {
-                errorText = r.errorMessage ?: "加载版本失败"
+                errorText =
+                    when {
+                        r.statusCode == 0 || r.errorMessage == "NETWORK_UNREACHABLE" -> offlineText
+                        !r.errorMessage.isNullOrBlank() -> r.errorMessage
+                        else -> "加载版本失败"
+                    }
                 return
             }
             selected = v
-            selectedText = r.value?.bytes?.decodeToString().orEmpty()
+            selectedText = runCatching { r.value?.bytes?.decodeToString().orEmpty() }.getOrDefault("")
         }
 
         LaunchedEffect(showHistorySheet, latestDocUri, vaultRootUri) {
@@ -1759,7 +1767,7 @@ fun EditorScreen(
 
             val auth = resolveSyncServerAuth(context)
             if (auth == null) {
-                errorText = "未开启同步或未登录"
+                errorText = notLoggedInText
                 isLoading = false
                 return@LaunchedEffect
             }
@@ -1767,7 +1775,12 @@ fun EditorScreen(
 
             val r = SyncServerClient.vaultVersionsV2(auth.baseUrl, auth.token, relPath, limit = 50)
             if (!r.ok) {
-                errorText = r.errorMessage ?: "获取版本列表失败"
+                errorText =
+                    when {
+                        r.statusCode == 0 || r.errorMessage == "NETWORK_UNREACHABLE" -> offlineText
+                        !r.errorMessage.isNullOrBlank() -> r.errorMessage
+                        else -> "获取版本列表失败"
+                    }
                 isLoading = false
                 return@LaunchedEffect
             }
@@ -1786,7 +1799,25 @@ fun EditorScreen(
         ) {
             val diffLines =
                 remember(selectedText, currentTextSnapshot) {
-                    LineDiff.diff(oldText = currentTextSnapshot, newText = selectedText)
+                    val maxChars = 200_000
+                    val rawOld = currentTextSnapshot
+                    val rawNew = selectedText
+
+                    val oldPreview =
+                        if (rawOld.length > maxChars) {
+                            rawOld.take(maxChars) + "\n…(truncated)"
+                        } else {
+                            rawOld
+                        }
+                    val newPreview =
+                        if (rawNew.length > maxChars) {
+                            rawNew.take(maxChars) + "\n…(truncated)"
+                        } else {
+                            rawNew
+                        }
+
+                    runCatching { LineDiff.diff(oldText = oldPreview, newText = newPreview) }
+                        .getOrElse { listOf(DiffLine(DiffOp.Equal, "Diff failed: ${it.javaClass.simpleName}")) }
                 }
 
             Column(

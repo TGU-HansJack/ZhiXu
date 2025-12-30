@@ -37,6 +37,7 @@ import com.zhixu.android.data.AccountPreferences
 import com.zhixu.android.data.AccountState
 import com.zhixu.android.sync.OfficialSync
 import com.zhixu.android.sync.SyncServerClient
+import com.zhixu.android.sync.SyncServerResult
 import kotlinx.coroutines.launch
 
 @Composable
@@ -65,6 +66,15 @@ fun AccountManagementDialog(
     val deviceBoundText = stringResource(R.string.account_device_bound)
     val deviceUnboundText = stringResource(R.string.account_device_unbound)
     val deviceRegeneratedText = stringResource(R.string.account_device_regenerated)
+    val serverUnreachableText = stringResource(R.string.error_server_unreachable)
+
+    fun <T> SyncServerResult<T>.toUiMessage(fallback: String): String {
+        return when {
+            statusCode == 0 || errorMessage == "NETWORK_UNREACHABLE" -> serverUnreachableText
+            !errorMessage.isNullOrBlank() -> errorMessage!!
+            else -> fallback
+        }
+    }
 
     LaunchedEffect(Unit) {
         val ensured = runCatching { accountPrefs.ensureDeviceId() }.getOrNull().orEmpty()
@@ -170,14 +180,14 @@ fun AccountManagementDialog(
                                 setBusy(true)
                                 val login = SyncServerClient.login(OfficialSync.BASE_URL, u, p)
                                 if (!login.ok || login.value.isNullOrBlank()) {
-                                    status = login.errorMessage ?: "Login failed"
+                                    status = login.toUiMessage("Login failed")
                                     setBusy(false)
                                     return@launch
                                 }
                                 val token = login.value!!
                                 val me = SyncServerClient.me(OfficialSync.BASE_URL, token)
                                 if (!me.ok || me.value == null) {
-                                    status = me.errorMessage ?: "Fetch profile failed"
+                                    status = me.toUiMessage("Fetch profile failed")
                                     setBusy(false)
                                     return@launch
                                 }
@@ -207,7 +217,7 @@ fun AccountManagementDialog(
                                     if (reg.ok) {
                                         registerOkText
                                     } else {
-                                        reg.errorMessage ?: "Register failed"
+                                        reg.toUiMessage("Register failed")
                                     }
                                 setBusy(false)
                             }

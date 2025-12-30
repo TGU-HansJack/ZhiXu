@@ -226,6 +226,7 @@
     <string name="common_not_implemented">Not implemented</string>
     <string name="common_copy">Copy</string>
     <string name="common_copied">Copied</string>
+    <string name="error_server_unreachable">Server unreachable. Please check network or server status.</string>
 
     <!-- Sync logs -->
     <string name="sync_logs_title">Sync logs</string>

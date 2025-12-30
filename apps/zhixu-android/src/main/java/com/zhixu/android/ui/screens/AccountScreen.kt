@@ -52,6 +52,7 @@ import com.zhixu.android.data.AccountPreferences
 import com.zhixu.android.data.AccountState
 import com.zhixu.android.sync.OfficialSync
 import com.zhixu.android.sync.SyncServerClient
+import com.zhixu.android.sync.SyncServerResult
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,6 +80,15 @@ fun AccountScreen(
     val loginOkText = stringResource(R.string.account_login_ok)
     val registerOkText = stringResource(R.string.account_register_ok)
     val loggedOutText = stringResource(R.string.account_logged_out)
+    val serverUnreachableText = stringResource(R.string.error_server_unreachable)
+
+    fun <T> SyncServerResult<T>.toUiMessage(fallback: String): String {
+        return when {
+            statusCode == 0 || errorMessage == "NETWORK_UNREACHABLE" -> serverUnreachableText
+            !errorMessage.isNullOrBlank() -> errorMessage!!
+            else -> fallback
+        }
+    }
 
     LaunchedEffect(Unit) {
         runCatching { accountPrefs.ensureDeviceId() }
@@ -207,14 +217,14 @@ fun AccountScreen(
                                 setBusy(true)
                                 val login = SyncServerClient.login(OfficialSync.BASE_URL, u, p)
                                 if (!login.ok || login.value.isNullOrBlank()) {
-                                    status = login.errorMessage ?: "Login failed"
+                                    status = login.toUiMessage("Login failed")
                                     setBusy(false)
                                     return@launch
                                 }
                                 val token = login.value!!
                                 val me = SyncServerClient.me(OfficialSync.BASE_URL, token)
                                 if (!me.ok || me.value == null) {
-                                    status = me.errorMessage ?: "Fetch profile failed"
+                                    status = me.toUiMessage("Fetch profile failed")
                                     setBusy(false)
                                     return@launch
                                 }
@@ -240,7 +250,7 @@ fun AccountScreen(
                             scope.launch {
                                 setBusy(true)
                                 val reg = SyncServerClient.register(OfficialSync.BASE_URL, u, p)
-                                status = if (reg.ok) registerOkText else (reg.errorMessage ?: "Register failed")
+                                status = if (reg.ok) registerOkText else reg.toUiMessage("Register failed")
                                 setBusy(false)
                             }
                         },
@@ -363,4 +373,3 @@ private fun transparentTextFieldColors() =
         focusedIndicatorColor = Color.Transparent,
         unfocusedIndicatorColor = Color.Transparent,
     )
-

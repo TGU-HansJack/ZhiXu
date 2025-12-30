@@ -204,6 +204,7 @@
     <string name="common_not_implemented">暂未实现</string>
     <string name="common_copy">复制</string>
     <string name="common_copied">已复制</string>
+    <string name="error_server_unreachable">服务器不可达，请检查网络或服务器状态。</string>
 
     <!-- Settings placeholders -->
     <string name="settings_placeholder_coming_soon">敬请期待</string>

@@ -2,8 +2,10 @@ package com.zhixu.android.sync
 
 import android.content.Context
 import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import com.zhixu.android.data.SyncPreferences
 import com.zhixu.android.data.VaultRepository
+import com.zhixu.android.data.vaultRootToDocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
@@ -57,9 +59,7 @@ object VaultAutoSync {
                 val next = state.withDeleted(relPath, r.value?.rev ?: (baseRev + 1))
                 OfficialVaultSyncStateStore(context, repository).save(root, next)
             } else if (r.statusCode == 409) {
-                // Fallback to full sync to resolve conflicts.
-                val includeIndexSqlite = SyncPreferences(context.applicationContext).includeIndexSqlite.first()
-                OfficialVaultSyncEngine(context, repository).syncVault(root, auth.baseUrl, auth.token, includeIndexSqlite)
+                resolveDeleteConflictV2(context, repository, root, auth.baseUrl, auth.token, relPath, baseRev)
             }
         }
     }
@@ -109,11 +109,12 @@ object VaultAutoSync {
         val now = System.currentTimeMillis()
         val shouldRun =
             lock.withLock {
-                val last = lastSyncedAt[relativePath] ?: 0L
+                val key = "${auth.baseUrl}|${vaultRootUri}|$relativePath"
+                val last = lastSyncedAt[key] ?: 0L
                 if (!force && now - last in 0..minIntervalMs) {
                     false
                 } else {
-                    lastSyncedAt[relativePath] = now
+                    lastSyncedAt[key] = now
                     true
                 }
             }
@@ -133,9 +134,159 @@ object VaultAutoSync {
                 val next = state.withUploaded(relativePath, rev = rev, sha256 = sha, size = bytes.size.toLong(), localMtimeMs = mtimeMs)
                 store.save(vaultRootUri, next)
             } else if (r.statusCode == 409) {
-                val includeIndexSqlite = SyncPreferences(context.applicationContext).includeIndexSqlite.first()
-                OfficialVaultSyncEngine(context, repository).syncVault(vaultRootUri, auth.baseUrl, auth.token, includeIndexSqlite)
+                resolveUploadConflictV2(
+                    context = context,
+                    repository = repository,
+                    rootUri = vaultRootUri,
+                    baseUrl = auth.baseUrl,
+                    token = auth.token,
+                    path = relativePath,
+                    localBytes = bytes,
+                    localMtimeMs = mtimeMs,
+                )
             }
         }
+    }
+
+    private suspend fun resolveUploadConflictV2(
+        context: Context,
+        repository: VaultRepository,
+        rootUri: Uri,
+        baseUrl: String,
+        token: String,
+        path: String,
+        localBytes: ByteArray,
+        localMtimeMs: Long,
+    ) {
+        repository.ensureVaultStructure(rootUri)
+        val root = vaultRootToDocumentFile(context, rootUri) ?: return
+
+        val store = OfficialVaultSyncStateStore(context, repository)
+        var state = store.load(rootUri)
+        val st = state.files[path]
+        val baseRev = st?.baseRev ?: 0L
+
+        val remote = SyncServerClient.downloadVaultFileV2(baseUrl, token, path).value ?: return
+        val baseBytes =
+            if (baseRev > 0L) {
+                SyncServerClient.downloadVaultVersionV2(baseUrl, token, path, baseRev).value?.bytes ?: ByteArray(0)
+            } else {
+                ByteArray(0)
+            }
+
+        val isText =
+            path.endsWith(".md", ignoreCase = true) ||
+                path.endsWith(".txt", ignoreCase = true) ||
+                path.endsWith(".json", ignoreCase = true)
+
+        suspend fun ensureConflictArtifact(kind: String, bytes: ByteArray) {
+            if (bytes.isEmpty()) return
+            val safePath = path.trimStart('/').replace('\\', '/')
+            val now = System.currentTimeMillis()
+            val baseDir = ".zhixu/conflicts/$safePath"
+            val name = "$now-$kind"
+            val dest = ensureLocalFile(root, "$baseDir/$name") ?: return
+            repository.writeBytes(dest.uri, bytes)
+        }
+
+        if (isText) {
+            val merged =
+                ThreeWayMerge.mergeText(
+                    base = baseBytes.decodeToString(),
+                    local = localBytes.decodeToString(),
+                    remote = remote.bytes.decodeToString(),
+                )
+            if (merged.ok && merged.merged != null) {
+                val mergedBytes = merged.merged.encodeToByteArray()
+                val put =
+                    SyncServerClient.uploadVaultFileV2(
+                        baseUrl = baseUrl,
+                        token = token,
+                        path = path,
+                        mtimeMs = localMtimeMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                        bytes = mergedBytes,
+                        baseRev = remote.rev,
+                    )
+                if (put.ok && put.value != null) {
+                    val dest = ensureLocalFile(root, path) ?: return
+                    repository.writeBytes(dest.uri, mergedBytes)
+                    val finalMtime = repository.getDocumentLastModified(dest.uri).takeIf { it > 0L } ?: localMtimeMs
+                    state = state.withUploaded(path, rev = put.value.rev, sha256 = put.value.sha256, size = mergedBytes.size.toLong(), localMtimeMs = finalMtime)
+                    store.save(rootUri, state)
+                    return
+                }
+            }
+        }
+
+        ensureConflictArtifact("local", localBytes)
+        ensureConflictArtifact("remote", remote.bytes)
+
+        val dest = ensureLocalFile(root, path) ?: return
+        repository.writeBytes(dest.uri, remote.bytes)
+        val finalMtime = repository.getDocumentLastModified(dest.uri).takeIf { it > 0L } ?: System.currentTimeMillis()
+        state = state.withUploaded(path, rev = remote.rev, sha256 = remote.sha256, size = remote.bytes.size.toLong(), localMtimeMs = finalMtime)
+        store.save(rootUri, state)
+    }
+
+    private suspend fun resolveDeleteConflictV2(
+        context: Context,
+        repository: VaultRepository,
+        rootUri: Uri,
+        baseUrl: String,
+        token: String,
+        path: String,
+        baseRev: Long,
+    ) {
+        repository.ensureVaultStructure(rootUri)
+        val root = vaultRootToDocumentFile(context, rootUri) ?: return
+
+        suspend fun ensureConflictArtifact(kind: String, bytes: ByteArray) {
+            if (bytes.isEmpty()) return
+            val safePath = path.trimStart('/').replace('\\', '/')
+            val now = System.currentTimeMillis()
+            val baseDir = ".zhixu/conflicts/$safePath"
+            val name = "$now-$kind"
+            val dest = ensureLocalFile(root, "$baseDir/$name") ?: return
+            repository.writeBytes(dest.uri, bytes)
+        }
+
+        val remote = SyncServerClient.downloadVaultFileV2(baseUrl, token, path).value
+        if (remote != null) {
+            ensureConflictArtifact("remote_before_delete", remote.bytes)
+            val store = OfficialVaultSyncStateStore(context, repository)
+            val state = store.load(rootUri)
+            val r = SyncServerClient.deleteVaultFileV2(baseUrl, token, path, baseRev = remote.rev)
+            if (r.ok) {
+                store.save(rootUri, state.withDeleted(path, r.value?.rev ?: (remote.rev + 1)))
+                return
+            }
+        }
+
+        // Worst case: fallback to full sync to resolve via conflict artifacts.
+        val includeIndexSqlite = SyncPreferences(context.applicationContext).includeIndexSqlite.first()
+        OfficialVaultSyncEngine(context, repository).syncVault(rootUri, baseUrl, token, includeIndexSqlite)
+    }
+
+    private fun ensureLocalFile(root: DocumentFile, path: String): DocumentFile? {
+        val parts = path.split('/').filter { it.isNotBlank() }
+        if (parts.isEmpty()) return null
+        if (root.uri.scheme.equals("file", ignoreCase = true)) {
+            val base = root.uri.path?.let { java.io.File(it) } ?: return null
+            var dir = base
+            for (i in 0 until parts.size - 1) {
+                dir = java.io.File(dir, parts[i])
+            }
+            dir.mkdirs()
+            val file = java.io.File(dir, parts.last())
+            runCatching { if (!file.exists()) file.createNewFile() }
+            return DocumentFile.fromFile(file)
+        }
+        var dir = root
+        for (i in 0 until parts.size - 1) {
+            val name = parts[i]
+            dir = dir.findFile(name) ?: dir.createDirectory(name) ?: return null
+        }
+        val fileName = parts.last()
+        return dir.findFile(fileName) ?: dir.createFile("application/octet-stream", fileName)
     }
 }
