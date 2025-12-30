@@ -1,14 +1,24 @@
 .idea/
-.vscode/
 .gradle/
 **/build/
 local.properties
 *.iml
 .tmp/
 
-# Keystore (do not commit)
+# VS Code (keep shared workspace settings)
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/*.code-snippets
+
+# Keystore (this repo is private; keep signing files in `.key/`)
 *.jks
 *.keystore
+!.key/
+!.key/*.jks
+!.key/*.keystore
 
 # OS
 .DS_Store
