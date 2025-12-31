@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,8 +46,7 @@ import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.data.VaultTreeEntry
 import com.zhixu.android.ui.Ionicons
 import com.zhixu.android.ui.DocListMutation
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
 private object VaultDrawerCache {
     private const val MaxEntries = 4
@@ -58,6 +58,7 @@ private object VaultDrawerCache {
 
     data class Entry(
         val entries: List<VaultTreeEntry>,
+        val loadedDirs: Set<String>,
         val updatedAtMs: Long,
         val refreshToken: Long,
     )
@@ -84,160 +85,134 @@ fun VaultDrawer(
     mutation: DocListMutation?,
     modifier: Modifier = Modifier,
 ) {
-    var entries by
-        remember(vaultRootUri) {
-            mutableStateOf(VaultDrawerCache.get(vaultRootUri)?.entries ?: emptyList())
-        }
+    val scope = rememberCoroutineScope()
+    val initialCache = remember(vaultRootUri) { VaultDrawerCache.get(vaultRootUri) }
+
+    var entries by remember(vaultRootUri) { mutableStateOf(initialCache?.entries ?: emptyList()) }
     var errorText by remember(vaultRootUri) { mutableStateOf<String?>(null) }
-    var isLoading by remember(vaultRootUri) { mutableStateOf(false) }
-    var cacheUpdatedAtMs by remember(vaultRootUri) { mutableStateOf(VaultDrawerCache.get(vaultRootUri)?.updatedAtMs ?: 0L) }
-    var handledRefreshToken by remember(vaultRootUri) { mutableStateOf(VaultDrawerCache.get(vaultRootUri)?.refreshToken ?: 0L) }
+    var cacheUpdatedAtMs by remember(vaultRootUri) { mutableStateOf(initialCache?.updatedAtMs ?: 0L) }
+    var handledRefreshToken by remember(vaultRootUri) { mutableStateOf(initialCache?.refreshToken ?: 0L) }
 
-    suspend fun reorderAndNormalize(next: List<VaultTreeEntry>): List<VaultTreeEntry> =
-        withContext(Dispatchers.Default) {
-            val entryByPath = next.associateBy { it.relativePath }
-            val byParent = next.groupBy { it.parentPath }
+    val loadedDirs =
+        remember(vaultRootUri) {
+            mutableStateMapOf<String, Boolean>().apply {
+                val init = initialCache?.loadedDirs?.takeIf { it.isNotEmpty() } ?: setOf("")
+                for (dir in init) this[dir] = true
+                this[""] = true
+            }
+        }
+    val loadingDirs = remember(vaultRootUri) { mutableStateMapOf<String, Boolean>() }
+    val expandedDirs = remember(vaultRootUri) { mutableStateMapOf<String, Boolean>() }
 
-            fun sortChildren(children: List<VaultTreeEntry>): List<VaultTreeEntry> =
-                children.sortedWith(
-                    compareByDescending<VaultTreeEntry> { it.isDirectory }
-                        .thenBy { it.name.lowercase() },
-                )
+    fun parentPathOf(relativePath: String): String? {
+        val cleaned = relativePath.replace('\\', '/').trimStart('/')
+        val idx = cleaned.lastIndexOf('/')
+        if (idx < 0) return null
+        return cleaned.substring(0, idx + 1).takeIf { it.isNotBlank() }
+    }
 
-            val out = ArrayList<VaultTreeEntry>(next.size)
+    fun persistCache(now: Long = System.currentTimeMillis()) {
+        cacheUpdatedAtMs = now
+        VaultDrawerCache.put(
+            vaultRootUri,
+            VaultDrawerCache.Entry(
+                entries = entries,
+                loadedDirs = loadedDirs.keys.toSet(),
+                updatedAtMs = now,
+                refreshToken = handledRefreshToken,
+            ),
+        )
+    }
 
-            fun walk(parentPath: String?, depth: Int) {
-                val children = byParent[parentPath] ?: return
-                for (child in sortChildren(children)) {
-                    out += child.copy(depth = depth)
-                    if (child.isDirectory) {
-                        walk(child.relativePath, depth + 1)
+    fun pruneSubtree(dirPath: String) {
+        if (dirPath.isBlank()) return
+        entries = entries.filterNot { it.relativePath != dirPath && it.relativePath.startsWith(dirPath) }
+        loadedDirs.keys.filter { it != dirPath && it.startsWith(dirPath) }.forEach { loadedDirs.remove(it) }
+        loadingDirs.keys.filter { it != dirPath && it.startsWith(dirPath) }.forEach { loadingDirs.remove(it) }
+        expandedDirs.keys.filter { it != dirPath && it.startsWith(dirPath) }.forEach { expandedDirs.remove(it) }
+    }
+
+    suspend fun reloadDir(dirPath: String) {
+        val key = dirPath
+        if (loadingDirs[key] == true) return
+        loadingDirs[key] = true
+        try {
+            if (key.isBlank()) {
+                errorText = null
+                val loaded =
+                    runCatching {
+                        repository.listVaultChildrenEntries(
+                            rootUri = vaultRootUri,
+                            parentRelativePath = "",
+                            includeNonMarkdownFiles = false,
+                            includeHidden = false,
+                        )
+                    }.getOrElse { e ->
+                        errorText = e.message ?: e.javaClass.simpleName
+                        emptyList()
                     }
+                entries = loaded
+                loadedDirs.clear()
+                loadedDirs[""] = true
+                expandedDirs.clear()
+            } else {
+                pruneSubtree(key)
+                val loaded =
+                    runCatching {
+                        repository.listVaultChildrenEntries(
+                            rootUri = vaultRootUri,
+                            parentRelativePath = key,
+                            includeNonMarkdownFiles = false,
+                            includeHidden = false,
+                        )
+                    }.getOrElse { emptyList() }
+
+                val idx = entries.indexOfFirst { it.relativePath == key }
+                if (idx >= 0) {
+                    val prefix = entries.take(idx + 1)
+                    val suffix = entries.drop(idx + 1)
+                    val withoutDupes = loaded.filter { child -> entries.none { it.relativePath == child.relativePath } }
+                    entries = prefix + withoutDupes + suffix
+                    loadedDirs[key] = true
                 }
             }
-
-            // Best-effort: only emit nodes reachable from root; if we detect orphans, fall back to the original list.
-            walk(parentPath = null, depth = 0)
-            if (out.size != next.size) next else out
+            persistCache()
+        } finally {
+            loadingDirs[key] = false
         }
+    }
 
-    suspend fun tryApplyMutation(current: List<VaultTreeEntry>, mutation: DocListMutation): List<VaultTreeEntry>? {
-        val rel =
-            when (mutation) {
-                is DocListMutation.Created -> repository.computeRelativePath(vaultRootUri, mutation.doc.uri)
-                is DocListMutation.Deleted -> repository.computeRelativePath(vaultRootUri, mutation.docUri)
-                is DocListMutation.Renamed -> repository.computeRelativePath(vaultRootUri, mutation.oldUri)
-            } ?: return null
-
-        fun parentPathOf(path: String): String? {
-            val normalized = path.replace('\\', '/').trimStart('/')
-            val slash = normalized.lastIndexOf('/')
-            if (slash < 0) return null
-            return normalized.substring(0, slash + 1)
+    LaunchedEffect(vaultRootUri, isActive) {
+        if (!isActive) return@LaunchedEffect
+        val now = System.currentTimeMillis()
+        val cacheAgeMs = if (cacheUpdatedAtMs > 0L) (now - cacheUpdatedAtMs) else Long.MAX_VALUE
+        if (entries.isEmpty() || cacheAgeMs > 30 * 60 * 1000L) {
+            reloadDir("")
         }
-
-        val currentByPath = current.associateBy { it.relativePath }
-        val targetParent = parentPathOf(rel)
-        if (targetParent != null && currentByPath[targetParent]?.isDirectory != true) return null
-
-        val next =
-            when (mutation) {
-                is DocListMutation.Created -> {
-                    val createdRel = repository.computeRelativePath(vaultRootUri, mutation.doc.uri) ?: return null
-                    val name = mutation.doc.name
-                    val p = parentPathOf(createdRel)
-                    if (p != null && currentByPath[p]?.isDirectory != true) return null
-                    val depth = p?.count { it == '/' } ?: 0
-                    val newEntry =
-                        VaultTreeEntry(
-                            relativePath = createdRel,
-                            name = name,
-                            uri = mutation.doc.uri,
-                            isDirectory = false,
-                            parentPath = p,
-                            depth = depth,
-                        )
-                    val without = current.filterNot { it.relativePath == createdRel }
-                    without + newEntry
-                }
-
-                is DocListMutation.Deleted -> {
-                    current.filterNot { it.relativePath == rel }
-                }
-
-                is DocListMutation.Renamed -> {
-                    val oldRel = repository.computeRelativePath(vaultRootUri, mutation.oldUri) ?: return null
-                    val newRel = repository.computeRelativePath(vaultRootUri, mutation.newUri) ?: return null
-                    val name = newRel.substringAfterLast('/')
-                    val p = parentPathOf(newRel)
-                    if (p != null && currentByPath[p]?.isDirectory != true) return null
-                    val depth = p?.count { it == '/' } ?: 0
-                    val newEntry =
-                        VaultTreeEntry(
-                            relativePath = newRel,
-                            name = name,
-                            uri = mutation.newUri,
-                            isDirectory = false,
-                            parentPath = p,
-                            depth = depth,
-                        )
-                    val without = current.filterNot { it.relativePath == oldRel || it.relativePath == newRel }
-                    without + newEntry
-                }
-            }
-
-        return reorderAndNormalize(next)
     }
 
     LaunchedEffect(vaultRootUri, isActive, refreshToken) {
         if (!isActive) return@LaunchedEffect
-        val now = System.currentTimeMillis()
-        val cacheAgeMs = if (cacheUpdatedAtMs > 0L) (now - cacheUpdatedAtMs) else Long.MAX_VALUE
-        val tokenChanged = refreshToken != handledRefreshToken
-        if (tokenChanged && entries.isNotEmpty()) {
-            val m = mutation
-            val applied = if (m != null) runCatching { tryApplyMutation(entries, m) }.getOrNull() else null
-            if (applied != null) {
-                entries = applied
-                handledRefreshToken = refreshToken
-                cacheUpdatedAtMs = now
-                VaultDrawerCache.put(
-                    vaultRootUri,
-                    VaultDrawerCache.Entry(entries = applied, updatedAtMs = now, refreshToken = refreshToken),
-                )
-                return@LaunchedEffect
-            }
-        }
-
-        val shouldRefresh = entries.isEmpty() || tokenChanged || cacheAgeMs > 30 * 60 * 1000L
-        if (!shouldRefresh) return@LaunchedEffect
-
-        isLoading = true
-        errorText = null
-        val loaded =
-            runCatching {
-                repository.listVaultTreeEntries(
-                    rootUri = vaultRootUri,
-                    includeNonMarkdownFiles = false,
-                    includeHidden = false,
-                )
-            }.getOrElse { e ->
-                errorText = e.message ?: e.javaClass.simpleName
-                emptyList()
-            }
-        entries = loaded
+        if (refreshToken == handledRefreshToken) return@LaunchedEffect
         handledRefreshToken = refreshToken
-        cacheUpdatedAtMs = now
-        VaultDrawerCache.put(
-            vaultRootUri,
-            VaultDrawerCache.Entry(entries = loaded, updatedAtMs = now, refreshToken = refreshToken),
-        )
-        isLoading = false
+
+        val m = mutation ?: run { persistCache(); return@LaunchedEffect }
+        val rel =
+            when (m) {
+                is DocListMutation.Created -> repository.computeRelativePath(vaultRootUri, m.doc.uri)
+                is DocListMutation.Deleted -> repository.computeRelativePath(vaultRootUri, m.docUri)
+                is DocListMutation.Renamed -> repository.computeRelativePath(vaultRootUri, m.newUri)
+            } ?: run { persistCache(); return@LaunchedEffect }
+
+        val parentDir = parentPathOf(rel) ?: ""
+        if (loadedDirs[parentDir] == true) {
+            reloadDir(parentDir)
+        } else {
+            persistCache()
+        }
     }
 
-    val expandedDirs = remember(vaultRootUri) { mutableStateMapOf<String, Boolean>() }
     val entryByPath = remember(entries) { entries.associateBy { it.relativePath } }
-    val childCountByParent = remember(entries) { entries.groupingBy { it.parentPath }.eachCount() }
 
     fun isVisible(entry: VaultTreeEntry): Boolean {
         var parent = entry.parentPath
@@ -272,7 +247,8 @@ fun VaultDrawer(
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-            if (isLoading) {
+            val rootLoading = (loadingDirs[""] == true) && entries.isEmpty()
+            if (rootLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                 }
@@ -307,7 +283,7 @@ fun VaultDrawer(
                 items(visibleEntries, key = { it.relativePath }) { entry ->
                     val indent = (entry.depth * 10).dp
                     val isExpanded = expandedDirs[entry.relativePath] == true
-                    val hasChildren = (childCountByParent[entry.relativePath] ?: 0) > 0
+                    val isDirLoading = entry.isDirectory && (loadingDirs[entry.relativePath] == true)
                     val displayName =
                         if (entry.isDirectory) {
                             entry.name
@@ -322,8 +298,13 @@ fun VaultDrawer(
                                 .heightIn(min = 32.dp)
                                 .clickable {
                                     if (entry.isDirectory) {
-                                        if (hasChildren) {
-                                            expandedDirs[entry.relativePath] = !isExpanded
+                                        val dirPath = entry.relativePath
+                                        if (isDirLoading) return@clickable
+                                        if (!isExpanded && loadedDirs[dirPath] != true) {
+                                            expandedDirs[dirPath] = true
+                                            scope.launch { reloadDir(dirPath) }
+                                        } else {
+                                            expandedDirs[dirPath] = !isExpanded
                                         }
                                     } else {
                                         entry.uri?.toString()?.let(onOpenDoc)
@@ -336,16 +317,12 @@ fun VaultDrawer(
                     ) {
                         Spacer(modifier = Modifier.width(indent))
                         if (entry.isDirectory) {
-                            if (hasChildren) {
-                                Icon(
-                                    painter = painterResource(if (isExpanded) Ionicons.ChevronDown else Ionicons.ChevronForward),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            } else {
-                                Spacer(modifier = Modifier.size(16.dp))
-                            }
+                            Icon(
+                                painter = painterResource(if (isExpanded) Ionicons.ChevronDown else Ionicons.ChevronForward),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                             Icon(
                                 painter = painterResource(Ionicons.Vault),
                                 contentDescription = null,
@@ -368,6 +345,9 @@ fun VaultDrawer(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
+                        if (entry.isDirectory && isDirLoading) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        }
                     }
                 }
             }

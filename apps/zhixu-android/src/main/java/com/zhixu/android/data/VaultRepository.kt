@@ -504,6 +504,100 @@ class VaultRepository(
         out
     }
 
+    suspend fun listVaultChildrenEntries(
+        rootUri: Uri,
+        parentRelativePath: String?,
+        includeNonMarkdownFiles: Boolean = false,
+        includeHidden: Boolean = false,
+    ): List<VaultTreeEntry> = withContext(Dispatchers.IO) {
+        val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext emptyList()
+
+        fun isMarkdown(file: DocumentFile): Boolean {
+            if (!file.isFile) return false
+            val name = file.name
+            val mime = file.type
+            val looksLikeMarkdown = name?.endsWith(".md", ignoreCase = true) == true
+            val isTextMarkdown =
+                mime.equals("text/markdown", ignoreCase = true) ||
+                    mime.equals("text/x-markdown", ignoreCase = true)
+            val isPlainText = mime.equals("text/plain", ignoreCase = true)
+            return looksLikeMarkdown || isTextMarkdown || isPlainText
+        }
+
+        fun shouldSkipDir(path: String): Boolean {
+            val p = path.trimStart('/').replace('\\', '/')
+            if (p.equals(appConfigDirName, ignoreCase = true)) return true
+            if (p.startsWith("$appConfigDirName/", ignoreCase = true)) return true
+            return false
+        }
+
+        val cleanedParent =
+            parentRelativePath
+                .orEmpty()
+                .replace('\\', '/')
+                .trim()
+                .trimStart('/')
+                .let { p -> if (p.isBlank()) "" else p.trimEnd('/') + "/" }
+        if (cleanedParent.isNotBlank() && shouldSkipDir(cleanedParent)) return@withContext emptyList()
+
+        var dir: DocumentFile = root
+        if (cleanedParent.isNotBlank()) {
+            val parts = cleanedParent.trimEnd('/').split('/').filter { it.isNotBlank() }
+            for (part in parts) {
+                val next = findChild(dir, part) ?: return@withContext emptyList()
+                if (!next.isDirectory) return@withContext emptyList()
+                dir = next
+            }
+        }
+
+        val parentPathKey = cleanedParent.takeIf { it.isNotBlank() }
+        val depth = parentPathKey?.count { it == '/' } ?: 0
+        val children =
+            dir
+                .listFiles()
+                .asSequence()
+                .filter { child ->
+                    val name = child.name ?: return@filter false
+                    if (!includeHidden && name.startsWith(".")) return@filter false
+                    true
+                }
+                .sortedWith(
+                    compareByDescending<DocumentFile> { it.isDirectory }
+                        .thenBy { it.name?.lowercase().orEmpty() },
+                )
+                .toList()
+
+        val out = ArrayList<VaultTreeEntry>(children.size)
+        for (child in children) {
+            val name = child.name ?: continue
+            if (child.isDirectory) {
+                val dirPath = if (cleanedParent.isBlank()) "$name/" else "$cleanedParent$name/"
+                if (shouldSkipDir(dirPath)) continue
+                out +=
+                    VaultTreeEntry(
+                        relativePath = dirPath,
+                        name = name,
+                        uri = child.uri,
+                        isDirectory = true,
+                        parentPath = parentPathKey,
+                        depth = depth,
+                    )
+            } else if (child.isFile && (includeNonMarkdownFiles || isMarkdown(child))) {
+                val filePath = if (cleanedParent.isBlank()) name else "$cleanedParent$name"
+                out +=
+                    VaultTreeEntry(
+                        relativePath = filePath,
+                        name = name,
+                        uri = child.uri,
+                        isDirectory = false,
+                        parentPath = parentPathKey,
+                        depth = depth,
+                    )
+            }
+        }
+        out
+    }
+
     suspend fun findDocByName(rootUri: Uri, name: String): UiDoc? = withContext(Dispatchers.IO) {
         val trimmed = name.trim()
         if (trimmed.isBlank()) return@withContext null
@@ -519,7 +613,8 @@ class VaultRepository(
         indexBuildInProgress = true
         try {
             ensureVaultStructure(rootUri)
-            val docs = listMarkdownDocs(rootUri)
+            // Reuse the most recent doc listing when available to avoid repeated full directory scans.
+            val docs = listMarkdownDocsCached(rootUri, force = false, maxStaleMs = 3 * 60_000L)
             val coroutineContext = currentCoroutineContext()
             for (doc in docs) {
                 coroutineContext.ensureActive()
