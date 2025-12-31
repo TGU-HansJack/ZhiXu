@@ -1,0 +1,35 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-zhixu}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-}
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    command: ["--default-authentication-plugin=mysql_native_password", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  api:
+    image: node:20-alpine
+    working_dir: /app
+    env_file:
+      - .env
+    volumes:
+      - ./:/app
+    command: ["sh", "-c", "npm ci --silent && npm run start"]
+    ports:
+      - "${PORT:-3001}:${PORT:-3001}"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+

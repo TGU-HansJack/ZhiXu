@@ -145,7 +145,7 @@ fun ZhixuApp() {
     )
     val accountPrefs = remember(appContext) { AccountPreferences(appContext) }
     val accountState by accountPrefs.state.collectAsState(
-        initial = AccountState(token = "", username = "", userId = 0L, deviceId = ""),
+        initial = AccountState(token = "", username = "", userId = 0L),
     )
     val syncPrefs = remember(appContext) { SyncPreferences(appContext) }
     val webDavConfig by syncPrefs.webDavConfig.collectAsState(

@@ -137,6 +137,16 @@
     <string name="account_login_ok">Logged in</string>
     <string name="account_register_ok">Registered</string>
     <string name="account_logged_out">Logged out</string>
+    <string name="account_storage_title">Storage plan</string>
+    <string name="account_storage_select">Select</string>
+    <string name="account_storage_selected">Selected: %1$s</string>
+    <string name="account_storage_login_required">Login required</string>
+    <string name="account_storage_1g_title">1G</string>
+    <string name="account_storage_1g_desc">Personal · 1 GB</string>
+    <string name="account_storage_3g_title">3G</string>
+    <string name="account_storage_3g_desc">Personal · 3 GB</string>
+    <string name="account_storage_5g_title">5G</string>
+    <string name="account_storage_5g_desc">Personal · 5 GB</string>
     <string name="account_device_title">Device</string>
     <string name="account_device_id">Device ID</string>
     <string name="account_device_bind">Bind</string>

@@ -78,7 +78,7 @@ fun SettingsScreen(
     val uiPrefs = remember(context) { UiPreferences(context.applicationContext) }
     val languageTag by uiPrefs.languageTag.collectAsState(initial = "")
     val accountState by accountPrefs.state.collectAsState(
-        initial = AccountState(token = "", username = "", userId = 0L, deviceId = ""),
+        initial = AccountState(token = "", username = "", userId = 0L),
     )
 
     var contribPerDay by remember { mutableStateOf<Map<LocalDate, DailyContrib>?>(null) }

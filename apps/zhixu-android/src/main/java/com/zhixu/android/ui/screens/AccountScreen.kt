@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -65,14 +68,12 @@ fun AccountScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state by accountPrefs.state.collectAsState(
-        initial = AccountState(token = "", username = "", userId = 0L, deviceId = ""),
+        initial = AccountState(token = "", username = "", userId = 0L),
     )
 
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
-
-    var devicesRemote by remember { mutableStateOf<List<String>>(emptyList()) }
 
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
@@ -90,27 +91,8 @@ fun AccountScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        runCatching { accountPrefs.ensureDeviceId() }
-    }
-
     LaunchedEffect(state.username) {
         if (username.isBlank() && state.username.isNotBlank()) username = state.username
-    }
-
-    LaunchedEffect(state.token) {
-        if (!state.isLoggedIn) {
-            devicesRemote = emptyList()
-            return@LaunchedEffect
-        }
-        val ensured = runCatching { accountPrefs.ensureDeviceId() }.getOrNull().orEmpty()
-        val result = SyncServerClient.listDevices(OfficialSync.BASE_URL, state.token)
-        devicesRemote = result.value ?: emptyList()
-        if (ensured.isNotBlank() && result.ok && (result.value?.contains(ensured) != true)) {
-            SyncServerClient.bindDevice(OfficialSync.BASE_URL, state.token, ensured)
-            val list = SyncServerClient.listDevices(OfficialSync.BASE_URL, state.token)
-            devicesRemote = list.value ?: devicesRemote
-        }
     }
 
     fun setBusy(on: Boolean) {
@@ -119,6 +101,12 @@ fun AccountScreen(
     }
 
     val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+    val plan1Title = stringResource(R.string.account_storage_1g_title)
+    val plan1Desc = stringResource(R.string.account_storage_1g_desc)
+    val plan3Title = stringResource(R.string.account_storage_3g_title)
+    val plan3Desc = stringResource(R.string.account_storage_3g_desc)
+    val plan5Title = stringResource(R.string.account_storage_5g_title)
+    val plan5Desc = stringResource(R.string.account_storage_5g_desc)
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -229,12 +217,6 @@ fun AccountScreen(
                                     return@launch
                                 }
                                 accountPrefs.setLoggedIn(token = token, username = me.value.username, userId = me.value.userId)
-                                val id = runCatching { accountPrefs.ensureDeviceId() }.getOrNull().orEmpty()
-                                if (id.isNotBlank()) {
-                                    SyncServerClient.bindDevice(OfficialSync.BASE_URL, token, id)
-                                    val list = SyncServerClient.listDevices(OfficialSync.BASE_URL, token)
-                                    devicesRemote = list.value ?: devicesRemote
-                                }
                                 status = loginOkText
                                 setBusy(false)
                             }
@@ -278,80 +260,48 @@ fun AccountScreen(
             item { HorizontalDivider(color = dividerColor) }
 
             item {
-                Text(text = stringResource(R.string.account_device_title), style = MaterialTheme.typography.titleSmall)
+                Text(text = stringResource(R.string.account_storage_title), style = MaterialTheme.typography.titleSmall)
             }
 
-            item {
-                ZhixuTextField(
-                    value = state.deviceId,
-                    onValueChange = {},
-                    enabled = false,
-                    label = { Text(stringResource(R.string.account_device_id)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-
-            item {
-                OutlinedButton(
-                    enabled = !busy,
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = {
-                        scope.launch {
-                            setBusy(true)
-                            val id = runCatching { accountPrefs.regenerateDeviceId() }.getOrNull().orEmpty()
-                            if (state.isLoggedIn && id.isNotBlank()) {
-                                SyncServerClient.bindDevice(OfficialSync.BASE_URL, state.token, id)
-                                val list = SyncServerClient.listDevices(OfficialSync.BASE_URL, state.token)
-                                devicesRemote = list.value ?: devicesRemote
-                            }
-                            status = context.getString(R.string.account_device_regenerated)
-                            setBusy(false)
-                        }
-                    },
-                ) { Text(stringResource(R.string.account_device_regenerate)) }
-            }
-
-            if (state.isLoggedIn) {
+            fun planCard(code: String, title: String, subtitle: String) {
                 item {
-                    Text(
-                        text = stringResource(R.string.account_device_remote_list),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                }
-                val devices = devicesRemote
-                if (devices.isEmpty()) {
-                    item { Text(stringResource(R.string.account_device_remote_empty), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                } else {
-                    items(devices.size) { idx ->
-                        val deviceId = devices[idx]
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(deviceId, modifier = Modifier.weight(1f), maxLines = 1)
-                            TextButton(
-                                enabled = !busy && deviceId != state.deviceId,
-                                onClick = {
-                                    scope.launch {
-                                        setBusy(true)
-                                        val r = SyncServerClient.unbindDevice(OfficialSync.BASE_URL, state.token, deviceId)
-                                        if (r.ok) {
-                                            val list = SyncServerClient.listDevices(OfficialSync.BASE_URL, state.token)
-                                            devicesRemote = list.value ?: emptyList()
-                                            status = context.getString(R.string.account_device_unbound)
-                                        } else {
-                                            status = r.errorMessage ?: "Unbind failed"
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(title, style = MaterialTheme.typography.titleMedium)
+                                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Button(
+                                    enabled = !busy && state.isLoggedIn,
+                                    onClick = {
+                                        scope.launch {
+                                            setBusy(true)
+                                            val r = SyncServerClient.setSubscriptionPlan(OfficialSync.BASE_URL, state.token, code)
+                                            status = if (r.ok) context.getString(R.string.account_storage_selected, title) else r.toUiMessage("Failed")
+                                            setBusy(false)
                                         }
-                                        setBusy(false)
-                                    }
-                                },
-                            ) { Text(stringResource(R.string.account_device_unbind)) }
+                                    },
+                                ) { Text(stringResource(R.string.account_storage_select)) }
+                                if (!state.isLoggedIn) {
+                                    Text(
+                                        text = stringResource(R.string.account_storage_login_required),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
+
+            planCard("storage_1g", plan1Title, plan1Desc)
+            planCard("storage_3g", plan3Title, plan3Desc)
+            planCard("storage_5g", plan5Title, plan5Desc)
 
             if (!status.isNullOrBlank()) {
                 item {

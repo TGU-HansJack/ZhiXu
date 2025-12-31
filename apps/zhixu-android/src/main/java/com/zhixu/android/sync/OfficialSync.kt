@@ -1,6 +1,5 @@
 package com.zhixu.android.sync
 
 object OfficialSync {
-    const val BASE_URL: String = "https://sync.zhixu.app"
+    const val BASE_URL: String = "https://zhixu.app"
 }
-

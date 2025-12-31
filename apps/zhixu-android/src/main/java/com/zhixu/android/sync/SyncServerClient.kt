@@ -18,6 +18,13 @@ import java.nio.charset.StandardCharsets
 data class SyncServerMe(
     val userId: Long,
     val username: String,
+    val plan: SyncServerPlan? = null,
+)
+
+data class SyncServerPlan(
+    val code: String,
+    val name: String,
+    val storageBytes: Long,
 )
 
 data class VaultManifestEntry(
@@ -190,48 +197,62 @@ object SyncServerClient {
                 val obj = runCatching { JSONObject(text) }.getOrNull() ?: return@use SyncServerResult(false, errorMessage = "Invalid response", statusCode = resp.code)
                 val userId = obj.optLong("userId", 0L)
                 val username = obj.optString("username").orEmpty()
-                SyncServerResult(ok = true, value = SyncServerMe(userId = userId, username = username), statusCode = resp.code)
+                val planObj = obj.optJSONObject("plan")
+                val plan =
+                    planObj?.let {
+                        SyncServerPlan(
+                            code = it.optString("code").orEmpty(),
+                            name = it.optString("name").orEmpty(),
+                            storageBytes = it.optLong("storageBytes", 0L).coerceAtLeast(0L),
+                        )
+                    }
+                SyncServerResult(ok = true, value = SyncServerMe(userId = userId, username = username, plan = plan), statusCode = resp.code)
             }
         }
     }
 
-    suspend fun listDevices(
+    suspend fun listPlans(
         baseUrl: String,
-        token: String,
-    ): SyncServerResult<List<String>> = withContext(Dispatchers.IO) {
+    ): SyncServerResult<List<SyncServerPlan>> = withContext(Dispatchers.IO) {
         safeResult {
-            val url = normalizeJoin(baseUrl, "/api/account/devices")
+            val url = normalizeJoin(baseUrl, "/api/plans")
             val req =
                 Request.Builder()
                     .url(url)
                     .get()
-                    .header("Authorization", "Bearer $token")
                     .header("User-Agent", "Zhixu-Android")
                     .build()
             client.newCall(req).execute().use { resp ->
                 val text = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
-                val arr = runCatching { JSONObject(text).optJSONArray("devices") ?: JSONArray() }.getOrNull() ?: JSONArray()
-                val out = ArrayList<String>(arr.length())
+                val arr = runCatching { JSONObject(text).optJSONArray("plans") ?: JSONArray() }.getOrNull() ?: JSONArray()
+                val out = ArrayList<SyncServerPlan>(arr.length())
                 for (i in 0 until arr.length()) {
-                    val s = arr.optString(i).orEmpty()
-                    if (s.isNotBlank()) out += s
+                    val item = arr.optJSONObject(i) ?: continue
+                    val code = item.optString("code").orEmpty()
+                    if (code.isBlank()) continue
+                    out +=
+                        SyncServerPlan(
+                            code = code,
+                            name = item.optString("name").orEmpty(),
+                            storageBytes = item.optLong("storageBytes", 0L).coerceAtLeast(0L),
+                        )
                 }
                 SyncServerResult(ok = true, value = out, statusCode = resp.code)
             }
         }
     }
 
-    suspend fun bindDevice(
+    suspend fun setSubscriptionPlan(
         baseUrl: String,
         token: String,
-        deviceId: String,
-    ): SyncServerResult<Unit> = withContext(Dispatchers.IO) {
+        planCode: String,
+    ): SyncServerResult<SyncServerPlan> = withContext(Dispatchers.IO) {
         safeResult {
-            val url = normalizeJoin(baseUrl, "/api/account/devices/bind")
+            val url = normalizeJoin(baseUrl, "/api/account/subscription")
             val body =
                 JSONObject()
-                    .put("deviceId", deviceId)
+                    .put("planCode", planCode)
                     .toString()
                     .toRequestBody("application/json; charset=utf-8".toMediaType())
             val req =
@@ -243,35 +264,17 @@ object SyncServerClient {
                     .build()
             client.newCall(req).execute().use { resp ->
                 val text = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
-                else SyncServerResult(true, value = Unit, statusCode = resp.code)
-            }
-        }
-    }
-
-    suspend fun unbindDevice(
-        baseUrl: String,
-        token: String,
-        deviceId: String,
-    ): SyncServerResult<Unit> = withContext(Dispatchers.IO) {
-        safeResult {
-            val url = normalizeJoin(baseUrl, "/api/account/devices/unbind")
-            val body =
-                JSONObject()
-                    .put("deviceId", deviceId)
-                    .toString()
-                    .toRequestBody("application/json; charset=utf-8".toMediaType())
-            val req =
-                Request.Builder()
-                    .url(url)
-                    .post(body)
-                    .header("Authorization", "Bearer $token")
-                    .header("User-Agent", "Zhixu-Android")
-                    .build()
-            client.newCall(req).execute().use { resp ->
-                val text = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
-                else SyncServerResult(true, value = Unit, statusCode = resp.code)
+                if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
+                val obj = runCatching { JSONObject(text) }.getOrNull() ?: return@use SyncServerResult(false, errorMessage = "Invalid response", statusCode = resp.code)
+                val planObj = obj.optJSONObject("plan") ?: JSONObject()
+                val code = planObj.optString("code").orEmpty().ifBlank { planCode }
+                val plan =
+                    SyncServerPlan(
+                        code = code,
+                        name = planObj.optString("name").orEmpty(),
+                        storageBytes = planObj.optLong("storageBytes", 0L).coerceAtLeast(0L),
+                    )
+                SyncServerResult(true, value = plan, statusCode = resp.code)
             }
         }
     }
