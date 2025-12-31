@@ -14,12 +14,13 @@
 - `publishTimeOffsetHours`：发布时对时间做偏移（小时）
 - `syncTimeOffsetHours`：从服务器同步时间时的偏移（小时）
 - `managePostsCount`：Recent 列表拉取数量（对应 `metaWeblog.getRecentPosts` 的 count）
+- `defaultCategories`：当笔记 frontmatter 未填写分类时使用的默认分类（数组或 `a,b`），为空则要求在笔记中填写
 - `frontmatterKeys`：映射到你笔记 frontmatter 的字段名
   - `title`：标题（默认 `title`；`useFrontmatter=true` 时会回写）
   - `cid`：文章 ID（默认 `typecho_cid`）
   - `slug`：文章 slug（默认 `slug`；首次发布如果为空会写入 `cid`）
   - `tags`：标签（默认 `tags`，支持 `a,b` 或 `[a, b]`）
-  - `categories`：分类（默认 `categories`，支持 `a,b` 或 `[a, b]`，不能为空）
+  - `categories`：分类（默认 `categories`，支持 `a,b` 或 `[a, b]`；如未填写则使用 `defaultCategories`，两者都为空会报错）
   - `draft`：草稿（默认 `draft`，`true/false`）
   - `dateCreated`：发布时间（默认 `dateCreated`）
   - `lastPublished`：最后一次发布记录（默认 `typecho_lastPublished`）

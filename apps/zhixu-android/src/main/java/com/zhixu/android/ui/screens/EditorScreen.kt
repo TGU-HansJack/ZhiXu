@@ -161,6 +161,7 @@ import com.zhixu.android.ui.components.ZhixuDialogDefaults
 import com.zhixu.android.ui.components.ZhixuTextField
 import com.zhixu.core.tasks.TaskSyntax
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -500,35 +501,41 @@ fun EditorScreen(
                 val actionId = raw.substring(slash + 1)
 
                 scope.launch {
-                    val result =
-                        withContext(Dispatchers.IO) {
-                            JsPluginRuntime(
-                                appContext = context.applicationContext,
-                                pluginRepo = pluginRepo,
-                            ).runEditorAction(
-                                rootUri = root,
-                                pluginId = pluginId,
-                                actionId = actionId,
-                                ctx =
-                                    EditorActionContext(
-                                        docUri = currentDocUri,
-                                        title = title,
-                                        fileName = originalFileName,
-                                        text = content.text,
-                                    ),
-                            )
+                    try {
+                        val result =
+                            withContext(Dispatchers.IO) {
+                                JsPluginRuntime(
+                                    appContext = context.applicationContext,
+                                    pluginRepo = pluginRepo,
+                                ).runEditorAction(
+                                    rootUri = root,
+                                    pluginId = pluginId,
+                                    actionId = actionId,
+                                    ctx =
+                                        EditorActionContext(
+                                            docUri = currentDocUri,
+                                            title = title,
+                                            fileName = originalFileName,
+                                            text = content.text,
+                                        ),
+                                )
+                            }
+
+                        if (result.ok && result.setText != null) {
+                            withContext(Dispatchers.IO) {
+                                repository.writeText(currentDocUri, result.setText)
+                                repository.indexDocUri(currentDocUri)
+                            }
+                            content = content.copy(text = result.setText)
+                            lastPersistedText = result.setText
                         }
 
-                    if (result.ok && result.setText != null) {
-                        withContext(Dispatchers.IO) {
-                            repository.writeText(currentDocUri, result.setText)
-                            repository.indexDocUri(currentDocUri)
-                        }
-                        content = content.copy(text = result.setText)
-                        lastPersistedText = result.setText
+                        snackbarHostState.showSnackbar(result.message)
+                    } catch (e: Throwable) {
+                        if (e is CancellationException) throw e
+                        val msg = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+                        snackbarHostState.showSnackbar("插件执行异常：$msg")
                     }
-
-                    snackbarHostState.showSnackbar(result.message)
                 }
             }
 

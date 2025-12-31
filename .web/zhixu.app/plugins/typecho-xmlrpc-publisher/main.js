@@ -19,6 +19,26 @@ function toBool(v, fallback) {
   return fallback;
 }
 
+function normalizeStringList(v) {
+  if (v === null || v === undefined) return [];
+  if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
+  const s = String(v).trim();
+  if (!s) return [];
+  if (s.startsWith('[') && s.endsWith(']')) {
+    const inside = s.slice(1, -1).trim();
+    if (!inside) return [];
+    return inside
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .map((x) => x.replace(/^["']|["']$/g, ''));
+  }
+  return s
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
 function yamlQuoteString(s) {
   return JSON.stringify(String(s));
 }
@@ -433,6 +453,7 @@ function getConfig(ctx) {
   const fmKeys = cfg.frontmatterKeys || {};
   const publishOffsetRaw = cfg.publishTimeOffsetHours != null ? cfg.publishTimeOffsetHours : cfg.publishTimeOffset;
   const syncOffsetRaw = cfg.syncTimeOffsetHours != null ? cfg.syncTimeOffsetHours : cfg.syncTimeOffset;
+  const defaultCategories = normalizeStringList(cfg.defaultCategories != null ? cfg.defaultCategories : cfg.defaultCategory);
   return {
     endpoint: String(cfg.endpoint || '').trim(),
     username: String(cfg.username || '').trim(),
@@ -443,6 +464,7 @@ function getConfig(ctx) {
     publishTimeOffsetHours: Number(publishOffsetRaw || 0) || 0,
     syncTimeOffsetHours: Number(syncOffsetRaw || 0) || 0,
     managePostsCount: toInt(cfg.managePostsCount, 20),
+    defaultCategories: defaultCategories,
     keys: {
       title: String(fmKeys.title || 'title'),
       cid: String(fmKeys.cid || 'typecho_cid'),
@@ -493,12 +515,16 @@ function publish(ctx) {
     'Untitled';
   const slug = String(readFrontmatterScalar(yaml, conf.keys.slug) || '').trim();
   const tags = readFrontmatterList(yaml, conf.keys.tags);
-  const categories = readFrontmatterList(yaml, conf.keys.categories);
+  const categoriesFromFm = readFrontmatterList(yaml, conf.keys.categories);
   const draftRaw = readFrontmatterScalar(yaml, conf.keys.draft);
   const draft = draftRaw === undefined ? false : toBool(draftRaw, false);
 
-  if (!categories || categories.length === 0) {
-    return { ok: false, message: 'categories 不能为空，请在 Frontmatter 里设置 ' + conf.keys.categories };
+  const categories = (categoriesFromFm && categoriesFromFm.length ? categoriesFromFm : conf.defaultCategories) || [];
+  if (categories.length === 0) {
+    return {
+      ok: false,
+      message: '没有配置文章分类：请在 Frontmatter 里设置 ' + conf.keys.categories + '，或在插件配置中设置 defaultCategories',
+    };
   }
 
   const postStruct = {

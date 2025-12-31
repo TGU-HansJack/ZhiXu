@@ -13,3 +13,8 @@
 -dontwarn javax.management.**
 -dontwarn org.ietf.jgss.**
 -dontwarn org.slf4j.impl.StaticLoggerBinder
+
+# --- J2V8 ---
+# J2V8 uses JNI and expects stable class/method names; keep it from being obfuscated/shrunk in release.
+-keep class com.eclipsesource.v8.** { *; }
+-dontwarn com.eclipsesource.v8.**
