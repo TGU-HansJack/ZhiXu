@@ -1,16 +1,14 @@
 {
   "id": "typecho-xmlrpc-publisher",
-  "name": "Typecho XML-RPC Publisher",
+  "name": "Typecho XML-RPC 发布器",
   "version": "2.0.0",
-  "description": "通过 XML-RPC（MetaWeblog）将当前笔记发布到 Typecho 博客（J2V8 运行时适配版）。",
+  "description": "通过 XML-RPC（MetaWeblog API）将当前笔记发布到 Typecho 博客（Zhixu / J2V8 运行时适配版）。",
   "entry": "main.js",
-  "files": [
-    "config.json"
-  ],
+  "files": ["config.json"],
   "actions": [
-    { "id": "publish", "label": "Publish", "icon": "publish", "place": "editor_fab", "ringIndex": 0 },
-    { "id": "syncPublishDate", "label": "Sync Time", "icon": "cloud_upload", "place": "editor_fab", "ringIndex": 1 },
-    { "id": "listRecentPosts", "label": "Recent", "icon": "list", "place": "editor_fab", "ringIndex": 2 },
-    { "id": "deletePost", "label": "Delete", "icon": "delete", "place": "editor_fab", "ringIndex": 3 }
+    { "id": "publish", "label": "发布", "icon": "publish", "place": "editor_fab", "ringIndex": 0 },
+    { "id": "syncPublishDate", "label": "同步时间", "icon": "cloud_upload", "place": "editor_fab", "ringIndex": 1 },
+    { "id": "listRecentPosts", "label": "最近文章", "icon": "list", "place": "editor_fab", "ringIndex": 2 },
+    { "id": "deletePost", "label": "删除", "icon": "delete", "place": "editor_fab", "ringIndex": 3 }
   ]
 }

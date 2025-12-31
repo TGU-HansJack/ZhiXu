@@ -479,9 +479,9 @@ function getConfig(ctx) {
 }
 
 function assertConfig(conf) {
-  if (!conf.endpoint) throw new Error('Missing config.endpoint (XML-RPC endpoint url)');
-  if (!conf.username) throw new Error('Missing config.username');
-  if (!conf.password) throw new Error('Missing config.password');
+  if (!conf.endpoint) throw new Error('缺少配置 config.endpoint（XML-RPC 接口地址）');
+  if (!conf.username) throw new Error('缺少配置 config.username');
+  if (!conf.password) throw new Error('缺少配置 config.password');
 }
 
 function normalizeCidFromPostStruct(post) {
@@ -568,7 +568,7 @@ function publish(ctx) {
   if (!slug) nextYaml = upsertFrontmatter(nextYaml, conf.keys.slug, newCid);
 
   const nextText = buildTextWithFrontmatter(split.has || true, nextYaml, body);
-  return { ok: true, message: cid ? 'Updated (cid=' + newCid + ')' : 'Published (cid=' + newCid + ')', setText: nextText };
+  return { ok: true, message: cid ? '已更新（cid=' + newCid + '）' : '已发布（cid=' + newCid + '）', setText: nextText };
 }
 
 function syncPublishDate(ctx) {
@@ -599,7 +599,7 @@ function syncPublishDate(ctx) {
   let nextYaml = yaml;
   nextYaml = upsertFrontmatter(nextYaml, conf.keys.dateCreated, XmlRpc.iso8601(d));
   const nextText = buildTextWithFrontmatter(split.has || true, nextYaml, body);
-  return { ok: true, message: 'Synced dateCreated', setText: nextText };
+  return { ok: true, message: '已同步 dateCreated', setText: nextText };
 }
 
 function listRecentPosts(ctx) {
@@ -611,7 +611,7 @@ function listRecentPosts(ctx) {
   const result = XmlRpc.parseResponse(respText);
 
   if (!Array.isArray(result)) return { ok: false, message: 'getRecentPosts 返回格式异常' };
-  if (result.length === 0) return { ok: true, message: 'Recent posts: (empty)' };
+  if (result.length === 0) return { ok: true, message: '最近文章：（空）' };
 
   const maxLines = Math.min(result.length, 8);
   const lines = [];
@@ -621,8 +621,8 @@ function listRecentPosts(ctx) {
     const title = String(p.title || p['title'] || '').trim() || '(no title)';
     lines.push(cid + ' - ' + title);
   }
-  const suffix = result.length > maxLines ? ' …(+ ' + (result.length - maxLines) + ')' : '';
-  return { ok: true, message: 'Recent posts:\n' + lines.join('\n') + suffix };
+  const suffix = result.length > maxLines ? ' …（+ ' + (result.length - maxLines) + '）' : '';
+  return { ok: true, message: '最近文章：\n' + lines.join('\n') + suffix };
 }
 
 function deletePost(ctx) {
@@ -648,7 +648,7 @@ function deletePost(ctx) {
   nextYaml = removeFrontmatterKey(nextYaml, conf.keys.cid);
   nextYaml = removeFrontmatterKey(nextYaml, conf.keys.lastPublished);
   const nextText = buildTextWithFrontmatter(split.has || true, nextYaml, body);
-  return { ok: true, message: 'Deleted (cid=' + cid + ')', setText: nextText };
+  return { ok: true, message: '已删除（cid=' + cid + '）', setText: nextText };
 }
 
 module.exports = {
