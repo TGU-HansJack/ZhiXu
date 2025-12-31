@@ -21,6 +21,23 @@ android {
         versionName = "0.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+        // J2V8 AAR currently bundles both arm64-v8a and armeabi-v7a native libs.
+        // Restrict to arm64-v8a to reduce APK size and avoid packaging unused ABIs.
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+    }
+
+    packaging {
+        // Some J2V8 artifacts include desktop native binaries in the jar resources (e.g. macOS dylib).
+        // Exclude them from the APK to avoid massive size bloat.
+        resources {
+            excludes += setOf("**/*.dylib")
+        }
+        // Ensure native libs are extractable/deflate-compressed; helps compatibility and reduces APK size.
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 
     buildTypes {
@@ -73,7 +90,7 @@ dependencies {
     implementation("com.google.guava:listenablefuture:1.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r")
-    // Native V8 for Android (arm64-v8a); if you need emulator support, add an x86/x86_64 artifact too.
+    // Native V8 for Android (J2V8).
     implementation("com.eclipsesource.j2v8:j2v8_android_arm64-v8a:6.3.0@aar")
     implementation("io.noties.markwon:ext-tables:4.6.2")
     implementation("io.noties.markwon:ext-tasklist:4.6.2")

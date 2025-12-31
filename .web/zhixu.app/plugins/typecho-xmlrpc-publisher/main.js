@@ -4,6 +4,21 @@ function escapeRegExp(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function toInt(v, fallback) {
+  const n = Number(v);
+  return isFinite(n) ? (n | 0) : fallback;
+}
+
+function toBool(v, fallback) {
+  if (v === null || v === undefined) return fallback;
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v !== 0;
+  const s = String(v).trim().toLowerCase();
+  if (s === 'true' || s === '1' || s === 'yes' || s === 'y') return true;
+  if (s === 'false' || s === '0' || s === 'no' || s === 'n') return false;
+  return fallback;
+}
+
 function yamlQuoteString(s) {
   return JSON.stringify(String(s));
 }
@@ -15,6 +30,13 @@ function yamlFormatValue(value) {
   if (Array.isArray(value)) return '[' + value.map((v) => yamlQuoteString(v)).join(', ') + ']';
   if (value instanceof Date) return yamlQuoteString(XmlRpc.iso8601(value));
   return yamlQuoteString(String(value));
+}
+
+function ensureTrailingNewline(s) {
+  const out = String(s || '');
+  if (!out) return '';
+  if (!/\r?\n$/.test(out)) return out + '\n';
+  return out.replace(/\r?\n+$/, '\n');
 }
 
 function splitFrontmatter(text) {
@@ -45,7 +67,37 @@ function readFrontmatterScalar(yaml, key) {
   return raw;
 }
 
+function readFrontmatterBlockList(yaml, key) {
+  const lines = String(yaml || '').split(/\r?\n/);
+  const keyOnlyRe = new RegExp('^' + escapeRegExp(key) + '\\s*:\\s*$');
+
+  let idx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (keyOnlyRe.test(lines[i])) {
+      idx = i;
+      break;
+    }
+  }
+  if (idx === -1) return null;
+
+  const out = [];
+  for (let j = idx + 1; j < lines.length; j++) {
+    const ln = lines[j];
+    if (/^\s*$/.test(ln)) break;
+    if (/^[A-Za-z0-9_.-]+\s*:/.test(ln)) break;
+    const m = /^\s*-\s*(.*)$/.exec(ln);
+    if (!m) break;
+    const item = String(m[1] || '').trim();
+    if (!item) continue;
+    out.push(item.replace(/^["']|["']$/g, ''));
+  }
+  return out;
+}
+
 function readFrontmatterList(yaml, key) {
+  const block = readFrontmatterBlockList(yaml, key);
+  if (block) return block;
+
   const val = readFrontmatterScalar(yaml, key);
   if (val === undefined || val === null) return [];
   if (Array.isArray(val)) return val;
@@ -82,7 +134,7 @@ function upsertFrontmatter(yaml, key, value) {
   const rendered = key + ': ' + yamlFormatValue(value);
   if (idx === -1) {
     lines.push(rendered);
-    return lines.join('\n').replace(/\n+$/, '\n');
+    return ensureTrailingNewline(lines.join('\n'));
   }
 
   const hadKeyOnly = keyOnlyRe.test(lines[idx]);
@@ -100,11 +152,36 @@ function upsertFrontmatter(yaml, key, value) {
       break;
     }
   }
-  return lines.join('\n').replace(/\n+$/, '\n');
+  return ensureTrailingNewline(lines.join('\n'));
+}
+
+function removeFrontmatterKey(yaml, key) {
+  const lines = String(yaml || '').split(/\r?\n/);
+  const keyRe = new RegExp('^' + escapeRegExp(key) + '\\s*:\\s*.*$');
+  const keyOnlyRe = new RegExp('^' + escapeRegExp(key) + '\\s*:\\s*$');
+
+  for (let i = 0; i < lines.length; i++) {
+    if (keyRe.test(lines[i])) {
+      const hadKeyOnly = keyOnlyRe.test(lines[i]);
+      lines.splice(i, 1);
+      if (hadKeyOnly) {
+        while (i < lines.length) {
+          const ln = lines[i];
+          if (/^\s*-\s+/.test(ln) || /^-\s+/.test(ln)) {
+            lines.splice(i, 1);
+            continue;
+          }
+          break;
+        }
+      }
+      break;
+    }
+  }
+  return ensureTrailingNewline(lines.join('\n'));
 }
 
 function buildTextWithFrontmatter(has, yaml, body) {
-  const fm = String(yaml || '').replace(/\n+$/, '\n');
+  const fm = ensureTrailingNewline(yaml);
   if (has) {
     return '---\n' + fm + '---\n' + String(body || '');
   }
@@ -354,15 +431,20 @@ class XmlRpc {
 function getConfig(ctx) {
   const cfg = (ctx && ctx.config) || {};
   const fmKeys = cfg.frontmatterKeys || {};
+  const publishOffsetRaw = cfg.publishTimeOffsetHours != null ? cfg.publishTimeOffsetHours : cfg.publishTimeOffset;
+  const syncOffsetRaw = cfg.syncTimeOffsetHours != null ? cfg.syncTimeOffsetHours : cfg.syncTimeOffset;
   return {
     endpoint: String(cfg.endpoint || '').trim(),
     username: String(cfg.username || '').trim(),
     password: String(cfg.password || ''),
-    blogId: String(cfg.blogId || '0').trim() || '0',
-    useCurrentTime: !!cfg.useCurrentTime,
-    publishTimeOffsetHours: Number(cfg.publishTimeOffsetHours || 0) || 0,
-    syncTimeOffsetHours: Number(cfg.syncTimeOffsetHours || 0) || 0,
+    blogId: String(cfg.blogId || cfg.defaultBlogId || '0').trim() || '0',
+    useFrontmatter: toBool(cfg.useFrontmatter, true),
+    useCurrentTime: toBool(cfg.useCurrentTime, false),
+    publishTimeOffsetHours: Number(publishOffsetRaw || 0) || 0,
+    syncTimeOffsetHours: Number(syncOffsetRaw || 0) || 0,
+    managePostsCount: toInt(cfg.managePostsCount, 20),
     keys: {
+      title: String(fmKeys.title || 'title'),
       cid: String(fmKeys.cid || 'typecho_cid'),
       slug: String(fmKeys.slug || 'slug'),
       tags: String(fmKeys.tags || 'tags'),
@@ -380,6 +462,19 @@ function assertConfig(conf) {
   if (!conf.password) throw new Error('Missing config.password');
 }
 
+function normalizeCidFromPostStruct(post) {
+  if (!post) return '';
+  const candidates = ['postid', 'postId', 'post_id', 'cid', 'id'];
+  for (let i = 0; i < candidates.length; i++) {
+    const k = candidates[i];
+    const v = post[k];
+    if (v === undefined || v === null) continue;
+    const s = String(v).trim();
+    if (s) return s;
+  }
+  return '';
+}
+
 function publish(ctx) {
   const conf = getConfig(ctx);
   assertConfig(conf);
@@ -390,12 +485,17 @@ function publish(ctx) {
   const yaml = split.yaml || '';
   const body = String(split.body || '');
 
-  const title = String(note.title || note.fileName || '').trim() || String(readFrontmatterScalar(yaml, 'title') || '').trim() || 'Untitled';
+  const titleFromFm = String(readFrontmatterScalar(yaml, conf.keys.title) || '').trim();
+  const title =
+    (conf.useFrontmatter ? titleFromFm : '') ||
+    String(note.title || note.fileName || '').trim() ||
+    titleFromFm ||
+    'Untitled';
   const slug = String(readFrontmatterScalar(yaml, conf.keys.slug) || '').trim();
   const tags = readFrontmatterList(yaml, conf.keys.tags);
   const categories = readFrontmatterList(yaml, conf.keys.categories);
   const draftRaw = readFrontmatterScalar(yaml, conf.keys.draft);
-  const draft = draftRaw === undefined ? false : !!draftRaw;
+  const draft = draftRaw === undefined ? false : toBool(draftRaw, false);
 
   if (!categories || categories.length === 0) {
     return { ok: false, message: 'categories 不能为空，请在 Frontmatter 里设置 ' + conf.keys.categories };
@@ -429,6 +529,13 @@ function publish(ctx) {
   const newCid = cid || String(result);
 
   let nextYaml = yaml;
+  if (conf.useFrontmatter) {
+    nextYaml = upsertFrontmatter(nextYaml, conf.keys.title, title);
+    nextYaml = upsertFrontmatter(nextYaml, conf.keys.tags, tags);
+    nextYaml = upsertFrontmatter(nextYaml, conf.keys.categories, categories);
+    nextYaml = upsertFrontmatter(nextYaml, conf.keys.draft, draft);
+    if (slug) nextYaml = upsertFrontmatter(nextYaml, conf.keys.slug, slug);
+  }
   nextYaml = upsertFrontmatter(nextYaml, conf.keys.cid, newCid);
   nextYaml = upsertFrontmatter(nextYaml, conf.keys.lastPublished, XmlRpc.iso8601(new Date()));
   nextYaml = upsertFrontmatter(nextYaml, conf.keys.dateCreated, XmlRpc.iso8601(postStruct.dateCreated));
@@ -469,10 +576,60 @@ function syncPublishDate(ctx) {
   return { ok: true, message: 'Synced dateCreated', setText: nextText };
 }
 
+function listRecentPosts(ctx) {
+  const conf = getConfig(ctx);
+  assertConfig(conf);
+
+  const xml = XmlRpc.buildCall('metaWeblog.getRecentPosts', [conf.blogId, conf.username, conf.password, conf.managePostsCount]);
+  const respText = api.http('POST', conf.endpoint, xml, 'text/xml');
+  const result = XmlRpc.parseResponse(respText);
+
+  if (!Array.isArray(result)) return { ok: false, message: 'getRecentPosts 返回格式异常' };
+  if (result.length === 0) return { ok: true, message: 'Recent posts: (empty)' };
+
+  const maxLines = Math.min(result.length, 8);
+  const lines = [];
+  for (let i = 0; i < maxLines; i++) {
+    const p = result[i] || {};
+    const cid = normalizeCidFromPostStruct(p) || '(?)';
+    const title = String(p.title || p['title'] || '').trim() || '(no title)';
+    lines.push(cid + ' - ' + title);
+  }
+  const suffix = result.length > maxLines ? ' …(+ ' + (result.length - maxLines) + ')' : '';
+  return { ok: true, message: 'Recent posts:\n' + lines.join('\n') + suffix };
+}
+
+function deletePost(ctx) {
+  const conf = getConfig(ctx);
+  assertConfig(conf);
+
+  const note = (ctx && ctx.note) || {};
+  const text = String(note.text || '');
+  const split = splitFrontmatter(text);
+  const yaml = split.yaml || '';
+  const body = String(split.body || '');
+
+  const cid = String(readFrontmatterScalar(yaml, conf.keys.cid) || '').trim();
+  if (!cid) return { ok: false, message: '未找到 CID（frontmatter: ' + conf.keys.cid + '）' };
+
+  const xml = XmlRpc.buildCall('blogger.deletePost', ['', String(cid), conf.username, conf.password, true]);
+  const respText = api.http('POST', conf.endpoint, xml, 'text/xml');
+  const result = XmlRpc.parseResponse(respText);
+  const ok = toBool(result, false);
+  if (!ok) return { ok: false, message: '删除失败（服务器返回: ' + String(result) + '）' };
+
+  let nextYaml = yaml;
+  nextYaml = removeFrontmatterKey(nextYaml, conf.keys.cid);
+  nextYaml = removeFrontmatterKey(nextYaml, conf.keys.lastPublished);
+  const nextText = buildTextWithFrontmatter(split.has || true, nextYaml, body);
+  return { ok: true, message: 'Deleted (cid=' + cid + ')', setText: nextText };
+}
+
 module.exports = {
   actions: {
     publish: publish,
     syncPublishDate: syncPublishDate,
+    listRecentPosts: listRecentPosts,
+    deletePost: deletePost,
   },
 };
-

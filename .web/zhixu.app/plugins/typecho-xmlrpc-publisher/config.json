@@ -3,10 +3,13 @@
   "username": "",
   "password": "",
   "blogId": "0",
+  "useFrontmatter": true,
   "useCurrentTime": false,
   "publishTimeOffsetHours": 0,
   "syncTimeOffsetHours": 0,
+  "managePostsCount": 20,
   "frontmatterKeys": {
+    "title": "title",
     "cid": "typecho_cid",
     "slug": "slug",
     "tags": "tags",
@@ -16,4 +19,3 @@
     "lastPublished": "typecho_lastPublished"
   }
 }
-

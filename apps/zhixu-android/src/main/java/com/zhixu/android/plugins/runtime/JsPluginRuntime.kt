@@ -2,6 +2,7 @@ package com.zhixu.android.plugins.runtime
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import com.zhixu.android.BuildConfig
 import com.zhixu.android.plugins.PluginManifest
@@ -63,7 +64,7 @@ class JsPluginRuntime(
                 V8.createV8Runtime()
             } catch (e: Throwable) {
                 if (e is CancellationException) throw e
-                val msg = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+                val msg = buildRuntimeUnavailableMessage(e)
                 return PluginActionResult(false, "Plugin runtime unavailable: $msg")
             }
         try {
@@ -74,7 +75,7 @@ class JsPluginRuntime(
                     v8.add("exports", exports)
 
                     V8Object(v8).useV8 { api ->
-                        registerApi(api, pluginId = pluginId, http = http)
+                        registerApi(v8, api, pluginId = pluginId, http = http)
                         v8.add("api", api)
 
                         v8.executeVoidScript(entryText, entryName, 1)
@@ -127,6 +128,23 @@ class JsPluginRuntime(
         } finally {
             runCatching { v8.close() }
         }
+    }
+
+    private fun buildRuntimeUnavailableMessage(e: Throwable): String {
+        val raw = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+        val abis = Build.SUPPORTED_ABIS?.joinToString() ?: "unknown"
+        val looksLikeMissingJ2v8 =
+            e is UnsatisfiedLinkError ||
+                raw.contains("J2v8 native library not", ignoreCase = true) ||
+                raw.contains("native library not loaded", ignoreCase = true)
+
+        if (!looksLikeMissingJ2v8) return raw
+
+        val hint =
+            "（设备 ABI=$abis）。当前构建只包含 arm64-v8a 的 J2V8 原生库，x86/x86_64 模拟器无法运行插件；" +
+                "请使用 arm64-v8a 真机或 arm64 系统镜像的模拟器。"
+
+        return raw + hint
     }
 
     private fun entryCandidates(manifest: PluginManifest): List<String> {
@@ -278,6 +296,7 @@ private class PluginApi(
 }
 
 private fun registerApi(
+    v8: V8,
     api: V8Object,
     pluginId: String,
     http: OkHttpClient,
@@ -298,7 +317,13 @@ private fun registerApi(
             val url = readV8Param(parameters, 1)?.toString().orEmpty()
             val body = readV8Param(parameters, 2)?.toString()
             val contentType = readV8Param(parameters, 3)?.toString()
-            impl.http(method = method, url = url, body = body, contentType = contentType)
+            try {
+                impl.http(method = method, url = url, body = body, contentType = contentType)
+            } catch (e: Throwable) {
+                val msg = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+                v8.executeVoidScript("throw new Error(${JSONObject.quote(msg)})")
+                V8.getUndefined()
+            }
         },
         "http",
     )

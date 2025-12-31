@@ -9,7 +9,8 @@
   ],
   "actions": [
     { "id": "publish", "label": "Publish", "icon": "publish", "place": "editor_fab", "ringIndex": 0 },
-    { "id": "syncPublishDate", "label": "Sync Time", "icon": "cloud_upload", "place": "editor_fab", "ringIndex": 1 }
+    { "id": "syncPublishDate", "label": "Sync Time", "icon": "cloud_upload", "place": "editor_fab", "ringIndex": 1 },
+    { "id": "listRecentPosts", "label": "Recent", "icon": "list", "place": "editor_fab", "ringIndex": 2 },
+    { "id": "deletePost", "label": "Delete", "icon": "delete", "place": "editor_fab", "ringIndex": 3 }
   ]
 }
-
