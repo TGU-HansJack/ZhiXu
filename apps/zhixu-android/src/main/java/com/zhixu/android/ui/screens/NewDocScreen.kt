@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.zhixu.android.ui.components.ZhixuTextField
 import com.zhixu.android.R
+import com.zhixu.android.data.UiDoc
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.Ionicons
 import com.zhixu.android.sync.VaultAutoSync
@@ -50,7 +51,7 @@ import kotlinx.coroutines.launch
 fun NewDocScreen(
     vaultRootUri: Uri,
     repository: VaultRepository,
-    onCreated: (String) -> Unit,
+    onCreated: (UiDoc) -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -117,7 +118,7 @@ fun NewDocScreen(
                                         )
                                     }
 
-                                    onCreated(created.uri.toString())
+                                    onCreated(created)
                                 }
                             },
                         ) {

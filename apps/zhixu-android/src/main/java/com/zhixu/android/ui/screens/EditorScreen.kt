@@ -172,6 +172,7 @@ import kotlinx.coroutines.withContext
 import java.io.FileNotFoundException
 import org.json.JSONObject
 import androidx.documentfile.provider.DocumentFile
+import com.zhixu.android.ui.DocListMutation
 
 data class LongImageRequest(
     val markdown: String,
@@ -187,7 +188,7 @@ fun EditorScreen(
     vaultRootUri: Uri?,
     repository: VaultRepository,
     onBack: () -> Unit,
-    onDocListMutated: () -> Unit,
+    onDocListMutated: (DocListMutation) -> Unit,
     onOpenDoc: (String, String?, Int?) -> Unit,
     onGenerateLongImage: (LongImageRequest) -> Unit,
     initialQuery: String?,
@@ -1085,7 +1086,7 @@ fun EditorScreen(
             } ?: return@LaunchedEffect
         currentDocUri = renamedUri
         EditorScreenCache.move(oldUri, renamedUri)
-        onDocListMutated()
+        onDocListMutated(DocListMutation.Renamed(oldUri = oldUri, newUri = renamedUri))
         originalFileName =
             withContext(Dispatchers.IO) {
                 if (renamedUri.scheme.equals("file", ignoreCase = true)) {
@@ -1998,7 +1999,7 @@ fun EditorScreen(
                                         docUri = latestDocUri,
                                     )
                                 }
-                                onDocListMutated()
+                                onDocListMutated(DocListMutation.Deleted(docUri = latestDocUri))
                                 latestOnBack()
                                 Toast.makeText(context, context.getString(R.string.editor_deleted), Toast.LENGTH_SHORT).show()
                             } else {

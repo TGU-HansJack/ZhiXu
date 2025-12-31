@@ -44,6 +44,34 @@ import com.zhixu.android.R
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.data.VaultTreeEntry
 import com.zhixu.android.ui.Ionicons
+import com.zhixu.android.ui.DocListMutation
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+private object VaultDrawerCache {
+    private const val MaxEntries = 4
+    private val lock = Any()
+    private val cache =
+        object : LinkedHashMap<String, Entry>(MaxEntries, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>?): Boolean = size > MaxEntries
+        }
+
+    data class Entry(
+        val entries: List<VaultTreeEntry>,
+        val updatedAtMs: Long,
+        val refreshToken: Long,
+    )
+
+    fun get(rootUri: Uri?): Entry? {
+        val key = rootUri?.toString().orEmpty()
+        if (key.isBlank()) return null
+        return synchronized(lock) { cache[key] }
+    }
+
+    fun put(rootUri: Uri, entry: Entry) {
+        synchronized(lock) { cache[rootUri.toString()] = entry }
+    }
+}
 
 @Composable
 fun VaultDrawer(
@@ -51,16 +79,142 @@ fun VaultDrawer(
     repository: VaultRepository,
     onOpenDoc: (String) -> Unit,
     onCloseDrawer: () -> Unit,
+    isActive: Boolean,
+    refreshToken: Long,
+    mutation: DocListMutation?,
     modifier: Modifier = Modifier,
 ) {
-    var entries by remember(vaultRootUri) { mutableStateOf<List<VaultTreeEntry>>(emptyList()) }
+    var entries by
+        remember(vaultRootUri) {
+            mutableStateOf(VaultDrawerCache.get(vaultRootUri)?.entries ?: emptyList())
+        }
     var errorText by remember(vaultRootUri) { mutableStateOf<String?>(null) }
     var isLoading by remember(vaultRootUri) { mutableStateOf(false) }
+    var cacheUpdatedAtMs by remember(vaultRootUri) { mutableStateOf(VaultDrawerCache.get(vaultRootUri)?.updatedAtMs ?: 0L) }
+    var handledRefreshToken by remember(vaultRootUri) { mutableStateOf(VaultDrawerCache.get(vaultRootUri)?.refreshToken ?: 0L) }
 
-    LaunchedEffect(vaultRootUri) {
+    suspend fun reorderAndNormalize(next: List<VaultTreeEntry>): List<VaultTreeEntry> =
+        withContext(Dispatchers.Default) {
+            val entryByPath = next.associateBy { it.relativePath }
+            val byParent = next.groupBy { it.parentPath }
+
+            fun sortChildren(children: List<VaultTreeEntry>): List<VaultTreeEntry> =
+                children.sortedWith(
+                    compareByDescending<VaultTreeEntry> { it.isDirectory }
+                        .thenBy { it.name.lowercase() },
+                )
+
+            val out = ArrayList<VaultTreeEntry>(next.size)
+
+            fun walk(parentPath: String?, depth: Int) {
+                val children = byParent[parentPath] ?: return
+                for (child in sortChildren(children)) {
+                    out += child.copy(depth = depth)
+                    if (child.isDirectory) {
+                        walk(child.relativePath, depth + 1)
+                    }
+                }
+            }
+
+            // Best-effort: only emit nodes reachable from root; if we detect orphans, fall back to the original list.
+            walk(parentPath = null, depth = 0)
+            if (out.size != next.size) next else out
+        }
+
+    suspend fun tryApplyMutation(current: List<VaultTreeEntry>, mutation: DocListMutation): List<VaultTreeEntry>? {
+        val rel =
+            when (mutation) {
+                is DocListMutation.Created -> repository.computeRelativePath(vaultRootUri, mutation.doc.uri)
+                is DocListMutation.Deleted -> repository.computeRelativePath(vaultRootUri, mutation.docUri)
+                is DocListMutation.Renamed -> repository.computeRelativePath(vaultRootUri, mutation.oldUri)
+            } ?: return null
+
+        fun parentPathOf(path: String): String? {
+            val normalized = path.replace('\\', '/').trimStart('/')
+            val slash = normalized.lastIndexOf('/')
+            if (slash < 0) return null
+            return normalized.substring(0, slash + 1)
+        }
+
+        val currentByPath = current.associateBy { it.relativePath }
+        val targetParent = parentPathOf(rel)
+        if (targetParent != null && currentByPath[targetParent]?.isDirectory != true) return null
+
+        val next =
+            when (mutation) {
+                is DocListMutation.Created -> {
+                    val createdRel = repository.computeRelativePath(vaultRootUri, mutation.doc.uri) ?: return null
+                    val name = mutation.doc.name
+                    val p = parentPathOf(createdRel)
+                    if (p != null && currentByPath[p]?.isDirectory != true) return null
+                    val depth = p?.count { it == '/' } ?: 0
+                    val newEntry =
+                        VaultTreeEntry(
+                            relativePath = createdRel,
+                            name = name,
+                            uri = mutation.doc.uri,
+                            isDirectory = false,
+                            parentPath = p,
+                            depth = depth,
+                        )
+                    val without = current.filterNot { it.relativePath == createdRel }
+                    without + newEntry
+                }
+
+                is DocListMutation.Deleted -> {
+                    current.filterNot { it.relativePath == rel }
+                }
+
+                is DocListMutation.Renamed -> {
+                    val oldRel = repository.computeRelativePath(vaultRootUri, mutation.oldUri) ?: return null
+                    val newRel = repository.computeRelativePath(vaultRootUri, mutation.newUri) ?: return null
+                    val name = newRel.substringAfterLast('/')
+                    val p = parentPathOf(newRel)
+                    if (p != null && currentByPath[p]?.isDirectory != true) return null
+                    val depth = p?.count { it == '/' } ?: 0
+                    val newEntry =
+                        VaultTreeEntry(
+                            relativePath = newRel,
+                            name = name,
+                            uri = mutation.newUri,
+                            isDirectory = false,
+                            parentPath = p,
+                            depth = depth,
+                        )
+                    val without = current.filterNot { it.relativePath == oldRel || it.relativePath == newRel }
+                    without + newEntry
+                }
+            }
+
+        return reorderAndNormalize(next)
+    }
+
+    LaunchedEffect(vaultRootUri, isActive, refreshToken) {
+        if (!isActive) return@LaunchedEffect
+        val now = System.currentTimeMillis()
+        val cacheAgeMs = if (cacheUpdatedAtMs > 0L) (now - cacheUpdatedAtMs) else Long.MAX_VALUE
+        val tokenChanged = refreshToken != handledRefreshToken
+        if (tokenChanged && entries.isNotEmpty()) {
+            val m = mutation
+            val applied = if (m != null) runCatching { tryApplyMutation(entries, m) }.getOrNull() else null
+            if (applied != null) {
+                entries = applied
+                handledRefreshToken = refreshToken
+                cacheUpdatedAtMs = now
+                VaultDrawerCache.put(
+                    vaultRootUri,
+                    VaultDrawerCache.Entry(entries = applied, updatedAtMs = now, refreshToken = refreshToken),
+                )
+                return@LaunchedEffect
+            }
+        }
+
+        val shouldRefresh = entries.isEmpty() || tokenChanged || cacheAgeMs > 30 * 60 * 1000L
+        if (!shouldRefresh) return@LaunchedEffect
+
         isLoading = true
         errorText = null
-        entries =
+        val loaded =
             runCatching {
                 repository.listVaultTreeEntries(
                     rootUri = vaultRootUri,
@@ -71,6 +225,13 @@ fun VaultDrawer(
                 errorText = e.message ?: e.javaClass.simpleName
                 emptyList()
             }
+        entries = loaded
+        handledRefreshToken = refreshToken
+        cacheUpdatedAtMs = now
+        VaultDrawerCache.put(
+            vaultRootUri,
+            VaultDrawerCache.Entry(entries = loaded, updatedAtMs = now, refreshToken = refreshToken),
+        )
         isLoading = false
     }
 

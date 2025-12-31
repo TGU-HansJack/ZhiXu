@@ -57,6 +57,9 @@ class VaultRepository(
     private val appConfigDirName = ".zhixu"
     private val indexRepository = VaultIndexRepository(context)
     private val dueFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+    @Volatile private var indexBuildInProgress: Boolean = false
+
+    fun isIndexBuildInProgress(): Boolean = indexBuildInProgress
 
     private data class DocListCacheEntry(
         val docs: List<UiDoc>,
@@ -75,6 +78,35 @@ class VaultRepository(
         synchronized(docListCache) {
             val existing = docListCache[key] ?: return
             docListCache[key] = existing.copy(isDirty = true)
+        }
+    }
+
+    suspend fun setDocListCache(
+        rootUri: Uri,
+        docs: List<UiDoc>,
+        isDirty: Boolean = false,
+    ) {
+        val key = rootUri.toString()
+        val nowUptime = SystemClock.uptimeMillis()
+        val nowWall = System.currentTimeMillis()
+        docListCacheLock.withLock {
+            val prev = synchronized(docListCache) { docListCache[key] }
+            val docsDirUri = prev?.docsDirUri ?: runCatching { vaultRootToDocumentFile(context, rootUri)?.uri }.getOrNull()
+            val entry =
+                DocListCacheEntry(
+                    docs = docs,
+                    listedAtUptimeMs = nowUptime,
+                    listedAtWallMs = nowWall,
+                    isDirty = isDirty,
+                    docsDirUri = docsDirUri,
+                )
+            synchronized(docListCache) {
+                docListCache[key] = entry
+                while (docListCache.size > docListCacheMaxEntries) {
+                    val eldestKey = docListCache.entries.firstOrNull()?.key ?: break
+                    docListCache.remove(eldestKey)
+                }
+            }
         }
     }
 
@@ -200,6 +232,44 @@ class VaultRepository(
                     if (idx < 0 || cursor.isNull(idx)) 0L else cursor.getLong(idx)
                 } ?: 0L
             }.getOrDefault(0L)
+        }
+
+    suspend fun statDocUi(docUri: Uri): UiDoc? =
+        withContext(Dispatchers.IO) {
+            val name: String?
+            val lastModified: Long
+            val size: Long
+
+            if (docUri.scheme.equals("file", ignoreCase = true)) {
+                val path = docUri.path ?: return@withContext null
+                val file = File(path)
+                if (!file.exists()) return@withContext null
+                name = file.name
+                lastModified = file.lastModified()
+                size = file.length()
+            } else {
+                val stat = DocumentFile.fromSingleUri(context, docUri) ?: return@withContext null
+                name = stat.name
+                lastModified = stat.lastModified()
+                size = stat.length()
+            }
+
+            val uriStr = docUri.toString()
+            val createdAt =
+                runCatching { indexRepository.getDocCreatedAtMap(listOf(uriStr))[uriStr] }
+                    .getOrNull()
+                    ?: lastModified
+            val safeName = name ?: "Document.md"
+            UiDoc(
+                name = safeName,
+                uri = docUri,
+                lastModified = lastModified,
+                size = size,
+                baseName = computeDocBaseName(safeName),
+                createdAt = createdAt,
+                createdAtText = if (createdAt > 0L) formatEditedAt(createdAt) else "",
+                editedAtText = if (lastModified > 0L) formatEditedAt(lastModified) else "",
+            )
         }
 
     suspend fun hasAnyIndexedDocs(): Boolean =
@@ -446,18 +516,23 @@ class VaultRepository(
     }
 
     suspend fun rebuildIndex(rootUri: Uri) = withContext(Dispatchers.IO) {
-        ensureVaultStructure(rootUri)
-        val docs = listMarkdownDocs(rootUri)
-        val coroutineContext = currentCoroutineContext()
-        for (doc in docs) {
-            coroutineContext.ensureActive()
-            runCatching {
-                val content = readText(doc.uri)
-                indexRepository.indexDocument(doc, content)
-            }.onFailure {
-                Log.e("Zhixu", "Index failed for ${doc.uri}", it)
+        indexBuildInProgress = true
+        try {
+            ensureVaultStructure(rootUri)
+            val docs = listMarkdownDocs(rootUri)
+            val coroutineContext = currentCoroutineContext()
+            for (doc in docs) {
+                coroutineContext.ensureActive()
+                runCatching {
+                    val content = readText(doc.uri)
+                    indexRepository.indexDocument(doc, content)
+                }.onFailure {
+                    Log.e("Zhixu", "Index failed for ${doc.uri}", it)
+                }
+                yield()
             }
-            yield()
+        } finally {
+            indexBuildInProgress = false
         }
     }
 

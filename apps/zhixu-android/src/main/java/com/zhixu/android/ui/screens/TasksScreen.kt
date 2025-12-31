@@ -75,6 +75,9 @@ import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.sync.VaultAutoSync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -96,13 +99,14 @@ fun TasksScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val initialCacheEntry = remember(vaultRootUri) { TasksScreenCache.get(vaultRootUri) }
     var tasks by
         remember(vaultRootUri) {
-            mutableStateOf(TasksScreenCache.get(vaultRootUri)?.tasks ?: emptyList())
+            mutableStateOf(initialCacheEntry?.tasks ?: emptyList())
         }
     var completed by
         remember(vaultRootUri) {
-            mutableStateOf(TasksScreenCache.get(vaultRootUri)?.completed ?: emptyList())
+            mutableStateOf(initialCacheEntry?.completed ?: emptyList())
         }
     var showCompleted by remember { mutableStateOf(false) }
     var addJob by remember { mutableStateOf<Job?>(null) }
@@ -111,6 +115,9 @@ fun TasksScreen(
     var lastRefreshAtMs by remember { mutableStateOf(0L) }
     var lastRefreshBannerAtMs by remember { mutableStateOf(0L) }
     var isPullRefreshing by remember(vaultRootUri) { mutableStateOf(false) }
+    var cacheUpdatedAtMs by remember(vaultRootUri) { mutableStateOf(initialCacheEntry?.updatedAtMs ?: 0L) }
+    var indexReady by remember(vaultRootUri) { mutableStateOf<Boolean?>(null) }
+    var indexBuilding by remember(vaultRootUri) { mutableStateOf(false) }
 
     suspend fun refresh(force: Boolean, showUpdatedBanner: Boolean) {
         val root = vaultRootUri ?: return
@@ -118,23 +125,43 @@ fun TasksScreen(
         if (!force && now - lastRefreshAtMs in 0..500) return
 
         isPullRefreshing = true
-        val (nextTasks, nextCompleted) =
+        val (ready, nextTasks, nextCompleted) =
             try {
                 withContext(Dispatchers.IO) {
-                    runCatching { repository.ensureIndexBuilt(root) }
-                    val t = repository.getAllTasks(status = VaultIndexRepository.TaskStatusFilter.Undone)
-                    val c = repository.getRecentCompletedTasks(limit = 50)
-                    t to c
+                    val isReady = runCatching { repository.hasAnyIndexedDocs() }.getOrDefault(false)
+                    if (!isReady) {
+                        Triple(false, emptyList(), emptyList())
+                    } else {
+                        val t = repository.getAllTasks(status = VaultIndexRepository.TaskStatusFilter.Undone)
+                        val c = repository.getRecentCompletedTasks(limit = 50)
+                        Triple(true, t, c)
+                    }
                 }
             } finally {
                 isPullRefreshing = false
             }
 
+        indexReady = ready
         tasks = nextTasks
         completed = nextCompleted
-        TasksScreenCache.put(root, TasksScreenCache.Entry(tasks = nextTasks, completed = nextCompleted))
+        val updatedAtMs = System.currentTimeMillis()
+        cacheUpdatedAtMs = updatedAtMs
+        TasksScreenCache.put(root, TasksScreenCache.Entry(tasks = nextTasks, completed = nextCompleted, updatedAtMs = updatedAtMs))
         lastRefreshAtMs = android.os.SystemClock.uptimeMillis()
         if (showUpdatedBanner) lastRefreshBannerAtMs = android.os.SystemClock.uptimeMillis()
+    }
+
+    fun requestIndexBuild() {
+        val root = vaultRootUri ?: return
+        if (indexBuilding) return
+        scope.launch {
+            indexBuilding = true
+            runCatching {
+                withContext(Dispatchers.IO) { repository.rebuildIndex(root) }
+            }
+            indexBuilding = false
+            refresh(force = true, showUpdatedBanner = false)
+        }
     }
 
     fun submitTaskDraft(draft: TaskDraft) {
@@ -172,7 +199,28 @@ fun TasksScreen(
 
     LaunchedEffect(vaultRootUri, isActive) {
         if (!isActive) return@LaunchedEffect
-        refresh(force = false, showUpdatedBanner = false)
+        if (vaultRootUri == null) return@LaunchedEffect
+        indexReady = withContext(Dispatchers.IO) { runCatching { repository.hasAnyIndexedDocs() }.getOrDefault(false) }
+        val cacheAgeMs = if (cacheUpdatedAtMs > 0L) (System.currentTimeMillis() - cacheUpdatedAtMs) else Long.MAX_VALUE
+        if (indexReady == true && (tasks.isEmpty() || cacheAgeMs > 3 * 60 * 1000L)) {
+            refresh(force = tasks.isEmpty(), showUpdatedBanner = false)
+        }
+    }
+
+    LaunchedEffect(vaultRootUri, isActive, indexReady) {
+        if (!isActive) return@LaunchedEffect
+        val root = vaultRootUri ?: return@LaunchedEffect
+        if (indexReady != false) return@LaunchedEffect
+        while (currentCoroutineContext().isActive) {
+            indexBuilding = repository.isIndexBuildInProgress()
+            val ready = withContext(Dispatchers.IO) { runCatching { repository.hasAnyIndexedDocs() }.getOrDefault(false) }
+            indexReady = ready
+            if (ready) {
+                refresh(force = true, showUpdatedBanner = false)
+                return@LaunchedEffect
+            }
+            delay(2_000)
+        }
     }
 
     Scaffold(
@@ -188,8 +236,8 @@ fun TasksScreen(
         ) {
             val pullState = rememberPullToRefreshState()
             PullToRefreshBox(
-                isRefreshing = isPullRefreshing,
-                onRefresh = { scope.launch { refresh(force = true, showUpdatedBanner = true) } },
+                isRefreshing = isActive && isPullRefreshing,
+                onRefresh = { if (isActive) scope.launch { refresh(force = true, showUpdatedBanner = true) } },
                 state = pullState,
                 modifier = Modifier.fillMaxSize(),
             ) {
@@ -202,6 +250,28 @@ fun TasksScreen(
                         if (vaultRootUri == null) {
                             item { Text(stringResource(R.string.settings_vault_not_selected), modifier = Modifier.padding(16.dp)) }
                             return@LazyColumn
+                        }
+
+                        if (indexReady == false) {
+                            item {
+                                androidx.compose.foundation.layout.Column(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(
+                                        text = if (indexBuilding || repository.isIndexBuildInProgress()) "索引构建中…" else "任务索引未就绪（将在后台空闲时自动构建）",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                    Button(
+                                        onClick = { requestIndexBuild() },
+                                        enabled = !(indexBuilding || repository.isIndexBuildInProgress()),
+                                    ) {
+                                        Text("立即构建索引")
+                                    }
+                                    HorizontalDivider(thickness = 0.5.dp)
+                                }
+                            }
                         }
 
                         item {
@@ -316,6 +386,7 @@ private object TasksScreenCache {
     data class Entry(
         val tasks: List<UiTask>,
         val completed: List<UiTask>,
+        val updatedAtMs: Long,
     )
 
     fun get(rootUri: Uri?): Entry? {

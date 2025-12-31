@@ -107,6 +107,7 @@ import com.zhixu.android.data.appManagedVaultRootUri
 import com.zhixu.android.data.UiPreferences
 import com.zhixu.android.sync.VaultAutoSync
 import com.zhixu.android.sync.WebDavAutoSync
+import com.zhixu.android.ui.DocListMutation
 import com.zhixu.android.ui.components.VaultDrawer
 import com.zhixu.android.ui.screens.DocumentListScreen
 import com.zhixu.android.ui.screens.EditorScreen
@@ -120,10 +121,14 @@ import com.zhixu.android.ui.screens.VaultGateScreen
 import com.zhixu.android.ui.screens.VaultSettingsScreen
 import com.zhixu.android.ui.screens.WorkshopScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
+import androidx.compose.runtime.snapshotFlow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -252,9 +257,30 @@ fun ZhixuApp() {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
-    var docListRefreshToken by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(vaultRootUriString) {
+        val root = vaultRootUri ?: return@LaunchedEffect
+        // Keep expensive full-scan index builds out of normal UI paths: build only on cold start / idle.
+        delay(15_000)
+        val alreadyReady = runCatching { withContext(Dispatchers.IO) { repository.hasAnyIndexedDocs() } }.getOrDefault(true)
+        if (alreadyReady) return@LaunchedEffect
+
+        snapshotFlow { currentRoute }
+            .filter { route -> route == null || !route.startsWith("edit") }
+            .first()
+
+        withContext(Dispatchers.IO) {
+            if (!repository.hasAnyIndexedDocs()) {
+                runCatching { repository.rebuildIndex(root) }
+            }
+        }
+    }
+
     var docSearchRequestToken by remember { mutableLongStateOf(0L) }
     var meRefreshToken by remember { mutableLongStateOf(0L) }
+    var docListMutationToken by remember { mutableLongStateOf(0L) }
+    var docListMutation by remember { mutableStateOf<DocListMutation?>(null) }
+    var dirStructureMutationToken by remember { mutableLongStateOf(0L) }
+    var dirStructureMutation by remember { mutableStateOf<DocListMutation?>(null) }
 
     val showTopBar = currentRoute in setOf("home")
     val showBottomBar = currentRoute in setOf("home", "me")
@@ -459,8 +485,9 @@ fun ZhixuApp() {
                         prefs = prefs,
                         repository = repository,
                         pagerState = pagerState,
-                        docListRefreshToken = docListRefreshToken,
                         docSearchRequestToken = docSearchRequestToken,
+                        docListMutationToken = docListMutationToken,
+                        docListMutation = docListMutation,
                         onOpenDoc = ::openDoc,
                         onNewDoc = { navController.navigate("newDoc") },
                         onChangeVault = {
@@ -547,9 +574,13 @@ fun ZhixuApp() {
                     NewDocScreen(
                         vaultRootUri = root,
                         repository = repository,
-                        onCreated = { rawUri ->
-                            docListRefreshToken += 1L
-                            navController.navigate("edit?uri=${Uri.encode(rawUri)}") {
+                        onCreated = { created ->
+                            val mutation = DocListMutation.Created(created)
+                            docListMutation = mutation
+                            docListMutationToken += 1L
+                            dirStructureMutation = mutation
+                            dirStructureMutationToken += 1L
+                            navController.navigate("edit?uri=${Uri.encode(created.uri.toString())}") {
                                 popUpTo("home") { inclusive = false }
                             }
                         },
@@ -616,7 +647,12 @@ fun ZhixuApp() {
                         vaultRootUri = vaultRootUri,
                         repository = repository,
                         onBack = { navController.popBackStack() },
-                        onDocListMutated = { docListRefreshToken += 1L },
+                        onDocListMutated = { mutation ->
+                            docListMutation = mutation
+                            docListMutationToken += 1L
+                            dirStructureMutation = mutation
+                            dirStructureMutationToken += 1L
+                        },
                         onOpenDoc = ::openDoc,
                         onGenerateLongImage = { req ->
                             navController.currentBackStackEntry?.savedStateHandle?.apply {
@@ -647,6 +683,9 @@ fun ZhixuApp() {
                         repository = repository,
                         onOpenDoc = { rawUri -> openDoc(rawUri) },
                         onCloseDrawer = { scope.launch { drawerState.close() } },
+                        isActive = drawerState.isOpen,
+                        refreshToken = dirStructureMutationToken,
+                        mutation = dirStructureMutation,
                     )
                 },
             ) {
@@ -667,13 +706,14 @@ private fun Modifier.edgeSwipeToOpenDrawer(
 
         val density = LocalDensity.current
         val edgeWidthPx = with(density) { 48.dp.toPx() }
-        val openThresholdPx = with(density) { 18.dp.toPx() }
+        val openThresholdPx = with(density) { 24.dp.toPx() }
         val touchSlopPx = androidx.compose.ui.platform.LocalViewConfiguration.current.touchSlop
 
         var tracking = false
         var downX = 0f
         var downY = 0f
         var opened = false
+        var everMoved = false
 
         pointerInteropFilter { ev ->
             if (!enabled) return@pointerInteropFilter false
@@ -681,6 +721,7 @@ private fun Modifier.edgeSwipeToOpenDrawer(
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     opened = false
+                    everMoved = false
                     tracking = ev.x <= edgeWidthPx
                     downX = ev.x
                     downY = ev.y
@@ -690,17 +731,12 @@ private fun Modifier.edgeSwipeToOpenDrawer(
                 MotionEvent.ACTION_MOVE -> {
                     if (!tracking) return@pointerInteropFilter false
                     if (opened) return@pointerInteropFilter true
+                    everMoved = true
                     val dx = ev.x - downX
                     val dy = ev.y - downY
-                    if (abs(dy) > abs(dx) && abs(dy) > touchSlopPx * 1.2f) {
+                    if (abs(dy) > abs(dx) * 0.8f && abs(dy) > touchSlopPx) {
                         tracking = false
                         return@pointerInteropFilter false
-                    }
-                    if (dx > openThresholdPx.coerceAtLeast(touchSlopPx * 0.8f)) {
-                        opened = true
-                        tracking = false
-                        onOpen()
-                        return@pointerInteropFilter true
                     }
                     true
                 }
@@ -708,8 +744,18 @@ private fun Modifier.edgeSwipeToOpenDrawer(
                 MotionEvent.ACTION_UP,
                 MotionEvent.ACTION_CANCEL,
                 -> {
+                    if (!tracking) return@pointerInteropFilter false
+                    val dx = ev.x - downX
+                    val dy = ev.y - downY
+                    val horizontalEnough = dx > openThresholdPx.coerceAtLeast(touchSlopPx)
+                    val angleOk = abs(dx) > abs(dy) * 1.25f
+                    val shouldOpen = ev.actionMasked == MotionEvent.ACTION_UP && everMoved && horizontalEnough && angleOk
                     tracking = false
-                    opened = false
+                    opened = shouldOpen
+                    if (shouldOpen) {
+                        onOpen()
+                        return@pointerInteropFilter true
+                    }
                     false
                 }
 
@@ -821,8 +867,9 @@ private fun HomePager(
     prefs: VaultPreferences,
     repository: VaultRepository,
     pagerState: androidx.compose.foundation.pager.PagerState,
-    docListRefreshToken: Long,
     docSearchRequestToken: Long,
+    docListMutationToken: Long,
+    docListMutation: DocListMutation?,
     onOpenDoc: (String, String?, Int?) -> Unit,
     onNewDoc: () -> Unit,
     onChangeVault: () -> Unit,
@@ -841,7 +888,8 @@ private fun HomePager(
                     prefs = prefs,
                     repository = repository,
                     isActive = isActive,
-                    refreshToken = docListRefreshToken,
+                    docListMutationToken = docListMutationToken,
+                    docListMutation = docListMutation,
                     searchRequestToken = docSearchRequestToken,
                     onOpenDoc = onOpenDoc,
                     onNewDoc = onNewDoc,
