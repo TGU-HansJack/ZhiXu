@@ -71,7 +71,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import android.view.MotionEvent
+import android.graphics.Rect
 import kotlin.math.abs
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
+import androidx.core.view.ViewCompat
+import androidx.compose.ui.platform.LocalView
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -298,10 +308,28 @@ fun ZhixuApp() {
     Surface(color = MaterialTheme.colorScheme.background) {
         val appContent: @Composable () -> Unit = {
             val edgeSwipeEnabled = drawerEnabled && drawerState.isClosed
+            var homeSize by remember { mutableStateOf(IntSize.Zero) }
+            val view = LocalView.current
+            val density = LocalDensity.current
+            val exclusionWidthPx = with(density) { 24.dp.toPx() }.toInt().coerceAtLeast(1)
+
+            DisposableEffect(drawerEnabled, homeSize) {
+                if (drawerEnabled && homeSize.height > 0) {
+                    val rect = Rect(0, 0, exclusionWidthPx, homeSize.height)
+                    ViewCompat.setSystemGestureExclusionRects(view, listOf(rect))
+                } else {
+                    ViewCompat.setSystemGestureExclusionRects(view, emptyList())
+                }
+                onDispose {
+                    ViewCompat.setSystemGestureExclusionRects(view, emptyList())
+                }
+            }
+
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
+                        .onSizeChanged { homeSize = it }
                         .edgeSwipeToOpenDrawer(
                             enabled = edgeSwipeEnabled,
                             onOpen = { scope.launch { drawerState.open() } },
@@ -638,8 +666,9 @@ private fun Modifier.edgeSwipeToOpenDrawer(
         if (!enabled) return@composed this
 
         val density = LocalDensity.current
-        val edgeWidthPx = with(density) { 32.dp.toPx() }
-        val openThresholdPx = with(density) { 36.dp.toPx() }
+        val edgeWidthPx = with(density) { 48.dp.toPx() }
+        val openThresholdPx = with(density) { 18.dp.toPx() }
+        val touchSlopPx = androidx.compose.ui.platform.LocalViewConfiguration.current.touchSlop
 
         var tracking = false
         var downX = 0f
@@ -655,24 +684,25 @@ private fun Modifier.edgeSwipeToOpenDrawer(
                     tracking = ev.x <= edgeWidthPx
                     downX = ev.x
                     downY = ev.y
-                    false
+                    tracking
                 }
 
                 MotionEvent.ACTION_MOVE -> {
-                    if (!tracking || opened) return@pointerInteropFilter false
+                    if (!tracking) return@pointerInteropFilter false
+                    if (opened) return@pointerInteropFilter true
                     val dx = ev.x - downX
                     val dy = ev.y - downY
-                    if (abs(dy) > abs(dx) && abs(dy) > 12f) {
+                    if (abs(dy) > abs(dx) && abs(dy) > touchSlopPx * 1.2f) {
                         tracking = false
                         return@pointerInteropFilter false
                     }
-                    if (dx > openThresholdPx) {
+                    if (dx > openThresholdPx.coerceAtLeast(touchSlopPx * 0.8f)) {
                         opened = true
                         tracking = false
                         onOpen()
                         return@pointerInteropFilter true
                     }
-                    false
+                    true
                 }
 
                 MotionEvent.ACTION_UP,
