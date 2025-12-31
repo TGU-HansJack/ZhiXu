@@ -259,6 +259,13 @@ fun ZhixuApp() {
 
     LaunchedEffect(vaultRootUriString) {
         val root = vaultRootUri ?: return@LaunchedEffect
+        // Build the directory index in the background so the drawer can be O(1) (DB read only).
+        delay(1_500)
+        withContext(Dispatchers.IO) { runCatching { repository.ensureDirIndexBuilt(root, force = false) } }
+    }
+
+    LaunchedEffect(vaultRootUriString) {
+        val root = vaultRootUri ?: return@LaunchedEffect
         // Keep expensive full-scan index builds out of normal UI paths: build only on cold start / idle.
         delay(15_000)
         val alreadyReady = runCatching { withContext(Dispatchers.IO) { repository.hasAnyIndexedDocs() } }.getOrDefault(true)

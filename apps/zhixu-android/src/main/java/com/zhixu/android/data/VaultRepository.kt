@@ -56,10 +56,14 @@ class VaultRepository(
 ) {
     private val appConfigDirName = ".zhixu"
     private val indexRepository = VaultIndexRepository(context)
+    private val dirIndexRepository = VaultDirIndexRepository(context)
     private val dueFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
     @Volatile private var indexBuildInProgress: Boolean = false
+    @Volatile private var dirIndexBuildInProgress: Boolean = false
+    private val dirIndexBuildLock = Mutex()
 
     fun isIndexBuildInProgress(): Boolean = indexBuildInProgress
+    fun isDirIndexBuildInProgress(): Boolean = dirIndexBuildInProgress
 
     private data class DocListCacheEntry(
         val docs: List<UiDoc>,
@@ -504,6 +508,102 @@ class VaultRepository(
         out
     }
 
+    private fun normalizeDirPath(path: String?): String? {
+        val cleaned =
+            path
+                .orEmpty()
+                .replace('\\', '/')
+                .trim()
+                .trimStart('/')
+                .let { p -> if (p.isBlank()) "" else p.trimEnd('/') + "/" }
+        return cleaned.takeIf { it.isNotBlank() }
+    }
+
+    private fun shouldSkipDirIndexPath(path: String): Boolean {
+        val p = path.trimStart('/').replace('\\', '/')
+        if (p.equals(appConfigDirName, ignoreCase = true)) return true
+        if (p.startsWith("$appConfigDirName/", ignoreCase = true)) return true
+        return false
+    }
+
+    private fun isMarkdownDocument(file: DocumentFile): Boolean {
+        if (!file.isFile) return false
+        val name = file.name
+        val mime = file.type
+        val looksLikeMarkdown = name?.endsWith(".md", ignoreCase = true) == true
+        val isTextMarkdown =
+            mime.equals("text/markdown", ignoreCase = true) ||
+                mime.equals("text/x-markdown", ignoreCase = true)
+        val isPlainText = mime.equals("text/plain", ignoreCase = true)
+        return looksLikeMarkdown || isTextMarkdown || isPlainText
+    }
+
+    private suspend fun listVaultChildrenDirIndexEntriesLive(
+        rootUri: Uri,
+        parentRelativePath: String?,
+        includeNonMarkdownFiles: Boolean,
+        includeHidden: Boolean,
+    ): List<VaultDirIndexRepository.DirIndexEntry> = withContext(Dispatchers.IO) {
+        val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext emptyList()
+        val parentPathKey = normalizeDirPath(parentRelativePath)
+        if (parentPathKey != null && shouldSkipDirIndexPath(parentPathKey)) return@withContext emptyList()
+
+        var dir: DocumentFile = root
+        if (parentPathKey != null) {
+            val parts = parentPathKey.trimEnd('/').split('/').filter { it.isNotBlank() }
+            for (part in parts) {
+                val next = findChild(dir, part) ?: return@withContext emptyList()
+                if (!next.isDirectory) return@withContext emptyList()
+                dir = next
+            }
+        }
+
+        val children =
+            dir
+                .listFiles()
+                .asSequence()
+                .filter { child ->
+                    val name = child.name ?: return@filter false
+                    if (!includeHidden && name.startsWith(".")) return@filter false
+                    true
+                }
+                .sortedWith(
+                    compareByDescending<DocumentFile> { it.isDirectory }
+                        .thenBy { it.name?.lowercase().orEmpty() },
+                )
+                .toList()
+
+        val out = ArrayList<VaultDirIndexRepository.DirIndexEntry>(children.size)
+        for (child in children) {
+            val name = child.name ?: continue
+            if (child.isDirectory) {
+                val dirPath = if (parentPathKey == null) "$name/" else "$parentPathKey$name/"
+                if (shouldSkipDirIndexPath(dirPath)) continue
+                out +=
+                    VaultDirIndexRepository.DirIndexEntry(
+                        relativePath = dirPath,
+                        parentPath = parentPathKey,
+                        name = name,
+                        uri = child.uri.toString(),
+                        isDirectory = true,
+                        lastModified = child.lastModified(),
+                    )
+            } else if (child.isFile && (includeNonMarkdownFiles || isMarkdownDocument(child))) {
+                val filePath = if (parentPathKey == null) name else "$parentPathKey$name"
+                out +=
+                    VaultDirIndexRepository.DirIndexEntry(
+                        relativePath = filePath,
+                        parentPath = parentPathKey,
+                        name = name,
+                        uri = child.uri.toString(),
+                        isDirectory = false,
+                        lastModified = child.lastModified(),
+                    )
+            }
+        }
+        out
+    }
+
     suspend fun listVaultChildrenEntries(
         rootUri: Uri,
         parentRelativePath: String?,
@@ -596,6 +696,140 @@ class VaultRepository(
             }
         }
         out
+    }
+
+    suspend fun ensureDirIndexBuilt(
+        rootUri: Uri,
+        force: Boolean = false,
+    ) {
+        val rootKey = rootUri.toString().trim()
+        if (rootKey.isBlank()) return
+        if (!force) {
+            val has = runCatching { dirIndexRepository.hasAnyEntries(rootKey) }.getOrDefault(false)
+            if (has) return
+        }
+
+        dirIndexBuildLock.withLock {
+            if (dirIndexBuildInProgress) return@withLock
+            if (!force) {
+                val has = runCatching { dirIndexRepository.hasAnyEntries(rootKey) }.getOrDefault(false)
+                if (has) return@withLock
+            }
+            dirIndexBuildInProgress = true
+            try {
+                rebuildDirIndex(rootUri)
+            } finally {
+                dirIndexBuildInProgress = false
+            }
+        }
+    }
+
+    suspend fun rebuildDirIndex(
+        rootUri: Uri,
+        includeNonMarkdownFiles: Boolean = false,
+        includeHidden: Boolean = false,
+    ) = withContext(Dispatchers.IO) {
+        val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext
+        val rootKey = rootUri.toString()
+        val out = ArrayList<VaultDirIndexRepository.DirIndexEntry>(512)
+
+        suspend fun walk(dir: DocumentFile, prefix: String?) {
+            currentCoroutineContext().ensureActive()
+            val children =
+                dir
+                    .listFiles()
+                    .asSequence()
+                    .filter { child ->
+                        val name = child.name ?: return@filter false
+                        if (!includeHidden && name.startsWith(".")) return@filter false
+                        true
+                    }
+                    .sortedWith(
+                        compareByDescending<DocumentFile> { it.isDirectory }
+                            .thenBy { it.name?.lowercase().orEmpty() },
+                    )
+                    .toList()
+
+            val parentKey = normalizeDirPath(prefix)
+            for (child in children) {
+                val name = child.name ?: continue
+                if (child.isDirectory) {
+                    val dirPath = if (parentKey == null) "$name/" else "$parentKey$name/"
+                    if (shouldSkipDirIndexPath(dirPath)) continue
+                    out +=
+                        VaultDirIndexRepository.DirIndexEntry(
+                            relativePath = dirPath,
+                            parentPath = parentKey,
+                            name = name,
+                            uri = child.uri.toString(),
+                            isDirectory = true,
+                            lastModified = child.lastModified(),
+                        )
+                    walk(child, dirPath)
+                } else if (child.isFile && (includeNonMarkdownFiles || isMarkdownDocument(child))) {
+                    val filePath = if (parentKey == null) name else "$parentKey$name"
+                    out +=
+                        VaultDirIndexRepository.DirIndexEntry(
+                            relativePath = filePath,
+                            parentPath = parentKey,
+                            name = name,
+                            uri = child.uri.toString(),
+                            isDirectory = false,
+                            lastModified = child.lastModified(),
+                        )
+                }
+            }
+            yield()
+        }
+
+        walk(root, prefix = "")
+        val builtAt = System.currentTimeMillis()
+        runCatching { dirIndexRepository.replaceAll(rootUri = rootKey, entries = out, builtAtMs = builtAt) }
+    }
+
+    suspend fun refreshDirIndexForDirectory(
+        rootUri: Uri,
+        parentRelativePath: String?,
+        includeNonMarkdownFiles: Boolean = false,
+        includeHidden: Boolean = false,
+    ) {
+        val rootKey = rootUri.toString().trim()
+        if (rootKey.isBlank()) return
+        // Only refresh if an index exists; otherwise let the full build happen in background.
+        val has = runCatching { dirIndexRepository.hasAnyEntries(rootKey) }.getOrDefault(false)
+        if (!has) return
+        val parentKey = normalizeDirPath(parentRelativePath)
+        if (parentKey != null && shouldSkipDirIndexPath(parentKey)) return
+
+        val children =
+            runCatching {
+                listVaultChildrenDirIndexEntriesLive(
+                    rootUri = rootUri,
+                    parentRelativePath = parentKey,
+                    includeNonMarkdownFiles = includeNonMarkdownFiles,
+                    includeHidden = includeHidden,
+                )
+            }.getOrElse { emptyList() }
+        val builtAt = System.currentTimeMillis()
+        runCatching {
+            dirIndexRepository.replaceChildren(
+                rootUri = rootKey,
+                parentPath = parentKey,
+                children = children,
+                builtAtMs = builtAt,
+            )
+        }
+    }
+
+    suspend fun listVaultChildrenEntriesIndexed(
+        rootUri: Uri,
+        parentRelativePath: String?,
+    ): List<VaultTreeEntry> {
+        val rootKey = rootUri.toString().trim()
+        if (rootKey.isBlank()) return emptyList()
+        val parentKey = normalizeDirPath(parentRelativePath)
+        if (parentKey != null && shouldSkipDirIndexPath(parentKey)) return emptyList()
+        return runCatching { dirIndexRepository.listChildren(rootUri = rootKey, parentPath = parentKey) }.getOrElse { emptyList() }
     }
 
     suspend fun findDocByName(rootUri: Uri, name: String): UiDoc? = withContext(Dispatchers.IO) {
@@ -781,6 +1015,7 @@ class VaultRepository(
             )
         }
         recordDailyDocEdited(docUri = created.uri, day = LocalDate.now())
+        runCatching { refreshDirIndexForDirectory(rootUri, parentRelativePath = null) }
         UiDoc(
             name = name,
             uri = created.uri,

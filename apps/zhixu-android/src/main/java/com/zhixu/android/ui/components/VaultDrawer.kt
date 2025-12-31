@@ -137,15 +137,14 @@ fun VaultDrawer(
         if (loadingDirs[key] == true) return
         loadingDirs[key] = true
         try {
+            repository.ensureDirIndexBuilt(vaultRootUri, force = false)
             if (key.isBlank()) {
                 errorText = null
                 val loaded =
                     runCatching {
-                        repository.listVaultChildrenEntries(
+                        repository.listVaultChildrenEntriesIndexed(
                             rootUri = vaultRootUri,
-                            parentRelativePath = "",
-                            includeNonMarkdownFiles = false,
-                            includeHidden = false,
+                            parentRelativePath = null,
                         )
                     }.getOrElse { e ->
                         errorText = e.message ?: e.javaClass.simpleName
@@ -159,11 +158,9 @@ fun VaultDrawer(
                 pruneSubtree(key)
                 val loaded =
                     runCatching {
-                        repository.listVaultChildrenEntries(
+                        repository.listVaultChildrenEntriesIndexed(
                             rootUri = vaultRootUri,
                             parentRelativePath = key,
-                            includeNonMarkdownFiles = false,
-                            includeHidden = false,
                         )
                     }.getOrElse { emptyList() }
 
@@ -206,6 +203,7 @@ fun VaultDrawer(
 
         val parentDir = parentPathOf(rel) ?: ""
         if (loadedDirs[parentDir] == true) {
+            runCatching { repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir) }
             reloadDir(parentDir)
         } else {
             persistCache()
