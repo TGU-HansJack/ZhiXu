@@ -5,7 +5,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
@@ -30,13 +29,13 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -62,10 +61,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.scale
 import com.zhixu.android.R
 import com.zhixu.android.plugins.InstalledPlugin
 import com.zhixu.android.plugins.PluginManifest
@@ -94,6 +92,7 @@ fun WorkshopScreen(
     var showGitDialog by remember { mutableStateOf(false) }
     var gitUrl by remember { mutableStateOf("") }
     var searchText by remember { mutableStateOf("") }
+    var showInstallMenu by remember { mutableStateOf(false) }
 
     var detailsPlugin by remember { mutableStateOf<InstalledPlugin?>(null) }
     var detailsReadme by remember { mutableStateOf<String?>(null) }
@@ -290,7 +289,7 @@ fun WorkshopScreen(
                 .fillMaxSize()
                 .imePadding(),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             if (vaultRootUri == null) {
                 item { Text(stringResource(R.string.workshop_no_vault)) }
@@ -312,7 +311,47 @@ fun WorkshopScreen(
             }
 
             item {
-                Text(text = stringResource(R.string.workshop_section_installed), style = MaterialTheme.typography.titleMedium)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.workshop_section_installed),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+
+                    IconButton(onClick = { scope.launch { refresh() } }) {
+                        Icon(painter = painterResource(Ionicons.SyncOutline), contentDescription = stringResource(R.string.workshop_refresh))
+                    }
+                    Box {
+                        IconButton(onClick = { showInstallMenu = true }) {
+                            Icon(
+                                painter = painterResource(Ionicons.ArrowDownCircleOutline),
+                                contentDescription = stringResource(R.string.workshop_section_install),
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showInstallMenu,
+                            onDismissRequest = { showInstallMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.workshop_install_from_git)) },
+                                onClick = {
+                                    showInstallMenu = false
+                                    showGitDialog = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.workshop_install_from_folder)) },
+                                onClick = {
+                                    showInstallMenu = false
+                                    folderLauncher.launch(null)
+                                },
+                            )
+                        }
+                    }
+                }
             }
 
             val filtered =
@@ -334,6 +373,7 @@ fun WorkshopScreen(
                     val plugin = filtered[idx]
                     PluginRow(
                         plugin = plugin,
+                        showDivider = idx != filtered.lastIndex,
                         onToggle = { enabled ->
                             val root = vaultRootUri ?: return@PluginRow
                             scope.launch {
@@ -385,36 +425,20 @@ fun WorkshopScreen(
                 }
             }
 
-            item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }
-
-            item {
-                Text(text = stringResource(R.string.workshop_section_install), style = MaterialTheme.typography.titleMedium)
-            }
-
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    FilledTonalButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = { showGitDialog = true },
-                    ) { Text(stringResource(R.string.workshop_install_from_git)) }
-                    FilledTonalButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = { folderLauncher.launch(null) },
-                    ) { Text(stringResource(R.string.workshop_install_from_folder)) }
-                }
-            }
-
-            item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }
+            item { Spacer(modifier = Modifier.height(18.dp)) }
 
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text(text = stringResource(R.string.workshop_section_official), style = MaterialTheme.typography.titleMedium)
-                    TextButton(enabled = !officialLoading, onClick = { scope.launch { refreshOfficial() } }) {
-                        Text(stringResource(R.string.workshop_refresh))
+                    Text(
+                        text = stringResource(R.string.workshop_section_official),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(enabled = !officialLoading, onClick = { scope.launch { refreshOfficial() } }) {
+                        Icon(painter = painterResource(Ionicons.SyncOutline), contentDescription = stringResource(R.string.workshop_refresh))
                     }
                 }
             }
@@ -440,6 +464,7 @@ fun WorkshopScreen(
                         OfficialPluginRow(
                             manifest = m,
                             installed = installedIds.contains(m.id),
+                            showDivider = idx != officialUnique.lastIndex,
                             onInstall = {
                                 val root = vaultRootUri ?: return@OfficialPluginRow
                                 scope.launch {
@@ -461,6 +486,7 @@ fun WorkshopScreen(
 @Composable
 private fun PluginRow(
     plugin: InstalledPlugin,
+    showDivider: Boolean,
     onToggle: (Boolean) -> Unit,
     onRemove: () -> Unit,
     onViewDetails: () -> Unit,
@@ -468,60 +494,101 @@ private fun PluginRow(
     onUpdate: (() -> Unit)?,
     updating: Boolean,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.extraLarge,
-        colors =
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-            ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
-    ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = plugin.manifest.name ?: plugin.manifest.id,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                TextButton(onClick = onViewDetails) {
-                    Text(stringResource(R.string.workshop_view_details))
-                }
-            }
-
-            val desc = plugin.manifest.description.orEmpty().ifBlank { plugin.manifest.id }
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
             Text(
-                text = desc,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3,
+                text = plugin.manifest.name ?: plugin.manifest.id,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
 
+            val meta =
+                listOfNotNull(
+                    plugin.manifest.version?.takeIf { it.isNotBlank() }?.let { "版本: $it" },
+                    "ID: ${plugin.manifest.id}",
+                ).joinToString(" · ")
+            Text(
+                text = meta,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        val desc = plugin.manifest.description.orEmpty().ifBlank { plugin.manifest.id }
+        if (desc.isNotBlank()) {
+            Text(
+                modifier = Modifier.padding(top = 6.dp),
+                text = desc,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Text(
-                    text = plugin.manifest.version?.let { "v$it" } ?: "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (onUpdate != null) {
-                        TextButton(enabled = !updating, onClick = onUpdate) { Text(stringResource(R.string.workshop_update)) }
+                IconButton(onClick = onViewDetails) {
+                    Icon(
+                        painter = painterResource(Ionicons.InformationCircleOutline),
+                        contentDescription = stringResource(R.string.workshop_view_details),
+                    )
+                }
+
+                if (onUpdate != null) {
+                    IconButton(enabled = !updating, onClick = onUpdate) {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    if (updating) Ionicons.HourglassOutline else Ionicons.CloudDownloadOutline,
+                                ),
+                            contentDescription = stringResource(R.string.workshop_update),
+                        )
                     }
-                    if (onSettings != null) {
-                        TextButton(onClick = onSettings) { Text(stringResource(R.string.action_settings)) }
+                }
+
+                if (onSettings != null) {
+                    IconButton(onClick = onSettings) {
+                        Icon(
+                            painter = painterResource(Ionicons.SettingsOutline),
+                            contentDescription = stringResource(R.string.action_settings),
+                        )
                     }
-                    TextButton(onClick = onRemove) { Text(stringResource(R.string.workshop_remove)) }
-                    Switch(checked = plugin.enabled, onCheckedChange = onToggle)
+                }
+
+                IconButton(onClick = onRemove) {
+                    Icon(
+                        painter = painterResource(Ionicons.TrashOutline),
+                        contentDescription = stringResource(R.string.workshop_remove),
+                    )
                 }
             }
+
+            Switch(
+                modifier = Modifier.scale(0.82f),
+                checked = plugin.enabled,
+                onCheckedChange = onToggle,
+            )
+        }
+
+        if (showDivider) {
+            HorizontalDivider(
+                modifier = Modifier.padding(top = 12.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f),
+            )
         }
     }
 }
@@ -538,80 +605,39 @@ private fun PluginSettingsDialog(
 ) {
     var showPasswords by remember { mutableStateOf(false) }
 
-    Dialog(
+    AlertDialog(
+        modifier = ZhixuDialogDefaults.modifier(),
         onDismissRequest = { if (!saving) onDismiss() },
-        properties =
-            DialogProperties(
-                usePlatformDefaultWidth = false,
-                decorFitsSystemWindows = false,
-                dismissOnClickOutside = false,
-            ),
-    ) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Scaffold(
-                topBar = {
-                    TopAppBar(
-                        title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        navigationIcon = {
-                            IconButton(enabled = !saving, onClick = onDismiss) {
-                                Icon(painter = painterResource(Ionicons.ArrowBack), contentDescription = null)
-                            }
-                        },
-                        actions = {
-                            IconButton(enabled = !saving, onClick = onDismiss) {
-                                Icon(painter = painterResource(Ionicons.Close), contentDescription = null)
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-                    )
-                },
-                bottomBar = {
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .windowInsetsPadding(WindowInsets.navigationBars)
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                    ) {
-                        Button(
-                            enabled = !saving,
-                            onClick = onSave,
-                            modifier = Modifier.fillMaxWidth().height(46.dp),
-                        ) {
-                            Text(stringResource(R.string.plugin_save))
-                        }
-                    }
-                },
-                contentWindowInsets = WindowInsets(0),
-            ) { contentPadding ->
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .padding(contentPadding)
-                            .imePadding()
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 16.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    Text(
-                        text = "$title 设置",
-                        style = MaterialTheme.typography.headlineSmall,
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-
-                    JsonObjectForm(
-                        root = config,
-                        obj = config,
-                        path = emptyList(),
-                        showPasswords = showPasswords,
-                        onToggleShowPasswords = { showPasswords = !showPasswords },
-                        onChange = onChange,
-                    )
-                }
+        properties = ZhixuDialogDefaults.properties,
+        title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        text = {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 560.dp)
+                        .imePadding()
+                        .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                JsonObjectForm(
+                    root = config,
+                    obj = config,
+                    path = emptyList(),
+                    showPasswords = showPasswords,
+                    onToggleShowPasswords = { showPasswords = !showPasswords },
+                    onChange = onChange,
+                )
             }
-        }
-    }
+        },
+        confirmButton = {
+            Button(enabled = !saving, onClick = onSave) { Text(stringResource(R.string.plugin_save)) }
+        },
+        dismissButton = {
+            TextButton(enabled = !saving, onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
 }
 
 @Composable
@@ -674,6 +700,7 @@ private fun JsonObjectForm(
                             }
                         }
                         Switch(
+                            modifier = Modifier.scale(0.82f),
                             checked = v,
                             onCheckedChange = { checked -> onChange(configWithPathValue(root, nextPath, checked)) },
                         )
@@ -812,48 +839,64 @@ private fun configWithPathValue(
 private fun OfficialPluginRow(
     manifest: PluginManifest,
     installed: Boolean,
+    showDivider: Boolean,
     onInstall: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.extraLarge,
-        colors =
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-            ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
-    ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = manifest.name ?: manifest.id,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                TextButton(enabled = !installed, onClick = onInstall) {
-                    Text(if (installed) stringResource(R.string.workshop_installed) else stringResource(R.string.workshop_install))
-                }
-            }
-
-            val desc = manifest.description.orEmpty().ifBlank { manifest.id }
-            Text(
-                text = desc,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-
-            if (!manifest.version.isNullOrBlank()) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                modifier = Modifier.weight(1f).padding(end = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
                 Text(
-                    text = "v${manifest.version}",
+                    text = manifest.name ?: manifest.id,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
+                val meta =
+                    listOfNotNull(
+                        manifest.version?.takeIf { it.isNotBlank() }?.let { "版本: $it" },
+                        "ID: ${manifest.id}",
+                    ).joinToString(" · ")
+                Text(
+                    text = meta,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
+
+            IconButton(enabled = !installed, onClick = onInstall) {
+                Icon(
+                    painter =
+                        painterResource(
+                            if (installed) Ionicons.CheckmarkCircle else Ionicons.ArrowDownCircleOutline,
+                        ),
+                    contentDescription = if (installed) stringResource(R.string.workshop_installed) else stringResource(R.string.workshop_install),
+                )
+            }
+        }
+
+        val desc = manifest.description.orEmpty().ifBlank { manifest.id }
+        if (desc.isNotBlank()) {
+            Text(
+                modifier = Modifier.padding(top = 6.dp),
+                text = desc,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        if (showDivider) {
+            HorizontalDivider(
+                modifier = Modifier.padding(top = 12.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f),
+            )
         }
     }
 }

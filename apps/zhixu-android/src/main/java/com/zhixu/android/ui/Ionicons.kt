@@ -9,14 +9,19 @@ object Ionicons {
     @DrawableRes val Add: Int = R.drawable.ic_ion_add_outline
     @DrawableRes val User: Int = R.drawable.ic_ion_person_outline
     @DrawableRes val Sync: Int = R.drawable.ic_ion_cloud_upload_outline
+    @DrawableRes val SyncOutline: Int = R.drawable.ic_ion_sync_outline
+    @DrawableRes val RefreshOutline: Int = R.drawable.ic_ion_refresh_outline
     @DrawableRes val Workshop: Int = R.drawable.ic_ion_extension_puzzle_outline
     @DrawableRes val Search: Int = R.drawable.ic_ion_search_outline
     @DrawableRes val Settings: Int = R.drawable.ic_ion_cog_outline
+    @DrawableRes val SettingsOutline: Int = R.drawable.ic_ion_cog_outline
+    @DrawableRes val InformationCircleOutline: Int = R.drawable.ic_ion_information_circle_outline
     @DrawableRes val LanguageOutline: Int = R.drawable.ic_ion_language_outline
     @DrawableRes val LayersOutline: Int = R.drawable.ic_ion_layers_outline
     @DrawableRes val AccessibilityOutline: Int = R.drawable.ic_ion_accessibility_outline
     @DrawableRes val NotificationsOutline: Int = R.drawable.ic_ion_notifications_outline
     @DrawableRes val ArrowUpCircleOutline: Int = R.drawable.ic_ion_arrow_up_circle_outline
+    @DrawableRes val ArrowDownCircleOutline: Int = R.drawable.ic_ion_arrow_down_circle_outline
     @DrawableRes val HelpCircleOutline: Int = R.drawable.ic_ion_help_circle_outline
     @DrawableRes val ImageOutline: Int = R.drawable.ic_ion_image_outline
     @DrawableRes val TextOutline: Int = R.drawable.ic_ion_text_outline
@@ -26,6 +31,8 @@ object Ionicons {
     @DrawableRes val ShareSocialOutline: Int = R.drawable.ic_ion_share_social_outline
     @DrawableRes val TrashOutline: Int = R.drawable.ic_ion_trash_outline
     @DrawableRes val ExtensionPuzzleOutline: Int = R.drawable.ic_ion_extension_puzzle_outline
+    @DrawableRes val CloudDownloadOutline: Int = R.drawable.ic_ion_cloud_download_outline
+    @DrawableRes val CloseCircleOutline: Int = R.drawable.ic_ion_close_circle_outline
 
     @DrawableRes val ArrowBack: Int = R.drawable.ic_ion_arrow_back_outline
     @DrawableRes val ArrowForward: Int = R.drawable.ic_ion_arrow_forward_outline
