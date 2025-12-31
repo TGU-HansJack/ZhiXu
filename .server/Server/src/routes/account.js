@@ -14,7 +14,7 @@ router.get("/me", async (req, res) => {
 
   const [[sub]] = await pool.query(
     `
-SELECT p.code AS plan_code, p.name AS plan_name, p.storage_bytes AS storage_bytes
+SELECT p.code AS plan_code, p.name AS plan_name, p.storage_bytes AS storage_bytes, p.price_cny_year AS price_cny_year
 FROM user_subscriptions s
 JOIN plans p ON p.id = s.plan_id
 WHERE s.user_id = ?
@@ -30,7 +30,8 @@ LIMIT 1
       ? {
           code: String(sub.plan_code || ""),
           name: String(sub.plan_name || ""),
-          storageBytes: Number(sub.storage_bytes) || 0
+          storageBytes: Number(sub.storage_bytes) || 0,
+          priceCnyYear: Number(sub.price_cny_year) || 0
         }
       : null
   });
@@ -43,7 +44,7 @@ router.post("/subscription", async (req, res) => {
   const planCode = String(req.body?.planCode || "").trim();
   if (!planCode) return res.status(400).json({ error: "invalid_plan" });
 
-  const [[plan]] = await pool.query("SELECT id, code, name, storage_bytes FROM plans WHERE code = ? LIMIT 1", [planCode]);
+  const [[plan]] = await pool.query("SELECT id, code, name, storage_bytes, price_cny_year FROM plans WHERE code = ? LIMIT 1", [planCode]);
   if (!plan) return res.status(404).json({ error: "plan_not_found" });
 
   await pool.query(
@@ -62,10 +63,10 @@ ON DUPLICATE KEY UPDATE
     plan: {
       code: String(plan.code || ""),
       name: String(plan.name || ""),
-      storageBytes: Number(plan.storage_bytes) || 0
+      storageBytes: Number(plan.storage_bytes) || 0,
+      priceCnyYear: Number(plan.price_cny_year) || 0
     }
   });
 });
 
 module.exports = router;
-

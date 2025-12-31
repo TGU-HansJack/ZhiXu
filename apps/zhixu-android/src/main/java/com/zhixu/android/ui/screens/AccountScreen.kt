@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
@@ -56,6 +58,7 @@ import com.zhixu.android.data.AccountState
 import com.zhixu.android.sync.OfficialSync
 import com.zhixu.android.sync.SyncServerClient
 import com.zhixu.android.sync.SyncServerResult
+import com.zhixu.android.ui.Ionicons
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,6 +80,7 @@ fun AccountScreen(
 
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
+    var currentPlanCode by remember { mutableStateOf<String?>(null) }
 
     val loginOkText = stringResource(R.string.account_login_ok)
     val registerOkText = stringResource(R.string.account_register_ok)
@@ -101,12 +105,24 @@ fun AccountScreen(
     }
 
     val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+    val plan512Title = stringResource(R.string.account_storage_512m_title)
+    val plan512Price = stringResource(R.string.account_storage_512m_price)
+    val plan512Desc = stringResource(R.string.account_storage_512m_desc)
     val plan1Title = stringResource(R.string.account_storage_1g_title)
+    val plan1Price = stringResource(R.string.account_storage_1g_price)
     val plan1Desc = stringResource(R.string.account_storage_1g_desc)
-    val plan3Title = stringResource(R.string.account_storage_3g_title)
-    val plan3Desc = stringResource(R.string.account_storage_3g_desc)
-    val plan5Title = stringResource(R.string.account_storage_5g_title)
-    val plan5Desc = stringResource(R.string.account_storage_5g_desc)
+    val plan2Title = stringResource(R.string.account_storage_2g_title)
+    val plan2Price = stringResource(R.string.account_storage_2g_price)
+    val plan2Desc = stringResource(R.string.account_storage_2g_desc)
+
+    LaunchedEffect(state.token) {
+        if (!state.isLoggedIn) {
+            currentPlanCode = null
+            return@LaunchedEffect
+        }
+        val me = SyncServerClient.me(OfficialSync.BASE_URL, state.token)
+        if (me.ok) currentPlanCode = me.value?.plan?.code
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -131,10 +147,18 @@ fun AccountScreen(
             }
         },
     ) { innerPadding ->
+        val layoutDirection = LocalLayoutDirection.current
+        val outerPadding =
+            PaddingValues(
+                start = contentPadding.calculateLeftPadding(layoutDirection),
+                top = 0.dp,
+                end = contentPadding.calculateRightPadding(layoutDirection),
+                bottom = contentPadding.calculateBottomPadding(),
+            )
         LazyColumn(
             modifier =
                 Modifier
-                    .padding(contentPadding)
+                    .padding(outerPadding)
                     .padding(innerPadding)
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .imePadding()
@@ -263,45 +287,69 @@ fun AccountScreen(
                 Text(text = stringResource(R.string.account_storage_title), style = MaterialTheme.typography.titleSmall)
             }
 
-            fun planCard(code: String, title: String, subtitle: String) {
+            fun planCard(code: String, title: String, price: String, desc: String) {
                 item {
+                    val selected = currentPlanCode == code
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        shape = RoundedCornerShape(18.dp),
+                        border =
+                            BorderStroke(
+                                1.dp,
+                                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                            ),
                     ) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(title, style = MaterialTheme.typography.titleMedium)
-                                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    painter = painterResource(if (selected) Ionicons.CheckmarkCircle else Ionicons.LayersOutline),
+                                    contentDescription = null,
+                                    tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Text(title, style = MaterialTheme.typography.titleLarge)
+                                Spacer(Modifier.weight(1f))
+                                Text(
+                                    text = price,
+                                    style = MaterialTheme.typography.titleLarge,
+                                )
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Button(
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = desc,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(
                                     enabled = !busy && state.isLoggedIn,
                                     onClick = {
                                         scope.launch {
                                             setBusy(true)
                                             val r = SyncServerClient.setSubscriptionPlan(OfficialSync.BASE_URL, state.token, code)
+                                            if (r.ok) currentPlanCode = code
                                             status = if (r.ok) context.getString(R.string.account_storage_selected, title) else r.toUiMessage("Failed")
                                             setBusy(false)
                                         }
                                     },
                                 ) { Text(stringResource(R.string.account_storage_select)) }
-                                if (!state.isLoggedIn) {
-                                    Text(
-                                        text = stringResource(R.string.account_storage_login_required),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+                            }
+
+                            if (!state.isLoggedIn) {
+                                Text(
+                                    text = stringResource(R.string.account_storage_login_required),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
                     }
                 }
             }
 
-            planCard("storage_1g", plan1Title, plan1Desc)
-            planCard("storage_3g", plan3Title, plan3Desc)
-            planCard("storage_5g", plan5Title, plan5Desc)
+            planCard("storage_512m", plan512Title, plan512Price, plan512Desc)
+            planCard("storage_1g", plan1Title, plan1Price, plan1Desc)
+            planCard("storage_2g", plan2Title, plan2Price, plan2Desc)
 
             if (!status.isNullOrBlank()) {
                 item {

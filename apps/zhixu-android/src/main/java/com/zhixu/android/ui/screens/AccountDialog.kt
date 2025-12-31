@@ -7,14 +7,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -42,6 +45,7 @@ import com.zhixu.android.ui.components.ZhixuTextField
 import com.zhixu.android.sync.OfficialSync
 import com.zhixu.android.sync.SyncServerClient
 import com.zhixu.android.sync.SyncServerResult
+import com.zhixu.android.ui.Ionicons
 import kotlinx.coroutines.launch
 
 @Composable
@@ -84,12 +88,15 @@ fun AccountManagementDialog(
         if (on) status = null
     }
 
+    val plan512Title = stringResource(R.string.account_storage_512m_title)
+    val plan512Price = stringResource(R.string.account_storage_512m_price)
+    val plan512Desc = stringResource(R.string.account_storage_512m_desc)
     val plan1Title = stringResource(R.string.account_storage_1g_title)
+    val plan1Price = stringResource(R.string.account_storage_1g_price)
     val plan1Desc = stringResource(R.string.account_storage_1g_desc)
-    val plan3Title = stringResource(R.string.account_storage_3g_title)
-    val plan3Desc = stringResource(R.string.account_storage_3g_desc)
-    val plan5Title = stringResource(R.string.account_storage_5g_title)
-    val plan5Desc = stringResource(R.string.account_storage_5g_desc)
+    val plan2Title = stringResource(R.string.account_storage_2g_title)
+    val plan2Price = stringResource(R.string.account_storage_2g_price)
+    val plan2Desc = stringResource(R.string.account_storage_2g_desc)
 
     AlertDialog(
         modifier = ZhixuDialogDefaults.modifier(),
@@ -221,18 +228,31 @@ fun AccountManagementDialog(
                 Text(text = stringResource(R.string.account_storage_title), style = MaterialTheme.typography.titleSmall)
 
                 @Composable
-                fun PlanCard(code: String, title: String, subtitle: String) {
+                fun PlanCard(code: String, title: String, price: String, desc: String) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(18.dp),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     ) {
                         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(title, style = MaterialTheme.typography.titleMedium)
-                                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                Icon(
+                                    painter = androidx.compose.ui.res.painterResource(Ionicons.LayersOutline),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Text(title, style = MaterialTheme.typography.titleLarge)
+                                Spacer(Modifier.weight(1f))
+                                Text(price, style = MaterialTheme.typography.titleLarge)
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(
+                                    text = desc,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f),
+                                )
                                 Button(
                                     enabled = !busy && state.isLoggedIn,
                                     onClick = {
@@ -249,9 +269,9 @@ fun AccountManagementDialog(
                     }
                 }
 
-                PlanCard("storage_1g", plan1Title, plan1Desc)
-                PlanCard("storage_3g", plan3Title, plan3Desc)
-                PlanCard("storage_5g", plan5Title, plan5Desc)
+                PlanCard("storage_512m", plan512Title, plan512Price, plan512Desc)
+                PlanCard("storage_1g", plan1Title, plan1Price, plan1Desc)
+                PlanCard("storage_2g", plan2Title, plan2Price, plan2Desc)
 
                 if (!status.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))

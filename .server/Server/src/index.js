@@ -8,6 +8,7 @@ const { initDb } = require("./initDb");
 const authRoutes = require("./routes/auth");
 const accountRoutes = require("./routes/account");
 const plansRoutes = require("./routes/plans");
+const vaultV2Routes = require("./routes/vault_v2");
 
 async function main() {
   await waitForDb();
@@ -23,6 +24,7 @@ async function main() {
   app.use("/api/auth", authRoutes);
   app.use("/api/account", accountRoutes);
   app.use("/api/plans", plansRoutes);
+  app.use("/api/v2/vault", vaultV2Routes);
 
   app.listen(port, () => {
     // eslint-disable-next-line no-console
@@ -35,4 +37,3 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
-

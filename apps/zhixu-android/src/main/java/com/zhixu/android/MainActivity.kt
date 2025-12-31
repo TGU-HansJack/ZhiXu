@@ -10,9 +10,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.graphics.luminance
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.content.ContextCompat
 import com.zhixu.android.ui.ZhixuApp
 import com.zhixu.android.ui.theme.ZhixuTheme
@@ -23,9 +27,34 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             ZhixuTheme {
+                SystemBarsAppearance()
                 PostNotificationsPermissionRequester()
                 ZhixuApp()
             }
+        }
+    }
+}
+
+@Composable
+private fun SystemBarsAppearance() {
+    val context = LocalContext.current
+    val activity = context as? Activity ?: return
+    val view = LocalView.current
+
+    val surface = androidx.compose.material3.MaterialTheme.colorScheme.surface
+    val useDarkIcons = surface.luminance() > 0.5f
+
+    DisposableEffect(view, activity, useDarkIcons) {
+        val controller = WindowInsetsControllerCompat(activity.window, view)
+        val previousLightStatusBars = controller.isAppearanceLightStatusBars
+        val previousLightNavBars = controller.isAppearanceLightNavigationBars
+
+        controller.isAppearanceLightStatusBars = useDarkIcons
+        controller.isAppearanceLightNavigationBars = useDarkIcons
+
+        onDispose {
+            controller.isAppearanceLightStatusBars = previousLightStatusBars
+            controller.isAppearanceLightNavigationBars = previousLightNavBars
         }
     }
 }

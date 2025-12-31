@@ -25,6 +25,7 @@ data class SyncServerPlan(
     val code: String,
     val name: String,
     val storageBytes: Long,
+    val priceCnyYear: Int,
 )
 
 data class VaultManifestEntry(
@@ -204,6 +205,7 @@ object SyncServerClient {
                             code = it.optString("code").orEmpty(),
                             name = it.optString("name").orEmpty(),
                             storageBytes = it.optLong("storageBytes", 0L).coerceAtLeast(0L),
+                            priceCnyYear = it.optInt("priceCnyYear", 0).coerceAtLeast(0),
                         )
                     }
                 SyncServerResult(ok = true, value = SyncServerMe(userId = userId, username = username, plan = plan), statusCode = resp.code)
@@ -236,6 +238,7 @@ object SyncServerClient {
                             code = code,
                             name = item.optString("name").orEmpty(),
                             storageBytes = item.optLong("storageBytes", 0L).coerceAtLeast(0L),
+                            priceCnyYear = item.optInt("priceCnyYear", 0).coerceAtLeast(0),
                         )
                 }
                 SyncServerResult(ok = true, value = out, statusCode = resp.code)
@@ -273,8 +276,55 @@ object SyncServerClient {
                         code = code,
                         name = planObj.optString("name").orEmpty(),
                         storageBytes = planObj.optLong("storageBytes", 0L).coerceAtLeast(0L),
+                        priceCnyYear = planObj.optInt("priceCnyYear", 0).coerceAtLeast(0),
                     )
                 SyncServerResult(true, value = plan, statusCode = resp.code)
+            }
+        }
+    }
+
+    suspend fun restoreVaultVersionV2(
+        baseUrl: String,
+        token: String,
+        path: String,
+        rev: Long,
+        baseRev: Long,
+        mtimeMs: Long,
+    ): SyncServerResult<VaultPutResultV2> = withContext(Dispatchers.IO) {
+        safeResult {
+            val url = normalizeJoin(baseUrl, "/api/v2/vault/restore")
+            val body =
+                JSONObject()
+                    .put("path", path)
+                    .put("rev", rev)
+                    .put("baseRev", baseRev)
+                    .put("mtimeMs", mtimeMs)
+                    .toString()
+                    .toRequestBody("application/json; charset=utf-8".toMediaType())
+            val req =
+                Request.Builder()
+                    .url(url)
+                    .post(body)
+                    .header("Authorization", "Bearer $token")
+                    .header("User-Agent", "Zhixu-Android")
+                    .build()
+            client.newCall(req).execute().use { resp ->
+                val text = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
+                val obj = runCatching { JSONObject(text) }.getOrNull() ?: return@use SyncServerResult(false, errorMessage = "Invalid response", statusCode = resp.code)
+                SyncServerResult(
+                    ok = true,
+                    value =
+                        VaultPutResultV2(
+                            path = obj.optString("path").orEmpty().ifBlank { path },
+                            rev = obj.optLong("rev", baseRev + 1),
+                            changeId = obj.optLong("changeId", 0L),
+                            sha256 = obj.optString("sha256").orEmpty(),
+                            size = obj.optLong("size", 0L),
+                            mtimeMs = obj.optLong("mtimeMs", mtimeMs),
+                        ),
+                    statusCode = resp.code,
+                )
             }
         }
     }
