@@ -30,6 +30,8 @@
     <string name="vault_settings_third_party_desc">Configure in Vault settings after entering the app.</string>
     <string name="vault_settings_third_party_e2ee_warning">Once enabled, all synced notes will be stored encrypted and the server cannot read content. If you lose the master password, data cannot be recovered.</string>
     <string name="vault_settings_saved">Saved</string>
+    <string name="vault_drawer_title">Vault</string>
+    <string name="vault_drawer_empty">No files</string>
 
     <!-- Docs -->
     <string name="docs_title">Docs</string>

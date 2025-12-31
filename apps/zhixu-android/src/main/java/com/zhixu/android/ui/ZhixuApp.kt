@@ -14,6 +14,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,15 +37,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -58,11 +63,14 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import kotlin.math.abs
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -88,6 +96,7 @@ import com.zhixu.android.data.appManagedVaultRootUri
 import com.zhixu.android.data.UiPreferences
 import com.zhixu.android.sync.VaultAutoSync
 import com.zhixu.android.sync.WebDavAutoSync
+import com.zhixu.android.ui.components.VaultDrawer
 import com.zhixu.android.ui.screens.DocumentListScreen
 import com.zhixu.android.ui.screens.EditorScreen
 import com.zhixu.android.ui.screens.LongImageScreen
@@ -267,94 +276,114 @@ fun ZhixuApp() {
         }
     }
 
-    Surface(color = MaterialTheme.colorScheme.background) {
-        Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
-            topBar = {
-                if (!showTopBar) return@Scaffold
-                Column {
-                    when (currentRoute) {
-                        "home" -> {
-                            TopAppBar(
-                                windowInsets = TopAppBarDefaults.windowInsets,
-                                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                                title = {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        TabText(
-                                            text = stringResource(R.string.nav_docs),
-                                            selected = settledPage == 0,
-                                            onClick = {
-                                                if (pagerState.currentPage == 0) return@TabText
-                                                scope.launch {
-                                                    pagerState.animateScrollToPage(
-                                                        page = 0,
-                                                        animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
-                                                    )
-                                                }
-                                            },
-                                        )
-                                        TabText(
-                                            text = stringResource(R.string.nav_tasks),
-                                            selected = settledPage == 1,
-                                            onClick = {
-                                                if (pagerState.currentPage == 1) return@TabText
-                                                scope.launch {
-                                                    pagerState.animateScrollToPage(
-                                                        page = 1,
-                                                        animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
-                                                    )
-                                                }
-                                            },
-                                        )
-                                    }
-                                },
-                                actions = {
-                                    if (settledPage == 0) {
-                                        IconButton(onClick = { docSearchRequestToken += 1L }) {
-                                            Icon(
-                                                painter = painterResource(Ionicons.Search),
-                                                contentDescription = stringResource(R.string.action_search),
-                                            )
-                                        }
-                                    }
-                                },
-                            )
-                        }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val drawerEnabled = currentRoute == "home" && vaultRootUri != null
 
-                        "me" -> {
-                            TopAppBar(
-                                windowInsets = TopAppBarDefaults.windowInsets,
-                                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                                title = { Text(stringResource(R.string.nav_me)) },
-                            )
+    LaunchedEffect(currentRoute, vaultRootUri) {
+        if (currentRoute != "home" || vaultRootUri == null) {
+            drawerState.snapTo(DrawerValue.Closed)
+        } else {
+            drawerState.snapTo(DrawerValue.Closed)
+        }
+    }
+
+    fun openDoc(rawUri: String, query: String? = null, lineIndex: Int? = null) {
+        val uriParam = Uri.encode(rawUri)
+        val qParam = Uri.encode(query ?: "")
+        val lineParam = (lineIndex ?: -1).toString()
+        navController.navigate("edit?uri=$uriParam&q=$qParam&line=$lineParam")
+    }
+
+    Surface(color = MaterialTheme.colorScheme.background) {
+        val appContent: @Composable () -> Unit = {
+            Box(modifier = Modifier.fillMaxSize()) {
+                Scaffold(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    topBar = {
+                        if (!showTopBar) return@Scaffold
+                        Column {
+                            when (currentRoute) {
+                                "home" -> {
+                                    TopAppBar(
+                                        windowInsets = TopAppBarDefaults.windowInsets,
+                                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                                        title = {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                TabText(
+                                                    text = stringResource(R.string.nav_docs),
+                                                    selected = settledPage == 0,
+                                                    onClick = {
+                                                        if (pagerState.currentPage == 0) return@TabText
+                                                        scope.launch {
+                                                            pagerState.animateScrollToPage(
+                                                                page = 0,
+                                                                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
+                                                            )
+                                                        }
+                                                    },
+                                                )
+                                                TabText(
+                                                    text = stringResource(R.string.nav_tasks),
+                                                    selected = settledPage == 1,
+                                                    onClick = {
+                                                        if (pagerState.currentPage == 1) return@TabText
+                                                        scope.launch {
+                                                            pagerState.animateScrollToPage(
+                                                                page = 1,
+                                                                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
+                                                            )
+                                                        }
+                                                    },
+                                                )
+                                            }
+                                        },
+                                        actions = {
+                                            if (settledPage == 0) {
+                                                IconButton(onClick = { docSearchRequestToken += 1L }) {
+                                                    Icon(
+                                                        painter = painterResource(Ionicons.Search),
+                                                        contentDescription = stringResource(R.string.action_search),
+                                                    )
+                                                }
+                                            }
+                                        },
+                                    )
+                                }
+
+                                "me" -> {
+                                    TopAppBar(
+                                        windowInsets = TopAppBarDefaults.windowInsets,
+                                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                                        title = { Text(stringResource(R.string.nav_me)) },
+                                    )
+                                }
+                            }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                }
-            },
-            bottomBar = {
-                if (!showBottomBar) return@Scaffold
-                MainBottomBar(
-                    currentRoute = currentRoute,
-                    onHome = { navigateHome(0) },
-                    onPlus = { navController.navigate("newDoc") },
-                    onMe = ::navigateMe,
-                )
-            },
-        ) { padding ->
-            NavHost(
-                navController = navController,
-                startDestination = if (vaultRootUri == null) "vault" else "home",
-                enterTransition = { EnterTransition.None },
-                exitTransition = { ExitTransition.None },
-                popEnterTransition = { EnterTransition.None },
-                popExitTransition = { ExitTransition.None },
-                sizeTransform = null,
-            ) {
+                    },
+                    bottomBar = {
+                        if (!showBottomBar) return@Scaffold
+                        MainBottomBar(
+                            currentRoute = currentRoute,
+                            onHome = { navigateHome(0) },
+                            onPlus = { navController.navigate("newDoc") },
+                            onMe = ::navigateMe,
+                        )
+                    },
+                ) { padding ->
+                    NavHost(
+                        navController = navController,
+                        startDestination = if (vaultRootUri == null) "vault" else "home",
+                        enterTransition = { EnterTransition.None },
+                        exitTransition = { ExitTransition.None },
+                        popEnterTransition = { EnterTransition.None },
+                        popExitTransition = { ExitTransition.None },
+                        sizeTransform = null,
+                    ) {
                 composable("vault") {
                     VaultGateScreen(
                         onSelectLocalFolder = { uri ->
@@ -394,12 +423,7 @@ fun ZhixuApp() {
                         pagerState = pagerState,
                         docListRefreshToken = docListRefreshToken,
                         docSearchRequestToken = docSearchRequestToken,
-                        onOpenDoc = { rawUri, query, lineIndex ->
-                            val uriParam = Uri.encode(rawUri)
-                            val qParam = Uri.encode(query ?: "")
-                            val lineParam = (lineIndex ?: -1).toString()
-                            navController.navigate("edit?uri=$uriParam&q=$qParam&line=$lineParam")
-                        },
+                        onOpenDoc = ::openDoc,
                         onNewDoc = { navController.navigate("newDoc") },
                         onChangeVault = {
                             scope.launch { prefs.setVaultRootUri(null) }
@@ -415,12 +439,7 @@ fun ZhixuApp() {
                         vaultRootUri = vaultRootUri,
                         refreshToken = meRefreshToken,
                         repository = repository,
-                        onOpenDoc = { rawUri, query, lineIndex ->
-                            val uriParam = Uri.encode(rawUri)
-                            val qParam = Uri.encode(query ?: "")
-                            val lineParam = (lineIndex ?: -1).toString()
-                            navController.navigate("edit?uri=$uriParam&q=$qParam&line=$lineParam")
-                        },
+                        onOpenDoc = ::openDoc,
                         onOpenAccount = { navController.navigate("account") },
                         onOpenVaultSettings = { navController.navigate("vaultSettings") },
                         onOpenWorkshop = { navController.navigate("workshop") },
@@ -560,12 +579,7 @@ fun ZhixuApp() {
                         repository = repository,
                         onBack = { navController.popBackStack() },
                         onDocListMutated = { docListRefreshToken += 1L },
-                        onOpenDoc = { rawUri, query, lineIndex ->
-                            val uriParam2 = Uri.encode(rawUri)
-                            val qParam2 = Uri.encode(query ?: "")
-                            val lineParam2 = (lineIndex ?: -1).toString()
-                            navController.navigate("edit?uri=$uriParam2&q=$qParam2&line=$lineParam2")
-                        },
+                        onOpenDoc = ::openDoc,
                         onGenerateLongImage = { req ->
                             navController.currentBackStackEntry?.savedStateHandle?.apply {
                                 set(KEY_LONG_IMAGE_MARKDOWN, req.markdown)
@@ -579,9 +593,94 @@ fun ZhixuApp() {
                         initialLineIndex = lineParam.takeIf { it >= 0 },
                     )
                 }
+                }
+
+                EdgeSwipeToOpenDrawer(
+                    enabled = drawerEnabled && drawerState.isClosed,
+                    onOpen = { scope.launch { drawerState.open() } },
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
         }
+        }
+
+        if (drawerEnabled) {
+            ModalNavigationDrawer(
+                drawerState = drawerState,
+                gesturesEnabled = drawerState.isOpen,
+                drawerContent = {
+                    VaultDrawer(
+                        vaultRootUri = requireNotNull(vaultRootUri),
+                        repository = repository,
+                        onOpenDoc = { rawUri -> openDoc(rawUri) },
+                        onCloseDrawer = { scope.launch { drawerState.close() } },
+                    )
+                },
+            ) {
+                appContent()
+            }
+        } else {
+            appContent()
+        }
     }
+}
+
+@Composable
+private fun EdgeSwipeToOpenDrawer(
+    enabled: Boolean,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (!enabled) return
+
+    val density = LocalDensity.current
+    val edgeWidthPx = with(density) { 32.dp.toPx() }
+    val openThresholdPx = with(density) { 24.dp.toPx() }
+
+    Box(
+        modifier =
+            modifier.pointerInput(enabled) {
+                var isEdgeGesture = false
+                var totalX = 0f
+                var totalY = 0f
+
+                detectHorizontalDragGestures(
+                    onDragStart = { start ->
+                        isEdgeGesture = start.x <= edgeWidthPx
+                        totalX = 0f
+                        totalY = 0f
+                    },
+                    onHorizontalDrag = { change, dragAmount ->
+                        if (!isEdgeGesture) return@detectHorizontalDragGestures
+
+                        totalX += dragAmount
+                        totalY += (change.position.y - change.previousPosition.y)
+
+                        if (abs(totalY) > abs(totalX) && abs(totalY) > viewConfiguration.touchSlop) {
+                            isEdgeGesture = false
+                            return@detectHorizontalDragGestures
+                        }
+
+                        if (totalX > openThresholdPx) {
+                            change.consume()
+                            isEdgeGesture = false
+                            onOpen()
+                            return@detectHorizontalDragGestures
+                        }
+                    },
+                    onDragEnd = {
+                        isEdgeGesture = false
+                        totalX = 0f
+                        totalY = 0f
+                    },
+                    onDragCancel = {
+                        isEdgeGesture = false
+                        totalX = 0f
+                        totalY = 0f
+                    },
+                )
+            },
+    )
 }
 
 @Composable

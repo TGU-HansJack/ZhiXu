@@ -36,6 +36,15 @@ data class UiDoc(
     val editedAtText: String = "",
 )
 
+data class VaultTreeEntry(
+    val relativePath: String,
+    val name: String,
+    val uri: Uri?,
+    val isDirectory: Boolean,
+    val parentPath: String?,
+    val depth: Int,
+)
+
 data class TaskStats(
     val done: Int,
     val total: Int,
@@ -344,6 +353,85 @@ class VaultRepository(
                 compareByDescending<UiDoc> { it.lastModified }
                     .thenBy { it.name.lowercase() },
             )
+    }
+
+    suspend fun listVaultTreeEntries(
+        rootUri: Uri,
+        includeNonMarkdownFiles: Boolean = false,
+        includeHidden: Boolean = false,
+    ): List<VaultTreeEntry> = withContext(Dispatchers.IO) {
+        val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext emptyList()
+        val out = ArrayList<VaultTreeEntry>(256)
+
+        fun isMarkdown(file: DocumentFile): Boolean {
+            if (!file.isFile) return false
+            val name = file.name
+            val mime = file.type
+            val looksLikeMarkdown = name?.endsWith(".md", ignoreCase = true) == true
+            val isTextMarkdown =
+                mime.equals("text/markdown", ignoreCase = true) ||
+                    mime.equals("text/x-markdown", ignoreCase = true)
+            val isPlainText = mime.equals("text/plain", ignoreCase = true)
+            return looksLikeMarkdown || isTextMarkdown || isPlainText
+        }
+
+        fun shouldSkipDir(path: String): Boolean {
+            val p = path.trimStart('/').replace('\\', '/')
+            if (p.equals(appConfigDirName, ignoreCase = true)) return true
+            if (p.startsWith("$appConfigDirName/", ignoreCase = true)) return true
+            return false
+        }
+
+        suspend fun walk(dir: DocumentFile, prefix: String, depth: Int) {
+            currentCoroutineContext().ensureActive()
+            val children =
+                dir
+                    .listFiles()
+                    .asSequence()
+                    .filter { child ->
+                        val name = child.name ?: return@filter false
+                        if (!includeHidden && name.startsWith(".")) return@filter false
+                        true
+                    }
+                    .sortedWith(
+                        compareByDescending<DocumentFile> { it.isDirectory }
+                            .thenBy { it.name?.lowercase().orEmpty() },
+                    )
+                    .toList()
+
+            for (child in children) {
+                val name = child.name ?: continue
+                if (child.isDirectory) {
+                    val dirPath = if (prefix.isBlank()) "$name/" else "$prefix$name/"
+                    if (shouldSkipDir(dirPath)) continue
+                    out +=
+                        VaultTreeEntry(
+                            relativePath = dirPath,
+                            name = name,
+                            uri = child.uri,
+                            isDirectory = true,
+                            parentPath = prefix.takeIf { it.isNotBlank() },
+                            depth = depth,
+                        )
+                    walk(child, dirPath, depth + 1)
+                } else if (child.isFile && (includeNonMarkdownFiles || isMarkdown(child))) {
+                    val filePath = if (prefix.isBlank()) name else "$prefix$name"
+                    out +=
+                        VaultTreeEntry(
+                            relativePath = filePath,
+                            name = name,
+                            uri = child.uri,
+                            isDirectory = false,
+                            parentPath = prefix.takeIf { it.isNotBlank() },
+                            depth = depth,
+                        )
+                }
+            }
+            yield()
+        }
+
+        walk(root, prefix = "", depth = 0)
+        out
     }
 
     suspend fun findDocByName(rootUri: Uri, name: String): UiDoc? = withContext(Dispatchers.IO) {

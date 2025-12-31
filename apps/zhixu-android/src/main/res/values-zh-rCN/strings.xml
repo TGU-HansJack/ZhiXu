@@ -28,6 +28,9 @@
     <string name="vault_settings_third_party_e2ee_warning">开启后所有同步笔记将加密存储，服务器无法查看内容，丢失主密码将无法恢复数据</string>
     <string name="vault_settings_saved">已保存</string>
 
+    <string name="vault_drawer_title">Vault</string>
+    <string name="vault_drawer_empty">暂无文件</string>
+
     <!-- Docs -->
     <string name="docs_title">文档</string>
     <string name="docs_empty">暂无文档</string>
