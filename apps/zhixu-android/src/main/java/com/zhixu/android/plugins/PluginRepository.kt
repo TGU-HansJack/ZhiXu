@@ -50,21 +50,35 @@ class PluginRepository(
     private val http: OkHttpClient = OkHttpClient(),
 ) {
     private val officialBaseUrl = "https://zhixu.app"
+    private val tag = "PluginRepository"
 
     suspend fun listInstalled(rootUri: Uri): List<InstalledPlugin> = withContext(Dispatchers.IO) {
         val pluginsDir = ensurePluginsDir(rootUri) ?: return@withContext emptyList()
         val enabledIds = readEnabledSet(pluginsDir)
 
-        pluginsDir.listFiles()
-            .filter { it.isDirectory }
-            .mapNotNull { dir ->
-                val manifest = readManifest(dir) ?: return@mapNotNull null
+        val out = ArrayList<InstalledPlugin>()
+        val seenIds = HashSet<String>()
+        for (dir in pluginsDir.listFiles().filter { it.isDirectory }) {
+            val manifest = readManifest(dir) ?: continue
+
+            val folderName = dir.name?.trim().orEmpty()
+            if (folderName.isBlank()) continue
+
+            if (folderName != manifest.id) {
+                Log.w(tag, "Skipping plugin folder '$folderName': manifest.id='${manifest.id}' (folder must match id)")
+                continue
+            }
+            if (!seenIds.add(manifest.id)) {
+                Log.w(tag, "Duplicate installed plugin id skipped: ${manifest.id}")
+                continue
+            }
+            out +=
                 InstalledPlugin(
                     manifest = manifest,
                     enabled = enabledIds.contains(manifest.id),
                 )
-            }
-            .sortedBy { (it.manifest.name ?: it.manifest.id).lowercase() }
+        }
+        out.sortedBy { (it.manifest.name ?: it.manifest.id).lowercase() }
     }
 
     suspend fun setEnabled(rootUri: Uri, pluginId: String, enabled: Boolean): Boolean = withContext(Dispatchers.IO) {

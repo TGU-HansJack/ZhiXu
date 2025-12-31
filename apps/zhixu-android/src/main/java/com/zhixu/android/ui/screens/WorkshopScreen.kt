@@ -326,19 +326,21 @@ fun WorkshopScreen(
             }
 
             val filtered =
-                installed.filter { p ->
-                    val q = searchText.trim()
-                    if (q.isBlank()) true
-                    else {
-                        val t = (p.manifest.name ?: p.manifest.id)
-                        t.contains(q, ignoreCase = true) || p.manifest.id.contains(q, ignoreCase = true)
+                installed
+                    .filter { p ->
+                        val q = searchText.trim()
+                        if (q.isBlank()) true
+                        else {
+                            val t = (p.manifest.name ?: p.manifest.id)
+                            t.contains(q, ignoreCase = true) || p.manifest.id.contains(q, ignoreCase = true)
+                        }
                     }
-                }
+                    .distinctBy { it.manifest.id }
 
             if (filtered.isEmpty()) {
                 item { Text(stringResource(R.string.workshop_no_plugins)) }
             } else {
-                items(filtered.size, key = { filtered[it].manifest.id }) { idx ->
+                items(filtered.size, key = { "installed:${filtered[it].manifest.id}" }) { idx ->
                     val plugin = filtered[idx]
                     PluginRow(
                         plugin = plugin,
@@ -427,8 +429,9 @@ fun WorkshopScreen(
                 }
 
                 else -> {
-                    items(officialPlugins.size, key = { officialPlugins[it].id }) { idx ->
-                        val m = officialPlugins[idx]
+                    val officialUnique = officialPlugins.distinctBy { it.id }
+                    items(officialUnique.size, key = { "official:${officialUnique[it].id}" }) { idx ->
+                        val m = officialUnique[idx]
                         OfficialPluginRow(
                             manifest = m,
                             installed = installedIds.contains(m.id),
