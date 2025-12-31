@@ -1,0 +1,19 @@
+{
+  "endpoint": "",
+  "username": "",
+  "password": "",
+  "blogId": "0",
+  "useCurrentTime": false,
+  "publishTimeOffsetHours": 0,
+  "syncTimeOffsetHours": 0,
+  "frontmatterKeys": {
+    "cid": "typecho_cid",
+    "slug": "slug",
+    "tags": "tags",
+    "categories": "categories",
+    "draft": "draft",
+    "dateCreated": "dateCreated",
+    "lastPublished": "typecho_lastPublished"
+  }
+}
+

@@ -1,0 +1,15 @@
+{
+  "id": "typecho-xmlrpc-publisher",
+  "name": "Typecho XML-RPC Publisher",
+  "version": "2.0.0",
+  "description": "通过 XML-RPC（MetaWeblog）将当前笔记发布到 Typecho 博客（J2V8 运行时适配版）。",
+  "entry": "main.js",
+  "files": [
+    "config.json"
+  ],
+  "actions": [
+    { "id": "publish", "label": "Publish", "icon": "publish", "place": "editor_fab", "ringIndex": 0 },
+    { "id": "syncPublishDate", "label": "Sync Time", "icon": "cloud_upload", "place": "editor_fab", "ringIndex": 1 }
+  ]
+}
+
