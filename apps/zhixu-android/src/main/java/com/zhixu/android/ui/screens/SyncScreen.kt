@@ -36,8 +36,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -78,6 +76,8 @@ import com.zhixu.android.sync.OfficialSync
 import com.zhixu.android.sync.OfficialVaultSyncEngine
 import com.zhixu.android.sync.WebDavSyncEngine
 import com.zhixu.android.ui.components.ZhixuDialogDefaults
+import com.zhixu.android.ui.components.ZhixuPasswordToggleIconButton
+import com.zhixu.android.ui.components.ZhixuTextField
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -375,73 +375,42 @@ fun SyncScreen(
 
             item {
                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                    TextField(
+                    ZhixuTextField(
                         value = baseUrl,
                         onValueChange = { baseUrl = it },
                         label = { Text(stringResource(R.string.webdav_base_url)) },
                         singleLine = true,
-                        colors =
-                            TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                disabledContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                            ),
                         modifier = Modifier.fillMaxWidth(),
                     )
                     HorizontalDivider(color = dividerColor)
-                    TextField(
+                    ZhixuTextField(
                         value = username,
                         onValueChange = { username = it },
                         label = { Text(stringResource(R.string.webdav_username)) },
                         singleLine = true,
-                        colors =
-                            TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                disabledContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                            ),
                         modifier = Modifier.fillMaxWidth(),
                     )
                     HorizontalDivider(color = dividerColor)
-                    TextField(
+                    ZhixuTextField(
                         value = password,
                         onValueChange = { password = it },
                         label = { Text(stringResource(R.string.webdav_password)) },
                         singleLine = true,
                         visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
-                            TextButton(onClick = { showPassword = !showPassword }) {
-                                Text(if (showPassword) stringResource(R.string.action_hide) else stringResource(R.string.action_show))
-                            }
+                            ZhixuPasswordToggleIconButton(
+                                show = showPassword,
+                                onClick = { showPassword = !showPassword },
+                            )
                         },
-                        colors =
-                            TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                disabledContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                            ),
                         modifier = Modifier.fillMaxWidth(),
                     )
                     HorizontalDivider(color = dividerColor)
-                    TextField(
+                    ZhixuTextField(
                         value = remoteRoot,
                         onValueChange = { remoteRoot = it },
                         label = { Text(stringResource(R.string.webdav_remote_root)) },
                         singleLine = true,
-                        colors =
-                            TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                disabledContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                            ),
                         modifier = Modifier.fillMaxWidth(),
                     )
                     HorizontalDivider(color = dividerColor)

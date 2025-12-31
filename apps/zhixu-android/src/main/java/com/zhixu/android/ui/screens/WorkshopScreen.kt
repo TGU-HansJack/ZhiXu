@@ -36,12 +36,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -61,14 +62,19 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.zhixu.android.R
 import com.zhixu.android.plugins.InstalledPlugin
 import com.zhixu.android.plugins.PluginManifest
 import com.zhixu.android.plugins.PluginRepository
+import com.zhixu.android.ui.Ionicons
 import com.zhixu.android.ui.components.MarkdownPreview
 import com.zhixu.android.ui.components.ZhixuDialogDefaults
+import com.zhixu.android.ui.components.ZhixuPasswordToggleIconButton
+import com.zhixu.android.ui.components.ZhixuTextField
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -187,7 +193,7 @@ fun WorkshopScreen(
             properties = ZhixuDialogDefaults.properties,
             title = { Text(stringResource(R.string.workshop_install_from_git)) },
             text = {
-                OutlinedTextField(
+                ZhixuTextField(
                     value = gitUrl,
                     onValueChange = { gitUrl = it },
                     singleLine = true,
@@ -294,7 +300,7 @@ fun WorkshopScreen(
             item { Spacer(modifier = Modifier.height(12.dp)) }
 
             item {
-                OutlinedTextField(
+                ZhixuTextField(
                     value = searchText,
                     onValueChange = { searchText = it },
                     singleLine = true,
@@ -521,6 +527,7 @@ private fun PluginRow(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun PluginSettingsDialog(
     title: String,
     config: JSONObject,
@@ -530,39 +537,81 @@ private fun PluginSettingsDialog(
     onSave: () -> Unit,
 ) {
     var showPasswords by remember { mutableStateOf(false) }
-    val scrollState = rememberScrollState()
 
-    AlertDialog(
-        modifier = ZhixuDialogDefaults.modifier(),
+    Dialog(
         onDismissRequest = { if (!saving) onDismiss() },
-        properties = ZhixuDialogDefaults.properties,
-        title = { Text(title) },
-        text = {
-            Column(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 120.dp, max = 420.dp)
-                        .verticalScroll(scrollState),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                JsonObjectForm(
-                    root = config,
-                    obj = config,
-                    path = emptyList(),
-                    showPasswords = showPasswords,
-                    onToggleShowPasswords = { showPasswords = !showPasswords },
-                    onChange = onChange,
-                )
+        properties =
+            DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false,
+                dismissOnClickOutside = false,
+            ),
+    ) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        navigationIcon = {
+                            IconButton(enabled = !saving, onClick = onDismiss) {
+                                Icon(painter = painterResource(Ionicons.ArrowBack), contentDescription = null)
+                            }
+                        },
+                        actions = {
+                            IconButton(enabled = !saving, onClick = onDismiss) {
+                                Icon(painter = painterResource(Ionicons.Close), contentDescription = null)
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                    )
+                },
+                bottomBar = {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .windowInsetsPadding(WindowInsets.navigationBars)
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) {
+                        Button(
+                            enabled = !saving,
+                            onClick = onSave,
+                            modifier = Modifier.fillMaxWidth().height(46.dp),
+                        ) {
+                            Text(stringResource(R.string.plugin_save))
+                        }
+                    }
+                },
+                contentWindowInsets = WindowInsets(0),
+            ) { contentPadding ->
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .padding(contentPadding)
+                            .imePadding()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Text(
+                        text = "$title 设置",
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+
+                    JsonObjectForm(
+                        root = config,
+                        obj = config,
+                        path = emptyList(),
+                        showPasswords = showPasswords,
+                        onToggleShowPasswords = { showPasswords = !showPasswords },
+                        onChange = onChange,
+                    )
+                }
             }
-        },
-        confirmButton = {
-            TextButton(enabled = !saving, onClick = onSave) { Text(stringResource(R.string.plugin_save)) }
-        },
-        dismissButton = {
-            TextButton(enabled = !saving, onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
-        },
-    )
+        }
+    }
 }
 
 @Composable
@@ -587,8 +636,8 @@ private fun JsonObjectForm(
         return
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        for (k in keys) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        for ((idx, k) in keys.withIndex()) {
             val v = obj.opt(k)
             val nextPath = path + k
             when (v) {
@@ -618,7 +667,12 @@ private fun JsonObjectForm(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text(text = k)
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(text = prettyConfigLabel(path, k), style = MaterialTheme.typography.titleMedium)
+                            prettyConfigHint(path, k)?.let { hint ->
+                                Text(text = hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                         Switch(
                             checked = v,
                             onCheckedChange = { checked -> onChange(configWithPathValue(root, nextPath, checked)) },
@@ -628,17 +682,22 @@ private fun JsonObjectForm(
 
                 is Number -> {
                     var text by remember(v) { mutableStateOf(v.toString()) }
-                    OutlinedTextField(
-                        value = text,
-                        onValueChange = { next ->
-                            text = next
-                            val parsed = next.trim().toDoubleOrNull()
-                            if (parsed != null) onChange(configWithPathValue(root, nextPath, parsed))
-                        },
-                        label = { Text(k) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
+                    ConfigField(
+                        label = prettyConfigLabel(path, k),
+                        hint = prettyConfigHint(path, k),
+                    ) {
+                        ZhixuTextField(
+                            value = text,
+                            onValueChange = { next ->
+                                text = next
+                                val parsed = next.trim().toDoubleOrNull()
+                                if (parsed != null) onChange(configWithPathValue(root, nextPath, parsed))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text(k) },
+                        )
+                    }
                 }
 
                 else -> {
@@ -646,35 +705,84 @@ private fun JsonObjectForm(
                     val raw = v?.toString().orEmpty()
                     var text by remember(raw) { mutableStateOf(raw) }
 
-                    OutlinedTextField(
-                        value = text,
-                        onValueChange = { next ->
-                            text = next
-                            onChange(configWithPathValue(root, nextPath, next))
-                        },
-                        label = { Text(k) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        visualTransformation =
-                            if (isPassword && !showPasswords) PasswordVisualTransformation() else VisualTransformation.None,
-                        trailingIcon =
-                            if (isPassword) {
-                                {
-                                    TextButton(onClick = onToggleShowPasswords) {
-                                        Text(
-                                            stringResource(
-                                                if (showPasswords) R.string.plugin_hide_password else R.string.plugin_show_password,
-                                            ),
+                    ConfigField(
+                        label = prettyConfigLabel(path, k),
+                        hint = prettyConfigHint(path, k),
+                    ) {
+                        ZhixuTextField(
+                            value = text,
+                            onValueChange = { next ->
+                                text = next
+                                onChange(configWithPathValue(root, nextPath, next))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text(k) },
+                            visualTransformation =
+                                if (isPassword && !showPasswords) PasswordVisualTransformation() else VisualTransformation.None,
+                            trailingIcon =
+                                if (isPassword) {
+                                    {
+                                        ZhixuPasswordToggleIconButton(
+                                            show = showPasswords,
+                                            onClick = onToggleShowPasswords,
                                         )
                                     }
-                                }
-                            } else {
-                                null
-                            },
-                    )
+                                } else {
+                                    null
+                                },
+                        )
+                    }
                 }
             }
+
+            if (idx != keys.lastIndex) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            }
         }
+    }
+}
+
+@Composable
+private fun ConfigField(
+    label: String,
+    hint: String?,
+    content: @Composable () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(text = label, style = MaterialTheme.typography.titleMedium)
+        if (!hint.isNullOrBlank()) {
+            Text(text = hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        content()
+    }
+}
+
+private fun prettyConfigLabel(path: List<String>, key: String): String {
+    if (path.isNotEmpty()) return key
+    return when (key) {
+        "endpoint", "url", "apiUrl" -> "接口 URL"
+        "username", "user", "userName" -> "用户名"
+        "password", "pass", "passwd" -> "密码"
+        "blogId" -> "默认博客ID"
+        "useCurrentTime" -> "总是使用当前时间作为发布时间"
+        "publishTimeOffsetHours" -> "发布偏移（小时）"
+        "syncTimeOffsetHours" -> "同步偏移（小时）"
+        else -> key
+    }
+}
+
+private fun prettyConfigHint(path: List<String>, key: String): String? {
+    if (path.isNotEmpty()) return null
+    return when (key) {
+        "endpoint", "url", "apiUrl" -> "填写接口地址，例如：https://your-site.com/xmlrpc.php"
+        "username", "user", "userName" -> "用于登录的用户名，确保有发布权限"
+        "password", "pass", "passwd" -> "对应用户名的密码（将以安全方式保存）"
+        "blogId" -> "如果有多个博客，请设置默认发布的博客ID"
+        "useCurrentTime" -> "启用后发布时忽略文章原有时间，直接使用当前时间"
+        "publishTimeOffsetHours" -> "调整发布到服务器的时间偏移，例如 +8"
+        "syncTimeOffsetHours" -> "同步发布时间时的时间偏移，例如 +8"
+        else -> null
     }
 }
 

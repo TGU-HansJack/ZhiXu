@@ -32,8 +32,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -67,6 +65,8 @@ import com.zhixu.android.data.VaultSyncPreferences
 import com.zhixu.android.data.appManagedVaultRootUri
 import com.zhixu.android.data.vaultRootToDocumentFile
 import com.zhixu.android.sync.OfficialSync
+import com.zhixu.android.ui.components.ZhixuPasswordToggleIconButton
+import com.zhixu.android.ui.components.ZhixuTextField
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.map
 import kotlin.math.abs
@@ -321,27 +321,25 @@ fun VaultSettingsScreen(
                     }
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                            TextField(
+                            ZhixuTextField(
                                 value = thirdPartyUrl,
                                 onValueChange = { thirdPartyUrl = it },
                                 label = { Text(stringResource(R.string.vault_settings_third_party_url)) },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                                colors = transparentTextFieldColors(),
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             HorizontalDivider(color = dividerColor)
-                            TextField(
+                            ZhixuTextField(
                                 value = thirdPartyUsername,
                                 onValueChange = { thirdPartyUsername = it },
                                 label = { Text(stringResource(R.string.vault_settings_third_party_username)) },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                                colors = transparentTextFieldColors(),
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             HorizontalDivider(color = dividerColor)
-                            TextField(
+                            ZhixuTextField(
                                 value = thirdPartyPassword,
                                 onValueChange = { thirdPartyPassword = it },
                                 label = { Text(stringResource(R.string.vault_settings_third_party_password)) },
@@ -349,11 +347,11 @@ fun VaultSettingsScreen(
                                 visualTransformation =
                                     if (showThirdPartyPassword) VisualTransformation.None else PasswordVisualTransformation(),
                                 trailingIcon = {
-                                    TextButton(onClick = { showThirdPartyPassword = !showThirdPartyPassword }) {
-                                        Text(if (showThirdPartyPassword) stringResource(R.string.action_hide) else stringResource(R.string.action_show))
-                                    }
+                                    ZhixuPasswordToggleIconButton(
+                                        show = showThirdPartyPassword,
+                                        onClick = { showThirdPartyPassword = !showThirdPartyPassword },
+                                    )
                                 },
-                                colors = transparentTextFieldColors(),
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             HorizontalDivider(color = dividerColor)
@@ -372,7 +370,7 @@ fun VaultSettingsScreen(
 
                             if (thirdPartyE2eeEnabled) {
                                 HorizontalDivider(color = dividerColor)
-                                TextField(
+                                ZhixuTextField(
                                     value = thirdPartyE2eeMasterPassword,
                                     onValueChange = { thirdPartyE2eeMasterPassword = it },
                                     label = { Text(stringResource(R.string.vault_settings_third_party_master_password)) },
@@ -380,12 +378,12 @@ fun VaultSettingsScreen(
                                     visualTransformation =
                                         if (showMasterPassword) VisualTransformation.None else PasswordVisualTransformation(),
                                     trailingIcon = {
-                                        TextButton(onClick = { showMasterPassword = !showMasterPassword }) {
-                                            Text(if (showMasterPassword) stringResource(R.string.action_hide) else stringResource(R.string.action_show))
-                                        }
+                                        ZhixuPasswordToggleIconButton(
+                                            show = showMasterPassword,
+                                            onClick = { showMasterPassword = !showMasterPassword },
+                                        )
                                     },
                                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                                    colors = transparentTextFieldColors(),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 Spacer(Modifier.height(8.dp))
@@ -476,16 +474,6 @@ private fun LocationButton(
         OutlinedButton(modifier = modifier, onClick = onClick) { Text(text) }
     }
 }
-
-@Composable
-private fun transparentTextFieldColors() =
-    TextFieldDefaults.colors(
-        focusedContainerColor = Color.Transparent,
-        unfocusedContainerColor = Color.Transparent,
-        disabledContainerColor = Color.Transparent,
-        focusedIndicatorColor = Color.Transparent,
-        unfocusedIndicatorColor = Color.Transparent,
-    )
 
 private fun formatBytes(bytes: Long): String {
     if (bytes < 0) return "-"

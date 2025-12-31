@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.text.BasicTextField
@@ -11,7 +12,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -38,6 +38,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.zhixu.android.ui.components.ZhixuTextField
 import com.zhixu.android.R
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.Ionicons
@@ -136,11 +137,12 @@ fun NewDocScreen(
                 .fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            OutlinedTextField(
+            ZhixuTextField(
                 value = fileName,
                 onValueChange = { fileName = it },
                 label = { Text(stringResource(R.string.field_file_name)) },
                 singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
             )
 
             Text(stringResource(R.string.new_doc_initial_content))

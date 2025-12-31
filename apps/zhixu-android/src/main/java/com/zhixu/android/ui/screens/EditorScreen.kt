@@ -80,7 +80,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
@@ -159,6 +158,7 @@ import com.zhixu.android.ui.components.LineDiff
 import com.zhixu.android.ui.components.DiffOp
 import com.zhixu.android.ui.components.DiffLine
 import com.zhixu.android.ui.components.ZhixuDialogDefaults
+import com.zhixu.android.ui.components.ZhixuTextField
 import com.zhixu.core.tasks.TaskSyntax
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -2028,17 +2028,19 @@ fun EditorScreen(
             title = { Text(stringResource(R.string.dialog_find_replace_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
+                    ZhixuTextField(
                         value = findText,
                         onValueChange = { findText = it },
                         label = { Text(stringResource(R.string.field_find)) },
                         singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    OutlinedTextField(
+                    ZhixuTextField(
                         value = replaceText,
                         onValueChange = { replaceText = it },
                         label = { Text(stringResource(R.string.field_replace)) },
                         singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     TextButton(onClick = { insertTaskLine() }) { Text(stringResource(R.string.action_insert_task)) }
                     TextButton(onClick = { insertField("@due(YYYY-MM-DD HH:mm)") }) { Text(stringResource(R.string.action_insert_due)) }
@@ -2069,17 +2071,19 @@ fun EditorScreen(
             title = { Text("Insert link") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
+                    ZhixuTextField(
                         value = linkText,
                         onValueChange = { linkText = it },
                         label = { Text("Text") },
                         singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    OutlinedTextField(
+                    ZhixuTextField(
                         value = linkUrl,
                         onValueChange = { linkUrl = it },
                         label = { Text("URL") },
                         singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             },
@@ -2104,17 +2108,19 @@ fun EditorScreen(
             title = { Text("Insert image") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
+                    ZhixuTextField(
                         value = imageAlt,
                         onValueChange = { imageAlt = it },
                         label = { Text("Alt") },
                         singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    OutlinedTextField(
+                    ZhixuTextField(
                         value = imageUrl,
                         onValueChange = { imageUrl = it },
                         label = { Text("URL") },
                         singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     TextButton(onClick = { imagePickerLauncher.launch(arrayOf("image/*")) }) { Text("Choose local image") }
                 }
@@ -2140,11 +2146,12 @@ fun EditorScreen(
             title = { Text("Insert code block") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
+                    ZhixuTextField(
                         value = codeLanguage,
                         onValueChange = { codeLanguage = it },
                         label = { Text("Language") },
                         singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             },
@@ -2169,17 +2176,19 @@ fun EditorScreen(
             title = { Text("Insert table") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
+                    ZhixuTextField(
                         value = tableRowsText,
                         onValueChange = { tableRowsText = it.filter { ch -> ch.isDigit() }.take(3) },
                         label = { Text("Rows") },
                         singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    OutlinedTextField(
+                    ZhixuTextField(
                         value = tableColsText,
                         onValueChange = { tableColsText = it.filter { ch -> ch.isDigit() }.take(2) },
                         label = { Text("Cols") },
                         singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             },

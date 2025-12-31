@@ -32,7 +32,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.SnackbarHost
@@ -58,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.zhixu.android.ui.components.ZhixuTextField
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -396,13 +396,13 @@ private fun TaskComposer(
         expanded = false
     }
 
-    OutlinedTextField(
+    ZhixuTextField(
         value = text,
         onValueChange = {
             text = it
             if (!expanded) expanded = true
         },
-        modifier = modifier.heightIn(min = 56.dp),
+        modifier = modifier,
         singleLine = true,
         placeholder = { Text(stringResource(R.string.task_input_hint)) },
         colors = TextFieldDefaults.colors(
@@ -664,7 +664,7 @@ private fun TaskTagSheet(
                 .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            OutlinedTextField(
+            ZhixuTextField(
                 value = tagText,
                 onValueChange = { tagText = it },
                 modifier = Modifier.weight(1f),

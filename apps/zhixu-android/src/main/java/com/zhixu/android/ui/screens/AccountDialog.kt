@@ -16,8 +16,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -36,6 +34,8 @@ import com.zhixu.android.R
 import com.zhixu.android.data.AccountPreferences
 import com.zhixu.android.data.AccountState
 import com.zhixu.android.ui.components.ZhixuDialogDefaults
+import com.zhixu.android.ui.components.ZhixuPasswordToggleIconButton
+import com.zhixu.android.ui.components.ZhixuTextField
 import com.zhixu.android.sync.OfficialSync
 import com.zhixu.android.sync.SyncServerClient
 import com.zhixu.android.sync.SyncServerResult
@@ -147,16 +147,15 @@ fun AccountManagementDialog(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
 
-                TextField(
+                ZhixuTextField(
                     value = username,
                     onValueChange = { username = it },
                     enabled = !busy,
                     label = { Text(stringResource(R.string.account_username)) },
                     singleLine = true,
-                    colors = transparentTextFieldColors(),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                TextField(
+                ZhixuTextField(
                     value = password,
                     onValueChange = { password = it },
                     enabled = !busy,
@@ -164,11 +163,12 @@ fun AccountManagementDialog(
                     singleLine = true,
                     visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = {
-                        TextButton(enabled = !busy, onClick = { showPassword = !showPassword }) {
-                            Text(if (showPassword) stringResource(R.string.action_hide) else stringResource(R.string.action_show))
-                        }
+                        ZhixuPasswordToggleIconButton(
+                            show = showPassword,
+                            enabled = !busy,
+                            onClick = { showPassword = !showPassword },
+                        )
                     },
-                    colors = transparentTextFieldColors(),
                     modifier = Modifier.fillMaxWidth(),
                 )
 
@@ -251,13 +251,12 @@ fun AccountManagementDialog(
                     style = MaterialTheme.typography.titleSmall,
                 )
 
-                TextField(
+                ZhixuTextField(
                     value = deviceId,
                     onValueChange = {},
                     enabled = false,
                     label = { Text(stringResource(R.string.account_device_id)) },
                     singleLine = true,
-                    colors = transparentTextFieldColors(),
                     modifier = Modifier.fillMaxWidth(),
                 )
 
@@ -351,13 +350,3 @@ fun AccountManagementDialog(
         },
     )
 }
-
-@Composable
-private fun transparentTextFieldColors() =
-    TextFieldDefaults.colors(
-        focusedContainerColor = Color.Transparent,
-        unfocusedContainerColor = Color.Transparent,
-        disabledContainerColor = Color.Transparent,
-        focusedIndicatorColor = Color.Transparent,
-        unfocusedIndicatorColor = Color.Transparent,
-    )
