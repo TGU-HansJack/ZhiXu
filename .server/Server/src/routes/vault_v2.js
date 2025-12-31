@@ -1,8 +1,10 @@
 const crypto = require("crypto");
+const fs = require("fs");
 const express = require("express");
 const { pool } = require("../db");
 const { authRequired } = require("../middleware/auth");
-const { rawBodyLimitBytes } = require("../config");
+const { rawBodyLimitBytes, storageRoot } = require("../config");
+const { buildObjectPath, atomicWriteFile, deleteFileBestEffort } = require("../storage");
 
 const router = express.Router();
 router.use(authRequired);
@@ -69,28 +71,6 @@ LIMIT 2${lock}
     sha256: String(row.sha256 || ""),
     deleted: Boolean(row.deleted)
   };
-}
-
-async function insertVersionRow({
-  db,
-  userId,
-  path,
-  pathHash,
-  rev,
-  now,
-  mtimeMs,
-  sizeBytes,
-  sha256,
-  deleted,
-  content
-}) {
-  await db.query(
-    `
-INSERT INTO vault_file_versions (user_id, path, path_hash, rev, updated_at_ms, mtime_ms, size_bytes, sha256, deleted, content)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`,
-    [userId, path, pathHash, rev, now, mtimeMs, sizeBytes, sha256, deleted ? 1 : 0, content]
-  );
 }
 
 async function insertChangeRow({ db, userId, path, pathHash, rev, now, mtimeMs, sizeBytes, sha256, deleted }) {
@@ -178,7 +158,7 @@ router.get("/file", async (req, res) => {
 
   const [rows] = await pool.query(
     `
-SELECT path, rev, mtime_ms, size_bytes, sha256, deleted, content
+SELECT path, rev, mtime_ms, size_bytes, sha256, deleted
 FROM vault_files
 WHERE user_id = ? AND path_hash = ?
 LIMIT 2
@@ -190,79 +170,27 @@ LIMIT 2
   if (String(row.path || "") !== path) return res.status(409).json({ error: "path_hash_collision" });
   if (row.deleted) return res.status(410).json({ error: "deleted" });
 
-  const content = row.content || Buffer.alloc(0);
+  const obj = buildObjectPath(storageRoot, userId, path);
+  if (!obj) return res.status(400).json({ error: "invalid_path" });
+  const absPath = obj.absPath;
+
   res.setHeader("Content-Type", "application/octet-stream");
   res.setHeader("X-Zhixu-Rev", String(Number(row.rev) || 0));
   res.setHeader("X-Zhixu-Mtime-Ms", String(Number(row.mtime_ms) || 0));
-  res.setHeader("X-Zhixu-Size", String(Number(row.size_bytes) || content.length));
+  res.setHeader("X-Zhixu-Size", String(Number(row.size_bytes) || 0));
   res.setHeader("X-Zhixu-Sha256", String(row.sha256 || ""));
-  return res.status(200).send(Buffer.from(content));
-});
+  try {
+    await fs.promises.access(absPath, fs.constants.R_OK);
+  } catch (_) {
+    return res.status(404).json({ error: "file_missing" });
+  }
 
-router.get("/versions", async (req, res) => {
-  const userId = Number(req.user.id);
-  if (!Number.isFinite(userId)) return res.status(401).json({ error: "invalid_user" });
-
-  const path = normalizeVaultPath(req.query?.path);
-  if (!path) return res.status(400).json({ error: "invalid_path" });
-  const pathHash = sha256BytesUtf8(path);
-
-  const limitRaw = Number(req.query?.limit || 50);
-  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 50;
-
-  const [rows] = await pool.query(
-    `
-SELECT rev, updated_at_ms, mtime_ms, size_bytes, sha256, deleted
-FROM vault_file_versions
-WHERE user_id = ? AND path_hash = ? AND path = ?
-ORDER BY rev DESC
-LIMIT ?
-`,
-    [userId, pathHash, path, limit]
-  );
-  const versions = (rows || []).map((r) => ({
-    rev: Number(r.rev) || 0,
-    updatedAt: Number(r.updated_at_ms) || 0,
-    mtimeMs: Number(r.mtime_ms) || 0,
-    size: Number(r.size_bytes) || 0,
-    sha256: String(r.sha256 || ""),
-    deleted: Boolean(r.deleted)
-  }));
-  return res.json({ serverTime: Date.now(), path, versions });
-});
-
-router.get("/version", async (req, res) => {
-  const userId = Number(req.user.id);
-  if (!Number.isFinite(userId)) return res.status(401).json({ error: "invalid_user" });
-
-  const path = normalizeVaultPath(req.query?.path);
-  if (!path) return res.status(400).json({ error: "invalid_path" });
-  const pathHash = sha256BytesUtf8(path);
-
-  const revRaw = Number(req.query?.rev || req.header("X-Zhixu-Rev") || 0);
-  const rev = Number.isFinite(revRaw) && revRaw > 0 ? revRaw : NaN;
-  if (!Number.isFinite(rev)) return res.status(400).json({ error: "invalid_rev" });
-
-  const [rows] = await pool.query(
-    `
-SELECT path, rev, mtime_ms, size_bytes, sha256, deleted, content
-FROM vault_file_versions
-WHERE user_id = ? AND path_hash = ? AND path = ? AND rev = ?
-LIMIT 1
-`,
-    [userId, pathHash, path, rev]
-  );
-  const row = rows?.[0];
-  if (!row) return res.status(404).json({ error: "not_found" });
-  if (row.deleted) return res.status(410).json({ error: "deleted" });
-
-  const content = row.content || Buffer.alloc(0);
-  res.setHeader("Content-Type", "application/octet-stream");
-  res.setHeader("X-Zhixu-Rev", String(Number(row.rev) || 0));
-  res.setHeader("X-Zhixu-Mtime-Ms", String(Number(row.mtime_ms) || 0));
-  res.setHeader("X-Zhixu-Size", String(Number(row.size_bytes) || content.length));
-  res.setHeader("X-Zhixu-Sha256", String(row.sha256 || ""));
-  return res.status(200).send(Buffer.from(content));
+  const stream = fs.createReadStream(absPath);
+  stream.on("error", () => {
+    if (!res.headersSent) res.status(500);
+    res.end();
+  });
+  return stream.pipe(res.status(200));
 });
 
 router.put(
@@ -313,10 +241,17 @@ router.put(
 
       const newRev = currentRev + 1;
 
+      const obj = buildObjectPath(storageRoot, userId, path);
+      if (!obj) {
+        await conn.rollback();
+        return res.status(400).json({ error: "invalid_path" });
+      }
+      await atomicWriteFile(obj.absPath, bytes);
+
       await conn.query(
         `
-INSERT INTO vault_files (user_id, path, path_hash, rev, updated_at_ms, mtime_ms, size_bytes, sha256, deleted, content)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+INSERT INTO vault_files (user_id, path, path_hash, rev, updated_at_ms, mtime_ms, size_bytes, sha256, deleted)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
 ON DUPLICATE KEY UPDATE
   path = VALUES(path),
   rev = VALUES(rev),
@@ -324,25 +259,10 @@ ON DUPLICATE KEY UPDATE
   mtime_ms = VALUES(mtime_ms),
   size_bytes = VALUES(size_bytes),
   sha256 = VALUES(sha256),
-  deleted = 0,
-  content = VALUES(content)
+  deleted = 0
 `,
-        [userId, path, pathHash, newRev, now, safeMtimeMs, sizeBytes, hash, bytes]
+        [userId, path, pathHash, newRev, now, safeMtimeMs, sizeBytes, hash]
       );
-
-      await insertVersionRow({
-        db: conn,
-        userId,
-        path,
-        pathHash,
-        rev: newRev,
-        now,
-        mtimeMs: safeMtimeMs,
-        sizeBytes,
-        sha256: hash,
-        deleted: false,
-        content: bytes
-      });
       const changeId = await insertChangeRow({
         db: conn,
         userId,
@@ -425,8 +345,8 @@ router.delete("/file", async (req, res) => {
 
     await conn.query(
       `
-INSERT INTO vault_files (user_id, path, path_hash, rev, updated_at_ms, mtime_ms, size_bytes, sha256, deleted, content)
-VALUES (?, ?, ?, ?, ?, 0, 0, ?, 1, NULL)
+INSERT INTO vault_files (user_id, path, path_hash, rev, updated_at_ms, mtime_ms, size_bytes, sha256, deleted)
+VALUES (?, ?, ?, ?, ?, 0, 0, ?, 1)
 ON DUPLICATE KEY UPDATE
   path = VALUES(path),
   rev = VALUES(rev),
@@ -434,25 +354,10 @@ ON DUPLICATE KEY UPDATE
   mtime_ms = 0,
   size_bytes = 0,
   sha256 = VALUES(sha256),
-  deleted = 1,
-  content = NULL
+  deleted = 1
 `,
       [userId, path, pathHash, newRev, now, zeroHash]
     );
-
-    await insertVersionRow({
-      db: conn,
-      userId,
-      path,
-      pathHash,
-      rev: newRev,
-      now,
-      mtimeMs: 0,
-      sizeBytes: 0,
-      sha256: zeroHash,
-      deleted: true,
-      content: null
-    });
     const changeId = await insertChangeRow({
       db: conn,
       userId,
@@ -466,124 +371,10 @@ ON DUPLICATE KEY UPDATE
       deleted: true
     });
     await conn.commit();
+
+    const obj = buildObjectPath(storageRoot, userId, path);
+    if (obj) await deleteFileBestEffort(obj.absPath);
     return res.json({ ok: true, serverTime: now, path, deleted: true, rev: newRev, changeId });
-  } catch (e) {
-    try {
-      await conn.rollback();
-    } catch (_) {
-      // ignore
-    }
-    return res.status(500).json({ error: "internal_error" });
-  } finally {
-    conn.release();
-  }
-});
-
-router.post("/restore", async (req, res) => {
-  const userId = Number(req.user.id);
-  if (!Number.isFinite(userId)) return res.status(401).json({ error: "invalid_user" });
-
-  const path = normalizeVaultPath(req.body?.path);
-  if (!path) return res.status(400).json({ error: "invalid_path" });
-  const pathHash = sha256BytesUtf8(path);
-
-  const fromRevRaw = Number(req.body?.rev || 0);
-  const fromRev = Number.isFinite(fromRevRaw) && fromRevRaw > 0 ? fromRevRaw : NaN;
-  if (!Number.isFinite(fromRev)) return res.status(400).json({ error: "invalid_rev" });
-
-  const baseRevRaw = Number(req.body?.baseRev || 0);
-  const baseRev = Number.isFinite(baseRevRaw) && baseRevRaw >= 0 ? baseRevRaw : NaN;
-  if (!Number.isFinite(baseRev)) return res.status(400).json({ error: "invalid_baseRev" });
-
-  const mtimeMsRaw = Number(req.body?.mtimeMs || 0);
-  const mtimeMs = Number.isFinite(mtimeMsRaw) && mtimeMsRaw > 0 ? mtimeMsRaw : Date.now();
-
-  const [srcRows] = await pool.query(
-    `
-SELECT deleted, content
-FROM vault_file_versions
-WHERE user_id = ? AND path_hash = ? AND path = ? AND rev = ?
-LIMIT 1
-`,
-    [userId, pathHash, path, fromRev]
-  );
-  const src = srcRows?.[0];
-  if (!src) return res.status(404).json({ error: "not_found" });
-  if (src.deleted) return res.status(410).json({ error: "deleted" });
-  const bytes = src.content || Buffer.alloc(0);
-  if (!bytes.length) return res.status(400).json({ error: "empty_body" });
-
-  const now = Date.now();
-  const hash = sha256Hex(bytes);
-  const sizeBytes = bytes.length;
-
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-
-    const current = await getCurrentFileRow(conn, userId, path, pathHash, { forUpdate: true });
-    if (current?.error) {
-      await conn.rollback();
-      return res.status(409).json({ error: current.error });
-    }
-    const currentRev = current?.rev || 0;
-    if (baseRev !== currentRev) {
-      await conn.rollback();
-      return res.status(409).json({
-        error: "rev_conflict",
-        path,
-        expectedBaseRev: currentRev,
-        current: current || { path, rev: 0, deleted: false }
-      });
-    }
-
-    const newRev = currentRev + 1;
-
-    await conn.query(
-      `
-INSERT INTO vault_files (user_id, path, path_hash, rev, updated_at_ms, mtime_ms, size_bytes, sha256, deleted, content)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
-ON DUPLICATE KEY UPDATE
-  path = VALUES(path),
-  rev = VALUES(rev),
-  updated_at_ms = VALUES(updated_at_ms),
-  mtime_ms = VALUES(mtime_ms),
-  size_bytes = VALUES(size_bytes),
-  sha256 = VALUES(sha256),
-  deleted = 0,
-  content = VALUES(content)
-`,
-      [userId, path, pathHash, newRev, now, mtimeMs, sizeBytes, hash, bytes]
-    );
-
-    await insertVersionRow({
-      db: conn,
-      userId,
-      path,
-      pathHash,
-      rev: newRev,
-      now,
-      mtimeMs,
-      sizeBytes,
-      sha256: hash,
-      deleted: false,
-      content: bytes
-    });
-    const changeId = await insertChangeRow({
-      db: conn,
-      userId,
-      path,
-      pathHash,
-      rev: newRev,
-      now,
-      mtimeMs,
-      sizeBytes,
-      sha256: hash,
-      deleted: false
-    });
-
-    await conn.commit();
-    return res.json({ ok: true, serverTime: now, path, rev: newRev, changeId, sha256: hash, size: sizeBytes, mtimeMs });
   } catch (e) {
     try {
       await conn.rollback();

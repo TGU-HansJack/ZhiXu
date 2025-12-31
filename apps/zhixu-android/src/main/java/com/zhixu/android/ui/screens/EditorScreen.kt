@@ -142,7 +142,6 @@ import com.zhixu.android.data.dataStore
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.Ionicons
 import com.zhixu.android.sync.SyncServerClient
-import com.zhixu.android.sync.VaultVersionEntryV2
 import com.zhixu.android.sync.resolveSyncServerAuth
 import com.zhixu.android.sync.VaultAutoSync
 import com.zhixu.android.plugins.InstalledPlugin
@@ -224,8 +223,6 @@ fun EditorScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var showOverflowSheet by remember { mutableStateOf(false) }
     val overflowSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var showHistorySheet by remember { mutableStateOf(false) }
-    val historySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showFontSizeSheet by remember { mutableStateOf(false) }
     val fontSizeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -1608,15 +1605,6 @@ fun EditorScreen(
                                 scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.common_copied)) }
                             },
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
-                        EditorOverflowRow(
-                            title = "历史版本",
-                            trailing = { Icon(painter = painterResource(Ionicons.TimeOutline), contentDescription = null, tint = Color(0xFF111111), modifier = Modifier.size(18.dp)) },
-                            onClick = {
-                                showOverflowSheet = false
-                                showHistorySheet = true
-                            },
-                        )
                         if (pluginFabActions.isNotEmpty()) {
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
                             LazyColumn(
@@ -1679,7 +1667,7 @@ fun EditorScreen(
         }
     }
 
-    if (showHistorySheet) {
+    /* if (showHistorySheet) {
         var isLoading by remember(showHistorySheet, latestDocUri) { mutableStateOf(true) }
         var errorText by remember(showHistorySheet, latestDocUri) { mutableStateOf<String?>(null) }
         var versions by remember(showHistorySheet, latestDocUri) { mutableStateOf<List<VaultVersionEntryV2>>(emptyList()) }
@@ -1923,7 +1911,7 @@ fun EditorScreen(
                 }
             }
         }
-    }
+    } */
 
     if (showFontSizeSheet) {
         var tempSize by remember(showFontSizeSheet) { mutableStateOf(editorFontSizeSpValue) }

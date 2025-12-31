@@ -133,45 +133,43 @@ class OfficialVaultSyncEngine(
 
                 val remote = SyncServerClient.downloadVaultFileV2(baseUrl, token, path).value ?: return false
                 val localBytes = local?.let { repository.readBytes(it.file.uri) } ?: ByteArray(0)
-                val baseRev = st?.baseRev ?: 0L
-                val baseBytes =
-                    if (baseRev > 0) {
-                        SyncServerClient.downloadVaultVersionV2(baseUrl, token, path, baseRev).value?.bytes ?: ByteArray(0)
-                    } else {
-                        ByteArray(0)
-                    }
-
-                val isText = path.endsWith(".md", ignoreCase = true) || path.endsWith(".txt", ignoreCase = true) || path.endsWith(".json", ignoreCase = true)
-                if (isText) {
-                    val merged =
-                        ThreeWayMerge.mergeText(
-                            base = baseBytes.decodeToString(),
-                            local = localBytes.decodeToString(),
-                            remote = remote.bytes.decodeToString(),
-                        )
-                    if (merged.ok && merged.merged != null) {
-                        val mergedBytes = merged.merged.encodeToByteArray()
-                        val put =
-                            SyncServerClient.uploadVaultFileV2(
-                                baseUrl = baseUrl,
-                                token = token,
-                                path = path,
-                                mtimeMs = local?.lastModifiedEpochMs ?: System.currentTimeMillis(),
-                                bytes = mergedBytes,
-                                baseRev = remote.rev,
-                            )
-                        if (put.ok && put.value != null) {
-                            val dest = ensureLocalFile(root, path) ?: return false
-                            repository.writeBytes(dest.uri, mergedBytes)
-                            val localMtime = repository.getDocumentLastModified(dest.uri)
-                            state = state.withUploaded(path, rev = put.value.rev, sha256 = put.value.sha256, size = mergedBytes.size.toLong(), localMtimeMs = localMtime)
-                            return true
-                        }
-                    }
+                if (local == null) {
+                    val dest = ensureLocalFile(root, path) ?: return false
+                    repository.writeBytes(dest.uri, remote.bytes)
+                    val localMtime = repository.getDocumentLastModified(dest.uri)
+                    state = state.withUploaded(path, rev = remoteRev, sha256 = remote.sha256, size = remote.bytes.size.toLong(), localMtimeMs = localMtime)
+                    return true
                 }
 
                 ensureConflictArtifact(path, "remote-r${remote.rev}", remote.bytes)
                 logger.conflict(path, "remote_changed")
+
+                // Without server-side history, resolve by keeping both:
+                // - write remote under .zhixu/conflicts/
+                // - upload local to remote (local wins)
+                state = state.withUploaded(path, rev = remote.rev, sha256 = "", size = localBytes.size.toLong(), localMtimeMs = local.lastModifiedEpochMs)
+                if (localBytes.isNotEmpty()) {
+                    val put =
+                        SyncServerClient.uploadVaultFileV2(
+                            baseUrl = baseUrl,
+                            token = token,
+                            path = path,
+                            mtimeMs = local.lastModifiedEpochMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                            bytes = localBytes,
+                            baseRev = remote.rev,
+                        )
+                    if (put.ok && put.value != null) {
+                        val localMtime = repository.getDocumentLastModified(local.file.uri).takeIf { it > 0L } ?: local.lastModifiedEpochMs
+                        state =
+                            state.withUploaded(
+                                path,
+                                rev = put.value.rev,
+                                sha256 = put.value.sha256,
+                                size = localBytes.size.toLong(),
+                                localMtimeMs = localMtime,
+                            )
+                    }
+                }
                 return true
             }
 
@@ -373,8 +371,15 @@ class OfficialVaultSyncEngine(
                 val name = child.name ?: continue
                 val path = if (prefix.isBlank()) name else "$prefix/$name"
                 if (child.isDirectory) {
+                    if (path.equals(".zhixu/sync", ignoreCase = true)) continue
+                    if (path.startsWith(".zhixu/sync/", ignoreCase = true)) continue
+                    if (path.equals(".zhixu/conflicts", ignoreCase = true)) continue
+                    if (path.startsWith(".zhixu/conflicts/", ignoreCase = true)) continue
+                    if (path.equals(".zhixu/history", ignoreCase = true)) continue
+                    if (path.startsWith(".zhixu/history/", ignoreCase = true)) continue
                     walk(child, path)
                 } else if (child.isFile) {
+                    if (!includeIndexSqlite && path.equals(".zhixu/index.sqlite", ignoreCase = true)) continue
                     out +=
                         OfficialLocalEntry(
                             path = path,
@@ -386,26 +391,7 @@ class OfficialVaultSyncEngine(
             }
         }
 
-        val docs = root.findFile("docs")?.takeIf { it.isDirectory }
-        val attachments = root.findFile("attachments")?.takeIf { it.isDirectory }
-        val zhixu = root.findFile(".zhixu")?.takeIf { it.isDirectory }
-
-        if (docs != null) walk(docs, "docs")
-        if (attachments != null) walk(attachments, "attachments")
-        if (zhixu != null) {
-            val settings = zhixu.findFile("settings.json")?.takeIf { it.isFile }
-            if (settings != null) {
-                out += OfficialLocalEntry(".zhixu/settings.json", settings, settings.length(), settings.lastModified())
-            }
-            val sync = zhixu.findFile("sync")?.takeIf { it.isDirectory }
-            if (sync != null) walk(sync, ".zhixu/sync")
-            if (includeIndexSqlite) {
-                val index = zhixu.findFile("index.sqlite")?.takeIf { it.isFile }
-                if (index != null) {
-                    out += OfficialLocalEntry(".zhixu/index.sqlite", index, index.length(), index.lastModified())
-                }
-            }
-        }
+        walk(root, "")
 
         return out
     }

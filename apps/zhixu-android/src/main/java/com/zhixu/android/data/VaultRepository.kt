@@ -45,6 +45,7 @@ data class TaskStats(
 class VaultRepository(
     private val context: Context,
 ) {
+    private val appConfigDirName = ".zhixu"
     private val indexRepository = VaultIndexRepository(context)
     private val dueFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
@@ -116,8 +117,7 @@ class VaultRepository(
             if (cached != null) return@withLock cached
 
             val root = vaultRootToDocumentFile(context, rootUri) ?: return@withLock null
-            val docsDir = findChild(root, "docs") ?: return@withLock null
-            val uri = docsDir.uri
+            val uri = root.uri
             synchronized(docListCache) {
                 val prev = docListCache[key]
                 docListCache[key] =
@@ -151,11 +151,7 @@ class VaultRepository(
             }
 
             val listed = listMarkdownDocs(rootUri)
-            val docsDirUri =
-                runCatching {
-                    val root = vaultRootToDocumentFile(context, rootUri) ?: return@runCatching null
-                    findChild(root, "docs")?.uri
-                }.getOrNull()
+            val docsDirUri = runCatching { vaultRootToDocumentFile(context, rootUri)?.uri }.getOrNull()
 
             val entry =
                 DocListCacheEntry(
@@ -211,9 +207,7 @@ class VaultRepository(
 
     suspend fun ensureVaultStructure(rootUri: Uri) = withContext(Dispatchers.IO) {
         val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
-        val docs = findChild(root, "docs") ?: root.createDirectory("docs")
-        val attachments = findChild(root, "attachments") ?: root.createDirectory("attachments")
-        val zhixu = findChild(root, ".zhixu") ?: root.createDirectory(".zhixu")
+        val zhixu = findChild(root, appConfigDirName) ?: root.createDirectory(appConfigDirName)
         val syncDir = zhixu?.let { findChild(it, "sync") ?: it.createDirectory("sync") }
         val exportsDir = zhixu?.let { findChild(it, "exports") ?: it.createDirectory("exports") }
         val pluginsDir = zhixu?.let { findChild(it, "plugins") ?: it.createDirectory("plugins") }
@@ -230,8 +224,6 @@ class VaultRepository(
         }
 
         // Touch to keep variables used (and validate creation).
-        requireNotNull(docs) { "docs/ directory missing" }
-        requireNotNull(attachments) { "attachments/ directory missing" }
         requireNotNull(zhixu) { ".zhixu/ directory missing" }
         // Validate creation of subdirectories too.
         requireNotNull(syncDir) { ".zhixu/sync directory missing" }
@@ -289,34 +281,52 @@ class VaultRepository(
 
     suspend fun listMarkdownDocs(rootUri: Uri): List<UiDoc> = withContext(Dispatchers.IO) {
         val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext emptyList()
-        val docsDir = findChild(root, "docs") ?: return@withContext emptyList()
-        val docs =
-            docsDir.listFiles()
-            .filter { file ->
-                if (!file.isFile) return@filter false
-                val name = file.name
-                val mime = file.type
-                val looksLikeMarkdown = name?.endsWith(".md", ignoreCase = true) == true
-                val isTextMarkdown =
-                    mime.equals("text/markdown", ignoreCase = true) ||
-                        mime.equals("text/x-markdown", ignoreCase = true)
-                val isPlainText = mime.equals("text/plain", ignoreCase = true)
-                looksLikeMarkdown || isTextMarkdown || isPlainText
+        val docs = ArrayList<UiDoc>()
+
+        fun isMarkdown(file: DocumentFile): Boolean {
+            if (!file.isFile) return false
+            val name = file.name
+            val mime = file.type
+            val looksLikeMarkdown = name?.endsWith(".md", ignoreCase = true) == true
+            val isTextMarkdown =
+                mime.equals("text/markdown", ignoreCase = true) ||
+                    mime.equals("text/x-markdown", ignoreCase = true)
+            val isPlainText = mime.equals("text/plain", ignoreCase = true)
+            return looksLikeMarkdown || isTextMarkdown || isPlainText
+        }
+
+        fun shouldSkipDir(path: String): Boolean {
+            val p = path.trimStart('/').replace('\\', '/')
+            if (p.equals(appConfigDirName, ignoreCase = true)) return true
+            if (p.startsWith("$appConfigDirName/", ignoreCase = true)) return true
+            return false
+        }
+
+        fun walk(dir: DocumentFile, prefix: String) {
+            for (child in dir.listFiles()) {
+                val name = child.name ?: continue
+                val path = if (prefix.isBlank()) name else "$prefix/$name"
+                if (child.isDirectory) {
+                    if (shouldSkipDir(path)) continue
+                    walk(child, path)
+                } else if (child.isFile && isMarkdown(child)) {
+                    val lastModified = child.lastModified()
+                    docs +=
+                        UiDoc(
+                            name = name,
+                            uri = child.uri,
+                            lastModified = lastModified,
+                            size = child.length(),
+                            baseName = computeDocBaseName(name),
+                            createdAt = 0L,
+                            createdAtText = "",
+                            editedAtText = formatEditedAt(lastModified),
+                        )
+                }
             }
-            .mapNotNull { file ->
-                val name = file.name ?: return@mapNotNull null
-                val lastModified = file.lastModified()
-                UiDoc(
-                    name = name,
-                    uri = file.uri,
-                    lastModified = lastModified,
-                    size = file.length(),
-                    baseName = computeDocBaseName(name),
-                    createdAt = 0L,
-                    createdAtText = "",
-                    editedAtText = formatEditedAt(lastModified),
-                )
-            }
+        }
+
+        walk(root, "")
 
         val createdAtByUri =
             runCatching { indexRepository.getDocCreatedAtMap(docs.map { it.uri.toString() }) }
@@ -440,8 +450,14 @@ class VaultRepository(
         if (trimmed.isBlank()) return@withContext false
         ensureVaultStructure(rootUri)
         val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext false
-        val docs = findChild(root, "docs") ?: return@withContext false
-        val inbox = findChild(docs, "Inbox.md") ?: createMarkdownFile(docs, "Inbox.md") ?: return@withContext false
+        val inbox =
+            findChild(root, "Inbox.md")
+                ?: runCatching {
+                    val docsDir = findChild(root, "docs")?.takeIf { it.isDirectory }
+                    docsDir?.let { findChild(it, "Inbox.md") }
+                }.getOrNull()
+                ?: createMarkdownFile(root, "Inbox.md")
+                ?: return@withContext false
 
         val createdAtMs = System.currentTimeMillis()
         val taskId = Ulid.next()
@@ -480,10 +496,9 @@ class VaultRepository(
 
     suspend fun createDoc(rootUri: Uri, fileName: String): UiDoc = withContext(Dispatchers.IO) {
         val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
-        val docsDir = findChild(root, "docs") ?: root.createDirectory("docs") ?: error("Missing docs directory")
         val baseName = sanitizeFileName(fileName).removeSuffix(".md").trim().ifBlank { "Untitled" }
-        val createdName = createUniqueMarkdownName(docsDir, baseName)
-        val created = createMarkdownFile(docsDir, createdName) ?: error("Failed to create document")
+        val createdName = createUniqueMarkdownName(root, baseName)
+        val created = createMarkdownFile(root, createdName) ?: error("Failed to create document")
         val createdAtMs = System.currentTimeMillis()
         runCatching { indexRepository.upsertDocCreatedAt(created.uri.toString(), createdAtMs) }
         if (created.name?.endsWith(".md", ignoreCase = true) != true) {

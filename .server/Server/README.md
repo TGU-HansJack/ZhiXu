@@ -1,6 +1,6 @@
 # Zhixu Server (Account)
 
-Node.js + MySQL REST API for Zhixu account management (register/login + storage plans).
+Node.js + MySQL REST API for Zhixu account management (register/login + storage plans) and vault sync.
 
 ## Quick start
 
@@ -18,6 +18,8 @@ docker compose up --build
 
 API listens on `http://localhost:3001`.
 
+Vault file contents are stored on disk under `STORAGE_ROOT` (default: `./storage`).
+
 ## API
 
 - `GET /health`
@@ -26,4 +28,4 @@ API listens on `http://localhost:3001`.
 - `GET /api/account/me` (Bearer token)
 - `GET /api/plans`
 - `POST /api/account/subscription` (Bearer token) `{ "planCode": "storage_1g" | "storage_3g" | "storage_5g" }`
-
+- Vault sync (Bearer token): `GET /api/v2/vault/changes`, `GET/PUT/DELETE /api/v2/vault/file`

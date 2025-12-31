@@ -93,21 +93,6 @@ data class VaultDeleteResultV2(
     val deleted: Boolean,
 )
 
-data class VaultVersionEntryV2(
-    val rev: Long,
-    val updatedAt: Long,
-    val mtimeMs: Long,
-    val size: Long,
-    val sha256: String,
-    val deleted: Boolean,
-)
-
-data class VaultVersionsV2(
-    val serverTime: Long,
-    val path: String,
-    val versions: List<VaultVersionEntryV2>,
-)
-
 data class SyncServerResult<T>(
     val ok: Boolean,
     val value: T? = null,
@@ -279,52 +264,6 @@ object SyncServerClient {
                         priceCnyYear = planObj.optInt("priceCnyYear", 0).coerceAtLeast(0),
                     )
                 SyncServerResult(true, value = plan, statusCode = resp.code)
-            }
-        }
-    }
-
-    suspend fun restoreVaultVersionV2(
-        baseUrl: String,
-        token: String,
-        path: String,
-        rev: Long,
-        baseRev: Long,
-        mtimeMs: Long,
-    ): SyncServerResult<VaultPutResultV2> = withContext(Dispatchers.IO) {
-        safeResult {
-            val url = normalizeJoin(baseUrl, "/api/v2/vault/restore")
-            val body =
-                JSONObject()
-                    .put("path", path)
-                    .put("rev", rev)
-                    .put("baseRev", baseRev)
-                    .put("mtimeMs", mtimeMs)
-                    .toString()
-                    .toRequestBody("application/json; charset=utf-8".toMediaType())
-            val req =
-                Request.Builder()
-                    .url(url)
-                    .post(body)
-                    .header("Authorization", "Bearer $token")
-                    .header("User-Agent", "Zhixu-Android")
-                    .build()
-            client.newCall(req).execute().use { resp ->
-                val text = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
-                val obj = runCatching { JSONObject(text) }.getOrNull() ?: return@use SyncServerResult(false, errorMessage = "Invalid response", statusCode = resp.code)
-                SyncServerResult(
-                    ok = true,
-                    value =
-                        VaultPutResultV2(
-                            path = obj.optString("path").orEmpty().ifBlank { path },
-                            rev = obj.optLong("rev", baseRev + 1),
-                            changeId = obj.optLong("changeId", 0L),
-                            sha256 = obj.optString("sha256").orEmpty(),
-                            size = obj.optLong("size", 0L),
-                            mtimeMs = obj.optLong("mtimeMs", mtimeMs),
-                        ),
-                    statusCode = resp.code,
-                )
             }
         }
     }
@@ -530,37 +469,6 @@ object SyncServerClient {
         }
     }
 
-    suspend fun downloadVaultVersionV2(
-        baseUrl: String,
-        token: String,
-        path: String,
-        rev: Long,
-    ): SyncServerResult<VaultFileDownloadV2> = withContext(Dispatchers.IO) {
-        safeResult {
-            val safeRev = rev.coerceAtLeast(0L)
-            val url = normalizeJoin(baseUrl, "/api/v2/vault/version?path=${encodeQuery(path)}&rev=${encodeQuery(safeRev.toString())}")
-            val req =
-                Request.Builder()
-                    .url(url)
-                    .get()
-                    .header("Authorization", "Bearer $token")
-                    .header("User-Agent", "Zhixu-Android")
-                    .build()
-            client.newCall(req).execute().use { resp ->
-                val bytes = resp.body?.bytes() ?: ByteArray(0)
-                if (!resp.isSuccessful) {
-                    val msg = bytes.decodeToString().ifBlank { "HTTP ${resp.code}" }
-                    return@use SyncServerResult(false, errorMessage = msg, statusCode = resp.code)
-                }
-                val outRev = resp.header("X-Zhixu-Rev")?.toLongOrNull() ?: safeRev
-                val mtimeMs = resp.header("X-Zhixu-Mtime-Ms")?.toLongOrNull() ?: 0L
-                val size = resp.header("X-Zhixu-Size")?.toLongOrNull() ?: bytes.size.toLong()
-                val sha = resp.header("X-Zhixu-Sha256").orEmpty()
-                SyncServerResult(ok = true, value = VaultFileDownloadV2(bytes = bytes, rev = outRev, mtimeMs = mtimeMs, size = size, sha256 = sha), statusCode = resp.code)
-            }
-        }
-    }
-
     suspend fun uploadVaultFileV2(
         baseUrl: String,
         token: String,
@@ -634,47 +542,6 @@ object SyncServerClient {
                         ),
                     statusCode = resp.code,
                 )
-            }
-        }
-    }
-
-    suspend fun vaultVersionsV2(
-        baseUrl: String,
-        token: String,
-        path: String,
-        limit: Int = 50,
-    ): SyncServerResult<VaultVersionsV2> = withContext(Dispatchers.IO) {
-        safeResult {
-            val safeLimit = limit.coerceIn(1, 200)
-            val url = normalizeJoin(baseUrl, "/api/v2/vault/versions?path=${encodeQuery(path)}&limit=${encodeQuery(safeLimit.toString())}")
-            val req =
-                Request.Builder()
-                    .url(url)
-                    .get()
-                    .header("Authorization", "Bearer $token")
-                    .header("User-Agent", "Zhixu-Android")
-                    .build()
-            client.newCall(req).execute().use { resp ->
-                val text = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
-                val obj = runCatching { JSONObject(text) }.getOrNull() ?: return@use SyncServerResult(false, errorMessage = "Invalid response", statusCode = resp.code)
-                val serverTime = obj.optLong("serverTime", 0L)
-                val outPath = obj.optString("path").orEmpty().ifBlank { path }
-                val arr = obj.optJSONArray("versions") ?: JSONArray()
-                val versions = ArrayList<VaultVersionEntryV2>(arr.length())
-                for (i in 0 until arr.length()) {
-                    val item = arr.optJSONObject(i) ?: continue
-                    versions +=
-                        VaultVersionEntryV2(
-                            rev = item.optLong("rev", 0L),
-                            updatedAt = item.optLong("updatedAt", 0L),
-                            mtimeMs = item.optLong("mtimeMs", 0L),
-                            size = item.optLong("size", 0L),
-                            sha256 = item.optString("sha256").orEmpty(),
-                            deleted = item.optBoolean("deleted", false),
-                        )
-                }
-                SyncServerResult(ok = true, value = VaultVersionsV2(serverTime = serverTime, path = outPath, versions = versions), statusCode = resp.code)
             }
         }
     }

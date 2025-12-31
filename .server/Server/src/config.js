@@ -1,3 +1,5 @@
+const path = require("path");
+
 const requireEnv = (key, fallback = undefined) => {
   const value = process.env[key];
   if (value == null || value === "") {
@@ -21,6 +23,7 @@ module.exports = {
   jsonBodyLimit: process.env.JSON_BODY_LIMIT || "2mb",
   rawBodyLimitBytes: parseIntEnv("RAW_BODY_LIMIT_BYTES", 50 * 1024 * 1024),
   corsOrigin: process.env.CORS_ORIGIN || "*",
+  storageRoot: path.resolve(process.env.STORAGE_ROOT || path.join(__dirname, "..", "storage")),
   mysql: {
     host: requireEnv("MYSQL_HOST", "127.0.0.1"),
     port: parseIntEnv("MYSQL_PORT", 3306),

@@ -250,8 +250,15 @@ class WebDavSyncEngine(
                 val name = child.name ?: continue
                 val path = if (prefix.isBlank()) name else "$prefix/$name"
                 if (child.isDirectory) {
+                    if (path.equals(".zhixu/sync", ignoreCase = true)) continue
+                    if (path.startsWith(".zhixu/sync/", ignoreCase = true)) continue
+                    if (path.equals(".zhixu/conflicts", ignoreCase = true)) continue
+                    if (path.startsWith(".zhixu/conflicts/", ignoreCase = true)) continue
+                    if (path.equals(".zhixu/history", ignoreCase = true)) continue
+                    if (path.startsWith(".zhixu/history/", ignoreCase = true)) continue
                     walk(child, path)
                 } else if (child.isFile) {
+                    if (!includeIndexSqlite && path.equals(".zhixu/index.sqlite", ignoreCase = true)) continue
                     out += LocalEntry(
                         path = path,
                         file = child,
@@ -262,24 +269,7 @@ class WebDavSyncEngine(
             }
         }
 
-        val docs = root.findFile("docs")?.takeIf { it.isDirectory }
-        val attachments = root.findFile("attachments")?.takeIf { it.isDirectory }
-        val zhixu = root.findFile(".zhixu")?.takeIf { it.isDirectory }
-
-        if (docs != null) walk(docs, "docs")
-        if (attachments != null) walk(attachments, "attachments")
-        if (zhixu != null) {
-            val settings = zhixu.findFile("settings.json")?.takeIf { it.isFile }
-            if (settings != null) {
-                out += LocalEntry(".zhixu/settings.json", settings, settings.length(), settings.lastModified())
-            }
-            if (includeIndexSqlite) {
-                val index = zhixu.findFile("index.sqlite")?.takeIf { it.isFile }
-                if (index != null) {
-                    out += LocalEntry(".zhixu/index.sqlite", index, index.length(), index.lastModified())
-                }
-            }
-        }
+        walk(root, "")
 
         return out
     }

@@ -39,7 +39,14 @@ object VaultAutoSync {
         force: Boolean = false,
     ) {
         val root = vaultRootUri ?: return
-        maybeUploadPath(context, repository, root, "docs/Inbox.md", force = force)
+        // New vault layout: Inbox.md at vault root. Keep best-effort backwards compat.
+        val paths = listOf("Inbox.md", "docs/Inbox.md")
+        for (p in paths) {
+            if (repository.resolveVaultFileUri(root, p) != null) {
+                maybeUploadPath(context, repository, root, p, force = force)
+                return
+            }
+        }
     }
 
     suspend fun maybeDeleteDoc(
@@ -164,20 +171,8 @@ object VaultAutoSync {
         val store = OfficialVaultSyncStateStore(context, repository)
         var state = store.load(rootUri)
         val st = state.files[path]
-        val baseRev = st?.baseRev ?: 0L
 
         val remote = SyncServerClient.downloadVaultFileV2(baseUrl, token, path).value ?: return
-        val baseBytes =
-            if (baseRev > 0L) {
-                SyncServerClient.downloadVaultVersionV2(baseUrl, token, path, baseRev).value?.bytes ?: ByteArray(0)
-            } else {
-                ByteArray(0)
-            }
-
-        val isText =
-            path.endsWith(".md", ignoreCase = true) ||
-                path.endsWith(".txt", ignoreCase = true) ||
-                path.endsWith(".json", ignoreCase = true)
 
         suspend fun ensureConflictArtifact(kind: String, bytes: ByteArray) {
             if (bytes.isEmpty()) return
@@ -189,38 +184,34 @@ object VaultAutoSync {
             repository.writeBytes(dest.uri, bytes)
         }
 
-        if (isText) {
-            val merged =
-                ThreeWayMerge.mergeText(
-                    base = baseBytes.decodeToString(),
-                    local = localBytes.decodeToString(),
-                    remote = remote.bytes.decodeToString(),
-                )
-            if (merged.ok && merged.merged != null) {
-                val mergedBytes = merged.merged.encodeToByteArray()
-                val put =
-                    SyncServerClient.uploadVaultFileV2(
-                        baseUrl = baseUrl,
-                        token = token,
-                        path = path,
-                        mtimeMs = localMtimeMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
-                        bytes = mergedBytes,
-                        baseRev = remote.rev,
-                    )
-                if (put.ok && put.value != null) {
-                    val dest = ensureLocalFile(root, path) ?: return
-                    repository.writeBytes(dest.uri, mergedBytes)
-                    val finalMtime = repository.getDocumentLastModified(dest.uri).takeIf { it > 0L } ?: localMtimeMs
-                    state = state.withUploaded(path, rev = put.value.rev, sha256 = put.value.sha256, size = mergedBytes.size.toLong(), localMtimeMs = finalMtime)
-                    store.save(rootUri, state)
-                    return
-                }
-            }
+        ensureConflictArtifact("remote-r${remote.rev}", remote.bytes)
+        ensureConflictArtifact("local", localBytes)
+
+        // Without server-side history, resolve by keeping both:
+        // - keep remote under .zhixu/conflicts/
+        // - upload local to remote (local wins)
+        state = state.withUploaded(path, rev = remote.rev, sha256 = "", size = localBytes.size.toLong(), localMtimeMs = localMtimeMs)
+        store.save(rootUri, state)
+
+        val put =
+            SyncServerClient.uploadVaultFileV2(
+                baseUrl = baseUrl,
+                token = token,
+                path = path,
+                mtimeMs = localMtimeMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                bytes = localBytes,
+                baseRev = remote.rev,
+            )
+        if (put.ok && put.value != null) {
+            val dest = ensureLocalFile(root, path) ?: return
+            repository.writeBytes(dest.uri, localBytes)
+            val finalMtime = repository.getDocumentLastModified(dest.uri).takeIf { it > 0L } ?: localMtimeMs
+            state = state.withUploaded(path, rev = put.value.rev, sha256 = put.value.sha256, size = localBytes.size.toLong(), localMtimeMs = finalMtime)
+            store.save(rootUri, state)
+            return
         }
 
-        ensureConflictArtifact("local", localBytes)
-        ensureConflictArtifact("remote", remote.bytes)
-
+        // Fallback: accept remote as source of truth.
         val dest = ensureLocalFile(root, path) ?: return
         repository.writeBytes(dest.uri, remote.bytes)
         val finalMtime = repository.getDocumentLastModified(dest.uri).takeIf { it > 0L } ?: System.currentTimeMillis()
