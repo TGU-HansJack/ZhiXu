@@ -14,7 +14,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,14 +61,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import android.view.MotionEvent
 import kotlin.math.abs
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -296,7 +297,16 @@ fun ZhixuApp() {
 
     Surface(color = MaterialTheme.colorScheme.background) {
         val appContent: @Composable () -> Unit = {
-            Box(modifier = Modifier.fillMaxSize()) {
+            val edgeSwipeEnabled = drawerEnabled && drawerState.isClosed
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .edgeSwipeToOpenDrawer(
+                            enabled = edgeSwipeEnabled,
+                            onOpen = { scope.launch { drawerState.open() } },
+                        ),
+            ) {
                 Scaffold(
                     containerColor = MaterialTheme.colorScheme.background,
                     topBar = {
@@ -592,14 +602,9 @@ fun ZhixuApp() {
                         initialQuery = Uri.decode(qParam).takeIf { it.isNotBlank() },
                         initialLineIndex = lineParam.takeIf { it >= 0 },
                     )
-                }
+                    }
                 }
 
-                EdgeSwipeToOpenDrawer(
-                    enabled = drawerEnabled && drawerState.isClosed,
-                    onOpen = { scope.launch { drawerState.open() } },
-                    modifier = Modifier.fillMaxSize(),
-                )
             }
         }
         }
@@ -625,62 +630,63 @@ fun ZhixuApp() {
     }
 }
 
-@Composable
-private fun EdgeSwipeToOpenDrawer(
+private fun Modifier.edgeSwipeToOpenDrawer(
     enabled: Boolean,
     onOpen: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    if (!enabled) return
+): Modifier {
+    return composed {
+        if (!enabled) return@composed this
 
-    val density = LocalDensity.current
-    val edgeWidthPx = with(density) { 32.dp.toPx() }
-    val openThresholdPx = with(density) { 24.dp.toPx() }
+        val density = LocalDensity.current
+        val edgeWidthPx = with(density) { 32.dp.toPx() }
+        val openThresholdPx = with(density) { 36.dp.toPx() }
 
-    Box(
-        modifier =
-            modifier.pointerInput(enabled) {
-                var isEdgeGesture = false
-                var totalX = 0f
-                var totalY = 0f
+        var tracking = false
+        var downX = 0f
+        var downY = 0f
+        var opened = false
 
-                detectHorizontalDragGestures(
-                    onDragStart = { start ->
-                        isEdgeGesture = start.x <= edgeWidthPx
-                        totalX = 0f
-                        totalY = 0f
-                    },
-                    onHorizontalDrag = { change, dragAmount ->
-                        if (!isEdgeGesture) return@detectHorizontalDragGestures
+        pointerInteropFilter { ev ->
+            if (!enabled) return@pointerInteropFilter false
 
-                        totalX += dragAmount
-                        totalY += (change.position.y - change.previousPosition.y)
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    opened = false
+                    tracking = ev.x <= edgeWidthPx
+                    downX = ev.x
+                    downY = ev.y
+                    false
+                }
 
-                        if (abs(totalY) > abs(totalX) && abs(totalY) > viewConfiguration.touchSlop) {
-                            isEdgeGesture = false
-                            return@detectHorizontalDragGestures
-                        }
+                MotionEvent.ACTION_MOVE -> {
+                    if (!tracking || opened) return@pointerInteropFilter false
+                    val dx = ev.x - downX
+                    val dy = ev.y - downY
+                    if (abs(dy) > abs(dx) && abs(dy) > 12f) {
+                        tracking = false
+                        return@pointerInteropFilter false
+                    }
+                    if (dx > openThresholdPx) {
+                        opened = true
+                        tracking = false
+                        onOpen()
+                        return@pointerInteropFilter true
+                    }
+                    false
+                }
 
-                        if (totalX > openThresholdPx) {
-                            change.consume()
-                            isEdgeGesture = false
-                            onOpen()
-                            return@detectHorizontalDragGestures
-                        }
-                    },
-                    onDragEnd = {
-                        isEdgeGesture = false
-                        totalX = 0f
-                        totalY = 0f
-                    },
-                    onDragCancel = {
-                        isEdgeGesture = false
-                        totalX = 0f
-                        totalY = 0f
-                    },
-                )
-            },
-    )
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL,
+                -> {
+                    tracking = false
+                    opened = false
+                    false
+                }
+
+                else -> false
+            }
+        }
+    }
 }
 
 @Composable
