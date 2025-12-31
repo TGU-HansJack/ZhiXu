@@ -77,6 +77,7 @@ import com.zhixu.android.data.vaultRootToDocumentFile
 import com.zhixu.android.sync.OfficialSync
 import com.zhixu.android.sync.OfficialVaultSyncEngine
 import com.zhixu.android.sync.WebDavSyncEngine
+import com.zhixu.android.ui.components.ZhixuDialogDefaults
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -546,7 +547,9 @@ fun SyncScreen(
     if (showSyncLog) {
         val exportText = if (syncLogText.isBlank()) stringResource(R.string.sync_logs_empty) else syncLogText
         AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showSyncLog = false },
+            properties = ZhixuDialogDefaults.properties,
             title = { Text(stringResource(R.string.sync_logs_title)) },
             text = {
                 Box(

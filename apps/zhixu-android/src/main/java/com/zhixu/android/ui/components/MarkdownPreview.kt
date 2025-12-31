@@ -167,7 +167,9 @@ fun MarkdownPreview(
     val dialog = previewDialog
     if (dialog != null) {
         androidx.compose.material3.AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { previewDialog = null },
+            properties = ZhixuDialogDefaults.properties,
             title = { androidx.compose.material3.Text(text = dialog.name) },
             text = {
                 androidx.compose.material3.Text(

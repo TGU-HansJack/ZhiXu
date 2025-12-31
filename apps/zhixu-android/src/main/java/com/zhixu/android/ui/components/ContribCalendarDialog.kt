@@ -33,7 +33,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.zhixu.android.data.DailyContrib
 import com.zhixu.android.data.UiDoc
 import com.zhixu.android.data.UiTask
@@ -105,10 +104,10 @@ fun ContribCalendarDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = ZhixuDialogDefaults.properties,
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = ZhixuDialogDefaults.edgePadding, vertical = 24.dp),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
         ) {
@@ -202,7 +201,9 @@ fun ContribCalendarDialog(
     val d = detailsDate
     if (d != null) {
         AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { detailsDate = null },
+            properties = ZhixuDialogDefaults.properties,
             confirmButton = { TextButton(onClick = { detailsDate = null }) { Text("关闭") } },
             title = { Text(text = "${d.year}-${d.monthValue.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}") },
             text = {

@@ -55,6 +55,7 @@ import com.zhixu.android.data.UiPreferences
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.Ionicons
 import com.zhixu.android.ui.components.ContribCalendarDialog
+import com.zhixu.android.ui.components.ZhixuDialogDefaults
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.launch
@@ -227,7 +228,9 @@ fun SettingsScreen(
 
     if (showLanguageDialog) {
         AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showLanguageDialog = false },
+            properties = ZhixuDialogDefaults.properties,
             title = { Text(stringResource(R.string.settings_language_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

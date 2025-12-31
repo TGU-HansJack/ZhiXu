@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.zhixu.android.R
 import com.zhixu.android.data.AccountPreferences
 import com.zhixu.android.data.AccountState
+import com.zhixu.android.ui.components.ZhixuDialogDefaults
 import com.zhixu.android.sync.OfficialSync
 import com.zhixu.android.sync.SyncServerClient
 import com.zhixu.android.sync.SyncServerResult
@@ -112,7 +113,9 @@ fun AccountManagementDialog(
     }
 
     AlertDialog(
+        modifier = ZhixuDialogDefaults.modifier(),
         onDismissRequest = { if (!busy) onDismiss() },
+        properties = ZhixuDialogDefaults.properties,
         title = { Text(stringResource(R.string.account_manage_title)) },
         text = {
             Column(

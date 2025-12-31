@@ -158,6 +158,7 @@ import com.zhixu.android.ui.components.RadialFabAction
 import com.zhixu.android.ui.components.LineDiff
 import com.zhixu.android.ui.components.DiffOp
 import com.zhixu.android.ui.components.DiffLine
+import com.zhixu.android.ui.components.ZhixuDialogDefaults
 import com.zhixu.core.tasks.TaskSyntax
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -1981,7 +1982,9 @@ fun EditorScreen(
 
     if (showDeleteConfirm) {
         AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showDeleteConfirm = false },
+            properties = ZhixuDialogDefaults.properties,
             containerColor = Color.White,
             title = { Text(stringResource(R.string.dialog_delete_doc_title)) },
             text = { Text(originalFileName.ifBlank { title }) },
@@ -2018,7 +2021,9 @@ fun EditorScreen(
 
     if (showFindReplace) {
         AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showFindReplace = false },
+            properties = ZhixuDialogDefaults.properties,
             containerColor = Color.White,
             title = { Text(stringResource(R.string.dialog_find_replace_title)) },
             text = {
@@ -2057,7 +2062,9 @@ fun EditorScreen(
 
     if (showLinkDialog) {
         AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showLinkDialog = false },
+            properties = ZhixuDialogDefaults.properties,
             containerColor = Color.White,
             title = { Text("Insert link") },
             text = {
@@ -2090,7 +2097,9 @@ fun EditorScreen(
 
     if (showImageDialog) {
         AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showImageDialog = false },
+            properties = ZhixuDialogDefaults.properties,
             containerColor = Color.White,
             title = { Text("Insert image") },
             text = {
@@ -2124,7 +2133,9 @@ fun EditorScreen(
 
     if (showCodeDialog) {
         AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showCodeDialog = false },
+            properties = ZhixuDialogDefaults.properties,
             containerColor = Color.White,
             title = { Text("Insert code block") },
             text = {
@@ -2151,7 +2162,9 @@ fun EditorScreen(
 
     if (showTableDialog) {
         AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showTableDialog = false },
+            properties = ZhixuDialogDefaults.properties,
             containerColor = Color.White,
             title = { Text("Insert table") },
             text = {

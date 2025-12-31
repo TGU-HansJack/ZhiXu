@@ -68,6 +68,7 @@ import com.zhixu.android.plugins.InstalledPlugin
 import com.zhixu.android.plugins.PluginManifest
 import com.zhixu.android.plugins.PluginRepository
 import com.zhixu.android.ui.components.MarkdownPreview
+import com.zhixu.android.ui.components.ZhixuDialogDefaults
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -181,7 +182,9 @@ fun WorkshopScreen(
 
     if (showGitDialog) {
         AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showGitDialog = false },
+            properties = ZhixuDialogDefaults.properties,
             title = { Text(stringResource(R.string.workshop_install_from_git)) },
             text = {
                 OutlinedTextField(
@@ -216,7 +219,9 @@ fun WorkshopScreen(
     if (detailsPlugin != null) {
         val plugin = detailsPlugin!!
         AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { detailsPlugin = null },
+            properties = ZhixuDialogDefaults.properties,
             title = { Text(plugin.manifest.name ?: plugin.manifest.id) },
             text = {
                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -528,7 +533,9 @@ private fun PluginSettingsDialog(
     val scrollState = rememberScrollState()
 
     AlertDialog(
+        modifier = ZhixuDialogDefaults.modifier(),
         onDismissRequest = { if (!saving) onDismiss() },
+        properties = ZhixuDialogDefaults.properties,
         title = { Text(title) },
         text = {
             Column(
