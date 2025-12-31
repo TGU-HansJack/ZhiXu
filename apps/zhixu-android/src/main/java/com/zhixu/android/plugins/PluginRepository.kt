@@ -39,6 +39,11 @@ data class InstalledPlugin(
     val enabled: Boolean,
 )
 
+data class PluginSource(
+    val type: String,
+    val url: String? = null,
+)
+
 data class InstallResult(
     val ok: Boolean,
     val message: String,
@@ -99,6 +104,7 @@ class PluginRepository(
         val removed = pluginDir.delete()
         if (removed) {
             setEnabled(rootUri, pluginId, enabled = false)
+            clearPluginSource(pluginsDir, pluginId)
         }
         removed
     }
@@ -125,7 +131,9 @@ class PluginRepository(
             destDir.delete()
             return@withContext InstallResult(false, "Failed to copy plugin files", pluginId)
         }
-        InstallResult(true, "Installed: ${manifest.name ?: manifest.id}", pluginId)
+        val result = InstallResult(true, "Installed: ${manifest.name ?: manifest.id}", pluginId)
+        recordPluginSource(rootUri, pluginId, PluginSource(type = "local"))
+        result
     }
 
     suspend fun installFromGitUrl(rootUri: Uri, gitUrl: String): InstallResult = withContext(Dispatchers.IO) {
@@ -162,7 +170,9 @@ class PluginRepository(
                 return@withContext InstallResult(false, "Failed to copy plugin files", pluginId)
             }
 
-            InstallResult(true, "Installed: ${manifest.name ?: manifest.id}", pluginId)
+            val result = InstallResult(true, "Installed: ${manifest.name ?: manifest.id}", pluginId)
+            recordPluginSource(rootUri, pluginId, PluginSource(type = "git", url = gitUrl.trim()))
+            result
         } finally {
             tmp.deleteRecursively()
         }
@@ -229,10 +239,67 @@ class PluginRepository(
                     break
                 }
 
-                InstallResult(true, "Installed: ${manifest.name ?: manifest.id}", manifest.id)
+                val result = InstallResult(true, "Installed: ${manifest.name ?: manifest.id}", manifest.id)
+                recordPluginSource(rootUri, manifest.id, PluginSource(type = "official"))
+                result
             } catch (e: Throwable) {
                 destDir.delete()
                 InstallResult(false, "Install failed: ${e.message ?: e.javaClass.simpleName}", id)
+            }
+        }
+
+    suspend fun updatePlugin(rootUri: Uri, pluginId: String): InstallResult =
+        withContext(Dispatchers.IO) {
+            val pluginsDir = ensurePluginsDir(rootUri) ?: return@withContext InstallResult(false, "Missing plugins directory")
+            val id = pluginId.trim()
+            if (id.isBlank()) return@withContext InstallResult(false, "Invalid plugin id")
+            val destDir = pluginsDir.findFile(id) ?: return@withContext InstallResult(false, "Plugin not installed: $id", id)
+
+            val currentConfig = readPluginConfig(rootUri, id) ?: JSONObject()
+            val source = readPluginSource(pluginsDir, id)
+
+            fun mergeAndWriteConfig(defaults: JSONObject?) {
+                val merged =
+                    if (defaults == null) {
+                        currentConfig
+                    } else {
+                        deepMergeDefaults(defaults, currentConfig)
+                    }
+                val configFile = ensurePluginConfigFile(rootUri, id, "config.json") ?: return
+                writeJsonObject(configFile.uri, merged)
+            }
+
+            when (source?.type?.lowercase()) {
+                "git" -> {
+                    val url = source.url?.trim().orEmpty()
+                    if (url.isBlank()) return@withContext InstallResult(false, "Missing git url for plugin: $id", id)
+                    syncFromGitIntoExisting(pluginId = id, gitUrl = url, destDir = destDir, writeMergedConfig = ::mergeAndWriteConfig)
+                }
+
+                "official" -> {
+                    syncFromOfficialIntoExisting(pluginId = id, destDir = destDir, writeMergedConfig = ::mergeAndWriteConfig)
+                }
+
+                "local" -> {
+                    InstallResult(false, "This plugin was installed from a local folder and cannot be updated automatically.", id)
+                }
+
+                else -> {
+                    val officialManifest = fetchOfficialManifest(id)
+                    if (officialManifest != null) {
+                        syncFromOfficialIntoExisting(pluginId = id, destDir = destDir, writeMergedConfig = ::mergeAndWriteConfig)
+                    } else {
+                        InstallResult(false, "Update not available: unknown install source.", id)
+                    }
+                }
+            }.also { result ->
+                if (result.ok) {
+                    // Ensure source is recorded after a successful update.
+                    when (source?.type?.lowercase()) {
+                        "git" -> recordPluginSource(rootUri, id, PluginSource(type = "git", url = source.url?.trim()))
+                        "official", null -> recordPluginSource(rootUri, id, PluginSource(type = "official"))
+                    }
+                }
             }
         }
 
@@ -284,7 +351,7 @@ class PluginRepository(
             ?: createFilePreservingName(pluginsDir, mimeTypeForName("state.json"), "state.json")
             ?: return null
         if (state.length() == 0L) {
-            writeJsonObject(state.uri, JSONObject().put("enabled", JSONArray()))
+            writeJsonObject(state.uri, JSONObject().put("enabled", JSONArray()).put("sources", JSONObject()))
         }
         return state
     }
@@ -313,6 +380,38 @@ class PluginRepository(
         val obj = readJsonObject(stateFile.uri) ?: return emptySet()
         val enabled = obj.optJSONArray("enabled") ?: return emptySet()
         return enabled.toStringList().toSet()
+    }
+
+    private fun readPluginSource(pluginsDir: DocumentFile, pluginId: String): PluginSource? {
+        val stateFile = ensurePluginStateFile(pluginsDir) ?: return null
+        val obj = readJsonObject(stateFile.uri) ?: return null
+        val sources = obj.optJSONObject("sources") ?: return null
+        val s = sources.optJSONObject(pluginId) ?: return null
+        val type = s.optString("type").trim()
+        if (type.isBlank()) return null
+        val url = s.optString("url").trim().takeIf { it.isNotBlank() }
+        return PluginSource(type = type, url = url)
+    }
+
+    private fun clearPluginSource(pluginsDir: DocumentFile, pluginId: String) {
+        val stateFile = ensurePluginStateFile(pluginsDir) ?: return
+        val obj = readJsonObject(stateFile.uri) ?: JSONObject()
+        val sources = obj.optJSONObject("sources") ?: JSONObject()
+        sources.remove(pluginId)
+        obj.put("sources", sources)
+        writeJsonObject(stateFile.uri, obj)
+    }
+
+    private fun recordPluginSource(rootUri: Uri, pluginId: String, source: PluginSource) {
+        val pluginsDir = ensurePluginsDir(rootUri) ?: return
+        val stateFile = ensurePluginStateFile(pluginsDir) ?: return
+        val obj = readJsonObject(stateFile.uri) ?: JSONObject()
+        val sources = obj.optJSONObject("sources") ?: JSONObject()
+        val s = JSONObject().put("type", source.type)
+        if (!source.url.isNullOrBlank()) s.put("url", source.url)
+        sources.put(pluginId, s)
+        obj.put("sources", sources)
+        writeJsonObject(stateFile.uri, obj)
     }
 
     private fun readManifest(pluginDir: DocumentFile): PluginManifest? {
@@ -367,6 +466,108 @@ class PluginRepository(
         val entry = manifest.entry?.trim().orEmpty()
         if (entry.isBlank()) return listOf("main.js")
         return if (entry.endsWith(".js", ignoreCase = true)) listOf(entry) else listOf(entry, "$entry.js")
+    }
+
+    private fun deepMergeDefaults(defaults: JSONObject, current: JSONObject): JSONObject {
+        val out = JSONObject(defaults.toString())
+        val keys = current.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            val curVal = current.opt(k)
+            val defVal = out.opt(k)
+            if (curVal is JSONObject && defVal is JSONObject) {
+                out.put(k, deepMergeDefaults(defVal, curVal))
+            } else {
+                out.put(k, curVal)
+            }
+        }
+        return out
+    }
+
+    private fun syncFromOfficialIntoExisting(
+        pluginId: String,
+        destDir: DocumentFile,
+        writeMergedConfig: (JSONObject?) -> Unit,
+    ): InstallResult {
+        val base = "$officialBaseUrl/plugins/${pluginId.trim()}"
+        val manifestText = httpGetText("$base/manifest.json") ?: return InstallResult(false, "Failed to download manifest.json", pluginId)
+        val manifest = parseManifestFromText(manifestText) ?: return InstallResult(false, "Invalid manifest.json", pluginId)
+
+        val required = LinkedHashSet<String>()
+        required += "manifest.json"
+        required += resolveEntryFileNames(manifest)
+        required += manifest.files
+
+        var defaultsConfig: JSONObject? = null
+        for (name in required) {
+            if (name.equals("config.json", ignoreCase = true)) {
+                val bytes = httpGetBytes("$base/$name") ?: continue
+                defaultsConfig = runCatching { JSONObject(bytes.toString(Charsets.UTF_8)) }.getOrNull()
+                continue
+            }
+            val bytes = httpGetBytes("$base/$name") ?: return InstallResult(false, "Failed to download: $name", pluginId)
+            val outFile =
+                findFileLoose(destDir, name)
+                    ?: createFilePreservingName(destDir, mimeTypeForName(name), name)
+                    ?: return InstallResult(false, "Failed to create: $name", pluginId)
+            if (!writeBytes(outFile.uri, bytes)) return InstallResult(false, "Failed to write: $name", pluginId)
+        }
+
+        writeMergedConfig(defaultsConfig)
+
+        val readmeNames = listOf("README.md", "readme.md")
+        for (n in readmeNames) {
+            val bytes = httpGetBytes("$base/$n") ?: continue
+            val outFile = findFileLoose(destDir, n) ?: createFilePreservingName(destDir, mimeTypeForName(n), n) ?: continue
+            writeBytes(outFile.uri, bytes)
+            break
+        }
+
+        return InstallResult(true, "Updated: ${manifest.name ?: manifest.id}", manifest.id)
+    }
+
+    private fun syncFromGitIntoExisting(
+        pluginId: String,
+        gitUrl: String,
+        destDir: DocumentFile,
+        writeMergedConfig: (JSONObject?) -> Unit,
+    ): InstallResult {
+        val tmp = File(context.cacheDir, "plugins-update-${UUID.randomUUID()}").apply { mkdirs() }
+        try {
+            runCatching {
+                Git.cloneRepository()
+                    .setURI(gitUrl.trim())
+                    .setDirectory(tmp)
+                    .call()
+            }.getOrElse { e ->
+                return InstallResult(false, "Git clone failed: ${e.message ?: e.javaClass.simpleName}", pluginId)
+            }
+
+            val manifestFile = File(tmp, "manifest.json")
+            if (!manifestFile.exists()) return InstallResult(false, "manifest.json not found at repo root", pluginId)
+            val manifestText =
+                runCatching { manifestFile.readText(Charsets.UTF_8) }
+                    .getOrElse { return InstallResult(false, "Failed to read manifest.json", pluginId) }
+            val manifest =
+                parseManifestFromText(manifestText)
+                    ?: return InstallResult(false, "Invalid manifest.json", pluginId)
+            if (manifest.id != pluginId) return InstallResult(false, "manifest.id='${manifest.id}' does not match pluginId='$pluginId'", pluginId)
+
+            val defaultsConfig = File(tmp, "config.json").takeIf { it.isFile }?.let { f -> runCatching { JSONObject(f.readText(Charsets.UTF_8)) }.getOrNull() }
+
+            val ok =
+                copyFileDirRecursively(tmp, destDir) { file ->
+                    val name = file.name
+                    name != ".git" && name != ".github" && !name.equals("config.json", ignoreCase = true)
+                }
+            if (!ok) return InstallResult(false, "Failed to copy plugin files", pluginId)
+
+            writeMergedConfig(defaultsConfig)
+
+            return InstallResult(true, "Updated: ${manifest.name ?: manifest.id}", manifest.id)
+        } finally {
+            tmp.deleteRecursively()
+        }
     }
 
     private fun httpGetText(url: String): String? =

@@ -6,6 +6,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -93,10 +96,11 @@ fun WorkshopScreen(
     var officialError by remember { mutableStateOf<String?>(null) }
     var officialPlugins by remember { mutableStateOf<List<PluginManifest>>(emptyList()) }
 
-    var showConfigEditor by remember { mutableStateOf(false) }
-    var configPluginId by remember { mutableStateOf<String?>(null) }
-    var configText by remember { mutableStateOf("") }
     var configSaving by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
+    var settingsPlugin by remember { mutableStateOf<InstalledPlugin?>(null) }
+    var settingsConfig by remember { mutableStateOf(JSONObject()) }
+    var updatingPluginId by remember { mutableStateOf<String?>(null) }
 
     suspend fun refresh() {
         val root = vaultRootUri ?: return
@@ -135,50 +139,25 @@ fun WorkshopScreen(
         detailsLoading = false
     }
 
-    if (showConfigEditor && configPluginId != null) {
-        AlertDialog(
-            onDismissRequest = { if (!configSaving) showConfigEditor = false },
-            title = { Text("${configPluginId!!} - config.json") },
-            text = {
-                OutlinedTextField(
-                    value = configText,
-                    onValueChange = { configText = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 8,
-                    maxLines = 14,
-                    singleLine = false,
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = !configSaving,
-                    onClick = {
-                        val root = vaultRootUri ?: return@TextButton
-                        val pluginId = configPluginId ?: return@TextButton
-                        val parsed =
-                            runCatching {
-                                val t = configText.trim()
-                                if (t.isBlank()) JSONObject() else JSONObject(t)
-                            }.getOrNull()
-                        if (parsed == null) {
-                            scope.launch { snackbarHostState.showSnackbar("Invalid JSON") }
-                            return@TextButton
-                        }
-
-                        configSaving = true
-                        scope.launch {
-                            val ok = pluginRepo.writePluginConfig(root, pluginId, parsed)
-                            configSaving = false
-                            snackbarHostState.showSnackbar(
-                                if (ok) context.getString(R.string.plugin_saved) else context.getString(R.string.plugin_save_failed),
-                            )
-                            showConfigEditor = false
-                        }
-                    },
-                ) { Text(stringResource(R.string.plugin_save)) }
-            },
-            dismissButton = {
-                TextButton(enabled = !configSaving, onClick = { showConfigEditor = false }) { Text(stringResource(R.string.action_cancel)) }
+    if (showSettingsDialog && settingsPlugin != null) {
+        val plugin = settingsPlugin!!
+        PluginSettingsDialog(
+            title = plugin.manifest.name ?: plugin.manifest.id,
+            config = settingsConfig,
+            saving = configSaving,
+            onChange = { next -> settingsConfig = next },
+            onDismiss = { showSettingsDialog = false },
+            onSave = {
+                val root = vaultRootUri ?: return@PluginSettingsDialog
+                configSaving = true
+                scope.launch {
+                    val ok = pluginRepo.writePluginConfig(root, plugin.manifest.id, settingsConfig)
+                    configSaving = false
+                    snackbarHostState.showSnackbar(
+                        if (ok) context.getString(R.string.plugin_saved) else context.getString(R.string.plugin_save_failed),
+                    )
+                    showSettingsDialog = false
+                }
             },
         )
     }
@@ -368,14 +347,29 @@ fun WorkshopScreen(
                         },
                         onSettings = {
                             val root = vaultRootUri ?: return@PluginRow
-                            val pluginId = plugin.manifest.id
                             scope.launch {
-                                configPluginId = pluginId
-                                val cfg = pluginRepo.readPluginConfig(root, pluginId)
-                                configText = (cfg ?: JSONObject()).toString(2) + "\n"
-                                showConfigEditor = true
+                                val cfg = pluginRepo.readPluginConfig(root, plugin.manifest.id) ?: JSONObject()
+                                settingsPlugin = plugin
+                                settingsConfig = cfg
+                                showSettingsDialog = true
                             }
                         },
+                        onUpdate = {
+                            val root = vaultRootUri ?: return@PluginRow
+                            val id = plugin.manifest.id
+                            if (updatingPluginId != null) return@PluginRow
+                            updatingPluginId = id
+                            scope.launch {
+                                try {
+                                    val result = pluginRepo.updatePlugin(root, id)
+                                    snackbarHostState.showSnackbar(result.message)
+                                    refresh()
+                                } finally {
+                                    if (updatingPluginId == id) updatingPluginId = null
+                                }
+                            }
+                        },
+                        updating = updatingPluginId == plugin.manifest.id,
                     )
                 }
             }
@@ -460,6 +454,8 @@ private fun PluginRow(
     onRemove: () -> Unit,
     onViewDetails: () -> Unit,
     onSettings: (() -> Unit)?,
+    onUpdate: (() -> Unit)?,
+    updating: Boolean,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -505,6 +501,9 @@ private fun PluginRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (onUpdate != null) {
+                        TextButton(enabled = !updating, onClick = onUpdate) { Text(stringResource(R.string.workshop_update)) }
+                    }
                     if (onSettings != null) {
                         TextButton(onClick = onSettings) { Text(stringResource(R.string.action_settings)) }
                     }
@@ -514,6 +513,184 @@ private fun PluginRow(
             }
         }
     }
+}
+
+@Composable
+private fun PluginSettingsDialog(
+    title: String,
+    config: JSONObject,
+    saving: Boolean,
+    onChange: (JSONObject) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit,
+) {
+    var showPasswords by remember { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
+
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text(title) },
+        text = {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 120.dp, max = 420.dp)
+                        .verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                JsonObjectForm(
+                    root = config,
+                    obj = config,
+                    path = emptyList(),
+                    showPasswords = showPasswords,
+                    onToggleShowPasswords = { showPasswords = !showPasswords },
+                    onChange = onChange,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !saving, onClick = onSave) { Text(stringResource(R.string.plugin_save)) }
+        },
+        dismissButton = {
+            TextButton(enabled = !saving, onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
+}
+
+@Composable
+private fun JsonObjectForm(
+    root: JSONObject,
+    obj: JSONObject,
+    path: List<String>,
+    showPasswords: Boolean,
+    onToggleShowPasswords: () -> Unit,
+    onChange: (JSONObject) -> Unit,
+) {
+    val keys =
+        remember(obj.toString()) {
+            val out = ArrayList<String>()
+            val it = obj.keys()
+            while (it.hasNext()) out += it.next()
+            out.sorted()
+        }
+
+    if (keys.isEmpty()) {
+        Text(text = "{}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        for (k in keys) {
+            val v = obj.opt(k)
+            val nextPath = path + k
+            when (v) {
+                is JSONObject -> {
+                    Card(
+                        shape = MaterialTheme.shapes.large,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(text = k, style = MaterialTheme.typography.titleSmall)
+                            JsonObjectForm(
+                                root = root,
+                                obj = v,
+                                path = nextPath,
+                                showPasswords = showPasswords,
+                                onToggleShowPasswords = onToggleShowPasswords,
+                                onChange = onChange,
+                            )
+                        }
+                    }
+                }
+
+                is Boolean -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(text = k)
+                        Switch(
+                            checked = v,
+                            onCheckedChange = { checked -> onChange(configWithPathValue(root, nextPath, checked)) },
+                        )
+                    }
+                }
+
+                is Number -> {
+                    var text by remember(v) { mutableStateOf(v.toString()) }
+                    OutlinedTextField(
+                        value = text,
+                        onValueChange = { next ->
+                            text = next
+                            val parsed = next.trim().toDoubleOrNull()
+                            if (parsed != null) onChange(configWithPathValue(root, nextPath, parsed))
+                        },
+                        label = { Text(k) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                }
+
+                else -> {
+                    val isPassword = k.contains("password", ignoreCase = true)
+                    val raw = v?.toString().orEmpty()
+                    var text by remember(raw) { mutableStateOf(raw) }
+
+                    OutlinedTextField(
+                        value = text,
+                        onValueChange = { next ->
+                            text = next
+                            onChange(configWithPathValue(root, nextPath, next))
+                        },
+                        label = { Text(k) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation =
+                            if (isPassword && !showPasswords) PasswordVisualTransformation() else VisualTransformation.None,
+                        trailingIcon =
+                            if (isPassword) {
+                                {
+                                    TextButton(onClick = onToggleShowPasswords) {
+                                        Text(
+                                            stringResource(
+                                                if (showPasswords) R.string.plugin_hide_password else R.string.plugin_show_password,
+                                            ),
+                                        )
+                                    }
+                                }
+                            } else {
+                                null
+                            },
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun configWithPathValue(
+    root: JSONObject,
+    path: List<String>,
+    value: Any?,
+): JSONObject {
+    val out = JSONObject(root.toString())
+    if (path.isEmpty()) return out
+
+    var cur = out
+    for (i in 0 until path.size - 1) {
+        val k = path[i]
+        val next = cur.optJSONObject(k) ?: JSONObject().also { cur.put(k, it) }
+        cur = next
+    }
+    val last = path.last()
+    when (value) {
+        null -> cur.remove(last)
+        else -> cur.put(last, value)
+    }
+    return out
 }
 
 @Composable

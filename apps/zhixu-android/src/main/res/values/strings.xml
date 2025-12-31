@@ -193,6 +193,7 @@
     <string name="workshop_git_url">Git repository URL</string>
     <string name="workshop_install">Install</string>
     <string name="workshop_remove">Remove</string>
+    <string name="workshop_update">Update</string>
     <string name="workshop_removed">Removed: %1$s</string>
     <string name="workshop_remove_failed">Remove failed: %1$s</string>
     <string name="workshop_section_official">Official</string>

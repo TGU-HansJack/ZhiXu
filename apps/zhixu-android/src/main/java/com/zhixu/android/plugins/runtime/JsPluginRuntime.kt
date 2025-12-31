@@ -17,6 +17,7 @@ import com.eclipsesource.v8.V8ScriptCompilationException
 import com.eclipsesource.v8.V8ScriptExecutionException
 import com.eclipsesource.v8.V8Value
 import com.eclipsesource.v8.utils.V8ObjectUtils
+import kotlinx.coroutines.CancellationException
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -57,7 +58,14 @@ class JsPluginRuntime(
 
         val cfg = pluginRepo.readPluginConfig(rootUri, pluginId)
 
-        val v8 = V8.createV8Runtime()
+        val v8 =
+            try {
+                V8.createV8Runtime()
+            } catch (e: Throwable) {
+                if (e is CancellationException) throw e
+                val msg = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+                return PluginActionResult(false, "Plugin runtime unavailable: $msg")
+            }
         try {
             V8Object(v8).useV8 { module ->
                 V8Object(v8).useV8 { exports ->
@@ -114,9 +122,10 @@ class JsPluginRuntime(
             val msg = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
             return PluginActionResult(false, "Plugin error ($where): $msg")
         } catch (e: Throwable) {
+            if (e is CancellationException) throw e
             return PluginActionResult(false, "Plugin error: ${e.message ?: e.javaClass.simpleName}")
         } finally {
-            v8.close()
+            runCatching { v8.close() }
         }
     }
 

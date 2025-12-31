@@ -171,6 +171,7 @@
     <string name="workshop_git_url">Git 仓库地址</string>
     <string name="workshop_install">安装</string>
     <string name="workshop_remove">移除</string>
+    <string name="workshop_update">更新</string>
     <string name="workshop_removed">已移除：%1$s</string>
     <string name="workshop_remove_failed">移除失败：%1$s</string>
     <string name="workshop_section_official">官方插件</string>
