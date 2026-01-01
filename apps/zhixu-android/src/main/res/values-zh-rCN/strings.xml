@@ -227,6 +227,15 @@
     <string name="settings_placeholder_update">检查更新</string>
     <string name="settings_placeholder_about">关于</string>
 
+    <!-- About -->
+    <string name="about_version_fmt">版本信息：%1$s</string>
+    <string name="about_visit_website">访问官网</string>
+    <string name="about_join_qq_group">加入QQ群聊</string>
+    <string name="terms_of_use_title">使用条款</string>
+    <string name="about_open_failed">无法打开</string>
+    <string name="about_qq_copied_fmt">已复制QQ群号：%1$s</string>
+    <string name="about_copyright">© 2026 知序 Zhixu</string>
+
     <!-- Settings language -->
     <string name="settings_language_title">语言</string>
     <string name="settings_language_system">跟随系统</string>

@@ -71,6 +71,7 @@ fun SettingsScreen(
     onOpenVaultSettings: () -> Unit,
     onOpenWorkshop: () -> Unit,
     onOpenSync: () -> Unit,
+    onOpenAbout: () -> Unit,
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val context = LocalContext.current
@@ -220,7 +221,7 @@ fun SettingsScreen(
             SettingsNavRow(
                 iconRes = Ionicons.HelpCircleOutline,
                 title = stringResource(R.string.settings_placeholder_about),
-                onClick = ::comingSoon,
+                onClick = onOpenAbout,
             )
             HorizontalDivider(color = dividerColor)
         }

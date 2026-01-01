@@ -258,6 +258,15 @@
     <string name="settings_placeholder_update">Update software</string>
     <string name="settings_placeholder_about">About</string>
 
+    <!-- About -->
+    <string name="about_version_fmt">Version: %1$s</string>
+    <string name="about_visit_website">Visit website</string>
+    <string name="about_join_qq_group">Join QQ group</string>
+    <string name="terms_of_use_title">Terms of use</string>
+    <string name="about_open_failed">Unable to open</string>
+    <string name="about_qq_copied_fmt">QQ group copied: %1$s</string>
+    <string name="about_copyright">© 2026 Zhixu</string>
+
     <!-- Settings language -->
     <string name="settings_language_title">Language</string>
     <string name="settings_language_system">System default</string>

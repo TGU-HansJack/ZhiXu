@@ -87,6 +87,7 @@ import com.zhixu.android.data.appManagedVaultRootUri
 import com.zhixu.android.sync.VaultAutoSync
 import com.zhixu.android.sync.WebDavAutoSync
 import com.zhixu.android.ui.screens.AccountScreen
+import com.zhixu.android.ui.screens.AboutScreen
 import com.zhixu.android.ui.screens.DocumentListScreen
 import com.zhixu.android.ui.screens.EditorScreen
 import com.zhixu.android.ui.screens.LongImageScreen
@@ -95,6 +96,7 @@ import com.zhixu.android.ui.screens.SettingsScreen
 import com.zhixu.android.ui.screens.SpaceScreen
 import com.zhixu.android.ui.screens.SyncScreen
 import com.zhixu.android.ui.screens.TasksScreen
+import com.zhixu.android.ui.screens.TermsOfUseScreen
 import com.zhixu.android.ui.screens.VaultGateScreen
 import com.zhixu.android.ui.screens.VaultSettingsScreen
 import com.zhixu.android.ui.screens.WorkshopScreen
@@ -466,6 +468,20 @@ fun ZhixuApp() {
                         onOpenVaultSettings = { navController.navigate("vaultSettings") },
                         onOpenWorkshop = { navController.navigate("workshop") },
                         onOpenSync = { navController.navigate("sync") },
+                        onOpenAbout = { navController.navigate("about") },
+                    )
+                }
+                composable("about") {
+                    AboutScreen(
+                        contentPadding = padding,
+                        onBack = { navController.popBackStack() },
+                        onOpenTermsOfUse = { navController.navigate("termsOfUse") },
+                    )
+                }
+                composable("termsOfUse") {
+                    TermsOfUseScreen(
+                        contentPadding = padding,
+                        onBack = { navController.popBackStack() },
                     )
                 }
                 composable("account") {
