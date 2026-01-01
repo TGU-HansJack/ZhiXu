@@ -134,6 +134,9 @@
     <!-- Account -->
     <string name="account_not_logged_in_short">Not logged in</string>
     <string name="account_manage_title">Account</string>
+    <string name="account_sync_title">Cloud sync</string>
+    <string name="account_sync_desc">Login to sync documents and attachments across devices.</string>
+    <string name="account_register_hint">No account? Register</string>
     <string name="account_server_fmt">Server: %1$s</string>
     <string name="account_logged_in_as_fmt">Logged in as: %1$s</string>
     <string name="account_user_id_fmt">User ID: %1$d</string>
@@ -151,8 +154,12 @@
     <string name="account_register_failed">Register failed</string>
     <string name="account_storage_title">Storage plan</string>
     <string name="account_storage_select">Select</string>
+    <string name="account_storage_select_plan">Choose plan</string>
     <string name="account_storage_selected">Selected: %1$s</string>
     <string name="account_storage_login_required">Login required</string>
+    <string name="account_storage_login_to_choose">Login to choose</string>
+    <string name="account_storage_recommended">Recommended</string>
+    <string name="account_storage_current">Current</string>
     <string name="account_storage_512m_title">512MB</string>
     <string name="account_storage_512m_price">¥20 / year</string>
     <string name="account_storage_512m_desc">Sync docs &amp; attachments · 512 MB</string>
@@ -172,6 +179,8 @@
     <string name="account_device_regenerated">Device ID regenerated</string>
     <string name="account_device_remote_list">Bound devices</string>
     <string name="account_device_remote_empty">None</string>
+
+    <string name="vault_settings_official_desc">No configuration required.</string>
 
     <!-- WebDAV -->
     <string name="webdav_enable">Enable WebDAV</string>

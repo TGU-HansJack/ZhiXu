@@ -115,6 +115,9 @@
     <!-- Account -->
     <string name="account_not_logged_in_short">未登录</string>
     <string name="account_manage_title">账号管理</string>
+    <string name="account_sync_title">云端同步</string>
+    <string name="account_sync_desc">登录后可在多设备间同步文档与附件</string>
+    <string name="account_register_hint">没有账号？注册</string>
     <string name="account_server_fmt">服务器：%1$s</string>
     <string name="account_logged_in_as_fmt">已登录：%1$s</string>
     <string name="account_user_id_fmt">用户 ID：%1$d</string>
@@ -132,8 +135,12 @@
     <string name="account_register_failed">注册失败</string>
     <string name="account_storage_title">存储方案</string>
     <string name="account_storage_select">选择</string>
+    <string name="account_storage_select_plan">选择方案</string>
     <string name="account_storage_selected">已选择：%1$s</string>
     <string name="account_storage_login_required">需要登录</string>
+    <string name="account_storage_login_to_choose">登录后可选</string>
+    <string name="account_storage_recommended">推荐</string>
+    <string name="account_storage_current">当前方案</string>
     <string name="account_storage_512m_title">512MB</string>
     <string name="account_storage_512m_price">¥20 / 年</string>
     <string name="account_storage_512m_desc">同步文档与附件 · 512MB</string>
@@ -153,6 +160,8 @@
     <string name="account_device_regenerated">设备 ID 已重新生成</string>
     <string name="account_device_remote_list">已绑定设备</string>
     <string name="account_device_remote_empty">无</string>
+
+    <string name="vault_settings_official_desc">无需配置（选中即启用）</string>
 
     <!-- WebDAV -->
     <string name="webdav_enable">启用 WebDAV</string>

@@ -9,14 +9,16 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
@@ -25,7 +27,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -89,6 +91,11 @@ fun AccountScreen(
     val fetchProfileFailedText = stringResource(R.string.account_fetch_profile_failed)
     val registerFailedText = stringResource(R.string.account_register_failed)
     val serverUnreachableText = stringResource(R.string.error_server_unreachable)
+    val syncTitle = stringResource(R.string.account_sync_title)
+    val syncDesc = stringResource(R.string.account_sync_desc)
+    val registerHintText = stringResource(R.string.account_register_hint)
+    val loginToChoosePlanText = stringResource(R.string.account_storage_login_to_choose)
+    val recommendedText = stringResource(R.string.account_storage_recommended)
 
     fun <T> SyncServerResult<T>.toUiMessage(fallback: String): String {
         return when {
@@ -166,65 +173,75 @@ fun AccountScreen(
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .imePadding()
                     .fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
-                Text(
-                    text = stringResource(R.string.account_server_fmt, OfficialSync.BASE_URL),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = syncTitle, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = syncDesc,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
 
             item {
-                Text(
-                    text =
-                        if (state.isLoggedIn) {
-                            stringResource(R.string.account_logged_in_as_fmt, state.username.ifBlank { "-" })
-                        } else {
-                            stringResource(R.string.account_not_logged_in)
-                        },
-                )
+                Spacer(Modifier.height(8.dp))
             }
 
-            item { HorizontalDivider(color = dividerColor) }
-
             item {
-                ZhixuTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    enabled = !busy,
-                    label = { Text(stringResource(R.string.account_username)) },
-                    singleLine = true,
+                Card(
                     modifier = Modifier.fillMaxWidth(),
-                )
-            }
-
-            item {
-                ZhixuTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    enabled = !busy,
-                    label = { Text(stringResource(R.string.account_password)) },
-                    singleLine = true,
-                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        ZhixuPasswordToggleIconButton(
-                            show = showPassword,
+                    colors =
+                        CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f),
+                        ),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        ZhixuTextField(
+                            value = username,
+                            onValueChange = { username = it },
                             enabled = !busy,
-                            onClick = { showPassword = !showPassword },
+                            label = { Text(stringResource(R.string.account_username)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
                         )
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+
+                        ZhixuTextField(
+                            value = password,
+                            onValueChange = { password = it },
+                            enabled = !busy,
+                            label = { Text(stringResource(R.string.account_password)) },
+                            singleLine = true,
+                            visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                ZhixuPasswordToggleIconButton(
+                                    show = showPassword,
+                                    enabled = !busy,
+                                    onClick = { showPassword = !showPassword },
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
             }
 
             item {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
                         enabled = !busy && username.trim().isNotBlank() && password.isNotBlank(),
-                        modifier = Modifier.weight(1f),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
                         onClick = {
                             val u = username.trim()
                             val p = password
@@ -250,109 +267,152 @@ fun AccountScreen(
                         },
                     ) { Text(stringResource(R.string.account_login)) }
 
-                    OutlinedButton(
-                        enabled = !busy && username.trim().isNotBlank() && password.isNotBlank(),
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            val u = username.trim()
-                            val p = password
-                            scope.launch {
-                                setBusy(true)
-                                val reg = SyncServerClient.register(OfficialSync.BASE_URL, u, p)
-                                status = if (reg.ok) registerOkText else reg.toUiMessage(registerFailedText)
-                                setBusy(false)
-                            }
-                        },
-                    ) { Text(stringResource(R.string.account_register)) }
-                }
-            }
-
-            if (state.isLoggedIn) {
-                item {
-                    OutlinedButton(
-                        enabled = !busy,
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            scope.launch {
-                                setBusy(true)
-                                accountPrefs.logout()
-                                status = loggedOutText
-                                setBusy(false)
-                            }
-                        },
-                    ) { Text(stringResource(R.string.account_logout)) }
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            enabled = !busy && username.trim().isNotBlank() && password.isNotBlank(),
+                            onClick = {
+                                val u = username.trim()
+                                val p = password
+                                scope.launch {
+                                    setBusy(true)
+                                    val reg = SyncServerClient.register(OfficialSync.BASE_URL, u, p)
+                                    status = if (reg.ok) registerOkText else reg.toUiMessage(registerFailedText)
+                                    setBusy(false)
+                                }
+                            },
+                        ) { Text(registerHintText) }
+
+                        Spacer(Modifier.weight(1f))
+
+                        if (state.isLoggedIn) {
+                            TextButton(
+                                enabled = !busy,
+                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                onClick = {
+                                    scope.launch {
+                                        setBusy(true)
+                                        accountPrefs.logout()
+                                        status = loggedOutText
+                                        setBusy(false)
+                                    }
+                                },
+                            ) { Text(stringResource(R.string.account_logout)) }
+                        }
+                    }
                 }
             }
 
-            item { HorizontalDivider(color = dividerColor) }
+            item { HorizontalDivider(color = dividerColor, modifier = Modifier.padding(top = 8.dp)) }
 
             item {
                 Text(text = stringResource(R.string.account_storage_title), style = MaterialTheme.typography.titleSmall)
             }
 
-            fun planCard(code: String, title: String, price: String, desc: String) {
+            fun planCard(code: String, title: String, price: String, desc: String, recommended: Boolean) {
                 item {
                     val selected = currentPlanCode == code
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(18.dp),
-                        border =
-                            BorderStroke(
-                                1.dp,
-                                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                            ),
-                    ) {
-                        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    painter = painterResource(if (selected) Ionicons.CheckmarkCircle else Ionicons.LayersOutline),
-                                    contentDescription = null,
-                                    tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Text(title, style = MaterialTheme.typography.titleLarge)
-                                Spacer(Modifier.weight(1f))
-                                Text(
-                                    text = price,
-                                    style = MaterialTheme.typography.titleLarge,
-                                )
-                            }
+                    val containerColor =
+                        if (selected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                        } else {
+                            CardDefaults.outlinedCardColors().containerColor
+                        }
 
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = desc,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                TextButton(
-                                    enabled = !busy && state.isLoggedIn,
-                                    onClick = {
-                                        scope.launch {
-                                            setBusy(true)
-                                            val r = SyncServerClient.setSubscriptionPlan(OfficialSync.BASE_URL, state.token, code)
-                                            if (r.ok) currentPlanCode = code
-                                            status = if (r.ok) context.getString(R.string.account_storage_selected, title) else r.toUiMessage("Failed")
-                                            setBusy(false)
+                    suspend fun selectPlan() {
+                        if (!state.isLoggedIn || busy || selected) return
+                        setBusy(true)
+                        val r = SyncServerClient.setSubscriptionPlan(OfficialSync.BASE_URL, state.token, code)
+                        if (r.ok) currentPlanCode = code
+                        status = if (r.ok) null else r.toUiMessage("Failed")
+                        setBusy(false)
+                    }
+
+                    if (state.isLoggedIn) {
+                        OutlinedCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { scope.launch { selectPlan() } },
+                            colors = CardDefaults.outlinedCardColors(containerColor = containerColor),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text(text = title, style = MaterialTheme.typography.titleSmall)
+                                        if (recommended) {
+                                            Text(
+                                                text = recommendedText,
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                                style = MaterialTheme.typography.labelSmall,
+                                            )
                                         }
-                                    },
-                                ) { Text(stringResource(R.string.account_storage_select)) }
+                                    }
+                                    Text(
+                                        text = desc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Text(text = price, style = MaterialTheme.typography.titleSmall)
+                                if (selected) {
+                                    Icon(
+                                        painter = painterResource(Ionicons.CheckmarkCircle),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
                             }
-
-                            if (!state.isLoggedIn) {
-                                Text(
-                                    text = stringResource(R.string.account_storage_login_required),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                        }
+                    } else {
+                        OutlinedCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.outlinedCardColors(containerColor = containerColor),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text(text = title, style = MaterialTheme.typography.titleSmall)
+                                        if (recommended) {
+                                            Text(
+                                                text = recommendedText,
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                                style = MaterialTheme.typography.labelSmall,
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = desc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(text = price, style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        text = loginToChoosePlanText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
 
-            planCard("storage_512m", plan512Title, plan512Price, plan512Desc)
-            planCard("storage_1g", plan1Title, plan1Price, plan1Desc)
-            planCard("storage_2g", plan2Title, plan2Price, plan2Desc)
+            planCard("storage_512m", plan512Title, plan512Price, plan512Desc, recommended = false)
+            planCard("storage_1g", plan1Title, plan1Price, plan1Desc, recommended = true)
+            planCard("storage_2g", plan2Title, plan2Price, plan2Desc, recommended = false)
 
             if (!status.isNullOrBlank()) {
                 item {
@@ -360,6 +420,7 @@ fun AccountScreen(
                     Text(status!!, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+
         }
     }
 }

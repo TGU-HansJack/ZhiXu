@@ -89,7 +89,7 @@ fun VaultGateScreen(
 
             VaultStorageLocation.OFFICIAL_SERVER -> {
                 Text(
-                    text = stringResource(R.string.vault_settings_official_desc_fmt, com.zhixu.android.sync.OfficialSync.BASE_URL),
+                    text = stringResource(R.string.vault_settings_official_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

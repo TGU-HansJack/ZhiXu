@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -14,12 +16,12 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,7 +47,6 @@ import com.zhixu.android.ui.components.ZhixuTextField
 import com.zhixu.android.sync.OfficialSync
 import com.zhixu.android.sync.SyncServerClient
 import com.zhixu.android.sync.SyncServerResult
-import com.zhixu.android.ui.Ionicons
 import kotlinx.coroutines.launch
 
 @Composable
@@ -65,6 +66,7 @@ fun AccountManagementDialog(
 
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
+    var currentPlanCode by remember { mutableStateOf<String?>(null) }
 
     val loginOkText = stringResource(R.string.account_login_ok)
     val registerOkText = stringResource(R.string.account_register_ok)
@@ -73,6 +75,11 @@ fun AccountManagementDialog(
     val fetchProfileFailedText = stringResource(R.string.account_fetch_profile_failed)
     val registerFailedText = stringResource(R.string.account_register_failed)
     val serverUnreachableText = stringResource(R.string.error_server_unreachable)
+    val syncTitle = stringResource(R.string.account_sync_title)
+    val syncDesc = stringResource(R.string.account_sync_desc)
+    val registerHintText = stringResource(R.string.account_register_hint)
+    val loginToChoosePlanText = stringResource(R.string.account_storage_login_to_choose)
+    val recommendedText = stringResource(R.string.account_storage_recommended)
 
     fun <T> SyncServerResult<T>.toUiMessage(fallback: String): String {
         return when {
@@ -101,6 +108,15 @@ fun AccountManagementDialog(
     val plan2Price = stringResource(R.string.account_storage_2g_price)
     val plan2Desc = stringResource(R.string.account_storage_2g_desc)
 
+    LaunchedEffect(state.token) {
+        if (!state.isLoggedIn) {
+            currentPlanCode = null
+            return@LaunchedEffect
+        }
+        val me = SyncServerClient.me(OfficialSync.BASE_URL, state.token)
+        if (me.ok) currentPlanCode = me.value?.plan?.code
+    }
+
     AlertDialog(
         modifier = ZhixuDialogDefaults.modifier(),
         onDismissRequest = { if (!busy) onDismiss() },
@@ -109,62 +125,64 @@ fun AccountManagementDialog(
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text(
-                    text = stringResource(R.string.account_server_fmt, OfficialSync.BASE_URL),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-
-                if (state.isLoggedIn) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = syncTitle, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = stringResource(R.string.account_logged_in_as_fmt, state.username.ifBlank { "-" }),
+                        text = syncDesc,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        text = stringResource(R.string.account_user_id_fmt, state.userId),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                } else {
-                    Text(
-                        text = stringResource(R.string.account_not_logged_in),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-
-                ZhixuTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    enabled = !busy,
-                    label = { Text(stringResource(R.string.account_username)) },
-                    singleLine = true,
+                Card(
                     modifier = Modifier.fillMaxWidth(),
-                )
-                ZhixuTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    enabled = !busy,
-                    label = { Text(stringResource(R.string.account_password)) },
-                    singleLine = true,
-                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        ZhixuPasswordToggleIconButton(
-                            show = showPassword,
+                    colors =
+                        CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f),
+                        ),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        ZhixuTextField(
+                            value = username,
+                            onValueChange = { username = it },
                             enabled = !busy,
-                            onClick = { showPassword = !showPassword },
+                            label = { Text(stringResource(R.string.account_username)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
                         )
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                        ZhixuTextField(
+                            value = password,
+                            onValueChange = { password = it },
+                            enabled = !busy,
+                            label = { Text(stringResource(R.string.account_password)) },
+                            singleLine = true,
+                            visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                ZhixuPasswordToggleIconButton(
+                                    show = showPassword,
+                                    enabled = !busy,
+                                    onClick = { showPassword = !showPassword },
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
                         enabled = !busy && username.trim().isNotBlank() && password.isNotBlank(),
-                        modifier = Modifier.weight(1f),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
                         onClick = {
                             val u = username.trim()
                             val p = password
@@ -189,97 +207,164 @@ fun AccountManagementDialog(
                             }
                         },
                     ) { Text(stringResource(R.string.account_login)) }
-                    OutlinedButton(
-                        enabled = !busy && username.trim().isNotBlank() && password.isNotBlank(),
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            val u = username.trim()
-                            val p = password
-                            scope.launch {
-                                setBusy(true)
-                                val reg = SyncServerClient.register(OfficialSync.BASE_URL, u, p)
-                                status =
-                                    if (reg.ok) {
-                                        registerOkText
-                                    } else {
-                                        reg.toUiMessage(registerFailedText)
-                                    }
-                                setBusy(false)
-                            }
-                        },
-                    ) { Text(stringResource(R.string.account_register)) }
-                }
 
-                if (state.isLoggedIn) {
-                    OutlinedButton(
-                        enabled = !busy,
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            scope.launch {
-                                setBusy(true)
-                                accountPrefs.logout()
-                                status = loggedOutText
-                                setBusy(false)
-                            }
-                        },
-                    ) { Text(stringResource(R.string.account_logout)) }
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            enabled = !busy && username.trim().isNotBlank() && password.isNotBlank(),
+                            onClick = {
+                                val u = username.trim()
+                                val p = password
+                                scope.launch {
+                                    setBusy(true)
+                                    val reg = SyncServerClient.register(OfficialSync.BASE_URL, u, p)
+                                    status = if (reg.ok) registerOkText else reg.toUiMessage(registerFailedText)
+                                    setBusy(false)
+                                }
+                            },
+                        ) { Text(registerHintText) }
+
+                        Spacer(Modifier.weight(1f))
+
+                        if (state.isLoggedIn) {
+                            TextButton(
+                                enabled = !busy,
+                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                onClick = {
+                                    scope.launch {
+                                        setBusy(true)
+                                        accountPrefs.logout()
+                                        status = loggedOutText
+                                        setBusy(false)
+                                    }
+                                },
+                            ) { Text(stringResource(R.string.account_logout)) }
+                        }
+                    }
                 }
 
-                Spacer(Modifier.height(4.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
 
                 Text(text = stringResource(R.string.account_storage_title), style = MaterialTheme.typography.titleSmall)
 
                 @Composable
-                fun PlanCard(code: String, title: String, price: String, desc: String) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(18.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                Icon(
-                                    painter = androidx.compose.ui.res.painterResource(Ionicons.LayersOutline),
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Text(title, style = MaterialTheme.typography.titleLarge)
-                                Spacer(Modifier.weight(1f))
-                                Text(price, style = MaterialTheme.typography.titleLarge)
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text(
-                                    text = desc,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Button(
-                                    enabled = !busy && state.isLoggedIn,
-                                    onClick = {
-                                        scope.launch {
-                                            setBusy(true)
-                                            val r = SyncServerClient.setSubscriptionPlan(OfficialSync.BASE_URL, state.token, code)
-                                            status = if (r.ok) context.getString(R.string.account_storage_selected, title) else r.toUiMessage("Failed")
-                                            setBusy(false)
+                fun PlanCard(code: String, title: String, price: String, desc: String, recommended: Boolean) {
+                    val selected = currentPlanCode == code
+                    val containerColor =
+                        if (selected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                        } else {
+                            CardDefaults.outlinedCardColors().containerColor
+                        }
+
+                    suspend fun selectPlan() {
+                        if (!state.isLoggedIn || busy || selected) return
+                        setBusy(true)
+                        val r = SyncServerClient.setSubscriptionPlan(OfficialSync.BASE_URL, state.token, code)
+                        if (r.ok) currentPlanCode = code
+                        status = if (r.ok) null else r.toUiMessage("Failed")
+                        setBusy(false)
+                    }
+
+                    if (state.isLoggedIn) {
+                        OutlinedCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { scope.launch { selectPlan() } },
+                            colors = CardDefaults.outlinedCardColors(containerColor = containerColor),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Row(
+                                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Text(text = title, style = MaterialTheme.typography.titleSmall)
+                                        if (recommended) {
+                                            Text(
+                                                text = recommendedText,
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                                style = MaterialTheme.typography.labelSmall,
+                                            )
                                         }
-                                    },
-                                ) { Text(stringResource(R.string.account_storage_select)) }
+                                    }
+                                    Text(
+                                        text = desc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Text(text = price, style = MaterialTheme.typography.titleSmall)
+                                if (selected) {
+                                    androidx.compose.material3.Icon(
+                                        painter = androidx.compose.ui.res.painterResource(com.zhixu.android.ui.Ionicons.CheckmarkCircle),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        OutlinedCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.outlinedCardColors(containerColor = containerColor),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Row(
+                                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Text(text = title, style = MaterialTheme.typography.titleSmall)
+                                        if (recommended) {
+                                            Text(
+                                                text = recommendedText,
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                                style = MaterialTheme.typography.labelSmall,
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = desc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Column(
+                                    horizontalAlignment = androidx.compose.ui.Alignment.End,
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(text = price, style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        text = loginToChoosePlanText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
-                PlanCard("storage_512m", plan512Title, plan512Price, plan512Desc)
-                PlanCard("storage_1g", plan1Title, plan1Price, plan1Desc)
-                PlanCard("storage_2g", plan2Title, plan2Price, plan2Desc)
+                PlanCard("storage_512m", plan512Title, plan512Price, plan512Desc, recommended = false)
+                PlanCard("storage_1g", plan1Title, plan1Price, plan1Desc, recommended = true)
+                PlanCard("storage_2g", plan2Title, plan2Price, plan2Desc, recommended = false)
 
                 if (!status.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))
                     Text(status!!, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+
             }
         },
         confirmButton = {

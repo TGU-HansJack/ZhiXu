@@ -424,7 +424,7 @@ fun VaultSettingsScreen(
                     }
                     item {
                         Text(
-                            text = stringResource(R.string.vault_settings_official_desc_fmt, OfficialSync.BASE_URL),
+                            text = stringResource(R.string.vault_settings_official_desc),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -561,7 +561,7 @@ private fun StorageLocationCards(
         StorageLocationCard(
             selected = selected == VaultStorageLocation.OFFICIAL_SERVER,
             title = stringResource(R.string.vault_settings_location_official),
-            description = stringResource(R.string.vault_settings_official_desc_fmt, OfficialSync.BASE_URL),
+            description = stringResource(R.string.vault_settings_official_desc),
             onClick = { onSelected(VaultStorageLocation.OFFICIAL_SERVER) },
         )
         StorageLocationCard(
