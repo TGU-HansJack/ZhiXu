@@ -2,6 +2,7 @@
     <string name="app_name">Zhixu</string>
 
     <!-- Navigation -->
+    <string name="nav_space">空间</string>
     <string name="nav_docs">Docs</string>
     <string name="nav_tasks">Tasks</string>
     <string name="nav_settings">Settings</string>

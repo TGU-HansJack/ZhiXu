@@ -38,7 +38,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.WindowInsets
 import com.zhixu.android.R
@@ -83,6 +85,14 @@ fun VaultDrawer(
     isActive: Boolean,
     refreshToken: Long,
     mutation: DocListMutation?,
+    sheetWidth: Dp = 320.dp,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    useSystemInsets: Boolean = true,
+    showHeader: Boolean = true,
+    itemMinHeight: Dp = 32.dp,
+    itemTextStyle: TextStyle = MaterialTheme.typography.bodySmall,
+    itemIconSize: Dp = 18.dp,
+    itemChevronSize: Dp = 16.dp,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -225,25 +235,34 @@ fun VaultDrawer(
         derivedStateOf { entries.filter(::isVisible) }
     }
 
+    val sheetModifier =
+        modifier
+            .then(if (sheetWidth == Dp.Unspecified) Modifier.fillMaxWidth() else Modifier.width(sheetWidth))
+            .fillMaxHeight()
+
+    val bodyModifier =
+        Modifier
+            .fillMaxSize()
+            .then(if (useSystemInsets) Modifier.statusBarsPadding().navigationBarsPadding() else Modifier)
+            .padding(contentPadding)
+
     ModalDrawerSheet(
-        modifier = modifier.width(320.dp).fillMaxHeight(),
+        modifier = sheetModifier,
         windowInsets = WindowInsets(0, 0, 0, 0),
         drawerContainerColor = MaterialTheme.colorScheme.background,
         drawerTonalElevation = 0.dp,
     ) {
         Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .navigationBarsPadding(),
+            modifier = bodyModifier,
         ) {
-            Text(
-                text = stringResource(R.string.vault_drawer_title),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            if (showHeader) {
+                Text(
+                    text = stringResource(R.string.vault_drawer_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
 
             val rootLoading = (loadingDirs[""] == true) && entries.isEmpty()
             if (rootLoading) {
@@ -293,7 +312,7 @@ fun VaultDrawer(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 32.dp)
+                                .heightIn(min = itemMinHeight)
                                 .clickable {
                                     if (entry.isDirectory) {
                                         val dirPath = entry.relativePath
@@ -318,27 +337,27 @@ fun VaultDrawer(
                             Icon(
                                 painter = painterResource(if (isExpanded) Ionicons.ChevronDown else Ionicons.ChevronForward),
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp),
+                                modifier = Modifier.size(itemChevronSize),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Icon(
                                 painter = painterResource(Ionicons.Vault),
                                 contentDescription = null,
-                                modifier = Modifier.size(18.dp),
+                                modifier = Modifier.size(itemIconSize),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         } else {
-                            Spacer(modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.size(itemChevronSize))
                             Icon(
                                 painter = painterResource(Ionicons.DocumentText),
                                 contentDescription = null,
-                                modifier = Modifier.size(18.dp),
+                                modifier = Modifier.size(itemIconSize),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         Text(
                             text = displayName,
-                            style = MaterialTheme.typography.bodySmall,
+                            style = itemTextStyle,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
