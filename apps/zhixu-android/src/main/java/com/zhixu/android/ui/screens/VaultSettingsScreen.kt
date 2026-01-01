@@ -2,9 +2,14 @@ package com.zhixu.android.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,8 +23,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,7 +34,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -44,7 +51,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
@@ -65,8 +71,10 @@ import com.zhixu.android.data.VaultSyncPreferences
 import com.zhixu.android.data.appManagedVaultRootUri
 import com.zhixu.android.data.vaultRootToDocumentFile
 import com.zhixu.android.sync.OfficialSync
+import com.zhixu.android.ui.Ionicons
 import com.zhixu.android.ui.components.ZhixuPasswordToggleIconButton
 import com.zhixu.android.ui.components.ZhixuTextField
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.map
 import kotlin.math.abs
@@ -138,10 +146,24 @@ fun VaultSettingsScreen(
     var thirdPartyE2eeMasterPassword by remember { mutableStateOf(savedConfig.thirdParty.e2eeMasterPassword) }
     var showThirdPartyPassword by remember { mutableStateOf(false) }
     var showMasterPassword by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf<String?>(null) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
+    var lastSavedAtMs by remember { mutableStateOf(0L) }
+    var showJustSaved by remember { mutableStateOf(false) }
 
     var vaultSizeBytes by remember { mutableStateOf<Long?>(null) }
     var vaultSizeLoading by remember { mutableStateOf(false) }
+
+    LaunchedEffect(lastSavedAtMs) {
+        if (lastSavedAtMs <= 0L) return@LaunchedEffect
+        showJustSaved = true
+        delay(1_200)
+        showJustSaved = false
+    }
+
+    fun notifySaved() {
+        lastSavedAtMs = System.currentTimeMillis()
+        Toast.makeText(context, context.getString(R.string.vault_settings_saved), Toast.LENGTH_SHORT).show()
+    }
 
     LaunchedEffect(savedConfig) {
         location = savedConfig.location
@@ -177,12 +199,13 @@ fun VaultSettingsScreen(
             scope.launch {
                 runCatching { repository.ensureVaultStructure(uri) }
                     .onFailure {
-                        status = it.message ?: it.javaClass.simpleName
+                        statusMessage = it.message ?: it.javaClass.simpleName
                         return@launch
                     }
                 vaultPrefs.setVaultRootUri(uri.toString())
                 syncPrefs.setLocation(VaultStorageLocation.LOCAL)
-                status = context.getString(R.string.vault_settings_saved)
+                statusMessage = null
+                notifySaved()
             }
         }
 
@@ -228,7 +251,7 @@ fun VaultSettingsScreen(
             }
 
             item {
-                StorageLocationRow(
+                StorageLocationCards(
                     selected = location,
                     onSelected = { next ->
                         location = next
@@ -238,7 +261,8 @@ fun VaultSettingsScreen(
                                 val uri = appManagedVaultRootUri(context.applicationContext)
                                 runCatching { repository.ensureVaultStructure(uri) }
                                 vaultPrefs.setVaultRootUri(uri.toString())
-                                status = context.getString(R.string.vault_settings_saved)
+                                statusMessage = null
+                                notifySaved()
                             }
                         }
                     },
@@ -258,19 +282,76 @@ fun VaultSettingsScreen(
                     item {
                         val root = vaultRootUri
                         val folderName = root?.let { vaultRootToDocumentFile(context, it)?.name }.orEmpty()
-                        val pathText =
+                        val isAppPrivateDir =
+                            root?.scheme.equals("file", ignoreCase = true) &&
+                                root?.path?.replace('\\', '/')?.endsWith("/ZhixuVault") == true
+
+                        val displayName =
                             when {
                                 root == null -> stringResource(R.string.settings_vault_not_selected)
-                                folderName.isNotBlank() -> "$folderName\n${root}"
+                                folderName.isNotBlank() -> folderName
                                 else -> root.toString()
                             }
-                        Text(pathText, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    item {
-                        Button(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = { folderLauncher.launch(null) },
-                        ) { Text(stringResource(R.string.vault_settings_choose_local_folder)) }
+                        val kindText =
+                            when {
+                                root == null -> null
+                                isAppPrivateDir -> stringResource(R.string.vault_settings_dir_kind_private)
+                                else -> stringResource(R.string.vault_settings_dir_kind_custom)
+                            }
+
+                        val actualPath =
+                            when {
+                                root == null -> null
+                                root.scheme.equals("file", ignoreCase = true) -> root.path
+                                else -> root.toString()
+                            }
+
+                        var showActualPath by remember(root) { mutableStateOf(false) }
+
+                        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = actualPath != null) { showActualPath = !showActualPath }
+                                        .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        val label =
+                                            buildString {
+                                                append(stringResource(R.string.vault_settings_storage_dir_fmt, displayName))
+                                                if (!kindText.isNullOrBlank() && root != null) {
+                                                    append(" (")
+                                                    append(kindText)
+                                                    append(")")
+                                                }
+                                            }
+                                        Text(text = label, style = MaterialTheme.typography.bodyMedium)
+                                    }
+                                    TextButton(onClick = { folderLauncher.launch(null) }) {
+                                        Text(stringResource(R.string.vault_settings_change_location))
+                                    }
+                                }
+
+                                AnimatedVisibility(
+                                    visible = showActualPath && !actualPath.isNullOrBlank(),
+                                    enter = fadeIn(),
+                                    exit = fadeOut(),
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.vault_settings_actual_path_fmt, actualPath.orEmpty()),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                            }
+                        }
                     }
                     item {
                         val sizeText =
@@ -280,20 +361,57 @@ fun VaultSettingsScreen(
                                 vaultSizeBytes == null -> "-"
                                 else -> formatBytes(vaultSizeBytes!!)
                             }
-                        Text(
-                            text = stringResource(R.string.vault_settings_local_size_fmt, sizeText),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    item {
-                        OutlinedButton(
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = vaultRootUri != null && !vaultSizeLoading,
-                            onClick = {
-                                val root = vaultRootUri ?: return@OutlinedButton
-                                scope.launch { refreshVaultSize(root) }
-                            },
-                        ) { Text(stringResource(R.string.action_refresh)) }
+
+                        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.vault_settings_local_size_fmt, sizeText),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        if (showJustSaved) {
+                                            Icon(
+                                                painter = painterResource(Ionicons.CheckmarkCircle),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary,
+                                            )
+                                        }
+                                    }
+
+                                    if (!statusMessage.isNullOrBlank()) {
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            text = statusMessage!!,
+                                            color = MaterialTheme.colorScheme.error,
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    }
+                                }
+
+                                TextButton(
+                                    enabled = vaultRootUri != null && !vaultSizeLoading,
+                                    onClick = {
+                                        val root = vaultRootUri ?: return@TextButton
+                                        scope.launch { refreshVaultSize(root) }
+                                    },
+                                ) {
+                                    if (vaultSizeLoading) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    } else {
+                                        Text(stringResource(R.string.action_refresh))
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -413,18 +531,12 @@ fun VaultSettingsScreen(
                                     )
                                 scope.launch {
                                     syncPrefs.saveConfig(config)
-                                    status = context.getString(R.string.vault_settings_saved)
+                                    statusMessage = null
+                                    notifySaved()
                                 }
                             },
                         ) { Text(stringResource(R.string.action_save)) }
                     }
-                }
-            }
-
-            if (!status.isNullOrBlank()) {
-                item {
-                    Spacer(Modifier.height(8.dp))
-                    Text(status!!, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -432,46 +544,72 @@ fun VaultSettingsScreen(
 }
 
 @Composable
-private fun StorageLocationRow(
+private fun StorageLocationCards(
     selected: VaultStorageLocation,
     onSelected: (VaultStorageLocation) -> Unit,
 ) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        LocationButton(
+        StorageLocationCard(
             selected = selected == VaultStorageLocation.LOCAL,
-            text = stringResource(R.string.vault_settings_location_local),
+            title = stringResource(R.string.vault_settings_location_local),
+            description = stringResource(R.string.vault_settings_local_title),
             onClick = { onSelected(VaultStorageLocation.LOCAL) },
-            modifier = Modifier.weight(1f),
         )
-        LocationButton(
+        StorageLocationCard(
             selected = selected == VaultStorageLocation.OFFICIAL_SERVER,
-            text = stringResource(R.string.vault_settings_location_official),
+            title = stringResource(R.string.vault_settings_location_official),
+            description = stringResource(R.string.vault_settings_official_desc_fmt, OfficialSync.BASE_URL),
             onClick = { onSelected(VaultStorageLocation.OFFICIAL_SERVER) },
-            modifier = Modifier.weight(1f),
         )
-        LocationButton(
+        StorageLocationCard(
             selected = selected == VaultStorageLocation.THIRD_PARTY_SERVICE,
-            text = stringResource(R.string.vault_settings_location_third_party),
+            title = stringResource(R.string.vault_settings_location_third_party),
+            description = stringResource(R.string.vault_settings_third_party_desc),
             onClick = { onSelected(VaultStorageLocation.THIRD_PARTY_SERVICE) },
-            modifier = Modifier.weight(1f),
         )
     }
 }
 
 @Composable
-private fun LocationButton(
+private fun StorageLocationCard(
     selected: Boolean,
-    text: String,
+    title: String,
+    description: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-    if (selected) {
-        Button(modifier = modifier, onClick = onClick) { Text(text) }
-    } else {
-        OutlinedButton(modifier = modifier, onClick = onClick) { Text(text) }
+    val containerColor =
+        if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+        } else {
+            CardDefaults.outlinedCardColors().containerColor
+        }
+
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        colors = CardDefaults.outlinedCardColors(containerColor = containerColor),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(text = title, style = MaterialTheme.typography.titleSmall)
+                Text(text = description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (selected) {
+                Icon(
+                    painter = painterResource(Ionicons.CheckmarkCircle),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
     }
 }
 

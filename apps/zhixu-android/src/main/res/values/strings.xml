@@ -18,6 +18,11 @@
     <string name="vault_settings_location_third_party">Third-party service</string>
     <string name="vault_settings_local_title">Local storage (default)</string>
     <string name="vault_settings_choose_local_folder">Choose local folder</string>
+    <string name="vault_settings_change_location">Change location</string>
+    <string name="vault_settings_storage_dir_fmt">Storage folder: %1$s</string>
+    <string name="vault_settings_dir_kind_private">System private directory</string>
+    <string name="vault_settings_dir_kind_custom">User-selected folder</string>
+    <string name="vault_settings_actual_path_fmt">Actual path: %1$s</string>
     <string name="vault_settings_local_size_fmt">Used storage: %1$s</string>
     <string name="vault_settings_calculating">Calculating…</string>
     <string name="vault_settings_official_title">Official server</string>

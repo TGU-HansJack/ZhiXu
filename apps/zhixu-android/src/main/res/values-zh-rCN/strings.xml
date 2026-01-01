@@ -16,6 +16,11 @@
     <string name="vault_settings_location_third_party">第三方服务</string>
     <string name="vault_settings_local_title">本地存储（默认）</string>
     <string name="vault_settings_choose_local_folder">选择本地存储位置</string>
+    <string name="vault_settings_change_location">更改位置</string>
+    <string name="vault_settings_storage_dir_fmt">存储目录：%1$s</string>
+    <string name="vault_settings_dir_kind_private">系统私有目录</string>
+    <string name="vault_settings_dir_kind_custom">用户选择的目录</string>
+    <string name="vault_settings_actual_path_fmt">实际路径：%1$s</string>
     <string name="vault_settings_local_size_fmt">占用存储：%1$s</string>
     <string name="vault_settings_calculating">计算中…</string>
     <string name="vault_settings_official_title">官方服务器</string>
