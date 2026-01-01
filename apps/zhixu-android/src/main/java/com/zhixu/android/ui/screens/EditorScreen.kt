@@ -155,6 +155,8 @@ import com.zhixu.android.ui.components.LineDiff
 import com.zhixu.android.ui.components.DiffOp
 import com.zhixu.android.ui.components.DiffLine
 import com.zhixu.android.ui.components.ZhixuDialogDefaults
+import com.zhixu.android.ui.components.SheetActionRow
+import com.zhixu.android.ui.components.SheetQuickAction
 import com.zhixu.android.ui.components.ZhixuTextField
 import com.zhixu.android.ui.components.VaultDrawer
 import com.zhixu.android.ui.components.ZhixuSwipeDualDrawer
@@ -1540,8 +1542,8 @@ fun EditorScreen(
         ModalBottomSheet(
             onDismissRequest = { showOverflowSheet = false },
             sheetState = overflowSheetState,
-            containerColor = Color(0xFFF5F5F5),
-            dragHandle = null,
+            containerColor = MaterialTheme.colorScheme.background,
+            tonalElevation = 0.dp,
         ) {
             val notImplemented: () -> Unit = {
                 scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.common_not_implemented)) }
@@ -1550,15 +1552,14 @@ fun EditorScreen(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                         .windowInsetsPadding(WindowInsets.navigationBars),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.Start),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    EditorOverflowQuickAction(
+                    SheetQuickAction(
                         title = stringResource(R.string.editor_overflow_generate_long_image),
                         iconRes = Ionicons.ImageOutline,
                         onClick = {
@@ -1572,8 +1573,9 @@ fun EditorScreen(
                                 ),
                             )
                         },
+                        modifier = Modifier.weight(1f),
                     )
-                    EditorOverflowQuickAction(
+                    SheetQuickAction(
                         title = stringResource(R.string.editor_overflow_share),
                         iconRes = Ionicons.ShareSocialOutline,
                         onClick = {
@@ -1594,30 +1596,34 @@ fun EditorScreen(
                                 scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.editor_share_failed)) }
                             }
                         },
+                        modifier = Modifier.weight(1f),
                     )
+                    Spacer(modifier = Modifier.weight(1f))
                     Spacer(modifier = Modifier.weight(1f))
                 }
 
+                Spacer(modifier = Modifier.size(14.dp))
+
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color.White,
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column {
-                        EditorOverflowRow(
+                        SheetActionRow(
                             title = stringResource(R.string.editor_overflow_font_size),
-                            trailing = { Icon(painter = painterResource(Ionicons.TextOutline), contentDescription = null, tint = Color(0xFF111111), modifier = Modifier.size(18.dp)) },
+                            iconRes = Ionicons.TextOutline,
                             onClick = {
                                 showOverflowSheet = false
                                 showFontSizeSheet = true
                             },
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
-                        EditorOverflowRow(
+                        SheetActionRow(
                             title = stringResource(R.string.common_copy),
-                            trailing = { Icon(painter = painterResource(Ionicons.CopyOutline), contentDescription = null, tint = Color(0xFF111111), modifier = Modifier.size(18.dp)) },
+                            iconRes = Ionicons.CopyOutline,
                             onClick = {
                                 showOverflowSheet = false
                                 clipboard.setText(AnnotatedString(content.text))
@@ -1630,9 +1636,9 @@ fun EditorScreen(
                                 modifier = Modifier.heightIn(max = 260.dp),
                             ) {
                                 items(pluginFabActions, key = { it.id }) { action ->
-                                    EditorOverflowRow(
+                                    SheetActionRow(
                                         title = action.label,
-                                        trailing = { Icon(painter = painterResource(Ionicons.ExtensionPuzzleOutline), contentDescription = null, tint = Color(0xFF111111), modifier = Modifier.size(18.dp)) },
+                                        iconRes = Ionicons.ExtensionPuzzleOutline,
                                         onClick = {
                                             showOverflowSheet = false
                                             handlePluginAction(action)
@@ -1645,17 +1651,10 @@ fun EditorScreen(
                             }
                         }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
-                        EditorOverflowRow(
-                            title = "删除",
-                            titleColor = Color(0xFFFF4D4F),
-                            trailing = {
-                                Icon(
-                                    painter = painterResource(Ionicons.TrashOutline),
-                                    contentDescription = null,
-                                    tint = Color(0xFFFF4D4F),
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            },
+                        SheetActionRow(
+                            title = stringResource(R.string.action_delete),
+                            iconRes = Ionicons.TrashOutline,
+                            iconTint = MaterialTheme.colorScheme.error,
                             onClick = {
                                 showOverflowSheet = false
                                 showDeleteConfirm = true
@@ -1664,24 +1663,7 @@ fun EditorScreen(
                     }
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color.White,
-                    tonalElevation = 0.dp,
-                    shadowElevation = 0.dp,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable { showOverflowSheet = false }
-                                .padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(text = "取消", style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
+                Spacer(modifier = Modifier.size(8.dp))
             }
         }
     }
@@ -2218,68 +2200,6 @@ fun EditorScreen(
             },
             dismissButton = { TextButton(onClick = { showTableDialog = false }) { Text(stringResource(R.string.action_cancel)) } },
         )
-    }
-}
-
-@Composable
-private fun EditorOverflowQuickAction(
-    title: String,
-    iconRes: Int,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
-        color = Color.White,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint = Color(0xFF111111),
-            )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFF111111),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-@Composable
-private fun EditorOverflowRow(
-    title: String,
-    trailing: @Composable () -> Unit,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    titleColor: Color = Color(0xFF111111),
-) {
-    Row(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyMedium,
-            color = titleColor,
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        Box(contentAlignment = Alignment.Center) { trailing() }
     }
 }
 

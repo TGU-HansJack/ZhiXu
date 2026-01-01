@@ -87,6 +87,8 @@ import com.zhixu.android.data.VaultIndexUpdater
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.Ionicons
 import com.zhixu.android.ui.components.RefreshStatusBanner
+import com.zhixu.android.ui.components.SheetActionRow
+import com.zhixu.android.ui.components.SheetQuickAction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
@@ -457,25 +459,25 @@ private fun DocumentRowActionsSheet(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            DocQuickAction(
+            SheetQuickAction(
                 title = stringResource(R.string.action_rename),
                 iconRes = Ionicons.TextOutline,
                 onClick = onRename,
                 modifier = Modifier.weight(1f),
             )
-            DocQuickAction(
+            SheetQuickAction(
                 title = stringResource(R.string.action_move),
                 iconRes = Ionicons.ArrowForward,
                 onClick = onMove,
                 modifier = Modifier.weight(1f),
             )
-            DocQuickAction(
+            SheetQuickAction(
                 title = stringResource(R.string.common_copy),
                 iconRes = Ionicons.CopyOutline,
                 onClick = onCopy,
                 modifier = Modifier.weight(1f),
             )
-            DocQuickAction(
+            SheetQuickAction(
                 title = stringResource(R.string.editor_overflow_share),
                 iconRes = Ionicons.ShareSocialOutline,
                 onClick = onShare,
@@ -493,13 +495,13 @@ private fun DocumentRowActionsSheet(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column {
-                DocActionRow(
+                SheetActionRow(
                     title = stringResource(R.string.action_add_to_desktop),
                     iconRes = Ionicons.ArrowUpCircleOutline,
                     onClick = onAddToDesktop,
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
-                DocActionRow(
+                SheetActionRow(
                     title = stringResource(R.string.action_delete),
                     iconRes = Ionicons.TrashOutline,
                     iconTint = MaterialTheme.colorScheme.error,
@@ -509,74 +511,6 @@ private fun DocumentRowActionsSheet(
         }
 
         Spacer(modifier = Modifier.size(8.dp))
-    }
-}
-
-@Composable
-private fun DocQuickAction(
-    title: String,
-    iconRes: Int,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-        modifier = modifier,
-    ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onClick)
-                    .padding(vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Icon(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(26.dp),
-            )
-            Spacer(modifier = Modifier.size(10.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-@Composable
-private fun DocActionRow(
-    title: String,
-    iconRes: Int,
-    iconTint: Color = MaterialTheme.colorScheme.onSurface,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(horizontal = 18.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge,
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = null,
-            tint = iconTint,
-            modifier = Modifier.size(22.dp),
-        )
     }
 }
 
