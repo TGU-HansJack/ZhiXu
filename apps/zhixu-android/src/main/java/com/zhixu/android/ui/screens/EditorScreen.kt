@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -79,7 +80,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
@@ -91,8 +91,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.rememberDrawerState
-import androidx.compose.material3.DrawerValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -158,6 +156,8 @@ import com.zhixu.android.ui.components.DiffOp
 import com.zhixu.android.ui.components.DiffLine
 import com.zhixu.android.ui.components.ZhixuDialogDefaults
 import com.zhixu.android.ui.components.ZhixuTextField
+import com.zhixu.android.ui.components.VaultDrawer
+import com.zhixu.android.ui.components.ZhixuSwipeDualDrawer
 import com.zhixu.core.tasks.TaskSyntax
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
@@ -221,7 +221,6 @@ fun EditorScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var showOverflowSheet by remember { mutableStateOf(false) }
     val overflowSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showFontSizeSheet by remember { mutableStateOf(false) }
@@ -246,6 +245,8 @@ fun EditorScreen(
             376.dp,
             with(density) { (imeBottomPx + anticipatedToolbarPx).toDp() } + 96.dp,
         )
+
+    var openOutlineToken by remember { mutableStateOf(0L) }
 
     val editorFontSizeKey = remember { floatPreferencesKey("editor_font_size_sp") }
     var editorFontSizeSpValue by remember { mutableStateOf(16f) }
@@ -1097,12 +1098,30 @@ fun EditorScreen(
             }
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        gesturesEnabled = drawerState.isOpen,
-        drawerContent = {
+    ZhixuSwipeDualDrawer(
+        enabled = true,
+        resetKey = "${currentDocUri}|${vaultRootUri}",
+        openRightToken = openOutlineToken,
+        leftDrawerContent = { modifier, closeDrawer, isOpen ->
+            val root = vaultRootUri
+            if (root == null) {
+                Box(modifier = modifier.width(0.dp))
+            } else {
+                VaultDrawer(
+                    vaultRootUri = root,
+                    repository = repository,
+                    onOpenDoc = { rawUri -> onOpenDoc(rawUri, null, null) },
+                    onCloseDrawer = closeDrawer,
+                    isActive = isOpen,
+                    refreshToken = 0L,
+                    mutation = null,
+                    modifier = modifier,
+                )
+            }
+        },
+        rightDrawerContent = { modifier, closeDrawer, isOpen ->
             ModalDrawerSheet(
-                modifier = Modifier.width(320.dp),
+                modifier = modifier.width(320.dp).fillMaxHeight(),
                 drawerContainerColor = MaterialTheme.colorScheme.background,
                 drawerTonalElevation = 0.dp,
             ) {
@@ -1123,7 +1142,7 @@ fun EditorScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    scope.launch { drawerState.close() }
+                                    closeDrawer()
                                     jumpToSelection(item.offset)
                                 }
                                 .padding(
@@ -1151,7 +1170,7 @@ fun EditorScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        scope.launch { drawerState.close() }
+                                        closeDrawer()
                                         val root = vaultRootUri ?: return@clickable
                                         scope.launch {
                                             val doc =
@@ -1206,18 +1225,18 @@ fun EditorScreen(
                             title = { },
                             navigationIcon = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                        Icon(
-                                            painter = painterResource(Ionicons.Menu),
-                                            contentDescription = stringResource(R.string.action_open_drawer),
-                                        )
-                                    }
                                     IconButton(onClick = { requestExit() }, enabled = !isExitSaveInProgress) {
                                         Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.action_back))
                                     }
                                 }
                             },
                             actions = {
+                                IconButton(onClick = { openOutlineToken += 1L }) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.FormatListBulleted,
+                                        contentDescription = stringResource(R.string.editor_outline_title),
+                                    )
+                                }
                                 IconButton(onClick = { isPreview = !isPreview }) {
                                     Icon(
                                         imageVector = if (isPreview) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,

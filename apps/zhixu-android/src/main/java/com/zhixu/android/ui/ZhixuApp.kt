@@ -5,6 +5,8 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -33,21 +35,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberDrawerState
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -63,14 +65,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
-import android.view.MotionEvent
 import android.graphics.Rect
 import kotlin.math.abs
 import androidx.compose.runtime.DisposableEffect
@@ -80,6 +81,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.core.view.ViewCompat
 import androidx.compose.ui.platform.LocalView
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -129,6 +132,7 @@ import kotlinx.coroutines.withContext
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.compose.runtime.snapshotFlow
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -320,16 +324,7 @@ fun ZhixuApp() {
         }
     }
 
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val drawerEnabled = currentRoute == "home" && vaultRootUri != null
-
-    LaunchedEffect(currentRoute, vaultRootUri) {
-        if (currentRoute != "home" || vaultRootUri == null) {
-            drawerState.snapTo(DrawerValue.Closed)
-        } else {
-            drawerState.snapTo(DrawerValue.Closed)
-        }
-    }
+    val drawerEnabled = currentRoute == "home" && vaultRootUri != null && settledPage == 0
 
     fun openDoc(rawUri: String, query: String? = null, lineIndex: Int? = null) {
         val uriParam = Uri.encode(rawUri)
@@ -340,7 +335,6 @@ fun ZhixuApp() {
 
     Surface(color = MaterialTheme.colorScheme.background) {
         val appContent: @Composable () -> Unit = {
-            val edgeSwipeEnabled = drawerEnabled && drawerState.isClosed
             var homeSize by remember { mutableStateOf(IntSize.Zero) }
             val view = LocalView.current
             val density = LocalDensity.current
@@ -363,10 +357,6 @@ fun ZhixuApp() {
                     Modifier
                         .fillMaxSize()
                         .onSizeChanged { homeSize = it }
-                        .edgeSwipeToOpenDrawer(
-                            enabled = edgeSwipeEnabled,
-                            onOpen = { scope.launch { drawerState.open() } },
-                        ),
             ) {
                 Scaffold(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -680,94 +670,198 @@ fun ZhixuApp() {
         }
         }
 
-        if (drawerEnabled) {
-            ModalNavigationDrawer(
-                drawerState = drawerState,
-                gesturesEnabled = drawerState.isOpen,
-                drawerContent = {
-                    VaultDrawer(
-                        vaultRootUri = requireNotNull(vaultRootUri),
-                        repository = repository,
-                        onOpenDoc = { rawUri -> openDoc(rawUri) },
-                        onCloseDrawer = { scope.launch { drawerState.close() } },
-                        isActive = drawerState.isOpen,
-                        refreshToken = dirStructureMutationToken,
-                        mutation = dirStructureMutation,
-                    )
-                },
-            ) {
-                appContent()
-            }
-        } else {
+        ZhixuSwipeModalDrawer(
+            enabled = drawerEnabled,
+            resetKey = "$currentRoute|$vaultRootUriString",
+            drawerContent = { modifier, closeDrawer, isOpen ->
+                VaultDrawer(
+                    vaultRootUri = requireNotNull(vaultRootUri),
+                    repository = repository,
+                    onOpenDoc = { rawUri -> openDoc(rawUri) },
+                    onCloseDrawer = closeDrawer,
+                    isActive = isOpen,
+                    refreshToken = dirStructureMutationToken,
+                    mutation = dirStructureMutation,
+                    modifier = modifier,
+                )
+            },
+        ) {
             appContent()
         }
     }
 }
 
-private fun Modifier.edgeSwipeToOpenDrawer(
+@Composable
+private fun ZhixuSwipeModalDrawer(
     enabled: Boolean,
-    onOpen: () -> Unit,
-): Modifier {
-    return composed {
-        if (!enabled) return@composed this
+    resetKey: Any?,
+    drawerContent: @Composable (modifier: Modifier, closeDrawer: () -> Unit, isOpen: Boolean) -> Unit,
+    content: @Composable () -> Unit,
+) {
+    if (!enabled) {
+        content()
+        return
+    }
 
-        val density = LocalDensity.current
-        val edgeWidthPx = with(density) { 48.dp.toPx() }
-        val openThresholdPx = with(density) { 24.dp.toPx() }
-        val touchSlopPx = androidx.compose.ui.platform.LocalViewConfiguration.current.touchSlop
+    val density = LocalDensity.current
+    val viewConfig = LocalViewConfiguration.current
 
-        var tracking = false
-        var downX = 0f
-        var downY = 0f
-        var opened = false
-        var everMoved = false
+    val thresholdPx = with(density) { 96.dp.toPx() }
+    val scrimMaxAlpha = 0.36f
 
-        pointerInteropFilter { ev ->
-            if (!enabled) return@pointerInteropFilter false
+    var drawerWidthPx by remember { mutableFloatStateOf(0f) }
+    var dragging by remember { mutableStateOf(false) }
+    var offsetTargetPx by remember { mutableFloatStateOf(0f) }
+    val offsetPx by animateFloatAsState(
+        targetValue = offsetTargetPx,
+        animationSpec = if (dragging) snap() else tween(durationMillis = 220, easing = LinearOutSlowInEasing),
+        label = "drawerOffsetPx",
+    )
 
-            when (ev.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    opened = false
-                    everMoved = false
-                    tracking = ev.x <= edgeWidthPx
-                    downX = ev.x
-                    downY = ev.y
-                    tracking
-                }
+    val progress =
+        remember(drawerWidthPx, offsetPx) { if (drawerWidthPx <= 0f) 0f else (offsetPx / drawerWidthPx).coerceIn(0f, 1f) }
+    val isOpen = progress >= 0.999f
 
-                MotionEvent.ACTION_MOVE -> {
-                    if (!tracking) return@pointerInteropFilter false
-                    if (opened) return@pointerInteropFilter true
-                    everMoved = true
-                    val dx = ev.x - downX
-                    val dy = ev.y - downY
-                    if (abs(dy) > abs(dx) * 0.8f && abs(dy) > touchSlopPx) {
-                        tracking = false
-                        return@pointerInteropFilter false
+    fun closeDrawer() {
+        dragging = false
+        offsetTargetPx = 0f
+    }
+
+    LaunchedEffect(enabled, resetKey) {
+        dragging = false
+        offsetTargetPx = 0f
+    }
+
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .pointerInput(enabled, drawerWidthPx) {
+                    if (!enabled) return@pointerInput
+                    if (drawerWidthPx <= 0f) return@pointerInput
+
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val startX = down.position.x
+                        val startY = down.position.y
+                        val startOffset = offsetPx
+
+                        var gestureDragging = false
+                        var cancelled = false
+
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+
+                            if (!change.pressed) break
+
+                            val dx = change.position.x - startX
+                            val dy = change.position.y - startY
+
+                            if (!gestureDragging) {
+                                val absDx = abs(dx)
+                                val absDy = abs(dy)
+                                val slop = viewConfig.touchSlop
+
+                                if (absDy > slop && absDy > absDx) {
+                                    cancelled = true
+                                    break
+                                }
+
+                                if (absDx > slop && absDx > absDy * 1.15f) {
+                                    val opening = dx > 0f
+                                    val closing = dx < 0f
+                                    val canStart =
+                                        (startOffset <= 1f && opening) ||
+                                            (startOffset >= drawerWidthPx - 1f && closing) ||
+                                            (startOffset > 1f && startOffset < drawerWidthPx - 1f)
+
+                                    if (!canStart) {
+                                        cancelled = true
+                                        break
+                                    }
+
+                                    gestureDragging = true
+                                    dragging = true
+                                } else {
+                                    continue
+                                }
+                            }
+
+                            if (gestureDragging) {
+                                val newOffset = (startOffset + dx).coerceIn(0f, drawerWidthPx)
+                                offsetTargetPx = newOffset
+                                change.consume()
+                            }
+                        }
+
+                        if (!gestureDragging || cancelled) return@awaitEachGesture
+
+                        val current = offsetTargetPx
+                        val openDistance = current
+                        val closeDistance = drawerWidthPx - current
+
+                        val shouldOpen =
+                            when {
+                                startOffset <= 1f -> openDistance >= thresholdPx
+                                startOffset >= drawerWidthPx - 1f -> closeDistance < thresholdPx
+                                else -> openDistance >= drawerWidthPx / 2f
+                            }
+
+                        dragging = false
+                        if (shouldOpen) {
+                            offsetTargetPx = drawerWidthPx
+                        } else {
+                            offsetTargetPx = 0f
+                        }
                     }
-                    true
-                }
+                },
+    ) {
+        content()
 
-                MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL,
-                -> {
-                    if (!tracking) return@pointerInteropFilter false
-                    val dx = ev.x - downX
-                    val dy = ev.y - downY
-                    val horizontalEnough = dx > openThresholdPx.coerceAtLeast(touchSlopPx)
-                    val angleOk = abs(dx) > abs(dy) * 1.25f
-                    val shouldOpen = ev.actionMasked == MotionEvent.ACTION_UP && everMoved && horizontalEnough && angleOk
-                    tracking = false
-                    opened = shouldOpen
-                    if (shouldOpen) {
-                        onOpen()
-                        return@pointerInteropFilter true
-                    }
-                    false
-                }
+        if (progress > 0f) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = scrimMaxAlpha * progress))
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val startX = down.position.x
+                                val startY = down.position.y
+                                val slop = viewConfig.touchSlop
 
-                else -> false
-            }
+                                var moved = false
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+                                    if (!change.pressed) break
+                                    val dx = change.position.x - startX
+                                    val dy = change.position.y - startY
+                                    if (abs(dx) > slop || abs(dy) > slop) {
+                                        moved = true
+                                        break
+                                    }
+                                }
+                                if (!moved) closeDrawer()
+                            }
+                        },
+            )
+        }
+
+        val drawerOffsetX = if (drawerWidthPx <= 0f) -100000 else (-drawerWidthPx + offsetPx).roundToInt()
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxHeight()
+                    .offset { IntOffset(drawerOffsetX, 0) },
+        ) {
+            drawerContent(
+                Modifier.onSizeChanged { drawerWidthPx = it.width.toFloat() },
+                ::closeDrawer,
+                isOpen,
+            )
         }
     }
 }
