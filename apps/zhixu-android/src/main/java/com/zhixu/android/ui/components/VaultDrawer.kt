@@ -89,6 +89,7 @@ fun VaultDrawer(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     useSystemInsets: Boolean = true,
     showHeader: Boolean = true,
+    headerMinHeight: Dp = 56.dp,
     itemMinHeight: Dp = 32.dp,
     itemTextStyle: TextStyle = MaterialTheme.typography.bodySmall,
     itemIconSize: Dp = 18.dp,
@@ -256,11 +257,21 @@ fun VaultDrawer(
             modifier = bodyModifier,
         ) {
             if (showHeader) {
-                Text(
-                    text = stringResource(R.string.vault_drawer_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
-                )
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = headerMinHeight)
+                            .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.vault_drawer_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
 

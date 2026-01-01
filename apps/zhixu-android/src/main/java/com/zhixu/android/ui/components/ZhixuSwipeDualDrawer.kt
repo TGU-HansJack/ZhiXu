@@ -42,6 +42,7 @@ fun ZhixuSwipeDualDrawer(
     openLeftToken: Long = 0L,
     openRightToken: Long = 0L,
     threshold: Dp = 96.dp,
+    edgeSwipeWidth: Dp = 24.dp,
     drawerScrimMaxAlpha: Float = 0.36f,
     leftDrawerContent: @Composable (modifier: Modifier, closeDrawer: () -> Unit, isOpen: Boolean) -> Unit,
     rightDrawerContent: @Composable (modifier: Modifier, closeDrawer: () -> Unit, isOpen: Boolean) -> Unit,
@@ -55,6 +56,7 @@ fun ZhixuSwipeDualDrawer(
     val density = LocalDensity.current
     val viewConfig = LocalViewConfiguration.current
     val thresholdPx = with(density) { threshold.toPx() }
+    val edgeSwipeWidthPx = with(density) { edgeSwipeWidth.toPx() }
 
     var leftWidthPx by remember { mutableFloatStateOf(0f) }
     var rightWidthPx by remember { mutableFloatStateOf(0f) }
@@ -168,6 +170,16 @@ fun ZhixuSwipeDualDrawer(
                         leftTargetPx = startLeft
                         rightTargetPx = startRight
 
+                        val edgeSide: ZhixuDrawerSide? =
+                            when {
+                                startLeft > 1f -> ZhixuDrawerSide.Left
+                                startRight > 1f -> ZhixuDrawerSide.Right
+                                startX <= edgeSwipeWidthPx -> ZhixuDrawerSide.Left
+                                startX >= (size.width - edgeSwipeWidthPx) -> ZhixuDrawerSide.Right
+                                else -> null
+                            }
+                        if (edgeSide == null) return@awaitEachGesture
+
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id } ?: continue
@@ -186,23 +198,17 @@ fun ZhixuSwipeDualDrawer(
                                 }
 
                                 if (absDx > slop && absDx > absDy * 1.15f) {
-                                    val openingLeft = dx > 0f
-                                    val openingRight = dx < 0f
-
                                     val chosen =
                                         when {
                                             startLeft > 1f -> ZhixuDrawerSide.Left
                                             startRight > 1f -> ZhixuDrawerSide.Right
-                                            openingLeft -> ZhixuDrawerSide.Left
-                                            openingRight -> ZhixuDrawerSide.Right
-                                            else -> null
+                                            else -> edgeSide
                                         }
 
                                     val available =
                                         when (chosen) {
                                             ZhixuDrawerSide.Left -> leftWidthPx > 0f
                                             ZhixuDrawerSide.Right -> rightWidthPx > 0f
-                                            null -> false
                                         }
 
                                     if (!available) {

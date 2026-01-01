@@ -1115,6 +1115,11 @@ fun EditorScreen(
                     isActive = isOpen,
                     refreshToken = 0L,
                     mutation = null,
+                    headerMinHeight = 64.dp,
+                    itemMinHeight = 44.dp,
+                    itemTextStyle = MaterialTheme.typography.bodyLarge,
+                    itemIconSize = 22.dp,
+                    itemChevronSize = 20.dp,
                     modifier = modifier,
                 )
             }
@@ -1231,12 +1236,6 @@ fun EditorScreen(
                                 }
                             },
                             actions = {
-                                IconButton(onClick = { openOutlineToken += 1L }) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.FormatListBulleted,
-                                        contentDescription = stringResource(R.string.editor_outline_title),
-                                    )
-                                }
                                 IconButton(onClick = { isPreview = !isPreview }) {
                                     Icon(
                                         imageVector = if (isPreview) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
