@@ -38,10 +38,12 @@ private enum class ZhixuDrawerSide { Left, Right }
 @Composable
 fun ZhixuSwipeDualDrawer(
     enabled: Boolean,
+    openGestureEnabled: Boolean = true,
     resetKey: Any?,
     openLeftToken: Long = 0L,
     openRightToken: Long = 0L,
     threshold: Dp = 96.dp,
+    fullScreenSwipeToOpen: Boolean = true,
     edgeSwipeWidth: Dp = 24.dp,
     drawerScrimMaxAlpha: Float = 0.36f,
     leftDrawerContent: @Composable (modifier: Modifier, closeDrawer: () -> Unit, isOpen: Boolean) -> Unit,
@@ -150,7 +152,7 @@ fun ZhixuSwipeDualDrawer(
         modifier =
             Modifier
                 .fillMaxSize()
-                .pointerInput(enabled, leftWidthPx, rightWidthPx) {
+                .pointerInput(enabled, openGestureEnabled, fullScreenSwipeToOpen, leftWidthPx, rightWidthPx) {
                     if (!enabled) return@pointerInput
                     if (leftWidthPx <= 0f && rightWidthPx <= 0f) return@pointerInput
 
@@ -170,15 +172,25 @@ fun ZhixuSwipeDualDrawer(
                         leftTargetPx = startLeft
                         rightTargetPx = startRight
 
-                        val edgeSide: ZhixuDrawerSide? =
+                        val startedFromOpenDrawer: ZhixuDrawerSide? =
                             when {
                                 startLeft > 1f -> ZhixuDrawerSide.Left
                                 startRight > 1f -> ZhixuDrawerSide.Right
-                                startX <= edgeSwipeWidthPx -> ZhixuDrawerSide.Left
-                                startX >= (size.width - edgeSwipeWidthPx) -> ZhixuDrawerSide.Right
                                 else -> null
                             }
-                        if (edgeSide == null) return@awaitEachGesture
+
+                        if (startedFromOpenDrawer == null) {
+                            if (!openGestureEnabled) return@awaitEachGesture
+                            if (!fullScreenSwipeToOpen) {
+                                val edgeSide: ZhixuDrawerSide? =
+                                    when {
+                                        startX <= edgeSwipeWidthPx -> ZhixuDrawerSide.Left
+                                        startX >= (size.width - edgeSwipeWidthPx) -> ZhixuDrawerSide.Right
+                                        else -> null
+                                    }
+                                if (edgeSide == null) return@awaitEachGesture
+                            }
+                        }
 
                         while (true) {
                             val event = awaitPointerEvent()
@@ -200,10 +212,16 @@ fun ZhixuSwipeDualDrawer(
                                 if (absDx > slop && absDx > absDy * 1.15f) {
                                     val chosen =
                                         when {
-                                            startLeft > 1f -> ZhixuDrawerSide.Left
-                                            startRight > 1f -> ZhixuDrawerSide.Right
-                                            else -> edgeSide
+                                            startedFromOpenDrawer != null -> startedFromOpenDrawer
+                                            fullScreenSwipeToOpen -> if (dx >= 0f) ZhixuDrawerSide.Left else ZhixuDrawerSide.Right
+                                            startX <= edgeSwipeWidthPx -> ZhixuDrawerSide.Left
+                                            startX >= (size.width - edgeSwipeWidthPx) -> ZhixuDrawerSide.Right
+                                            else -> null
                                         }
+                                    if (chosen == null) {
+                                        cancelled = true
+                                        break
+                                    }
 
                                     val available =
                                         when (chosen) {

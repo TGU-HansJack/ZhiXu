@@ -1102,6 +1102,7 @@ fun EditorScreen(
 
     ZhixuSwipeDualDrawer(
         enabled = true,
+        openGestureEnabled = effectiveImeBottomPx == 0,
         resetKey = "${currentDocUri}|${vaultRootUri}",
         openRightToken = openOutlineToken,
         leftDrawerContent = { modifier, closeDrawer, isOpen ->
