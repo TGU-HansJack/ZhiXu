@@ -22,9 +22,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -36,6 +42,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -43,6 +51,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material3.Surface
 import com.zhixu.android.R
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.data.VaultTreeEntry
@@ -77,6 +91,7 @@ private object VaultDrawerCache {
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun VaultDrawer(
     vaultRootUri: Uri,
     repository: VaultRepository,
@@ -97,12 +112,23 @@ fun VaultDrawer(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val initialCache = remember(vaultRootUri) { VaultDrawerCache.get(vaultRootUri) }
 
     var entries by remember(vaultRootUri) { mutableStateOf(initialCache?.entries ?: emptyList()) }
     var errorText by remember(vaultRootUri) { mutableStateOf<String?>(null) }
     var cacheUpdatedAtMs by remember(vaultRootUri) { mutableStateOf(initialCache?.updatedAtMs ?: 0L) }
     var handledRefreshToken by remember(vaultRootUri) { mutableStateOf(initialCache?.refreshToken ?: 0L) }
+
+    var selectedEntry by remember(vaultRootUri) { mutableStateOf<VaultTreeEntry?>(null) }
+    var showEntryMenu by remember(vaultRootUri) { mutableStateOf(false) }
+    var showRenameDialog by remember(vaultRootUri) { mutableStateOf(false) }
+    var renameInput by remember(vaultRootUri) { mutableStateOf("") }
+    var showDeleteDialog by remember(vaultRootUri) { mutableStateOf(false) }
+    var showNewDocDialog by remember(vaultRootUri) { mutableStateOf(false) }
+    var newDocTargetDir by remember(vaultRootUri) { mutableStateOf<VaultTreeEntry?>(null) }
+    var newDocName by remember(vaultRootUri) { mutableStateOf("") }
 
     val loadedDirs =
         remember(vaultRootUri) {
@@ -309,7 +335,7 @@ fun VaultDrawer(
                 }
 
                 items(visibleEntries, key = { it.relativePath }) { entry ->
-                    val indent = (entry.depth * 10).dp
+                    val indent = (entry.depth * 8).dp
                     val isExpanded = expandedDirs[entry.relativePath] == true
                     val isDirLoading = entry.isDirectory && (loadingDirs[entry.relativePath] == true)
                     val displayName =
@@ -339,7 +365,7 @@ fun VaultDrawer(
                                         onCloseDrawer()
                                     }
                                 }
-                                .padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                                .padding(start = 0.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
@@ -373,6 +399,38 @@ fun VaultDrawer(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
+                        if (entry.isDirectory) {
+                            IconButton(
+                                onClick = {
+                                    newDocTargetDir = entry
+                                    newDocName = context.getString(R.string.new_doc_default_title)
+                                    showNewDocDialog = true
+                                },
+                                enabled = !isDirLoading,
+                                modifier = Modifier.size(34.dp),
+                            ) {
+                                Icon(
+                                    painter = painterResource(Ionicons.Add),
+                                    contentDescription = stringResource(R.string.action_create),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = {
+                                selectedEntry = entry
+                                showEntryMenu = true
+                            },
+                            modifier = Modifier.size(34.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.MoreVert,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                         if (entry.isDirectory && isDirLoading) {
                             CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                         }
@@ -380,5 +438,341 @@ fun VaultDrawer(
                 }
             }
         }
+    }
+
+    val entryMenuSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    if (showEntryMenu && selectedEntry != null) {
+        ModalBottomSheet(
+            onDismissRequest = { showEntryMenu = false },
+            sheetState = entryMenuSheetState,
+            containerColor = MaterialTheme.colorScheme.background,
+            tonalElevation = 0.dp,
+        ) {
+            VaultEntryActionsSheet(
+                onRename = {
+                    val entry = selectedEntry ?: return@VaultEntryActionsSheet
+                    renameInput =
+                        if (entry.isDirectory) entry.name
+                        else entry.name.removeSuffix(".md").ifBlank { entry.name }
+                    showEntryMenu = false
+                    showRenameDialog = true
+                },
+                onMove = {
+                    showEntryMenu = false
+                    android.widget.Toast
+                        .makeText(context, context.getString(R.string.common_not_implemented), android.widget.Toast.LENGTH_SHORT)
+                        .show()
+                },
+                onCopy = {
+                    val entry = selectedEntry ?: return@VaultEntryActionsSheet
+                    showEntryMenu = false
+                    scope.launch {
+                        if (entry.isDirectory) {
+                            clipboard.setText(androidx.compose.ui.text.AnnotatedString(entry.relativePath))
+                            android.widget.Toast
+                                .makeText(context, context.getString(R.string.common_copied), android.widget.Toast.LENGTH_SHORT)
+                                .show()
+                            return@launch
+                        }
+                        val uri = entry.uri ?: return@launch
+                        val text = repository.readText(uri)
+                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(text))
+                        android.widget.Toast
+                            .makeText(context, context.getString(R.string.common_copied), android.widget.Toast.LENGTH_SHORT)
+                            .show()
+                    }
+                },
+                onAddToDesktop = {
+                    showEntryMenu = false
+                    android.widget.Toast
+                        .makeText(context, context.getString(R.string.common_not_implemented), android.widget.Toast.LENGTH_SHORT)
+                        .show()
+                },
+                onDelete = {
+                    showEntryMenu = false
+                    showDeleteDialog = true
+                },
+            )
+        }
+    }
+
+    if (showRenameDialog && selectedEntry != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showRenameDialog = false
+                selectedEntry = null
+            },
+            title = { Text(stringResource(R.string.action_rename)) },
+            text = {
+                ZhixuTextField(
+                    value = renameInput,
+                    onValueChange = { renameInput = it },
+                    singleLine = true,
+                    placeholder = { Text(stringResource(R.string.field_file_name)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val entry = selectedEntry ?: return@TextButton
+                        val desiredName = renameInput.trim()
+                        if (desiredName.isBlank()) return@TextButton
+                        val parentDir = entry.parentPath ?: ""
+                        scope.launch {
+                            val uri = entry.uri
+                            if (uri != null) {
+                                if (entry.isDirectory) {
+                                    repository.renameDirectory(uri, desiredName)
+                                    repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)
+                                    expandedDirs.clear()
+                                    reloadDir("")
+                                } else {
+                                    repository.renameDoc(uri, desiredName)
+                                    repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)
+                                    reloadDir(parentDir)
+                                }
+                            }
+                            showRenameDialog = false
+                            selectedEntry = null
+                        }
+                    },
+                ) { Text(stringResource(R.string.action_rename)) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showRenameDialog = false
+                        selectedEntry = null
+                    },
+                ) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+
+    if (showDeleteDialog && selectedEntry != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteDialog = false
+                selectedEntry = null
+            },
+            title = { Text(stringResource(R.string.action_delete)) },
+            text = { Text(text = selectedEntry?.name.orEmpty()) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val entry = selectedEntry ?: return@TextButton
+                        val uri = entry.uri ?: return@TextButton
+                        val parentDir = entry.parentPath ?: ""
+                        scope.launch {
+                            if (entry.isDirectory) {
+                                repository.deleteEntry(uri)
+                                repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)
+                                expandedDirs.clear()
+                                reloadDir("")
+                            } else {
+                                repository.deleteDoc(uri)
+                                repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)
+                                reloadDir(parentDir)
+                            }
+                            showDeleteDialog = false
+                            selectedEntry = null
+                        }
+                    },
+                ) { Text(stringResource(R.string.action_delete)) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                        selectedEntry = null
+                    },
+                ) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+
+    if (showNewDocDialog && newDocTargetDir != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showNewDocDialog = false
+                newDocTargetDir = null
+            },
+            title = { Text(stringResource(R.string.new_doc_title)) },
+            text = {
+                ZhixuTextField(
+                    value = newDocName,
+                    onValueChange = { newDocName = it },
+                    singleLine = true,
+                    placeholder = { Text(stringResource(R.string.field_file_name)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val dir = newDocTargetDir ?: return@TextButton
+                        val dirUri = dir.uri ?: return@TextButton
+                        val fileName = newDocName.trim()
+                        if (fileName.isBlank()) return@TextButton
+                        scope.launch {
+                            val created = repository.createDocInDirectory(vaultRootUri, dirUri, fileName) ?: return@launch
+                            val title = created.name.removeSuffix(".md").trim().ifBlank { context.getString(R.string.new_doc_default_title) }
+                            repository.writeText(created.uri, "# $title\n\n")
+                            repository.indexDocUri(created.uri)
+                            repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = dir.relativePath)
+                            reloadDir(dir.relativePath)
+                            showNewDocDialog = false
+                            newDocTargetDir = null
+                            onOpenDoc(created.uri.toString())
+                        }
+                    },
+                ) { Text(stringResource(R.string.action_create)) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showNewDocDialog = false
+                        newDocTargetDir = null
+                    },
+                ) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+}
+
+@Composable
+private fun VaultEntryActionsSheet(
+    onRename: () -> Unit,
+    onMove: () -> Unit,
+    onCopy: () -> Unit,
+    onAddToDesktop: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .windowInsetsPadding(WindowInsets.navigationBars),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            VaultEntryQuickAction(
+                title = stringResource(R.string.action_rename),
+                iconRes = Ionicons.TextOutline,
+                onClick = onRename,
+                modifier = Modifier.weight(1f),
+            )
+            VaultEntryQuickAction(
+                title = stringResource(R.string.action_move),
+                iconRes = Ionicons.ArrowForward,
+                onClick = onMove,
+                modifier = Modifier.weight(1f),
+            )
+            VaultEntryQuickAction(
+                title = stringResource(R.string.common_copy),
+                iconRes = Ionicons.CopyOutline,
+                onClick = onCopy,
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        Spacer(modifier = Modifier.size(14.dp))
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column {
+                VaultEntryActionRow(
+                    title = stringResource(R.string.action_add_to_desktop),
+                    iconRes = Ionicons.ArrowUpCircleOutline,
+                    onClick = onAddToDesktop,
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                VaultEntryActionRow(
+                    title = stringResource(R.string.action_delete),
+                    iconRes = Ionicons.TrashOutline,
+                    iconTint = MaterialTheme.colorScheme.error,
+                    onClick = onDelete,
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.size(8.dp))
+    }
+}
+
+@Composable
+private fun VaultEntryQuickAction(
+    title: String,
+    iconRes: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        modifier = modifier,
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onClick)
+                    .padding(vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(26.dp),
+            )
+            Spacer(modifier = Modifier.size(10.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun VaultEntryActionRow(
+    title: String,
+    iconRes: Int,
+    iconTint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = iconTint,
+            modifier = Modifier.size(22.dp),
+        )
     }
 }

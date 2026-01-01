@@ -1072,6 +1072,63 @@ class VaultRepository(
         )
     }
 
+    suspend fun createDocInDirectory(
+        rootUri: Uri,
+        directoryUri: Uri,
+        fileName: String,
+    ): UiDoc? = withContext(Dispatchers.IO) {
+        ensureVaultStructure(rootUri)
+
+        val dir =
+            if (directoryUri.scheme.equals("file", ignoreCase = true)) {
+                val path = directoryUri.path ?: return@withContext null
+                DocumentFile.fromFile(File(path))
+            } else {
+                DocumentFile.fromSingleUri(context, directoryUri) ?: DocumentFile.fromTreeUri(context, directoryUri)
+            }
+        if (dir?.isDirectory != true) return@withContext null
+
+        val baseName = sanitizeFileName(fileName).removeSuffix(".md").trim().ifBlank { "Untitled" }
+        val (created, createdName) = createUniqueMarkdownFile(dir, baseName) ?: return@withContext null
+        val createdAtMs = System.currentTimeMillis()
+        runCatching { indexRepository.upsertDocCreatedAt(created.uri.toString(), createdAtMs) }
+        signalIndexChanged()
+        if (created.name?.endsWith(".md", ignoreCase = true) != true) {
+            // Some providers may ignore extension; best-effort rename to keep the vault consistent.
+            runCatching { created.renameTo(createdName) }
+        }
+        val name = created.name ?: createdName
+        val lastModified = created.lastModified()
+        runCatching {
+            indexRepository.indexDocument(
+                UiDoc(
+                    name = name,
+                    uri = created.uri,
+                    lastModified = lastModified,
+                    size = created.length(),
+                    baseName = computeDocBaseName(name),
+                    createdAt = createdAtMs,
+                    createdAtText = "",
+                    editedAtText = "",
+                ),
+                "",
+            )
+        }
+        signalIndexChanged()
+        recordDailyDocEdited(docUri = created.uri, day = LocalDate.now())
+        runCatching { upsertDirIndexEntryForFileIfPresent(rootUri, created) }
+        UiDoc(
+            name = name,
+            uri = created.uri,
+            lastModified = lastModified,
+            size = created.length(),
+            baseName = computeDocBaseName(name),
+            createdAt = createdAtMs,
+            createdAtText = formatEditedAt(createdAtMs),
+            editedAtText = formatEditedAt(lastModified),
+        )
+    }
+
     suspend fun deleteDoc(docUri: Uri): Boolean = withContext(Dispatchers.IO) {
         if (docUri.scheme.equals("file", ignoreCase = true)) {
             val path = docUri.path ?: return@withContext false
@@ -1088,6 +1145,33 @@ class VaultRepository(
         if (ok) {
             indexRepository.deleteDocument(docUri)
             signalIndexChanged()
+        }
+        ok
+    }
+
+    suspend fun deleteEntry(uri: Uri): Boolean = withContext(Dispatchers.IO) {
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            val path = uri.path ?: return@withContext false
+            val file = File(path)
+            val ok =
+                runCatching {
+                    if (file.isDirectory) file.deleteRecursively() else file.delete()
+                }.getOrDefault(false)
+            if (ok && file.isFile) {
+                runCatching { indexRepository.deleteDocument(uri) }
+                signalIndexChanged()
+            }
+            return@withContext ok
+        }
+
+        // DocumentFile.fromSingleUri().delete() can be unreliable across providers; DocumentsContract is more direct.
+        val ok = runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }.getOrDefault(false)
+        if (ok) {
+            val doc = DocumentFile.fromSingleUri(context, uri)
+            if (doc?.isFile == true) {
+                runCatching { indexRepository.deleteDocument(uri) }
+                signalIndexChanged()
+            }
         }
         ok
     }
@@ -1173,6 +1257,42 @@ class VaultRepository(
         // Some providers rename in-place without changing the Uri; refresh the index so doc name updates.
         runCatching { indexDocUri(docUri) }
         docUri
+    }
+
+    suspend fun renameDirectory(dirUri: Uri, desiredName: String): Uri? = withContext(Dispatchers.IO) {
+        val sanitizedName = sanitizeFileName(desiredName).trim().ifBlank { "Untitled" }
+
+        if (dirUri.scheme.equals("file", ignoreCase = true)) {
+            val path = dirUri.path ?: return@withContext null
+            val dir = File(path)
+            val parent = dir.parentFile ?: return@withContext null
+            if (!parent.exists()) return@withContext null
+
+            val currentName = dir.name
+            var candidate = sanitizedName
+            var index = 1
+            while (File(parent, candidate).exists() && !candidate.equals(currentName, ignoreCase = true)) {
+                candidate = "$sanitizedName ($index)"
+                index++
+            }
+            if (candidate.equals(currentName, ignoreCase = true)) return@withContext dirUri
+
+            val dest = File(parent, candidate)
+            val ok = runCatching { dir.renameTo(dest) }.getOrDefault(false)
+            if (!ok) return@withContext null
+            return@withContext Uri.fromFile(dest)
+        }
+
+        val resolver: ContentResolver = context.contentResolver
+        val renamedUri =
+            runCatching { DocumentsContract.renameDocument(resolver, dirUri, sanitizedName) }
+                .getOrNull()
+        if (renamedUri != null) return@withContext renamedUri
+
+        val doc = DocumentFile.fromSingleUri(context, dirUri) ?: return@withContext null
+        val ok = runCatching { doc.renameTo(sanitizedName) }.getOrDefault(false)
+        if (!ok) return@withContext null
+        dirUri
     }
 
     suspend fun appendText(uri: Uri, text: String) = withContext(Dispatchers.IO) {
