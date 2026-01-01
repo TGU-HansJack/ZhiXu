@@ -35,6 +35,97 @@ class VaultIndexRepository(
         }
     }
 
+    suspend fun listDocs(
+        limit: Int = 2000,
+    ): List<UiDoc> = withContext(Dispatchers.IO) {
+        val safeLimit = limit.coerceIn(1, 50_000)
+        mutex.withLock {
+            val database = db.readableDatabase
+            ensureDocsMetaTable(database)
+            val out = ArrayList<UiDoc>()
+            database.rawQuery(
+                """
+                SELECT f.uri, f.name, f.last_modified, f.size, COALESCE(m.created_epoch_ms, 0) AS created_epoch_ms
+                FROM docs_fts f
+                LEFT JOIN docs_meta m ON m.uri = f.uri
+                ORDER BY CAST(f.last_modified AS INTEGER) DESC, f.name COLLATE NOCASE ASC
+                LIMIT ?
+                """.trimIndent(),
+                arrayOf(safeLimit.toString()),
+            ).use { cursor ->
+                val uriIdx = cursor.getColumnIndexOrThrow("uri")
+                val nameIdx = cursor.getColumnIndexOrThrow("name")
+                val lastModifiedIdx = cursor.getColumnIndexOrThrow("last_modified")
+                val sizeIdx = cursor.getColumnIndexOrThrow("size")
+                val createdIdx = cursor.getColumnIndexOrThrow("created_epoch_ms")
+                while (cursor.moveToNext()) {
+                    val uriStr = cursor.getString(uriIdx).orEmpty()
+                    val indexedName = cursor.getString(nameIdx).orEmpty()
+                    val name =
+                        indexedName.ifBlank {
+                            resolveDocName(uriStr).orEmpty().ifBlank { "Document.md" }
+                        }
+                    val lastModified = cursor.getString(lastModifiedIdx).toLongOrNull() ?: 0L
+                    val size = cursor.getString(sizeIdx).toLongOrNull() ?: 0L
+                    val created = cursor.getLong(createdIdx)
+                    out +=
+                        UiDoc(
+                            name = name,
+                            uri = Uri.parse(uriStr),
+                            lastModified = lastModified,
+                            size = size,
+                            baseName = computeDocBaseNameLocal(name),
+                            createdAt = if (created > 0L) created else lastModified,
+                            createdAtText = "",
+                            editedAtText = "",
+                        )
+                }
+            }
+            out
+        }
+    }
+
+    suspend fun listAllDocUris(): List<String> = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val database = db.readableDatabase
+            val out = ArrayList<String>()
+            database.rawQuery("SELECT uri FROM docs_fts", null).use { cursor ->
+                val uriIdx = cursor.getColumnIndexOrThrow("uri")
+                while (cursor.moveToNext()) {
+                    out += cursor.getString(uriIdx).orEmpty()
+                }
+            }
+            out
+        }
+    }
+
+    suspend fun deleteDocumentsByUriStrings(
+        docUris: List<String>,
+    ) = withContext(Dispatchers.IO) {
+        if (docUris.isEmpty()) return@withContext
+        mutex.withLock {
+            val database = db.writableDatabase
+            database.beginTransaction()
+            try {
+                ensureDocsMetaTable(database)
+                ensureTasksMetaTable(database)
+                val chunkSize = 800
+                for (chunk in docUris.chunked(chunkSize)) {
+                    val placeholders = chunk.joinToString(",") { "?" }
+                    val args: Array<Any?> = chunk.map { it as Any? }.toTypedArray()
+                    database.execSQL("DELETE FROM docs_fts WHERE uri IN ($placeholders)", args)
+                    database.execSQL("DELETE FROM docs_meta WHERE uri IN ($placeholders)", args)
+                    database.execSQL("DELETE FROM tasks WHERE doc_uri IN ($placeholders)", args)
+                    database.execSQL("DELETE FROM tasks_fts WHERE doc_uri IN ($placeholders)", args)
+                    database.execSQL("DELETE FROM tasks_meta WHERE doc_uri IN ($placeholders)", args)
+                }
+                database.setTransactionSuccessful()
+            } finally {
+                database.endTransaction()
+            }
+        }
+    }
+
     suspend fun indexDocument(
         doc: UiDoc,
         content: String,

@@ -42,6 +42,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -50,7 +51,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,10 +74,12 @@ import androidx.work.WorkManager
 import com.zhixu.android.R
 import com.zhixu.android.data.AccountPreferences
 import com.zhixu.android.data.AccountState
+import com.zhixu.android.data.DocumentIndex
 import com.zhixu.android.data.SyncPreferences
 import com.zhixu.android.data.ThirdPartyServiceConfig
 import com.zhixu.android.data.UiPreferences
 import com.zhixu.android.data.VaultPreferences
+import com.zhixu.android.data.VaultIndexUpdater
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.data.VaultStorageLocation
 import com.zhixu.android.data.VaultSyncConfig
@@ -102,8 +104,6 @@ import com.zhixu.android.ui.screens.VaultSettingsScreen
 import com.zhixu.android.ui.screens.WorkshopScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -243,6 +243,15 @@ fun ZhixuApp() {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
+    val indexUpdater = remember(appContext) { VaultIndexUpdater(appContext, repository) }
+    val documentIndex = remember(repository) { DocumentIndex(repository) }
+    SideEffect {
+        indexUpdater.setCanRunHeavyWork(currentRoute == null || !currentRoute.startsWith("edit"))
+    }
+    LaunchedEffect(vaultRootUriString) {
+        indexUpdater.setVaultRootUri(vaultRootUri)
+    }
+
     LaunchedEffect(vaultRootUriString) {
         val root = vaultRootUri ?: return@LaunchedEffect
         // Build the directory index in the background so the drawer can be O(1) (DB read only).
@@ -250,28 +259,8 @@ fun ZhixuApp() {
         withContext(Dispatchers.IO) { runCatching { repository.ensureDirIndexBuilt(root, force = false) } }
     }
 
-    LaunchedEffect(vaultRootUriString) {
-        val root = vaultRootUri ?: return@LaunchedEffect
-        // Keep expensive full-scan index builds out of normal UI paths: build only on cold start / idle.
-        delay(15_000)
-        val alreadyReady = runCatching { withContext(Dispatchers.IO) { repository.hasAnyIndexedDocs() } }.getOrDefault(true)
-        if (alreadyReady) return@LaunchedEffect
-
-        snapshotFlow { currentRoute }
-            .filter { route -> route == null || !route.startsWith("edit") }
-            .first()
-
-        withContext(Dispatchers.IO) {
-            if (!repository.hasAnyIndexedDocs()) {
-                runCatching { repository.rebuildIndex(root) }
-            }
-        }
-    }
-
     var docSearchRequestToken by remember { mutableLongStateOf(0L) }
     var meRefreshToken by remember { mutableLongStateOf(0L) }
-    var docListMutationToken by remember { mutableLongStateOf(0L) }
-    var docListMutation by remember { mutableStateOf<DocListMutation?>(null) }
     var dirStructureMutationToken by remember { mutableLongStateOf(0L) }
     var dirStructureMutation by remember { mutableStateOf<DocListMutation?>(null) }
 
@@ -448,12 +437,11 @@ fun ZhixuApp() {
                     HomePager(
                         contentPadding = padding,
                         vaultRootUri = vaultRootUri,
-                        prefs = prefs,
                         repository = repository,
+                        indexUpdater = indexUpdater,
+                        documentIndex = documentIndex,
                         pagerState = pagerState,
                         docSearchRequestToken = docSearchRequestToken,
-                        docListMutationToken = docListMutationToken,
-                        docListMutation = docListMutation,
                         dirStructureMutationToken = dirStructureMutationToken,
                         dirStructureMutation = dirStructureMutation,
                         onOpenDoc = ::openDoc,
@@ -558,8 +546,6 @@ fun ZhixuApp() {
                         repository = repository,
                         onCreated = { created ->
                             val mutation = DocListMutation.Created(created)
-                            docListMutation = mutation
-                            docListMutationToken += 1L
                             dirStructureMutation = mutation
                             dirStructureMutationToken += 1L
                             navController.navigate("edit?uri=${Uri.encode(created.uri.toString())}") {
@@ -630,8 +616,6 @@ fun ZhixuApp() {
                         repository = repository,
                         onBack = { navController.popBackStack() },
                         onDocListMutated = { mutation ->
-                            docListMutation = mutation
-                            docListMutationToken += 1L
                             dirStructureMutation = mutation
                             dirStructureMutationToken += 1L
                         },
@@ -755,12 +739,11 @@ internal const val KEY_LONG_IMAGE_TITLE: String = "long_image_title"
 private fun HomePager(
     contentPadding: PaddingValues,
     vaultRootUri: Uri?,
-    prefs: VaultPreferences,
     repository: VaultRepository,
+    indexUpdater: VaultIndexUpdater,
+    documentIndex: DocumentIndex,
     pagerState: androidx.compose.foundation.pager.PagerState,
     docSearchRequestToken: Long,
-    docListMutationToken: Long,
-    docListMutation: DocListMutation?,
     dirStructureMutationToken: Long,
     dirStructureMutation: DocListMutation?,
     onOpenDoc: (String, String?, Int?) -> Unit,
@@ -790,11 +773,9 @@ private fun HomePager(
                 DocumentListScreen(
                     contentPadding = contentPadding,
                     vaultRootUri = vaultRootUri,
-                    prefs = prefs,
-                    repository = repository,
+                    documentIndex = documentIndex,
+                    indexUpdater = indexUpdater,
                     isActive = isActive,
-                    docListMutationToken = docListMutationToken,
-                    docListMutation = docListMutation,
                     searchRequestToken = docSearchRequestToken,
                     onOpenDoc = onOpenDoc,
                     onNewDoc = onNewDoc,

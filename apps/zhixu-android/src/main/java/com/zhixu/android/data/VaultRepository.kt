@@ -12,6 +12,9 @@ import com.zhixu.core.tasks.Ulid
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.sync.Mutex
@@ -62,8 +65,17 @@ class VaultRepository(
     @Volatile private var dirIndexBuildInProgress: Boolean = false
     private val dirIndexBuildLock = Mutex()
 
+    @Volatile private var indexChangeVersion: Long = 0L
+    private val indexChangesInternal = MutableSharedFlow<Long>(replay = 1, extraBufferCapacity = 8)
+    val indexChanges: SharedFlow<Long> = indexChangesInternal.asSharedFlow()
+
     fun isIndexBuildInProgress(): Boolean = indexBuildInProgress
     fun isDirIndexBuildInProgress(): Boolean = dirIndexBuildInProgress
+
+    private fun signalIndexChanged() {
+        indexChangeVersion += 1L
+        indexChangesInternal.tryEmit(indexChangeVersion)
+    }
 
     private data class DocListCacheEntry(
         val docs: List<UiDoc>,
@@ -286,6 +298,22 @@ class VaultRepository(
     suspend fun ensureIndexBuilt(rootUri: Uri) {
         if (hasAnyIndexedDocs()) return
         rebuildIndex(rootUri)
+    }
+
+    suspend fun listIndexedDocs(
+        rootUri: Uri,
+        limit: Int = 2000,
+    ): List<UiDoc> = withContext(Dispatchers.IO) {
+        if (rootUri.toString().isBlank()) return@withContext emptyList()
+        val raw = runCatching { indexRepository.listDocs(limit = limit) }.getOrElse { emptyList() }
+        raw.map { doc ->
+            val created = doc.createdAt.takeIf { it > 0L } ?: doc.lastModified
+            doc.copy(
+                createdAt = created,
+                createdAtText = if (created > 0L) formatEditedAt(created) else "",
+                editedAtText = if (doc.lastModified > 0L) formatEditedAt(doc.lastModified) else "",
+            )
+        }
     }
 
     suspend fun ensureVaultStructure(rootUri: Uri) = withContext(Dispatchers.IO) {
@@ -843,12 +871,26 @@ class VaultRepository(
             ?: docs.firstOrNull { computeDocBaseName(it.name).equals(trimmed, ignoreCase = true) }
     }
 
-    suspend fun rebuildIndex(rootUri: Uri) = withContext(Dispatchers.IO) {
+    suspend fun rebuildIndex(
+        rootUri: Uri,
+        forceScan: Boolean = false,
+    ) = withContext(Dispatchers.IO) {
         indexBuildInProgress = true
         try {
             ensureVaultStructure(rootUri)
             // Reuse the most recent doc listing when available to avoid repeated full directory scans.
-            val docs = listMarkdownDocsCached(rootUri, force = false, maxStaleMs = 3 * 60_000L)
+            val docs = listMarkdownDocsCached(rootUri, force = forceScan, maxStaleMs = 3 * 60_000L)
+
+            val keepUris = docs.map { it.uri.toString() }.toHashSet()
+            val stale =
+                runCatching { indexRepository.listAllDocUris() }
+                    .getOrElse { emptyList() }
+                    .filterNot { keepUris.contains(it) }
+            if (stale.isNotEmpty()) {
+                runCatching { indexRepository.deleteDocumentsByUriStrings(stale) }
+                    .onFailure { Log.e("Zhixu", "Index prune failed", it) }
+            }
+
             val coroutineContext = currentCoroutineContext()
             for (doc in docs) {
                 coroutineContext.ensureActive()
@@ -860,6 +902,7 @@ class VaultRepository(
                 }
                 yield()
             }
+            signalIndexChanged()
         } finally {
             indexBuildInProgress = false
         }
@@ -993,6 +1036,7 @@ class VaultRepository(
         val created = createMarkdownFile(root, createdName) ?: error("Failed to create document")
         val createdAtMs = System.currentTimeMillis()
         runCatching { indexRepository.upsertDocCreatedAt(created.uri.toString(), createdAtMs) }
+        signalIndexChanged()
         if (created.name?.endsWith(".md", ignoreCase = true) != true) {
             // Some providers may ignore extension; best-effort rename to keep the vault consistent.
             runCatching { created.renameTo(createdName) }
@@ -1014,6 +1058,7 @@ class VaultRepository(
                 "",
             )
         }
+        signalIndexChanged()
         recordDailyDocEdited(docUri = created.uri, day = LocalDate.now())
         runCatching { refreshDirIndexForDirectory(rootUri, parentRelativePath = null) }
         UiDoc(
@@ -1034,6 +1079,7 @@ class VaultRepository(
             val ok = runCatching { File(path).delete() }.getOrDefault(false)
             if (ok) {
                 indexRepository.deleteDocument(docUri)
+                signalIndexChanged()
             }
             return@withContext ok
         }
@@ -1042,6 +1088,7 @@ class VaultRepository(
         val ok = runCatching { DocumentsContract.deleteDocument(context.contentResolver, docUri) }.getOrDefault(false)
         if (ok) {
             indexRepository.deleteDocument(docUri)
+            signalIndexChanged()
         }
         ok
     }
@@ -1106,6 +1153,7 @@ class VaultRepository(
 
             val newUri = Uri.fromFile(dest)
             runCatching { indexRepository.migrateDocUri(oldUri = docUri.toString(), newUri = newUri.toString(), newName = dest.name) }
+                .onSuccess { signalIndexChanged() }
             return@withContext newUri
         }
 
@@ -1116,6 +1164,7 @@ class VaultRepository(
         if (renamedUri != null) {
             val newName = DocumentFile.fromSingleUri(context, renamedUri)?.name ?: finalName
             runCatching { indexRepository.migrateDocUri(oldUri = docUri.toString(), newUri = renamedUri.toString(), newName = newName) }
+                .onSuccess { signalIndexChanged() }
             return@withContext renamedUri
         }
 
@@ -1161,6 +1210,7 @@ class VaultRepository(
                     size = stat?.length() ?: text.toByteArray(StandardCharsets.UTF_8).size.toLong(),
                 )
             indexRepository.indexDocument(uiDoc, text)
+            signalIndexChanged()
         }.onFailure {
             Log.e("Zhixu", "indexDocUri failed for $docUri", it)
         }
@@ -1336,6 +1386,7 @@ class VaultRepository(
                     editedAtText = if (lastModified == 0L) "" else formatEditedAt(lastModified),
                 )
             runCatching { indexRepository.indexDocument(uiDoc, after) }
+                .onSuccess { signalIndexChanged() }
                 .onFailure { Log.e("Zhixu", "Index update failed for $docUri", it) }
 
             recordDailyDocEdited(docUri = docUri)

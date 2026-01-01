@@ -1,11 +1,7 @@
 package com.zhixu.android.ui.screens
 
-import android.database.ContentObserver
 import android.net.Uri
 import android.os.SystemClock
-import android.os.Handler
-import android.os.Looper
-import android.provider.DocumentsContract
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
@@ -31,8 +27,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -41,7 +35,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -49,13 +42,12 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import com.zhixu.android.ui.components.ZhixuTextField
 import androidx.compose.runtime.withFrameNanos
@@ -65,7 +57,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -80,111 +71,46 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.zhixu.android.R
 import com.zhixu.android.data.DocSearchResult
+import com.zhixu.android.data.DocumentIndex
 import com.zhixu.android.data.SearchResult
 import com.zhixu.android.data.TaskSearchResult
 import com.zhixu.android.data.UiDoc
-import com.zhixu.android.data.VaultPreferences
-import com.zhixu.android.data.VaultRepository
-import com.zhixu.android.ui.DocListMutation
+import com.zhixu.android.data.VaultIndexUpdater
 import com.zhixu.android.ui.Ionicons
 import com.zhixu.android.ui.components.RefreshStatusBanner
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.isActive
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DocumentListScreen(
     contentPadding: PaddingValues,
     vaultRootUri: Uri?,
-    prefs: VaultPreferences,
-    repository: VaultRepository,
+    documentIndex: DocumentIndex,
+    indexUpdater: VaultIndexUpdater,
     isActive: Boolean,
-    docListMutationToken: Long,
-    docListMutation: DocListMutation?,
     searchRequestToken: Long,
     onOpenDoc: (String, String?, Int?) -> Unit,
     onNewDoc: () -> Unit,
     onChangeVault: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     val highlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     val listState = rememberLazyListState()
-    val initialCacheEntry = remember(vaultRootUri) { DocumentListCache.get(vaultRootUri) }
-    var docs by remember(vaultRootUri) { mutableStateOf(initialCacheEntry?.docs ?: emptyList()) }
-    var docsSig by remember(vaultRootUri) { mutableLongStateOf(0L) }
+    var docs by remember(vaultRootUri) { mutableStateOf<List<UiDoc>>(emptyList()) }
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
-    var refreshJob by remember { mutableStateOf<Job?>(null) }
-    var scheduleJob by remember { mutableStateOf<Job?>(null) }
-    var lastRefreshAtMs by remember { mutableStateOf(0L) }
     var lastRefreshBannerAtMs by remember { mutableStateOf(0L) }
-    var cacheUpdatedAtMs by remember(vaultRootUri) { mutableLongStateOf(initialCacheEntry?.updatedAtMs ?: 0L) }
-    var ensuredVaultThisSession by remember(vaultRootUri) { mutableStateOf(false) }
-    var isPullRefreshing by remember(vaultRootUri) { mutableStateOf(false) }
     var showSearchSheet by remember { mutableStateOf(false) }
     var pendingOpenSearch by remember { mutableStateOf(false) }
     var lastSearchToken by remember { mutableLongStateOf(searchRequestToken) }
-    var pendingRefresh by remember(vaultRootUri) { mutableStateOf<PendingRefresh?>(null) }
-    var docsDirUri by remember(vaultRootUri) { mutableStateOf<Uri?>(null) }
-    var suppressFsEventsUntilUptimeMs by remember(vaultRootUri) { mutableLongStateOf(0L) }
-    var fsObserverRegistered by remember(vaultRootUri) { mutableStateOf(false) }
-    var pendingMutation by remember(vaultRootUri) { mutableStateOf<DocListMutation?>(null) }
-    var handledMutationToken by remember(vaultRootUri) { mutableLongStateOf(0L) }
+    var pendingShowUpdatedBanner by remember { mutableStateOf(false) }
 
-    val latestVaultRootUri by rememberUpdatedState(vaultRootUri)
-    val latestIsActive by rememberUpdatedState(isActive)
-    val latestFsObserverRegistered by rememberUpdatedState(fsObserverRegistered)
-
-    suspend fun syncCaches(next: List<UiDoc>) {
-        val root = vaultRootUri ?: return
-        val validatedAtMs = System.currentTimeMillis()
-        val sig = withContext(Dispatchers.Default) { docListSignature(next) }
-        docs = next
-        docsSig = sig
-        cacheUpdatedAtMs = validatedAtMs
-        DocumentListCache.put(root, docs = next, updatedAtMs = validatedAtMs)
-        runCatching { prefs.setDocListCache(root, next, updatedAtMs = validatedAtMs) }
-        runCatching { repository.setDocListCache(root, docs = next) }
-    }
-
-    suspend fun applyMutation(mutation: DocListMutation) {
-        val next =
-            when (mutation) {
-                is DocListMutation.Created -> {
-                    val created = mutation.doc
-                    (listOf(created) + docs.filterNot { it.uri == created.uri })
-                        .sortedWith(compareByDescending<UiDoc> { it.lastModified }.thenBy { it.name.lowercase() })
-                }
-
-                is DocListMutation.Deleted -> docs.filterNot { it.uri == mutation.docUri }
-
-                is DocListMutation.Renamed -> {
-                    val updated =
-                        withContext(Dispatchers.IO) {
-                            repository.statDocUi(mutation.newUri)
-                        } ?: docs.firstOrNull { it.uri == mutation.oldUri }?.copy(uri = mutation.newUri)
-                    if (updated == null) docs
-                    else {
-                        (listOf(updated) + docs.filterNot { it.uri == mutation.oldUri || it.uri == updated.uri })
-                            .sortedWith(compareByDescending<UiDoc> { it.lastModified }.thenBy { it.name.lowercase() })
-                    }
-                }
-            }
-
-        if (next != docs) {
-            suppressFsEventsUntilUptimeMs = SystemClock.uptimeMillis() + 1_200L
-            syncCaches(next)
-        }
-    }
+    val isIndexUpdating by indexUpdater.isUpdating.collectAsState()
 
     LaunchedEffect(searchRequestToken) {
         if (searchRequestToken == lastSearchToken) return@LaunchedEffect
@@ -198,203 +124,28 @@ fun DocumentListScreen(
         showSearchSheet = true
     }
 
-    fun requestRefresh(force: Boolean, reindex: Boolean, showUpdatedBanner: Boolean) {
-        if (!isActive) return
+    suspend fun reloadFromIndex() {
         val root = vaultRootUri ?: return
-        if (listState.isScrollInProgress || showSearchSheet) {
-            pendingRefresh = PendingRefresh(force = force, reindex = reindex)
-            return
-        }
-        val effectiveForce = force || docs.isEmpty()
-        if (!effectiveForce) {
-            val now = SystemClock.uptimeMillis()
-            val elapsed = now - lastRefreshAtMs
-            if (elapsed in 0..1_500) return
-        }
-        refreshJob?.cancel()
-        val needEnsure = !ensuredVaultThisSession && docs.isEmpty() && cacheUpdatedAtMs == 0L
-        isPullRefreshing = true
-        refreshJob =
-            scope.launch {
-                try {
-                    val now = SystemClock.uptimeMillis()
-                    val elapsed = now - lastRefreshAtMs
-                    if (elapsed in 0..250) delay(250 - elapsed)
-
-                    val (nextDocs, nextSig, didEnsure) =
-                        withContext(Dispatchers.IO) {
-                            if (needEnsure) runCatching { repository.ensureVaultStructure(root) }
-                            val listed = repository.listMarkdownDocsCached(root, force = effectiveForce)
-                            Triple(listed, docListSignature(listed), needEnsure)
-                        }
-                    if (didEnsure) ensuredVaultThisSession = true
-                    docsDirUri = runCatching { withContext(Dispatchers.IO) { repository.getDocsDirUri(root) } }.getOrNull()
-                    val validatedAtMs = System.currentTimeMillis()
-                    if (nextSig != docsSig) {
-                        docs = nextDocs
-                        docsSig = nextSig
-                        cacheUpdatedAtMs = validatedAtMs
-                        DocumentListCache.put(root, docs = nextDocs, updatedAtMs = validatedAtMs)
-                        runCatching { prefs.setDocListCache(root, nextDocs, updatedAtMs = validatedAtMs) }
-                    } else {
-                        cacheUpdatedAtMs = validatedAtMs
-                        DocumentListCache.put(root, docs = docs, updatedAtMs = validatedAtMs)
-                        runCatching { prefs.touchDocListCacheUpdatedAt(root, updatedAtMs = validatedAtMs) }
-                    }
-
-                    if (reindex) {
-                        withContext(Dispatchers.IO) { runCatching { repository.rebuildIndex(root) } }
-                    }
-                    lastRefreshAtMs = SystemClock.uptimeMillis()
-                    if (showUpdatedBanner) lastRefreshBannerAtMs = SystemClock.uptimeMillis()
-                } finally {
-                    isPullRefreshing = false
-                }
-            }
+        docs = withContext(Dispatchers.IO) { documentIndex.listDocs(root) }
     }
 
-    fun scheduleRefresh(force: Boolean, reindex: Boolean, debounceMs: Long) {
-        scheduleJob?.cancel()
-        scheduleJob =
-            scope.launch {
-                if (debounceMs > 0) delay(debounceMs)
-                requestRefresh(force = force, reindex = reindex, showUpdatedBanner = false)
-            }
-    }
-
-    LaunchedEffect(vaultRootUri, isActive) {
-        if (!isActive) return@LaunchedEffect
-        val root = vaultRootUri ?: return@LaunchedEffect
-
-        // Let the first frame render (cached list / shell) before kicking off any I/O.
-        withFrameNanos { }
-
-        val cached =
-            if (docs.isEmpty() || cacheUpdatedAtMs == 0L) prefs.getDocListCache(root) else null
-        if (cached != null) {
-            if (docs.isEmpty() && cached.docs.isNotEmpty()) {
-                docs = cached.docs.sortedByDescending { it.lastModified }
-            }
-            if (cached.updatedAtMs > 0L) cacheUpdatedAtMs = cached.updatedAtMs
-            if (docs.isNotEmpty() && cacheUpdatedAtMs > 0L) {
-                DocumentListCache.put(root, docs = docs, updatedAtMs = cacheUpdatedAtMs)
-            }
-        }
-
-        if (docsSig == 0L && docs.isNotEmpty()) {
-            val snapshot = docs
-            docsSig = withContext(Dispatchers.Default) { docListSignature(snapshot) }
-        }
-
-        // Defer docs directory lookups/observers until the list is visible and initial decisions are done.
-        launch {
-            delay(400)
-            docsDirUri = withContext(Dispatchers.IO) { repository.getDocsDirUri(root) }
-        }
-
-        if (docs.isEmpty()) {
-            // No cached list available: refresh after a short delay.
-            delay(120)
-            requestRefresh(force = true, reindex = false, showUpdatedBanner = false)
-        }
-    }
-
-    LaunchedEffect(vaultRootUri, docListMutationToken) {
-        if (docListMutationToken <= 0L) return@LaunchedEffect
-        if (docListMutationToken == handledMutationToken) return@LaunchedEffect
-        handledMutationToken = docListMutationToken
-
-        val mutation = docListMutation ?: return@LaunchedEffect
-        if (!isActive) {
-            pendingMutation = mutation
+    LaunchedEffect(vaultRootUri) {
+        if (vaultRootUri == null) {
+            docs = emptyList()
             return@LaunchedEffect
         }
-        applyMutation(mutation)
+        // Let the first frame render (shell) before kicking off SQLite reads.
+        withFrameNanos { }
+        reloadFromIndex()
     }
 
-    LaunchedEffect(isActive, pendingMutation) {
-        if (!isActive) return@LaunchedEffect
-        val mutation = pendingMutation ?: return@LaunchedEffect
-        pendingMutation = null
-        applyMutation(mutation)
-    }
-
-    LaunchedEffect(pendingRefresh, isActive) {
-        val req = pendingRefresh ?: return@LaunchedEffect
-        if (!isActive) return@LaunchedEffect
-        snapshotFlow { listState.isScrollInProgress || showSearchSheet }
-            .filter { busy -> !busy }
-            .first()
-        pendingRefresh = null
-        requestRefresh(force = req.force, reindex = req.reindex, showUpdatedBanner = false)
-    }
-
-    DisposableEffect(docsDirUri, isActive) {
-        if (!isActive) return@DisposableEffect onDispose {}
-        val dirUri = docsDirUri ?: return@DisposableEffect onDispose {}
-        val docId = runCatching { DocumentsContract.getDocumentId(dirUri) }.getOrNull() ?: return@DisposableEffect onDispose {}
-        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(dirUri, docId)
-        val resolver = context.contentResolver
-        val observer =
-            object : ContentObserver(Handler(Looper.getMainLooper())) {
-                override fun onChange(selfChange: Boolean) {
-                    val now = SystemClock.uptimeMillis()
-                    if (now in 0..suppressFsEventsUntilUptimeMs) return
-                    val root = latestVaultRootUri ?: return
-                    if (!latestIsActive) return
-                    repository.invalidateDocListCache(root)
-                    scheduleRefresh(force = false, reindex = false, debounceMs = 250)
-                }
-
-                override fun onChange(selfChange: Boolean, uri: Uri?) {
-                    onChange(selfChange)
-                }
-            }
-
-        // ContentResolver observer registration can block on Binder; do it off the main thread to avoid jank.
-        val registerJob =
-            scope.launch(Dispatchers.IO) {
-                val ok = runCatching { resolver.registerContentObserver(childrenUri, true, observer) }.isSuccess
-                withContext(Dispatchers.Main) { fsObserverRegistered = ok }
-            }
-        onDispose {
-            registerJob.cancel()
-            fsObserverRegistered = false
-            scope.launch(Dispatchers.IO) {
-                runCatching { resolver.unregisterContentObserver(observer) }
-            }
-        }
-    }
-
-    LaunchedEffect(docsDirUri, vaultRootUri, isActive, fsObserverRegistered) {
-        if (!isActive) return@LaunchedEffect
-        if (fsObserverRegistered) return@LaunchedEffect
-        val root = vaultRootUri ?: return@LaunchedEffect
-        val dirUri = docsDirUri ?: return@LaunchedEffect
-
-        var lastDirModified = withContext(Dispatchers.IO) { repository.getDocumentLastModified(dirUri) }
-        var ticks = 0
-        while (currentCoroutineContext().isActive) {
-            if (latestFsObserverRegistered) return@LaunchedEffect
-            delay(30_000)
-            ticks++
-
-            val modified = withContext(Dispatchers.IO) { repository.getDocumentLastModified(dirUri) }
-            if (modified > 0L && modified != lastDirModified) {
-                lastDirModified = modified
-                val now = SystemClock.uptimeMillis()
-                if (now in 0..suppressFsEventsUntilUptimeMs) continue
-                repository.invalidateDocListCache(root)
-                scheduleRefresh(force = false, reindex = false, debounceMs = 200)
-                continue
-            }
-
-            if (modified <= 0L && ticks % 10 == 0) {
-                // Some providers don't update folder timestamps reliably; force a low-frequency refresh as a fallback.
-                val now = SystemClock.uptimeMillis()
-                if (now in 0..suppressFsEventsUntilUptimeMs) continue
-                repository.invalidateDocListCache(root)
-                scheduleRefresh(force = true, reindex = false, debounceMs = 0)
+    LaunchedEffect(vaultRootUri) {
+        if (vaultRootUri == null) return@LaunchedEffect
+        documentIndex.changes.collect {
+            reloadFromIndex()
+            if (pendingShowUpdatedBanner) {
+                lastRefreshBannerAtMs = SystemClock.uptimeMillis()
+                pendingShowUpdatedBanner = false
             }
         }
     }
@@ -412,13 +163,13 @@ fun DocumentListScreen(
         searchJob =
             scope.launch {
                 delay(200)
-                if (query.isBlank() || vaultRootUri == null) {
+                if (query.isBlank()) {
                     results = emptyList()
                     return@launch
                 }
                 results =
                     withContext(Dispatchers.IO) {
-                        repository.search(vaultRootUri, query)
+                        documentIndex.search(query)
                     }
             }
     }
@@ -447,8 +198,12 @@ fun DocumentListScreen(
                 val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 val pullState = rememberPullToRefreshState()
             PullToRefreshBox(
-                isRefreshing = isActive && isPullRefreshing,
-                onRefresh = { if (isActive) requestRefresh(force = true, reindex = false, showUpdatedBanner = true) },
+                isRefreshing = isActive && isIndexUpdating,
+                onRefresh = {
+                    if (!isActive) return@PullToRefreshBox
+                    pendingShowUpdatedBanner = true
+                    indexUpdater.requestForceRefresh()
+                },
                 state = pullState,
                 modifier = Modifier.fillMaxSize(),
                 indicator = {},
@@ -486,7 +241,7 @@ fun DocumentListScreen(
                         }
 
                         RefreshStatusBanner(
-                            isRefreshing = isPullRefreshing,
+                            isRefreshing = isIndexUpdating,
                             lastRefreshedAtMs = lastRefreshBannerAtMs,
                             modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
                         )
@@ -514,11 +269,6 @@ fun DocumentListScreen(
         )
     }
 }
-
-private data class PendingRefresh(
-    val force: Boolean,
-    val reindex: Boolean,
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -670,34 +420,6 @@ private fun DocumentSearchSheet(
     }
 }
 
-private object DocumentListCache {
-    private const val MaxEntries = 4
-    private val lock = Any()
-    private val cache =
-        object : LinkedHashMap<String, Entry>(MaxEntries, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>?): Boolean = size > MaxEntries
-        }
-
-    data class Entry(
-        val docs: List<UiDoc>,
-        val updatedAtMs: Long,
-    )
-
-    fun get(rootUri: Uri?): Entry? {
-        val key = rootUri?.toString().orEmpty()
-        if (key.isBlank()) return null
-        return synchronized(lock) { cache[key] }
-    }
-
-    fun put(
-        rootUri: Uri,
-        docs: List<UiDoc>,
-        updatedAtMs: Long,
-    ) {
-        synchronized(lock) { cache[rootUri.toString()] = Entry(docs = docs, updatedAtMs = updatedAtMs) }
-    }
-}
-
 private fun highlightQuery(text: String, query: String, highlightBg: Color): AnnotatedString {
     val q = query.trim()
     if (q.isBlank()) return AnnotatedString(text)
@@ -738,16 +460,6 @@ private fun highlightQuery(text: String, query: String, highlightBg: Color): Ann
         }
         if (pos < text.length) append(text.substring(pos))
     }
-}
-
-private fun docListSignature(docs: List<UiDoc>): Long {
-    var sig = 1125899906842597L
-    for (doc in docs) {
-        sig = 31 * sig + doc.uri.hashCode().toLong()
-        sig = 31 * sig + doc.lastModified
-        sig = 31 * sig + doc.size
-    }
-    return sig
 }
 
 @Composable
