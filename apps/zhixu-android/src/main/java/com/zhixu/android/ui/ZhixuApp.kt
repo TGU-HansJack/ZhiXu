@@ -752,7 +752,7 @@ private fun HomePager(
 ) {
     HorizontalPager(
         state = pagerState,
-        beyondViewportPageCount = 0,
+        beyondViewportPageCount = 2,
         modifier = Modifier.fillMaxSize(),
     ) { page ->
         val isActive = !pagerState.isScrollInProgress && pagerState.settledPage == page

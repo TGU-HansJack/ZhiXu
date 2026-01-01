@@ -99,6 +99,20 @@ class VaultIndexRepository(
         }
     }
 
+    suspend fun getIndexedDocName(uriStr: String): String? = withContext(Dispatchers.IO) {
+        if (uriStr.isBlank()) return@withContext null
+        mutex.withLock {
+            val database = db.readableDatabase
+            database.rawQuery(
+                "SELECT name FROM docs_fts WHERE uri = ? LIMIT 1",
+                arrayOf(uriStr),
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+                cursor.getString(0)
+            }?.takeIf { it.isNotBlank() }
+        }
+    }
+
     suspend fun deleteDocumentsByUriStrings(
         docUris: List<String>,
     ) = withContext(Dispatchers.IO) {

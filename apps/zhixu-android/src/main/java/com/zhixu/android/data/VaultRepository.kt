@@ -1032,8 +1032,7 @@ class VaultRepository(
     suspend fun createDoc(rootUri: Uri, fileName: String): UiDoc = withContext(Dispatchers.IO) {
         val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
         val baseName = sanitizeFileName(fileName).removeSuffix(".md").trim().ifBlank { "Untitled" }
-        val createdName = createUniqueMarkdownName(root, baseName)
-        val created = createMarkdownFile(root, createdName) ?: error("Failed to create document")
+        val (created, createdName) = createUniqueMarkdownFile(root, baseName) ?: error("Failed to create document")
         val createdAtMs = System.currentTimeMillis()
         runCatching { indexRepository.upsertDocCreatedAt(created.uri.toString(), createdAtMs) }
         signalIndexChanged()
@@ -1060,7 +1059,7 @@ class VaultRepository(
         }
         signalIndexChanged()
         recordDailyDocEdited(docUri = created.uri, day = LocalDate.now())
-        runCatching { refreshDirIndexForDirectory(rootUri, parentRelativePath = null) }
+        runCatching { upsertDirIndexEntryForFileIfPresent(rootUri, created) }
         UiDoc(
             name = name,
             uri = created.uri,
@@ -1202,9 +1201,15 @@ class VaultRepository(
         runCatching {
             val text = readText(docUri)
             val stat = DocumentFile.fromSingleUri(context, docUri)
+            val indexedName = runCatching { indexRepository.getIndexedDocName(docUri.toString()) }.getOrNull()
+            val resolvedName =
+                stat?.name
+                    ?.takeIf { it.isNotBlank() }
+                    ?: indexedName
+                    ?: runCatching { statDocUi(docUri)?.name }.getOrNull()
             val uiDoc =
                 UiDoc(
-                    name = stat?.name ?: "Document",
+                    name = resolvedName ?: "Document.md",
                     uri = docUri,
                     lastModified = stat?.lastModified() ?: 0L,
                     size = stat?.length() ?: text.toByteArray(StandardCharsets.UTF_8).size.toLong(),
@@ -1402,15 +1407,62 @@ class VaultRepository(
             .replace(Regex("""[\\/:*?"<>|]"""), "_")
             .ifBlank { "Untitled" }
 
-    private fun createUniqueMarkdownName(docsDir: DocumentFile, baseName: String): String {
+    private fun createUniqueMarkdownFile(docsDir: DocumentFile, baseName: String): Pair<DocumentFile, String>? {
         val normalizedBase = baseName.ifBlank { "Untitled" }
-        var candidate = "$normalizedBase.md"
-        var index = 1
-        while (findChild(docsDir, candidate) != null) {
-            candidate = "$normalizedBase ($index).md"
-            index++
+        val maxAttempts = 200
+        for (index in 0 until maxAttempts) {
+            val candidate =
+                if (index == 0) "$normalizedBase.md"
+                else "$normalizedBase ($index).md"
+
+            val created =
+                if (docsDir.uri.scheme.equals("file", ignoreCase = true)) {
+                    val dir = docsDir.uri.path?.let(::File) ?: return null
+                    if (!dir.exists()) dir.mkdirs()
+                    val file = File(dir, candidate)
+                    if (file.exists()) null
+                    else {
+                        runCatching {
+                            file.createNewFile()
+                            DocumentFile.fromFile(file)
+                        }.getOrNull()
+                    }
+                } else {
+                    docsDir.createFile("text/markdown", candidate) ?: docsDir.createFile("text/plain", candidate)
+                }
+
+            if (created != null) return Pair(created, candidate)
         }
-        return candidate
+        return null
+    }
+
+    private suspend fun upsertDirIndexEntryForFileIfPresent(rootUri: Uri, file: DocumentFile) {
+        val rootKey = rootUri.toString().trim()
+        if (rootKey.isBlank()) return
+        val has = runCatching { dirIndexRepository.hasAnyEntries(rootKey) }.getOrDefault(false)
+        if (!has) return
+
+        val rel = computeRelativePath(rootUri, file.uri)?.replace('\\', '/')?.trimStart('/') ?: return
+        val name = file.name ?: rel.substringAfterLast('/').ifBlank { return }
+        val parentRaw =
+            rel.lastIndexOf('/').takeIf { it >= 0 }?.let { idx ->
+                rel.substring(0, idx + 1)
+            }
+        val parentKey = normalizeDirPath(parentRaw)
+        val builtAt = System.currentTimeMillis()
+        dirIndexRepository.upsertEntry(
+            rootUri = rootKey,
+            entry =
+                VaultDirIndexRepository.DirIndexEntry(
+                    relativePath = rel,
+                    parentPath = parentKey,
+                    name = name,
+                    uri = file.uri.toString(),
+                    isDirectory = false,
+                    lastModified = file.lastModified(),
+                ),
+            builtAtMs = builtAt,
+        )
     }
 
     private fun findChild(parent: DocumentFile, name: String): DocumentFile? {

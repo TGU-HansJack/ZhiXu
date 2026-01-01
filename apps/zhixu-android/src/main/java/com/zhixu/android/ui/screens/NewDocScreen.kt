@@ -107,6 +107,7 @@ fun NewDocScreen(
                                         .onFailure {
                                             snackbarHostState.showSnackbar(context.getString(R.string.new_doc_error_write_failed))
                                         }
+                                    runCatching { repository.indexDocUri(created.uri) }
 
                                     runCatching {
                                         VaultAutoSync.maybeUploadDoc(

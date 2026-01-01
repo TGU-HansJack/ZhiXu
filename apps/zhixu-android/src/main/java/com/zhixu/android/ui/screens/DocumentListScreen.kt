@@ -129,7 +129,8 @@ fun DocumentListScreen(
         docs = withContext(Dispatchers.IO) { documentIndex.listDocs(root) }
     }
 
-    LaunchedEffect(vaultRootUri) {
+    LaunchedEffect(vaultRootUri, isActive) {
+        if (!isActive) return@LaunchedEffect
         if (vaultRootUri == null) {
             docs = emptyList()
             return@LaunchedEffect
@@ -139,7 +140,8 @@ fun DocumentListScreen(
         reloadFromIndex()
     }
 
-    LaunchedEffect(vaultRootUri) {
+    LaunchedEffect(vaultRootUri, isActive) {
+        if (!isActive) return@LaunchedEffect
         if (vaultRootUri == null) return@LaunchedEffect
         documentIndex.changes.collect {
             reloadFromIndex()

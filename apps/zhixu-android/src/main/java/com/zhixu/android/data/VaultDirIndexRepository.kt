@@ -108,6 +108,46 @@ internal class VaultDirIndexRepository(
         val lastModified: Long,
     )
 
+    suspend fun upsertEntry(
+        rootUri: String,
+        entry: DirIndexEntry,
+        builtAtMs: Long,
+    ) = withContext(Dispatchers.IO) {
+        if (rootUri.isBlank()) return@withContext
+        val rel = entry.relativePath.trim().replace('\\', '/').trimStart('/')
+        if (rel.isBlank()) return@withContext
+
+        mutex.withLock {
+            val database = db.writableDatabase
+            database.beginTransaction()
+            try {
+                database.execSQL(
+                    """
+                    INSERT OR REPLACE INTO dir_index_entries(
+                      root_uri, relative_path, parent_path, name, uri, is_dir, last_modified
+                    ) VALUES(?,?,?,?,?,?,?)
+                    """.trimIndent(),
+                    arrayOf<Any?>(
+                        rootUri,
+                        rel,
+                        entry.parentPath?.takeIf { it.isNotBlank() },
+                        entry.name,
+                        entry.uri,
+                        if (entry.isDirectory) 1 else 0,
+                        entry.lastModified,
+                    ),
+                )
+                database.execSQL(
+                    "INSERT OR REPLACE INTO dir_index_meta(root_uri, built_at_ms) VALUES(?, ?)",
+                    arrayOf<Any?>(rootUri, builtAtMs),
+                )
+                database.setTransactionSuccessful()
+            } finally {
+                database.endTransaction()
+            }
+        }
+    }
+
     suspend fun replaceAll(
         rootUri: String,
         entries: List<DirIndexEntry>,

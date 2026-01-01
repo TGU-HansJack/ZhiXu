@@ -208,6 +208,14 @@ fun TasksScreen(
         }
     }
 
+    LaunchedEffect(vaultRootUri, isActive) {
+        if (!isActive) return@LaunchedEffect
+        if (vaultRootUri == null) return@LaunchedEffect
+        repository.indexChanges.collect {
+            refresh(force = false, showUpdatedBanner = false)
+        }
+    }
+
     LaunchedEffect(vaultRootUri, isActive, indexReady) {
         if (!isActive) return@LaunchedEffect
         val root = vaultRootUri ?: return@LaunchedEffect
