@@ -24,10 +24,15 @@ class UiPreferences(
 
     val languageTag: Flow<String> = context.dataStore.data.map { it[languageTagKey] ?: "" }
 
+    /**
+     * Nullable variant for app bootstrap: avoids applying a default value before DataStore emits.
+     * `null` means "not set yet" (follow system default without forcing a locale update).
+     */
+    val languageTagOrNull: Flow<String?> = context.dataStore.data.map { it[languageTagKey] }
+
     suspend fun setLanguageTag(tag: String) {
         context.dataStore.edit { prefs ->
             prefs[languageTagKey] = tag.trim()
         }
     }
 }
-

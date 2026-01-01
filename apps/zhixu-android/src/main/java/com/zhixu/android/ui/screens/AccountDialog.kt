@@ -69,6 +69,9 @@ fun AccountManagementDialog(
     val loginOkText = stringResource(R.string.account_login_ok)
     val registerOkText = stringResource(R.string.account_register_ok)
     val loggedOutText = stringResource(R.string.account_logged_out)
+    val loginFailedText = stringResource(R.string.account_login_failed)
+    val fetchProfileFailedText = stringResource(R.string.account_fetch_profile_failed)
+    val registerFailedText = stringResource(R.string.account_register_failed)
     val serverUnreachableText = stringResource(R.string.error_server_unreachable)
 
     fun <T> SyncServerResult<T>.toUiMessage(fallback: String): String {
@@ -169,14 +172,14 @@ fun AccountManagementDialog(
                                 setBusy(true)
                                 val login = SyncServerClient.login(OfficialSync.BASE_URL, u, p)
                                 if (!login.ok || login.value.isNullOrBlank()) {
-                                    status = login.toUiMessage("Login failed")
+                                    status = login.toUiMessage(loginFailedText)
                                     setBusy(false)
                                     return@launch
                                 }
                                 val token = login.value!!
                                 val me = SyncServerClient.me(OfficialSync.BASE_URL, token)
                                 if (!me.ok || me.value == null) {
-                                    status = me.toUiMessage("Fetch profile failed")
+                                    status = me.toUiMessage(fetchProfileFailedText)
                                     setBusy(false)
                                     return@launch
                                 }
@@ -199,7 +202,7 @@ fun AccountManagementDialog(
                                     if (reg.ok) {
                                         registerOkText
                                     } else {
-                                        reg.toUiMessage("Register failed")
+                                        reg.toUiMessage(registerFailedText)
                                     }
                                 setBusy(false)
                             }

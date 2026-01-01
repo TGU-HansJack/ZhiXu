@@ -1,6 +1,7 @@
 package com.zhixu.android.ui.screens
 
 import android.content.Intent
+import android.content.Context
 import android.net.Uri
 import android.os.SystemClock
 import androidx.compose.foundation.clickable
@@ -82,6 +83,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -204,7 +206,8 @@ fun SyncScreen(
                 val uri = resolveRelativeUri(root, ".zhixu/sync/log.jsonl") ?: return@runCatching ""
                 val all = repository.readText(uri).trim()
                 val lines = all.lines()
-                if (lines.size <= 800) all else lines.takeLast(800).joinToString("\n")
+                val limited = if (lines.size <= 800) all else lines.takeLast(800).joinToString("\n")
+                formatSyncLogForDisplay(limited, context)
             }.getOrDefault("")
         syncLogLoadedAtMs = SystemClock.uptimeMillis()
         syncLogLoading = false
@@ -576,6 +579,97 @@ fun SyncScreen(
                 ) { Text(stringResource(R.string.sync_logs_close)) }
             },
         )
+    }
+}
+
+private fun formatSyncLogForDisplay(raw: String, context: Context): String {
+    if (raw.isBlank()) return ""
+    val out = ArrayList<String>()
+    for (line in raw.lines()) {
+        val trimmed = line.trim()
+        if (trimmed.isBlank()) continue
+        out += formatSyncLogLineForDisplay(trimmed, context)
+    }
+    return out.joinToString("\n")
+}
+
+private fun formatSyncLogLineForDisplay(line: String, context: Context): String {
+    val obj = runCatching { JSONObject(line) }.getOrNull() ?: return line
+    val event = obj.optString("event").orEmpty()
+
+    fun opLabel(op: String): String {
+        return when (op) {
+            "upload" -> context.getString(R.string.sync_log_op_upload)
+            "download" -> context.getString(R.string.sync_log_op_download)
+            "delete_remote" -> context.getString(R.string.sync_log_op_delete_remote)
+            "download_conflict" -> context.getString(R.string.sync_log_op_download_conflict)
+            "upload_conflict_overwrite" -> context.getString(R.string.sync_log_op_upload_conflict_overwrite)
+            else -> op
+        }
+    }
+
+    fun engineLabel(engine: String): String {
+        return when (engine) {
+            "official" -> context.getString(R.string.sync_log_engine_official)
+            "webdav" -> context.getString(R.string.sync_log_engine_webdav)
+            else -> engine
+        }
+    }
+
+    val ts = obj.optString("ts").orEmpty()
+
+    return when (event) {
+        "start" -> {
+            val parts = ArrayList<String>(3)
+            val engine = obj.optString("engine").trim()
+            if (engine.isNotBlank()) {
+                parts += "${context.getString(R.string.sync_log_field_engine)}=${engineLabel(engine)}"
+            }
+            val includeIndexSqlite = obj.optString("includeIndexSqlite").trim()
+            if (includeIndexSqlite.isNotBlank()) {
+                parts += "${context.getString(R.string.sync_log_field_include_index_sqlite)}=$includeIndexSqlite"
+            }
+            val details = parts.joinToString(" ")
+            if (details.isBlank()) {
+                context.getString(R.string.sync_log_line_start_fmt, ts)
+            } else {
+                context.getString(R.string.sync_log_line_start_with_details_fmt, ts, details)
+            }
+        }
+
+        "remote_root" -> {
+            val url = obj.optString("url").orEmpty()
+            context.getString(R.string.sync_log_line_remote_root_fmt, url)
+        }
+
+        "file_failed" -> {
+            val op = opLabel(obj.optString("op").orEmpty())
+            val path = obj.optString("path").orEmpty()
+            val error = obj.optString("error").orEmpty()
+            context.getString(R.string.sync_log_line_file_failed_fmt, op, path, error)
+        }
+
+        "end" -> {
+            val ok = obj.optString("ok").trim().equals("true", ignoreCase = true)
+            if (!ok) {
+                val error = obj.optString("error").ifBlank { "-" }
+                return context.getString(R.string.sync_log_line_end_fail_fmt, error)
+            }
+            val metrics = ArrayList<String>(6)
+            fun metric(key: String, labelRes: Int) {
+                val value = obj.optString(key).trim()
+                if (value.isNotBlank()) metrics += "${context.getString(labelRes)}=$value"
+            }
+            metric("uploaded", R.string.sync_log_metric_uploaded)
+            metric("downloaded", R.string.sync_log_metric_downloaded)
+            metric("deletedRemote", R.string.sync_log_metric_deleted_remote)
+            metric("deletedLocal", R.string.sync_log_metric_deleted_local)
+            metric("conflicts", R.string.sync_log_metric_conflicts)
+            metric("failed", R.string.sync_log_metric_failed)
+            context.getString(R.string.sync_log_line_end_ok_fmt, metrics.joinToString(" "))
+        }
+
+        else -> line
     }
 }
 

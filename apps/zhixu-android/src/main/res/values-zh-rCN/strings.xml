@@ -1,12 +1,14 @@
 <resources>
     <!-- Navigation -->
+    <string name="nav_space">空间</string>
     <string name="nav_docs">文档</string>
     <string name="nav_tasks">任务</string>
     <string name="nav_settings">设置</string>
+    <string name="nav_me">我的</string>
 
     <!-- Vault -->
-    <string name="vault_select_title">选择 Vault 文件夹</string>
-    <string name="vault_select_desc">Zhixu 将数据以文件形式存储在 Vault 中（可迁移、可导出）。</string>
+    <string name="vault_select_title">选择空间文件夹</string>
+    <string name="vault_select_desc">Zhixu 将数据以文件形式存储在空间中（可迁移、可导出）。</string>
     <string name="vault_select_button">选择文件夹</string>
     <string name="vault_settings_storage_location">存储位置</string>
     <string name="vault_settings_location_local">本地存储</string>
@@ -24,11 +26,11 @@
     <string name="vault_settings_third_party_password">密码</string>
     <string name="vault_settings_third_party_e2ee">加密同步内容（E2EE）</string>
     <string name="vault_settings_third_party_master_password">加密主密码</string>
-    <string name="vault_settings_third_party_desc">进入应用后可在 Vault 设置中配置。</string>
+    <string name="vault_settings_third_party_desc">进入应用后可在空间设置中配置。</string>
     <string name="vault_settings_third_party_e2ee_warning">开启后所有同步笔记将加密存储，服务器无法查看内容，丢失主密码将无法恢复数据</string>
     <string name="vault_settings_saved">已保存</string>
 
-    <string name="vault_drawer_title">Vault</string>
+    <string name="vault_drawer_title">空间</string>
     <string name="vault_drawer_empty">暂无文件</string>
 
     <!-- Docs -->
@@ -72,16 +74,17 @@
     <string name="field_find">查找</string>
     <string name="field_replace">替换为</string>
     <string name="action_replace_all">全部替换</string>
+    <string name="editor_code_block_language">语言</string>
     <string name="action_insert_task">插入任务</string>
     <string name="action_insert_due">插入到期时间</string>
     <string name="action_insert_tag">插入标签</string>
     <string name="snackbar_saved">已保存</string>
     <string name="snackbar_saved_with_ids">已保存（补全 %1$d 个任务 id）</string>
     <string name="editor_load_failed_generic">打开文档失败。</string>
-    <string name="editor_load_failed_permission">没有权限打开该文档，请重新选择 Vault 文件夹。</string>
+    <string name="editor_load_failed_permission">没有权限打开该文档，请重新选择空间文件夹。</string>
     <string name="editor_load_failed_not_found">文档不存在。</string>
     <string name="editor_save_failed_generic">保存失败。</string>
-    <string name="editor_save_failed_permission">没有权限保存，请重新选择 Vault 文件夹。</string>
+    <string name="editor_save_failed_permission">没有权限保存，请重新选择空间文件夹。</string>
     <string name="editor_rename_failed_generic">重命名失败。</string>
     <string name="action_open_drawer">打开侧栏</string>
     <string name="editor_outline_title">大纲</string>
@@ -97,9 +100,9 @@
 
     <!-- Settings -->
     <string name="settings_title">设置</string>
-    <string name="settings_section_vault">Vault</string>
+    <string name="settings_section_vault">空间</string>
     <string name="settings_vault_not_selected">未选择</string>
-    <string name="settings_change_vault">更换 Vault</string>
+    <string name="settings_change_vault">更换空间</string>
     <string name="settings_section_sync">同步</string>
     <string name="settings_sync_placeholder">同步设置：使用官方服务器同步，或在下方配置 WebDAV。</string>
     <string name="action_close">关闭</string>
@@ -119,6 +122,9 @@
     <string name="account_login_ok">登录成功</string>
     <string name="account_register_ok">注册成功</string>
     <string name="account_logged_out">已退出登录</string>
+    <string name="account_login_failed">登录失败</string>
+    <string name="account_fetch_profile_failed">获取资料失败</string>
+    <string name="account_register_failed">注册失败</string>
     <string name="account_storage_title">存储方案</string>
     <string name="account_storage_select">选择</string>
     <string name="account_storage_selected">已选择：%1$s</string>
@@ -178,7 +184,7 @@
     <string name="settings_workshop_desc">管理已安装的插件：启用/停用/移除。</string>
     <string name="settings_open_workshop">打开</string>
     <string name="workshop_title">创意工坊</string>
-    <string name="workshop_no_vault">请先选择 Vault 文件夹。</string>
+    <string name="workshop_no_vault">请先选择空间文件夹。</string>
     <string name="workshop_section_installed">已安装</string>
     <string name="workshop_section_install">安装插件</string>
     <string name="workshop_no_plugins">暂无插件。</string>
@@ -241,6 +247,38 @@
     <string name="settings_language_system">跟随系统</string>
     <string name="settings_language_zh_cn">简体中文</string>
     <string name="settings_language_en">English</string>
+
+    <!-- Sync logs -->
+    <string name="sync_logs_title">同步日志</string>
+    <string name="sync_logs_loading">加载中…</string>
+    <string name="sync_logs_empty">暂无同步日志。</string>
+    <string name="sync_logs_tap_to_view">点击查看</string>
+    <string name="sync_logs_copy">复制</string>
+    <string name="sync_logs_export">导出</string>
+    <string name="sync_logs_close">关闭</string>
+
+    <!-- Sync log formatting -->
+    <string name="sync_log_field_engine">引擎</string>
+    <string name="sync_log_field_include_index_sqlite">包含索引库</string>
+    <string name="sync_log_engine_official">官方</string>
+    <string name="sync_log_engine_webdav">WebDAV</string>
+    <string name="sync_log_op_upload">上传</string>
+    <string name="sync_log_op_download">下载</string>
+    <string name="sync_log_op_delete_remote">删除远端</string>
+    <string name="sync_log_op_download_conflict">下载（冲突）</string>
+    <string name="sync_log_op_upload_conflict_overwrite">上传（覆盖）</string>
+    <string name="sync_log_metric_uploaded">上传</string>
+    <string name="sync_log_metric_downloaded">下载</string>
+    <string name="sync_log_metric_deleted_remote">远端删除</string>
+    <string name="sync_log_metric_deleted_local">本地删除</string>
+    <string name="sync_log_metric_conflicts">冲突</string>
+    <string name="sync_log_metric_failed">失败</string>
+    <string name="sync_log_line_start_fmt">[开始] ts=%1$s</string>
+    <string name="sync_log_line_start_with_details_fmt">[开始] ts=%1$s %2$s</string>
+    <string name="sync_log_line_remote_root_fmt">[远端根目录] %1$s</string>
+    <string name="sync_log_line_file_failed_fmt">[文件失败] %1$s %2$s（%3$s）</string>
+    <string name="sync_log_line_end_ok_fmt">[结束] %1$s</string>
+    <string name="sync_log_line_end_fail_fmt">[结束] 失败：%1$s</string>
 
     <!-- Editor overflow -->
     <string name="editor_overflow_generate_long_image">生成长图</string>

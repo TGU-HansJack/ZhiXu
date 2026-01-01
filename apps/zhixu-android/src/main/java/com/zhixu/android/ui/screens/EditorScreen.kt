@@ -2163,7 +2163,7 @@ fun EditorScreen(
                     ZhixuTextField(
                         value = codeLanguage,
                         onValueChange = { codeLanguage = it },
-                        label = { Text("Language") },
+                        label = { Text(stringResource(R.string.editor_code_block_language)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )

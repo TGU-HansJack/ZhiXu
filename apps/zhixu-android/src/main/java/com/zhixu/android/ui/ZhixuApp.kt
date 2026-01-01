@@ -181,12 +181,21 @@ fun ZhixuApp() {
     val vaultRootUri = vaultRootUriString?.let(Uri::parse)
 
     val uiPrefs = remember(appContext) { UiPreferences(appContext) }
-    val languageTag by uiPrefs.languageTag.collectAsState(initial = "")
+    val languageTagOrNull by uiPrefs.languageTagOrNull.collectAsState(initial = null)
 
-    LaunchedEffect(languageTag) {
-        val trimmed = languageTag.trim()
-        val locales = if (trimmed.isBlank()) LocaleListCompat.getEmptyLocaleList() else LocaleListCompat.forLanguageTags(trimmed)
-        runCatching { AppCompatDelegate.setApplicationLocales(locales) }
+    LaunchedEffect(languageTagOrNull) {
+        val raw = languageTagOrNull ?: return@LaunchedEffect
+        val trimmed = raw.trim()
+        val desired =
+            if (trimmed.isBlank()) {
+                LocaleListCompat.getEmptyLocaleList()
+            } else {
+                LocaleListCompat.forLanguageTags(trimmed)
+            }
+        val current = AppCompatDelegate.getApplicationLocales()
+        if (current.toLanguageTags() != desired.toLanguageTags()) {
+            runCatching { AppCompatDelegate.setApplicationLocales(desired) }
+        }
     }
 
     LaunchedEffect(

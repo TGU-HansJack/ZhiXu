@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.unit.dp
 import com.zhixu.android.R
 import com.zhixu.android.ui.Ionicons
@@ -127,6 +128,66 @@ private const val TERMS_OF_USE_ZH_MD = """# 知序（Zhixu）使用条款
 © 2026 知序 Zhixu
 """
 
+private const val TERMS_OF_USE_EN_MD = """# Zhixu Terms of Use
+
+Updated: Jan 1, 2026  
+Effective: Jan 1, 2026
+
+Welcome to **Zhixu** and related services.
+
+Ownership and operation of Zhixu belong to **Hansjack (www.hansjack.com)** (referred to as “we” in these Terms).  
+By downloading, installing, registering, logging in, or otherwise using Zhixu, you acknowledge that you have read, understood, and agree to these Terms.
+
+## 1. Service Description & Usage Restrictions
+
+Zhixu is a productivity product that provides **notes, tasks, file management, syncing, and extensibility**. It is intended for lawful personal use or use within your team/organization.
+
+Without our written permission, you must not:
+
+- sell, rent, transfer, or sublicense Zhixu or related services;
+- distribute or operate a commercialized derivative based on Zhixu;
+- use Zhixu for any illegal activities.
+
+You may submit suggestions or feedback. You understand and agree that we may use, modify, or adopt such suggestions without compensation.
+
+## 2. Intellectual Property
+
+Zhixu and its related content (including but not limited to source code, UI design, interaction logic, documentation, trademarks, and icons) are owned by us or the respective rights holders.
+
+Without permission, you must not:
+
+- modify, copy, reverse engineer, decompile, disassemble, or otherwise attempt to derive source code;
+- create derivative works based on Zhixu;
+- remove, obscure, or alter copyright, trademark, or rights notices.
+
+Content you create or upload in Zhixu remains yours. You are responsible for ensuring it is lawful.
+
+## 3. Privacy & Data
+
+We process personal information according to applicable laws and our privacy policy. Please use the in-app settings to choose where your data is stored and synced.
+
+## 4. Changes, Suspension & Termination
+
+We may adjust, upgrade, or optimize services as needed. We may suspend or terminate part or all services under reasonable circumstances (e.g., maintenance or force majeure).
+
+## 5. Liability Limitation
+
+To the maximum extent permitted by law, you assume the risks of using Zhixu. We are not liable for losses caused by network, device, system failures, third-party services/plugins/links, or improper user operations.
+
+## 6. Governing Law & Dispute Resolution
+
+These Terms are governed by the laws of the People’s Republic of China. Disputes shall be resolved by a competent court in our jurisdiction.
+
+## 7. Contact
+
+- Email: support@zhixu.app  
+- Website: https://zhixu.app
+
+---
+
+© 2026 Zhixu
+"""
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Suppress("UNUSED_PARAMETER")
 @Composable
@@ -136,6 +197,7 @@ fun TermsOfUseScreen(
 ) {
     BackHandler(enabled = true, onBack = onBack)
     val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+    val markdown = if (Locale.current.language.lowercase().startsWith("zh")) TERMS_OF_USE_ZH_MD else TERMS_OF_USE_EN_MD
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -157,7 +219,7 @@ fun TermsOfUseScreen(
         },
     ) { innerPadding ->
         MarkdownPreview(
-            markdown = TERMS_OF_USE_ZH_MD,
+            markdown = markdown,
             modifier =
                 Modifier
                     .fillMaxSize()
@@ -169,4 +231,3 @@ fun TermsOfUseScreen(
         )
     }
 }
-
