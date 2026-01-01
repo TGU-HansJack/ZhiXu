@@ -15,6 +15,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.content.ContextCompat
@@ -44,17 +45,21 @@ private fun SystemBarsAppearance() {
     val surface = androidx.compose.material3.MaterialTheme.colorScheme.surface
     val useDarkIcons = surface.luminance() > 0.5f
 
-    DisposableEffect(view, activity, useDarkIcons) {
+    DisposableEffect(view, activity, useDarkIcons, surface) {
         val controller = WindowInsetsControllerCompat(activity.window, view)
+        val window = activity.window
         val previousLightStatusBars = controller.isAppearanceLightStatusBars
         val previousLightNavBars = controller.isAppearanceLightNavigationBars
+        val previousNavBarColor = window.navigationBarColor
 
         controller.isAppearanceLightStatusBars = useDarkIcons
         controller.isAppearanceLightNavigationBars = useDarkIcons
+        window.navigationBarColor = surface.toArgb()
 
         onDispose {
             controller.isAppearanceLightStatusBars = previousLightStatusBars
             controller.isAppearanceLightNavigationBars = previousLightNavBars
+            window.navigationBarColor = previousNavBarColor
         }
     }
 }

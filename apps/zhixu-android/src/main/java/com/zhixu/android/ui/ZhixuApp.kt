@@ -692,12 +692,18 @@ private fun MainBottomBar(
     val selectedTint = MaterialTheme.colorScheme.onSurface
     val unselectedTint = MaterialTheme.colorScheme.onSurfaceVariant
 
-    Surface(color = Color.White, tonalElevation = 2.dp) {
+    Surface(
+        color = Color.White,
+        tonalElevation = 0.dp,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.navigationBars),
+    ) {
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.navigationBars)
                     .height(70.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly,
