@@ -773,6 +773,7 @@ private fun HomePager(
                 DocumentListScreen(
                     contentPadding = contentPadding,
                     vaultRootUri = vaultRootUri,
+                    repository = repository,
                     documentIndex = documentIndex,
                     indexUpdater = indexUpdater,
                     isActive = isActive,

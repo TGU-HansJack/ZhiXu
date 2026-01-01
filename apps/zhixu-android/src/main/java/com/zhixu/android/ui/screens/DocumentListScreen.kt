@@ -1,7 +1,9 @@
 package com.zhixu.android.ui.screens
 
+import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
@@ -27,18 +29,22 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -57,6 +63,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -76,6 +84,7 @@ import com.zhixu.android.data.SearchResult
 import com.zhixu.android.data.TaskSearchResult
 import com.zhixu.android.data.UiDoc
 import com.zhixu.android.data.VaultIndexUpdater
+import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.Ionicons
 import com.zhixu.android.ui.components.RefreshStatusBanner
 import kotlinx.coroutines.Dispatchers
@@ -89,6 +98,7 @@ import kotlinx.coroutines.withContext
 fun DocumentListScreen(
     contentPadding: PaddingValues,
     vaultRootUri: Uri?,
+    repository: VaultRepository,
     documentIndex: DocumentIndex,
     indexUpdater: VaultIndexUpdater,
     isActive: Boolean,
@@ -98,6 +108,8 @@ fun DocumentListScreen(
     onChangeVault: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val highlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     val listState = rememberLazyListState()
     var docs by remember(vaultRootUri) { mutableStateOf<List<UiDoc>>(emptyList()) }
@@ -109,6 +121,12 @@ fun DocumentListScreen(
     var pendingOpenSearch by remember { mutableStateOf(false) }
     var lastSearchToken by remember { mutableLongStateOf(searchRequestToken) }
     var pendingShowUpdatedBanner by remember { mutableStateOf(false) }
+
+    var selectedDoc by remember { mutableStateOf<UiDoc?>(null) }
+    var showDocMenu by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameInput by remember { mutableStateOf("") }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     val isIndexUpdating by indexUpdater.isUpdating.collectAsState()
 
@@ -236,6 +254,10 @@ fun DocumentListScreen(
                                     title = title,
                                     editedAt = editedAt,
                                     onClick = { onOpenDoc(doc.uri.toString(), null, null) },
+                                    onMoreClick = {
+                                        selectedDoc = doc
+                                        showDocMenu = true
+                                    },
                                     showDivider = index != docs.lastIndex,
                                     dividerColor = dividerColor,
                                 )
@@ -253,6 +275,149 @@ fun DocumentListScreen(
         }
     }
 
+    val docMenuSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    if (showDocMenu && selectedDoc != null) {
+        ModalBottomSheet(
+            onDismissRequest = { showDocMenu = false },
+            sheetState = docMenuSheetState,
+            containerColor = MaterialTheme.colorScheme.background,
+            tonalElevation = 0.dp,
+        ) {
+            DocumentRowActionsSheet(
+                onRename = {
+                    val doc = selectedDoc ?: return@DocumentRowActionsSheet
+                    renameInput = doc.baseName.ifBlank { doc.name.removeSuffix(".md") }
+                    showDocMenu = false
+                    showRenameDialog = true
+                },
+                onMove = {
+                    showDocMenu = false
+                    Toast.makeText(context, context.getString(R.string.common_not_implemented), Toast.LENGTH_SHORT).show()
+                },
+                onCopy = {
+                    val doc = selectedDoc ?: return@DocumentRowActionsSheet
+                    showDocMenu = false
+                    scope.launch {
+                        val text = withContext(Dispatchers.IO) { repository.readText(doc.uri) }
+                        clipboard.setText(AnnotatedString(text))
+                        Toast.makeText(context, context.getString(R.string.common_copied), Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onShare = {
+                    val doc = selectedDoc ?: return@DocumentRowActionsSheet
+                    showDocMenu = false
+                    scope.launch {
+                        val text = withContext(Dispatchers.IO) { repository.readText(doc.uri) }
+                        val subject = doc.baseName.ifBlank { doc.name.removeSuffix(".md").ifBlank { "Zhixu" } }
+                        val intent =
+                            Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, subject)
+                                putExtra(Intent.EXTRA_TEXT, text)
+                            }
+                        runCatching {
+                            context.startActivity(Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }.onFailure {
+                            Toast.makeText(context, context.getString(R.string.editor_share_failed), Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                onAddToDesktop = {
+                    showDocMenu = false
+                    Toast.makeText(context, context.getString(R.string.common_not_implemented), Toast.LENGTH_SHORT).show()
+                },
+                onDelete = {
+                    showDocMenu = false
+                    showDeleteDialog = true
+                },
+            )
+        }
+    }
+
+    if (showRenameDialog && selectedDoc != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showRenameDialog = false
+                selectedDoc = null
+            },
+            title = { Text(stringResource(R.string.action_rename)) },
+            text = {
+                ZhixuTextField(
+                    value = renameInput,
+                    onValueChange = { renameInput = it },
+                    singleLine = true,
+                    placeholder = { Text(stringResource(R.string.field_file_name)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val doc = selectedDoc ?: return@TextButton
+                        val desiredName = renameInput.trim()
+                        if (desiredName.isBlank()) return@TextButton
+                        scope.launch {
+                            val renamed =
+                                withContext(Dispatchers.IO) {
+                                    repository.renameDoc(doc.uri, desiredName)
+                                }
+                            if (renamed == null) {
+                                Toast.makeText(context, context.getString(R.string.editor_rename_failed_generic), Toast.LENGTH_SHORT).show()
+                            }
+                            showRenameDialog = false
+                            selectedDoc = null
+                        }
+                    },
+                ) { Text(stringResource(R.string.action_rename)) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showRenameDialog = false
+                        selectedDoc = null
+                    },
+                ) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+
+    if (showDeleteDialog && selectedDoc != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteDialog = false
+                selectedDoc = null
+            },
+            title = { Text(stringResource(R.string.dialog_delete_doc_title)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val doc = selectedDoc ?: return@TextButton
+                        scope.launch {
+                            val ok =
+                                withContext(Dispatchers.IO) {
+                                    repository.deleteDoc(doc.uri)
+                                }
+                            if (!ok) {
+                                Toast.makeText(context, context.getString(R.string.doc_delete_failed), Toast.LENGTH_SHORT).show()
+                            }
+                            showDeleteDialog = false
+                            selectedDoc = null
+                        }
+                    },
+                ) { Text(stringResource(R.string.action_delete)) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                        selectedDoc = null
+                    },
+                ) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+
     if (showSearchSheet) {
         DocumentSearchSheet(
             query = query,
@@ -268,6 +433,149 @@ fun DocumentListScreen(
                 onOpenDoc(uriStr, query, lineIndex)
                 clearSearch()
             },
+        )
+    }
+}
+
+@Composable
+private fun DocumentRowActionsSheet(
+    onRename: () -> Unit,
+    onMove: () -> Unit,
+    onCopy: () -> Unit,
+    onShare: () -> Unit,
+    onAddToDesktop: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .windowInsetsPadding(WindowInsets.navigationBars),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            DocQuickAction(
+                title = stringResource(R.string.action_rename),
+                iconRes = Ionicons.TextOutline,
+                onClick = onRename,
+                modifier = Modifier.weight(1f),
+            )
+            DocQuickAction(
+                title = stringResource(R.string.action_move),
+                iconRes = Ionicons.ArrowForward,
+                onClick = onMove,
+                modifier = Modifier.weight(1f),
+            )
+            DocQuickAction(
+                title = stringResource(R.string.common_copy),
+                iconRes = Ionicons.CopyOutline,
+                onClick = onCopy,
+                modifier = Modifier.weight(1f),
+            )
+            DocQuickAction(
+                title = stringResource(R.string.editor_overflow_share),
+                iconRes = Ionicons.ShareSocialOutline,
+                onClick = onShare,
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        Spacer(modifier = Modifier.size(14.dp))
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column {
+                DocActionRow(
+                    title = stringResource(R.string.action_add_to_desktop),
+                    iconRes = Ionicons.ArrowUpCircleOutline,
+                    onClick = onAddToDesktop,
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                DocActionRow(
+                    title = stringResource(R.string.action_delete),
+                    iconRes = Ionicons.TrashOutline,
+                    iconTint = MaterialTheme.colorScheme.error,
+                    onClick = onDelete,
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.size(8.dp))
+    }
+}
+
+@Composable
+private fun DocQuickAction(
+    title: String,
+    iconRes: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        modifier = modifier,
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onClick)
+                    .padding(vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(26.dp),
+            )
+            Spacer(modifier = Modifier.size(10.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DocActionRow(
+    title: String,
+    iconRes: Int,
+    iconTint: Color = MaterialTheme.colorScheme.onSurface,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = iconTint,
+            modifier = Modifier.size(22.dp),
         )
     }
 }
@@ -469,6 +777,7 @@ private fun DocRow(
     title: String,
     editedAt: String,
     onClick: () -> Unit,
+    onMoreClick: () -> Unit,
     showDivider: Boolean,
     dividerColor: Color,
 ) {
@@ -510,6 +819,13 @@ private fun DocRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        IconButton(onClick = onMoreClick) {
+            Icon(
+                painter = painterResource(Ionicons.EllipsisHorizontal),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

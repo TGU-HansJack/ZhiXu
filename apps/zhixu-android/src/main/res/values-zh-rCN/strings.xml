@@ -45,6 +45,9 @@
     <string name="action_settings">设置</string>
     <string name="action_new_doc">新建</string>
     <string name="action_search">搜索</string>
+    <string name="action_rename">重命名</string>
+    <string name="action_move">移动</string>
+    <string name="action_add_to_desktop">添加到桌面</string>
     <string name="dialog_new_doc_title">新建文档</string>
     <string name="field_file_name">文件名</string>
     <string name="action_create">创建</string>
@@ -57,6 +60,7 @@
     <string name="edited_at_fmt">%1$s</string>
     <string name="search_empty">无结果</string>
     <string name="search_task_hit">任务命中</string>
+    <string name="doc_delete_failed">删除失败</string>
 
     <!-- New doc -->
     <string name="new_doc_title">新建文档</string>

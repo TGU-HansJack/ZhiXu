@@ -46,6 +46,9 @@
     <string name="action_settings">Settings</string>
     <string name="action_new_doc">New</string>
     <string name="action_search">Search</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_move">Move</string>
+    <string name="action_add_to_desktop">Add to home screen</string>
     <string name="dialog_new_doc_title">New document</string>
     <string name="field_file_name">File name</string>
     <string name="action_create">Create</string>
@@ -58,6 +61,7 @@
     <string name="edited_at_fmt">%1$s</string>
     <string name="search_empty">No results</string>
     <string name="search_task_hit">Task match</string>
+    <string name="doc_delete_failed">Delete failed</string>
 
     <!-- New doc -->
     <string name="new_doc_title">New document</string>
