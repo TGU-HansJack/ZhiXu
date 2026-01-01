@@ -519,22 +519,34 @@ fun VaultDrawer(
                         val desiredName = renameInput.trim()
                         if (desiredName.isBlank()) return@TextButton
                         val parentDir = entry.parentPath ?: ""
+                        val uri = entry.uri
+                        showRenameDialog = false
+                        selectedEntry = null
+                        if (uri == null) {
+                            android.widget.Toast
+                                .makeText(context, context.getString(R.string.editor_rename_failed_generic), android.widget.Toast.LENGTH_SHORT)
+                                .show()
+                            return@TextButton
+                        }
                         scope.launch {
-                            val uri = entry.uri
-                            if (uri != null) {
-                                if (entry.isDirectory) {
-                                    repository.renameDirectory(uri, desiredName)
-                                    repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)
-                                    expandedDirs.clear()
-                                    reloadDir("")
-                                } else {
-                                    repository.renameDoc(uri, desiredName)
-                                    repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)
-                                    reloadDir(parentDir)
-                                }
+                            val ok =
+                                runCatching {
+                                    if (entry.isDirectory) {
+                                        repository.renameDirectory(uri, desiredName)
+                                        repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)
+                                        expandedDirs.clear()
+                                        reloadDir("")
+                                    } else {
+                                        repository.renameDoc(uri, desiredName)
+                                        repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)
+                                        reloadDir(parentDir)
+                                    }
+                                }.isSuccess
+                            if (!ok) {
+                                android.widget.Toast
+                                    .makeText(context, context.getString(R.string.editor_rename_failed_generic), android.widget.Toast.LENGTH_SHORT)
+                                    .show()
                             }
-                            showRenameDialog = false
-                            selectedEntry = null
                         }
                     },
                 ) { Text(stringResource(R.string.action_rename)) }
@@ -615,15 +627,42 @@ fun VaultDrawer(
                         val dirUri = dir.uri ?: return@TextButton
                         val fileName = newDocName.trim()
                         if (fileName.isBlank()) return@TextButton
+                        showNewDocDialog = false
+                        newDocTargetDir = null
                         scope.launch {
-                            val created = repository.createDocInDirectory(vaultRootUri, dirUri, fileName) ?: return@launch
+                            val created =
+                                runCatching { repository.createDocInDirectory(vaultRootUri, dirUri, fileName) }
+                                    .getOrElse { e ->
+                                        android.widget.Toast
+                                            .makeText(
+                                                context,
+                                                context.getString(R.string.new_doc_error_create_failed, e.message ?: e.javaClass.simpleName),
+                                                android.widget.Toast.LENGTH_SHORT,
+                                            ).show()
+                                        return@launch
+                                    }
+                                    ?: run {
+                                        android.widget.Toast
+                                            .makeText(
+                                                context,
+                                                context.getString(R.string.new_doc_error_create_failed, "unknown"),
+                                                android.widget.Toast.LENGTH_SHORT,
+                                            ).show()
+                                        return@launch
+                                    }
                             val title = created.name.removeSuffix(".md").trim().ifBlank { context.getString(R.string.new_doc_default_title) }
-                            repository.writeText(created.uri, "# $title\n\n")
-                            repository.indexDocUri(created.uri)
-                            repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = dir.relativePath)
-                            reloadDir(dir.relativePath)
-                            showNewDocDialog = false
-                            newDocTargetDir = null
+                            val wrote =
+                                runCatching {
+                                    repository.writeText(created.uri, "# $title\n\n")
+                                }.isSuccess
+                            if (!wrote) {
+                                android.widget.Toast
+                                    .makeText(context, context.getString(R.string.new_doc_error_write_failed), android.widget.Toast.LENGTH_SHORT)
+                                    .show()
+                            }
+                            runCatching { repository.indexDocUri(created.uri) }
+                            runCatching { repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = dir.relativePath) }
+                            runCatching { reloadDir(dir.relativePath) }
                             onOpenDoc(created.uri.toString())
                         }
                     },

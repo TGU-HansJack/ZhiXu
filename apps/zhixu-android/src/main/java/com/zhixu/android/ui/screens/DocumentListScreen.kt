@@ -359,6 +359,8 @@ fun DocumentListScreen(
                         val doc = selectedDoc ?: return@TextButton
                         val desiredName = renameInput.trim()
                         if (desiredName.isBlank()) return@TextButton
+                        showRenameDialog = false
+                        selectedDoc = null
                         scope.launch {
                             val renamed =
                                 withContext(Dispatchers.IO) {
@@ -367,8 +369,6 @@ fun DocumentListScreen(
                             if (renamed == null) {
                                 Toast.makeText(context, context.getString(R.string.editor_rename_failed_generic), Toast.LENGTH_SHORT).show()
                             }
-                            showRenameDialog = false
-                            selectedDoc = null
                         }
                     },
                 ) { Text(stringResource(R.string.action_rename)) }
