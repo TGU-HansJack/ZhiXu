@@ -451,6 +451,7 @@ fun DocumentListScreen(
                 onRefresh = { if (isActive) requestRefresh(force = true, reindex = false, showUpdatedBanner = true) },
                 state = pullState,
                 modifier = Modifier.fillMaxSize(),
+                indicator = {},
             ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         LazyColumn(

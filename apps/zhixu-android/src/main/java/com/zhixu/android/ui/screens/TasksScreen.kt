@@ -40,6 +40,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ModalBottomSheet
@@ -240,6 +241,7 @@ fun TasksScreen(
                 onRefresh = { if (isActive) scope.launch { refresh(force = true, showUpdatedBanner = true) } },
                 state = pullState,
                 modifier = Modifier.fillMaxSize(),
+                indicator = {},
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
@@ -258,20 +260,21 @@ fun TasksScreen(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    Text(
-                                        text = if (indexBuilding || repository.isIndexBuildInProgress()) "索引构建中…" else "任务索引未就绪（将在后台空闲时自动构建）",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        style = MaterialTheme.typography.bodySmall,
-                                    )
-                                    Button(
-                                        onClick = { requestIndexBuild() },
-                                        enabled = !(indexBuilding || repository.isIndexBuildInProgress()),
-                                    ) {
-                                        Text("立即构建索引")
-                                    }
-                                    HorizontalDivider(thickness = 0.5.dp)
-                                }
-                            }
+                                     Text(
+                                         text = if (indexBuilding || repository.isIndexBuildInProgress()) "索引构建中…" else "任务索引未就绪（将在后台空闲时自动构建）",
+                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                         style = MaterialTheme.typography.bodySmall,
+                                     )
+                                     TextButton(
+                                         onClick = { requestIndexBuild() },
+                                         enabled = !(indexBuilding || repository.isIndexBuildInProgress()),
+                                         contentPadding = PaddingValues(0.dp),
+                                     ) {
+                                         Text("立即构建索引")
+                                     }
+                                     HorizontalDivider(thickness = 0.5.dp)
+                                 }
+                             }
                         }
 
                         item {
