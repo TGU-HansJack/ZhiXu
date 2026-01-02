@@ -90,7 +90,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
@@ -125,7 +125,9 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalDensity
@@ -247,6 +249,8 @@ fun EditorScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    var isRenamingDoc by remember { mutableStateOf(false) }
+    val docNameFocusRequester = remember { FocusRequester() }
     var showOverflowSheet by remember { mutableStateOf(false) }
     val overflowSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showFontSizeSheet by remember { mutableStateOf(false) }
@@ -271,6 +275,10 @@ fun EditorScreen(
             376.dp,
             with(density) { (imeBottomPx + anticipatedToolbarPx).toDp() } + 96.dp,
         )
+
+    LaunchedEffect(isRenamingDoc) {
+        if (isRenamingDoc) docNameFocusRequester.requestFocus()
+    }
 
     var openOutlineToken by remember { mutableStateOf(0L) }
 
@@ -1291,7 +1299,7 @@ fun EditorScreen(
                             Modifier
                                 .background(Color.White)
                     ) {
-                        TopAppBar(
+                        CenterAlignedTopAppBar(
                             windowInsets = TopAppBarDefaults.windowInsets,
                             colors =
                                 TopAppBarDefaults.topAppBarColors(
@@ -1299,12 +1307,68 @@ fun EditorScreen(
                                     scrolledContainerColor = Color.White,
                                 ),
                             title = {
-                                if (isPdfDoc) {
-                                    Text(
-                                        text =
+                                val displayName =
+                                    when {
+                                        isPdfDoc ->
                                             title.ifBlank {
                                                 originalFileName.removeSuffix(".pdf").ifBlank { stringResource(R.string.new_doc_default_title) }
-                                            },
+                                            }
+                                        else ->
+                                            title.ifBlank {
+                                                originalFileName.removeSuffix(".md").ifBlank { stringResource(R.string.new_doc_default_title) }
+                                            }
+                                    }
+
+                                if (isPdfDoc) {
+                                    Text(text = displayName, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                } else if (isRenamingDoc) {
+                                    BasicTextField(
+                                        value = title,
+                                        onValueChange = { title = it },
+                                        modifier =
+                                            Modifier
+                                                .focusRequester(docNameFocusRequester)
+                                                .onFocusChanged { if (!it.isFocused) isRenamingDoc = false }
+                                                .fillMaxWidth(),
+                                        singleLine = true,
+                                        textStyle =
+                                            MaterialTheme.typography.labelSmall.copy(
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            ),
+                                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                        keyboardActions =
+                                            KeyboardActions(
+                                                onDone = {
+                                                    isRenamingDoc = false
+                                                    focusManager.clearFocus()
+                                                },
+                                            ),
+                                        decorationBox = { inner ->
+                                            Box(modifier = Modifier.fillMaxWidth()) {
+                                                if (title.isBlank()) {
+                                                    Text(
+                                                        text = displayName,
+                                                        style =
+                                                            MaterialTheme.typography.labelSmall.copy(
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                                                            ),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                    )
+                                                }
+                                                inner()
+                                            }
+                                        },
+                                    )
+                                } else {
+                                    Text(
+                                        text = displayName,
+                                        modifier = Modifier.clickable { isRenamingDoc = true },
+                                        style =
+                                            MaterialTheme.typography.labelSmall.copy(
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                                            ),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
@@ -1341,12 +1405,12 @@ fun EditorScreen(
                             .padding(padding)
                             .fillMaxSize(),
                 ) {
-                val contentOuterPadding = if (isPdfDoc) 0.dp else 12.dp
+                val contentOuterPadding = 0.dp
                 Box(modifier = Modifier.fillMaxSize().padding(horizontal = contentOuterPadding)) {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
                         tonalElevation = 0.dp,
-                        shape = if (isPdfDoc) RoundedCornerShape(0.dp) else RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(0.dp),
                         color = MaterialTheme.colorScheme.surface,
                     ) {
                         Column(
@@ -1436,40 +1500,6 @@ fun EditorScreen(
                                     }
                                 }
                             }
-                            if (!isPdfDoc) {
-                                BasicTextField(
-                                    value = title,
-                                    onValueChange = { title = it },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true,
-                                    textStyle =
-                                        MaterialTheme.typography.headlineSmall.copy(
-                                            fontSize = 22.sp,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                        ),
-                                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                    decorationBox = { inner ->
-                                        Box(modifier = Modifier.fillMaxWidth()) {
-                                            if (title.isBlank()) {
-                                                Text(
-                                                    text =
-                                                        originalFileName
-                                                            .removeSuffix(".md")
-                                                            .ifBlank { stringResource(R.string.new_doc_default_title) },
-                                                    style =
-                                                        MaterialTheme.typography.headlineSmall.copy(
-                                                            color = Color.Gray,
-                                                            fontSize = 22.sp,
-                                                        ),
-                                                )
-                                            }
-                                            inner()
-                                        }
-                                    },
-                                )
-                                HorizontalDivider(modifier = Modifier.padding(top = 6.dp, bottom = 4.dp), thickness = 0.5.dp)
-                            }
-
                             if (isPdfDoc) {
                                 PdfPreview(
                                     modifier = Modifier.fillMaxSize(),
