@@ -26,6 +26,7 @@ fun SpaceScreen(
     isActive: Boolean,
     refreshToken: Long,
     mutation: DocListMutation?,
+    onDocListMutated: (DocListMutation) -> Unit,
     onOpenDoc: (String) -> Unit,
     onChangeVault: () -> Unit,
 ) {
@@ -49,6 +50,7 @@ fun SpaceScreen(
         isActive = isActive,
         refreshToken = refreshToken,
         mutation = mutation,
+        onDocListMutated = onDocListMutated,
         sheetWidth = Dp.Unspecified,
         contentPadding = contentPadding,
         useSystemInsets = false,

@@ -660,6 +660,8 @@ fun ZhixuApp() {
                         },
                         initialQuery = Uri.decode(qParam).takeIf { it.isNotBlank() },
                         initialLineIndex = lineParam.takeIf { it >= 0 },
+                        dirStructureMutationToken = dirStructureMutationToken,
+                        dirStructureMutation = dirStructureMutation,
                     )
                     }
                 }
@@ -798,6 +800,7 @@ private fun HomePager(
                     isActive = isActive,
                     refreshToken = dirStructureMutationToken,
                     mutation = dirStructureMutation,
+                    onDocListMutated = onDocListMutated,
                     onOpenDoc = { rawUri -> onOpenDoc(rawUri, null, null) },
                     onChangeVault = onChangeVault,
                 )

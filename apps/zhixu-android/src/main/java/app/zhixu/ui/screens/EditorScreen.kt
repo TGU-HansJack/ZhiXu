@@ -220,6 +220,8 @@ fun EditorScreen(
     onGenerateLongImage: (LongImageRequest) -> Unit,
     initialQuery: String?,
     initialLineIndex: Int?,
+    dirStructureMutationToken: Long = 0L,
+    dirStructureMutation: DocListMutation? = null,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -1201,18 +1203,19 @@ fun EditorScreen(
             if (root == null) {
                 Box(modifier = modifier.width(0.dp))
             } else {
-                VaultDrawer(
-                    vaultRootUri = root,
-                    repository = repository,
-                    onOpenDoc = { rawUri -> onOpenDoc(rawUri, null, null) },
-                    onCloseDrawer = closeDrawer,
-                    isActive = isOpen,
-                    refreshToken = 0L,
-                    mutation = null,
-                    headerMinHeight = 64.dp,
-                    itemMinHeight = 40.dp,
-                    itemTextStyle = MaterialTheme.typography.bodyMedium,
-                    itemIconSize = 20.dp,
+                    VaultDrawer(
+                        vaultRootUri = root,
+                        repository = repository,
+                        onOpenDoc = { rawUri -> onOpenDoc(rawUri, null, null) },
+                        onCloseDrawer = closeDrawer,
+                        isActive = isOpen,
+                        refreshToken = dirStructureMutationToken,
+                        mutation = dirStructureMutation,
+                        onDocListMutated = onDocListMutated,
+                        headerMinHeight = 64.dp,
+                        itemMinHeight = 40.dp,
+                        itemTextStyle = MaterialTheme.typography.bodyMedium,
+                        itemIconSize = 20.dp,
                     itemChevronSize = 18.dp,
                     modifier = modifier,
                 )
