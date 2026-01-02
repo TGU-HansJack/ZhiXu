@@ -1,0 +1,5 @@
+Eclipse Distribution License - v 1.0
+
+This is a copy note for the Eclipse Distribution License v1.0. The canonical
+license text is available at: https://www.eclipse.org/org/documents/edl-v10.php
+

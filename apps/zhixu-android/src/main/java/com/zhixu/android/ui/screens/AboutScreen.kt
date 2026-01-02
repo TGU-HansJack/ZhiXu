@@ -52,6 +52,9 @@ import com.zhixu.android.R
 import com.zhixu.android.ui.Ionicons
 
 private const val OFFICIAL_SITE_URL = "https://zhixu.app"
+private const val OFFICIAL_TOS_URL = "https://zhixu.app/tos"
+private const val OFFICIAL_PRIVACY_URL = "https://zhixu.app/privacy"
+private const val OFFICIAL_LICENSE_URL = "https://zhixu.app/license"
 private const val QQ_GROUP_NUMBER = "556339740"
 private const val QQ_GROUP_URI =
     "mqqapi://card/show_pslcard?src_type=internal&version=1&uin=$QQ_GROUP_NUMBER&card_type=group&source=external"
@@ -62,6 +65,8 @@ fun AboutScreen(
     contentPadding: PaddingValues,
     onBack: () -> Unit,
     onOpenTermsOfUse: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
+    onOpenOpenSourceLicense: () -> Unit,
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -181,8 +186,22 @@ fun AboutScreen(
                         AboutNavRow(
                             iconRes = Ionicons.DocumentText,
                             title = stringResource(R.string.terms_of_use_title),
-                            value = null,
+                            value = OFFICIAL_TOS_URL.removePrefix("https://"),
                             onClick = onOpenTermsOfUse,
+                        )
+                        HorizontalDivider(color = dividerColor)
+                        AboutNavRow(
+                            iconRes = Ionicons.DocumentText,
+                            title = stringResource(R.string.privacy_policy_title),
+                            value = OFFICIAL_PRIVACY_URL.removePrefix("https://"),
+                            onClick = onOpenPrivacyPolicy,
+                        )
+                        HorizontalDivider(color = dividerColor)
+                        AboutNavRow(
+                            iconRes = Ionicons.DocumentText,
+                            title = stringResource(R.string.open_source_license_title),
+                            value = OFFICIAL_LICENSE_URL.removePrefix("https://"),
+                            onClick = onOpenOpenSourceLicense,
                         )
                     }
                 }

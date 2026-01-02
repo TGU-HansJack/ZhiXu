@@ -308,3 +308,107 @@ code {
 .footer .tiny {
   margin: 16px 0 0;
 }
+
+.legal {
+  padding-top: 48px;
+  padding-bottom: 44px;
+}
+
+.legal__title {
+  margin: 14px 0 8px;
+  font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-weight: 900;
+  font-size: 30px;
+  letter-spacing: -0.5px;
+}
+
+.legal__meta {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.legal__content h2 {
+  margin: 26px 0 10px;
+  font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-weight: 850;
+  font-size: 20px;
+}
+
+.legal__content p {
+  margin: 10px 0;
+}
+
+.legal__content ul {
+  margin: 10px 0;
+  padding-left: 18px;
+}
+
+.legal__content li {
+  margin: 8px 0;
+}
+
+.legal__content a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.legal__pre {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  background: var(--card);
+  overflow: auto;
+  white-space: pre-wrap;
+  line-height: 1.45;
+  font-size: 13px;
+}
+
+.legal__tableWrap {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  overflow: auto;
+}
+
+.legal__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.legal__table th,
+.legal__table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.legal__table th {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--accent) 4%, var(--card));
+}
+
+.legal__table tr:last-child td {
+  border-bottom: none;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 6%, var(--card));
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}

@@ -4,18 +4,18 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import com.zhixu.android.R
 
-private const val TERMS_OF_USE_URL = "https://zhixu.app/tos"
+private const val OPEN_SOURCE_LICENSE_URL = "https://zhixu.app/license"
 
 @Suppress("UNUSED_PARAMETER")
 @Composable
-fun TermsOfUseScreen(
+fun OpenSourceLicenseScreen(
     contentPadding: PaddingValues,
     onBack: () -> Unit,
 ) {
     WebPageScreen(
         contentPadding = contentPadding,
-        titleRes = R.string.terms_of_use_title,
-        url = TERMS_OF_USE_URL,
+        titleRes = R.string.open_source_license_title,
+        url = OPEN_SOURCE_LICENSE_URL,
         onBack = onBack,
     )
 }

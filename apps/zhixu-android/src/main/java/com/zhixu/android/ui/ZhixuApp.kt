@@ -94,6 +94,8 @@ import com.zhixu.android.ui.screens.DocumentListScreen
 import com.zhixu.android.ui.screens.EditorScreen
 import com.zhixu.android.ui.screens.LongImageScreen
 import com.zhixu.android.ui.screens.NewDocScreen
+import com.zhixu.android.ui.screens.OpenSourceLicenseScreen
+import com.zhixu.android.ui.screens.PrivacyPolicyScreen
 import com.zhixu.android.ui.screens.SettingsScreen
 import com.zhixu.android.ui.screens.SpaceScreen
 import com.zhixu.android.ui.screens.SyncScreen
@@ -473,10 +475,24 @@ fun ZhixuApp() {
                         contentPadding = padding,
                         onBack = { navController.popBackStack() },
                         onOpenTermsOfUse = { navController.navigate("termsOfUse") },
+                        onOpenPrivacyPolicy = { navController.navigate("privacyPolicy") },
+                        onOpenOpenSourceLicense = { navController.navigate("openSourceLicense") },
                     )
                 }
                 composable("termsOfUse") {
                     TermsOfUseScreen(
+                        contentPadding = padding,
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable("privacyPolicy") {
+                    PrivacyPolicyScreen(
+                        contentPadding = padding,
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable("openSourceLicense") {
+                    OpenSourceLicenseScreen(
                         contentPadding = padding,
                         onBack = { navController.popBackStack() },
                     )

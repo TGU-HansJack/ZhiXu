@@ -1,0 +1,5 @@
+Eclipse Public License - v 1.0
+
+This is a copy of the Eclipse Public License v1.0. The canonical license text is
+available at: https://www.eclipse.org/legal/epl-v10.html
+
