@@ -150,6 +150,7 @@ import com.zhixu.android.plugins.runtime.JsPluginRuntime
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import com.zhixu.android.ui.components.MarkdownPreview
+import com.zhixu.android.ui.components.PdfPreview
 import com.zhixu.android.ui.components.RadialFabAction
 import com.zhixu.android.ui.components.LineDiff
 import com.zhixu.android.ui.components.DiffOp
@@ -219,6 +220,7 @@ fun EditorScreen(
     var originalFileName by remember { mutableStateOf("") }
     var content by remember { mutableStateOf(TextFieldValue("")) }
     var isPreview by remember { mutableStateOf(false) }
+    var isPdfDoc by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
@@ -611,16 +613,19 @@ fun EditorScreen(
 
         EditorScreenCache.get(docUri)?.let { cached ->
             originalFileName = cached.originalFileName
-            title = cached.title
-            content = TextFieldValue(cached.text)
-            outline = cached.outline
-            wikiLinks = cached.wikiLinks
-            lastParsedText = cached.text
-            lastPersistedText = cached.text
-            isLoaded = true
+            isPdfDoc = cached.originalFileName.endsWith(".pdf", ignoreCase = true)
+            if (!isPdfDoc) {
+                title = cached.title
+                content = TextFieldValue(cached.text)
+                outline = cached.outline
+                wikiLinks = cached.wikiLinks
+                lastParsedText = cached.text
+                lastPersistedText = cached.text
+                isLoaded = true
+            }
         }
 
-        val (fileName, loaded) =
+        val (fileName, loaded, detectedPdf) =
             runCatching {
                 withContext(Dispatchers.IO) {
                     val name =
@@ -629,8 +634,10 @@ fun EditorScreen(
                         } else {
                             DocumentFile.fromSingleUri(context, docUri)?.name.orEmpty()
                         }
-                    val text = repository.readText(docUri)
-                    name to text
+                    val mime = runCatching { context.contentResolver.getType(docUri).orEmpty() }.getOrDefault("")
+                    val isPdf = name.endsWith(".pdf", ignoreCase = true) || mime.equals("application/pdf", ignoreCase = true)
+                    val text = if (isPdf) "" else repository.readText(docUri)
+                    Triple(name, text, isPdf)
                 }
             }.getOrElse { e ->
                 val msg =
@@ -640,10 +647,28 @@ fun EditorScreen(
                         else -> context.getString(R.string.editor_load_failed_generic)
                     }
                 snackbarHostState.showSnackbar(msg)
-                "" to ""
+                Triple("", "", false)
             }
 
         originalFileName = fileName
+        isPdfDoc = detectedPdf
+        if (detectedPdf) {
+            title =
+                fileName
+                    .removeSuffix(".pdf")
+                    .ifBlank { fileName.ifBlank { context.getString(R.string.new_doc_default_title) } }
+            isPreview = true
+            content = TextFieldValue("")
+            undoStack.clear()
+            redoStack.clear()
+            outline = emptyList()
+            wikiLinks = emptyList()
+            lastParsedText = null
+            lastPersistedText = null
+            isLoaded = true
+            pendingInitialJump = null
+            return@LaunchedEffect
+        }
         title = fileName.removeSuffix(".md").ifBlank { context.getString(R.string.new_doc_default_title) }
 
         if (loaded != content.text) {
@@ -1074,6 +1099,7 @@ fun EditorScreen(
 
     LaunchedEffect(isLoaded, title, currentDocUri) {
         if (!isLoaded) return@LaunchedEffect
+        if (!originalFileName.endsWith(".md", ignoreCase = true)) return@LaunchedEffect
         val desiredName = title.trim()
         if (desiredName.isBlank()) return@LaunchedEffect
         delay(600)
@@ -1101,7 +1127,7 @@ fun EditorScreen(
     }
 
     ZhixuSwipeDualDrawer(
-        enabled = true,
+        enabled = !isPdfDoc,
         openGestureEnabled = effectiveImeBottomPx == 0,
         resetKey = "${currentDocUri}|${vaultRootUri}",
         openRightToken = openOutlineToken,
@@ -1230,7 +1256,18 @@ fun EditorScreen(
                                     containerColor = Color.White,
                                     scrolledContainerColor = Color.White,
                                 ),
-                            title = { },
+                            title = {
+                                if (isPdfDoc) {
+                                    Text(
+                                        text =
+                                            title.ifBlank {
+                                                originalFileName.removeSuffix(".pdf").ifBlank { stringResource(R.string.new_doc_default_title) }
+                                            },
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            },
                             navigationIcon = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     IconButton(onClick = { requestExit() }, enabled = !isExitSaveInProgress) {
@@ -1239,11 +1276,13 @@ fun EditorScreen(
                                 }
                             },
                             actions = {
-                                IconButton(onClick = { isPreview = !isPreview }) {
-                                    Icon(
-                                        imageVector = if (isPreview) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                                        contentDescription = stringResource(R.string.action_preview),
-                                    )
+                                if (!isPdfDoc) {
+                                    IconButton(onClick = { isPreview = !isPreview }) {
+                                        Icon(
+                                            imageVector = if (isPreview) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                            contentDescription = stringResource(R.string.action_preview),
+                                        )
+                                    }
                                 }
                                 IconButton(onClick = { showOverflowSheet = true }) {
                                     Icon(painter = painterResource(Ionicons.EllipsisHorizontal), contentDescription = "More")
@@ -1260,51 +1299,59 @@ fun EditorScreen(
                             .padding(padding)
                             .fillMaxSize(),
                 ) {
-                Box(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+                val contentOuterPadding = if (isPdfDoc) 0.dp else 12.dp
+                Box(modifier = Modifier.fillMaxSize().padding(horizontal = contentOuterPadding)) {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
                         tonalElevation = 0.dp,
-                        shape = RoundedCornerShape(16.dp),
+                        shape = if (isPdfDoc) RoundedCornerShape(0.dp) else RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.surface,
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                                .padding(horizontal = if (isPdfDoc) 0.dp else 12.dp, vertical = if (isPdfDoc) 0.dp else 6.dp),
                         ) {
-                            BasicTextField(
-                                value = title,
-                                onValueChange = { title = it },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                textStyle =
-                                    MaterialTheme.typography.headlineSmall.copy(
-                                        fontSize = 22.sp,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    ),
-                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                decorationBox = { inner ->
-                                    Box(modifier = Modifier.fillMaxWidth()) {
-                                        if (title.isBlank()) {
-                                            Text(
-                                                text =
-                                                    originalFileName
-                                                        .removeSuffix(".md")
-                                                        .ifBlank { stringResource(R.string.new_doc_default_title) },
-                                                style =
-                                                    MaterialTheme.typography.headlineSmall.copy(
-                                                        color = Color.Gray,
-                                                        fontSize = 22.sp,
-                                                    ),
-                                            )
+                            if (!isPdfDoc) {
+                                BasicTextField(
+                                    value = title,
+                                    onValueChange = { title = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    textStyle =
+                                        MaterialTheme.typography.headlineSmall.copy(
+                                            fontSize = 22.sp,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                        ),
+                                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                    decorationBox = { inner ->
+                                        Box(modifier = Modifier.fillMaxWidth()) {
+                                            if (title.isBlank()) {
+                                                Text(
+                                                    text =
+                                                        originalFileName
+                                                            .removeSuffix(".md")
+                                                            .ifBlank { stringResource(R.string.new_doc_default_title) },
+                                                    style =
+                                                        MaterialTheme.typography.headlineSmall.copy(
+                                                            color = Color.Gray,
+                                                            fontSize = 22.sp,
+                                                        ),
+                                                )
+                                            }
+                                            inner()
                                         }
-                                        inner()
-                                    }
-                                },
-                            )
-                            HorizontalDivider(modifier = Modifier.padding(top = 6.dp, bottom = 4.dp), thickness = 0.5.dp)
+                                    },
+                                )
+                                HorizontalDivider(modifier = Modifier.padding(top = 6.dp, bottom = 4.dp), thickness = 0.5.dp)
+                            }
 
-                            if (isPreview) {
+                            if (isPdfDoc) {
+                                PdfPreview(
+                                    modifier = Modifier.fillMaxSize(),
+                                    docUri = currentDocUri,
+                                )
+                            } else if (isPreview) {
                                 MarkdownPreview(
                                     modifier = Modifier.fillMaxSize(),
                                     markdown = content.text,

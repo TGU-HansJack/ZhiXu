@@ -559,11 +559,13 @@ class VaultRepository(
         val name = file.name
         val mime = file.type
         val looksLikeMarkdown = name?.endsWith(".md", ignoreCase = true) == true
+        val looksLikePdf = name?.endsWith(".pdf", ignoreCase = true) == true
+        val isPdf = mime.equals("application/pdf", ignoreCase = true)
         val isTextMarkdown =
             mime.equals("text/markdown", ignoreCase = true) ||
                 mime.equals("text/x-markdown", ignoreCase = true)
         val isPlainText = mime.equals("text/plain", ignoreCase = true)
-        return looksLikeMarkdown || isTextMarkdown || isPlainText
+        return looksLikeMarkdown || isTextMarkdown || isPlainText || looksLikePdf || isPdf
     }
 
     private suspend fun listVaultChildrenDirIndexEntriesLive(
@@ -1257,6 +1259,73 @@ class VaultRepository(
         // Some providers rename in-place without changing the Uri; refresh the index so doc name updates.
         runCatching { indexDocUri(docUri) }
         docUri
+    }
+
+    suspend fun renameFile(fileUri: Uri, desiredName: String): Uri? = withContext(Dispatchers.IO) {
+        val raw = sanitizeFileName(desiredName).trim().ifBlank { "Untitled" }
+
+        fun extensionOf(name: String): String {
+            val dot = name.lastIndexOf('.')
+            if (dot <= 0 || dot == name.lastIndex) return ""
+            return name.substring(dot)
+        }
+
+        val currentName =
+            if (fileUri.scheme.equals("file", ignoreCase = true)) {
+                fileUri.path?.let { File(it).name }.orEmpty()
+            } else {
+                DocumentFile.fromSingleUri(context, fileUri)?.name.orEmpty()
+            }
+        val currentExt = extensionOf(currentName)
+        val desiredHasExt = raw.contains('.') && !raw.endsWith(".")
+        val finalName =
+            when {
+                desiredHasExt -> raw
+                currentExt.isNotBlank() -> raw.removeSuffix(currentExt) + currentExt
+                else -> raw
+            }
+
+        if (fileUri.scheme.equals("file", ignoreCase = true)) {
+            val path = fileUri.path ?: return@withContext null
+            val file = File(path)
+            val dir = file.parentFile ?: return@withContext null
+            if (!dir.exists()) return@withContext null
+
+            var candidate = finalName
+            var index = 1
+            while (File(dir, candidate).exists() && !candidate.equals(file.name, ignoreCase = true)) {
+                val base = finalName.removeSuffix(currentExt).trimEnd()
+                val ext = currentExt
+                candidate = if (ext.isNotBlank()) "$base ($index)$ext" else "$base ($index)"
+                index++
+            }
+            if (candidate.equals(file.name, ignoreCase = true)) return@withContext fileUri
+
+            val dest = File(dir, candidate)
+            val ok = runCatching { file.renameTo(dest) }.getOrDefault(false)
+            if (!ok) return@withContext null
+
+            val newUri = Uri.fromFile(dest)
+            runCatching { indexRepository.migrateDocUri(oldUri = fileUri.toString(), newUri = newUri.toString(), newName = dest.name) }
+                .onSuccess { signalIndexChanged() }
+            return@withContext newUri
+        }
+
+        val resolver: ContentResolver = context.contentResolver
+        val renamedUri = runCatching { DocumentsContract.renameDocument(resolver, fileUri, finalName) }.getOrNull()
+        if (renamedUri != null) {
+            val newName = DocumentFile.fromSingleUri(context, renamedUri)?.name ?: finalName
+            runCatching { indexRepository.migrateDocUri(oldUri = fileUri.toString(), newUri = renamedUri.toString(), newName = newName) }
+                .onSuccess { signalIndexChanged() }
+            return@withContext renamedUri
+        }
+
+        val doc = DocumentFile.fromSingleUri(context, fileUri) ?: return@withContext null
+        val ok = runCatching { doc.renameTo(finalName) }.getOrDefault(false)
+        if (!ok) return@withContext null
+        // Some providers rename in-place without changing the Uri; refresh the index so doc name updates.
+        runCatching { indexDocUri(fileUri) }
+        fileUri
     }
 
     suspend fun renameDirectory(dirUri: Uri, desiredName: String): Uri? = withContext(Dispatchers.IO) {

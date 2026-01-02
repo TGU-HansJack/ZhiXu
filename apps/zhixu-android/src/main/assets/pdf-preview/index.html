@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <script>
+      // Kotlin might call these before scripts finish loading; buffer and apply later.
+      window.__payload = { themeJson: null, pdfUrl: "" };
+      window.__applyQueued = false;
+      window.__scheduleApply = () => {
+        if (window.__applyQueued) return;
+        window.__applyQueued = true;
+        setTimeout(() => {
+          window.__applyQueued = false;
+          if (window.__apply) window.__apply();
+        }, 0);
+      };
+      window.__setTheme = (json) => { window.__payload.themeJson = json; window.__scheduleApply(); };
+      window.__setPdfUrl = (url) => { window.__payload.pdfUrl = url || ""; window.__scheduleApply(); };
+    </script>
+
+    <style>
+      * { box-sizing: border-box; }
+      :root {
+        --surface: #FFFFFF;
+        --onSurface: #111111;
+        --outline: rgba(0, 0, 0, 0.18);
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--surface);
+        color: var(--onSurface);
+        height: 100%;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial,
+          "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      }
+      #status {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        padding: 8px 10px;
+        font-size: 12px;
+        color: rgba(127, 127, 127, 0.9);
+        background: color-mix(in srgb, var(--surface) 92%, transparent);
+        border-bottom: 1px solid var(--outline);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        display: none;
+      }
+      #viewer {
+        padding: 10px 10px 18px;
+      }
+      .page {
+        width: 100%;
+        margin: 0 auto 12px;
+        border: 1px solid var(--outline);
+        border-radius: 10px;
+        overflow: hidden;
+        background: #fff;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      @media (min-width: 900px) {
+        #viewer { padding: 12px 16px 22px; }
+        .page { max-width: 860px; }
+      }
+      html, body { scrollbar-width: none; }
+      html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="status"></div>
+    <div id="viewer"></div>
+
+    <script src="./vendor/pdfjs/pdf.min.js"></script>
+    <script>
+      (() => {
+        const viewer = document.getElementById("viewer");
+        const status = document.getElementById("status");
+
+        const runtime = {
+          currentUrl: null,
+          worker: null,
+          pdf: null,
+          queue: Promise.resolve(),
+        };
+
+        function setStatus(text) {
+          status.textContent = text || "";
+          status.style.display = text ? "block" : "none";
+        }
+
+        function applyTheme(themeJson) {
+          if (!themeJson) return;
+          try {
+            const t = JSON.parse(themeJson);
+            if (t.surface) document.documentElement.style.setProperty("--surface", t.surface);
+            if (t.onSurface) document.documentElement.style.setProperty("--onSurface", t.onSurface);
+            if (t.outline) document.documentElement.style.setProperty("--outline", t.outline);
+          } catch (_) {}
+        }
+
+        async function ensureWorker() {
+          if (runtime.worker) return runtime.worker;
+          const workerSrc = new URL("./vendor/pdfjs/pdf.worker.min.js", window.location.href).toString();
+          pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+          runtime.worker = new pdfjsLib.PDFWorker({ name: "zhixu-pdf-worker" });
+          return runtime.worker;
+        }
+
+        async function renderPdf(url) {
+          setStatus("Loading PDF…");
+          await ensureWorker();
+
+          if (runtime.pdf) {
+            try { await runtime.pdf.destroy(); } catch (_) {}
+            runtime.pdf = null;
+          }
+          viewer.innerHTML = "";
+
+          const loadingTask = pdfjsLib.getDocument({ url, worker: runtime.worker });
+          const pdf = await loadingTask.promise;
+          runtime.pdf = pdf;
+
+          const total = pdf.numPages || 0;
+          for (let pageNo = 1; pageNo <= total; pageNo++) {
+            setStatus(`Rendering ${pageNo}/${total}…`);
+            const page = await pdf.getPage(pageNo);
+            const viewport1 = page.getViewport({ scale: 1 });
+            const containerWidth = Math.max(1, viewer.clientWidth || document.documentElement.clientWidth || 360);
+            const cssScale = containerWidth / viewport1.width;
+            const dpr = window.devicePixelRatio || 1;
+            const viewport = page.getViewport({ scale: cssScale * dpr });
+
+            const wrap = document.createElement("div");
+            wrap.className = "page";
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.floor(viewport.width);
+            canvas.height = Math.floor(viewport.height);
+            canvas.style.width = `${Math.floor(viewport.width / dpr)}px`;
+            canvas.style.height = `${Math.floor(viewport.height / dpr)}px`;
+            wrap.appendChild(canvas);
+            viewer.appendChild(wrap);
+
+            const ctx = canvas.getContext("2d", { alpha: false });
+            await page.render({ canvasContext: ctx, viewport }).promise;
+          }
+          setStatus("");
+        }
+
+        window.__apply = () => {
+          if (!window.__payload) return;
+          applyTheme(window.__payload.themeJson);
+
+          const nextUrl = window.__payload.pdfUrl || "";
+          if (!nextUrl || nextUrl === runtime.currentUrl) return;
+          runtime.currentUrl = nextUrl;
+
+          runtime.queue = runtime.queue
+            .then(() => renderPdf(nextUrl))
+            .catch((e) => {
+              console.error(e);
+              setStatus(e && e.message ? e.message : String(e));
+            });
+        };
+
+        window.__apply();
+      })();
+    </script>
+  </body>
+</html>
+

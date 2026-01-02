@@ -175,6 +175,12 @@ fun VaultDrawer(
         loadingDirs[key] = true
         try {
             repository.ensureDirIndexBuilt(vaultRootUri, force = false)
+            runCatching {
+                repository.refreshDirIndexForDirectory(
+                    rootUri = vaultRootUri,
+                    parentRelativePath = key.takeIf { it.isNotBlank() },
+                )
+            }
             if (key.isBlank()) {
                 errorText = null
                 val loaded =
@@ -338,11 +344,17 @@ fun VaultDrawer(
                     val indent = (entry.depth * 8).dp
                     val isExpanded = expandedDirs[entry.relativePath] == true
                     val isDirLoading = entry.isDirectory && (loadingDirs[entry.relativePath] == true)
+                    val isMarkdownDoc = !entry.isDirectory && entry.name.endsWith(".md", ignoreCase = true)
+                    val isPdf = !entry.isDirectory && entry.name.endsWith(".pdf", ignoreCase = true)
                     val displayName =
                         if (entry.isDirectory) {
                             entry.name
                         } else {
-                            entry.name.removeSuffix(".md")
+                            when {
+                                isMarkdownDoc -> entry.name.removeSuffix(".md")
+                                isPdf -> entry.name.removeSuffix(".pdf")
+                                else -> entry.name
+                            }
                         }
 
                     Row(
@@ -399,6 +411,14 @@ fun VaultDrawer(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
+                        if (isPdf) {
+                            Text(
+                                text = "PDF",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                maxLines = 1,
+                            )
+                        }
                         if (entry.isDirectory) {
                             IconButton(
                                 onClick = {
@@ -453,7 +473,7 @@ fun VaultDrawer(
                     val entry = selectedEntry ?: return@VaultEntryActionsSheet
                     renameInput =
                         if (entry.isDirectory) entry.name
-                        else entry.name.removeSuffix(".md").ifBlank { entry.name }
+                        else entry.name.removeSuffix(".md").removeSuffix(".pdf").ifBlank { entry.name }
                     showEntryMenu = false
                     showRenameDialog = true
                 },
@@ -475,8 +495,13 @@ fun VaultDrawer(
                             return@launch
                         }
                         val uri = entry.uri ?: return@launch
-                        val text = repository.readText(uri)
-                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(text))
+                        val payload =
+                            if (entry.name.endsWith(".md", ignoreCase = true)) {
+                                repository.readText(uri)
+                            } else {
+                                uri.toString()
+                            }
+                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(payload))
                         android.widget.Toast
                             .makeText(context, context.getString(R.string.common_copied), android.widget.Toast.LENGTH_SHORT)
                             .show()
@@ -537,7 +562,11 @@ fun VaultDrawer(
                                         expandedDirs.clear()
                                         reloadDir("")
                                     } else {
-                                        repository.renameDoc(uri, desiredName)
+                                        if (entry.name.endsWith(".md", ignoreCase = true)) {
+                                            repository.renameDoc(uri, desiredName)
+                                        } else {
+                                            repository.renameFile(uri, desiredName)
+                                        }
                                         repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)
                                         reloadDir(parentDir)
                                     }
@@ -583,7 +612,11 @@ fun VaultDrawer(
                                 expandedDirs.clear()
                                 reloadDir("")
                             } else {
-                                repository.deleteDoc(uri)
+                                if (entry.name.endsWith(".md", ignoreCase = true)) {
+                                    repository.deleteDoc(uri)
+                                } else {
+                                    repository.deleteEntry(uri)
+                                }
                                 repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)
                                 reloadDir(parentDir)
                             }
