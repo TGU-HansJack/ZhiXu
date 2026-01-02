@@ -80,15 +80,18 @@ private fun SystemBarsAppearance() {
         val window = activity.window
         val previousLightStatusBars = controller.isAppearanceLightStatusBars
         val previousLightNavBars = controller.isAppearanceLightNavigationBars
+        val previousStatusBarColor = window.statusBarColor
         val previousNavBarColor = window.navigationBarColor
 
         controller.isAppearanceLightStatusBars = useDarkIcons
         controller.isAppearanceLightNavigationBars = useDarkIcons
+        window.statusBarColor = surface.toArgb()
         window.navigationBarColor = surface.toArgb()
 
         onDispose {
             controller.isAppearanceLightStatusBars = previousLightStatusBars
             controller.isAppearanceLightNavigationBars = previousLightNavBars
+            window.statusBarColor = previousStatusBarColor
             window.navigationBarColor = previousNavBarColor
         }
     }

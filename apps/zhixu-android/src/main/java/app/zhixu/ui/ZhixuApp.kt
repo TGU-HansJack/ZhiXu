@@ -101,6 +101,7 @@ import app.zhixu.ui.screens.SpaceScreen
 import app.zhixu.ui.screens.SyncScreen
 import app.zhixu.ui.screens.TasksScreen
 import app.zhixu.ui.screens.TermsOfUseScreen
+import app.zhixu.ui.screens.UiSettingsScreen
 import app.zhixu.ui.screens.VaultGateScreen
 import app.zhixu.ui.screens.VaultSettingsScreen
 import app.zhixu.ui.screens.WorkshopScreen
@@ -467,7 +468,14 @@ fun ZhixuApp() {
                         onOpenVaultSettings = { navController.navigate("vaultSettings") },
                         onOpenWorkshop = { navController.navigate("workshop") },
                         onOpenSync = { navController.navigate("sync") },
+                        onOpenUiSettings = { navController.navigate("uiSettings") },
                         onOpenAbout = { navController.navigate("about") },
+                    )
+                }
+                composable("uiSettings") {
+                    UiSettingsScreen(
+                        contentPadding = padding,
+                        onBack = { navController.popBackStack() },
                     )
                 }
                 composable("about") {
@@ -693,7 +701,7 @@ private fun MainBottomBar(
     val unselectedTint = MaterialTheme.colorScheme.onSurfaceVariant
 
     Surface(
-        color = Color.White,
+        color = MaterialTheme.colorScheme.surface,
         tonalElevation = 0.dp,
         modifier =
             Modifier
@@ -717,7 +725,7 @@ private fun MainBottomBar(
                 )
             }
             Surface(
-                color = Color(0xFF141516),
+                color = MaterialTheme.colorScheme.primary,
                 shape = RoundedCornerShape(19.dp),
                 modifier =
                     Modifier
@@ -729,7 +737,7 @@ private fun MainBottomBar(
                     Icon(
                         painter = painterResource(Ionicons.Add),
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.size(28.dp),
                     )
                 }

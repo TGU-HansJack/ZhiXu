@@ -31,12 +31,8 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Android
-import androidx.compose.material.icons.outlined.DarkMode
-import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -62,10 +58,6 @@ import app.zhixu.data.UpdateDownloader
 import app.zhixu.data.UpdateCheckResult
 import app.zhixu.data.UpdateClient
 import app.zhixu.data.UpdateInfo
-import app.zhixu.data.UiPreferences
-import app.zhixu.data.UiFontOption
-import app.zhixu.data.UiSettings
-import app.zhixu.data.UiThemeMode
 import app.zhixu.data.VaultRepository
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.components.ContribCalendarDialog
@@ -85,29 +77,17 @@ fun SettingsScreen(
     onOpenVaultSettings: () -> Unit,
     onOpenWorkshop: () -> Unit,
     onOpenSync: () -> Unit,
+    onOpenUiSettings: () -> Unit,
     onOpenAbout: () -> Unit,
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val context = LocalContext.current
     val accountPrefs = remember(context) { AccountPreferences(context.applicationContext) }
-    val uiPrefs = remember(context) { UiPreferences(context.applicationContext) }
-    val languageTag by uiPrefs.languageTag.collectAsState(initial = "")
-    val uiSettings by
-        uiPrefs.settings.collectAsState(
-            initial =
-                UiSettings(
-                    languageTag = "",
-                    themeMode = UiThemeMode.SYSTEM,
-                    fontOption = UiFontOption.SOURCE_SANS_PRO_LIGHT,
-                ),
-        )
     val accountState by accountPrefs.state.collectAsState(
         initial = AccountState(token = "", username = "", userId = 0L),
     )
 
     var contribPerDay by remember { mutableStateOf<Map<LocalDate, DailyContrib>?>(null) }
-    var showLanguageDialog by remember { mutableStateOf(false) }
-    var showUiDialog by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     var updateUiState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
 
@@ -234,15 +214,6 @@ fun SettingsScreen(
         }
 
         item {
-            SettingsNavRow(
-                iconRes = Ionicons.LanguageOutline,
-                title = stringResource(R.string.settings_language_title),
-                onClick = { showLanguageDialog = true },
-            )
-            HorizontalDivider(color = dividerColor)
-        }
-
-        item {
             fun comingSoon() {
                 Toast.makeText(context, context.getString(R.string.settings_placeholder_coming_soon), Toast.LENGTH_SHORT).show()
             }
@@ -250,7 +221,7 @@ fun SettingsScreen(
             SettingsNavRow(
                 iconRes = Ionicons.LayersOutline,
                 title = stringResource(R.string.settings_placeholder_ui),
-                onClick = { showUiDialog = true },
+                onClick = onOpenUiSettings,
             )
             HorizontalDivider(color = dividerColor)
 
@@ -286,149 +257,6 @@ fun SettingsScreen(
             )
             HorizontalDivider(color = dividerColor)
         }
-    }
-
-    if (showLanguageDialog) {
-        AlertDialog(
-            modifier = ZhixuDialogDefaults.modifier(),
-            onDismissRequest = { showLanguageDialog = false },
-            properties = ZhixuDialogDefaults.properties,
-            title = { Text(stringResource(R.string.settings_language_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    @Composable
-                    fun optionRow(tag: String, label: String) {
-                        Row(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        showLanguageDialog = false
-                                        scope.launch {
-                                            uiPrefs.setLanguageTag(tag)
-                                        }
-                                        Toast.makeText(context, context.getString(R.string.vault_settings_saved), Toast.LENGTH_SHORT).show()
-                                    }
-                                    .padding(vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(text = label, modifier = Modifier.weight(1f))
-                            val selected = languageTag.trim() == tag || (tag.isBlank() && languageTag.trim().isBlank())
-                            if (selected) {
-                                Icon(painter = painterResource(Ionicons.CheckmarkCircle), contentDescription = null, modifier = Modifier.size(18.dp))
-                            }
-                        }
-                    }
-
-                    optionRow("", stringResource(R.string.settings_language_system))
-                    optionRow("zh-CN", stringResource(R.string.settings_language_zh_cn))
-                    optionRow("en", stringResource(R.string.settings_language_en))
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showLanguageDialog = false }) { Text(stringResource(R.string.action_close)) }
-            },
-        )
-    }
-
-    if (showUiDialog) {
-        AlertDialog(
-            modifier = ZhixuDialogDefaults.modifier(),
-            onDismissRequest = { showUiDialog = false },
-            properties = ZhixuDialogDefaults.properties,
-            title = { Text(stringResource(R.string.settings_placeholder_ui)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text(
-                        text = stringResource(R.string.settings_ui_theme_title),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 13.sp,
-                    )
-
-                    @Composable
-                    fun ModeCard(
-                        mode: UiThemeMode,
-                        label: String,
-                        icon: androidx.compose.ui.graphics.vector.ImageVector,
-                    ) {
-                        val selected = uiSettings.themeMode == mode
-                        val borderColor =
-                            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                        val tint =
-                            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        Surface(
-                            modifier =
-                                Modifier
-                                    .size(width = 116.dp, height = 92.dp)
-                                    .clickable {
-                                        scope.launch { uiPrefs.setThemeMode(mode) }
-                                    },
-                            shape = RoundedCornerShape(16.dp),
-                            border = androidx.compose.foundation.BorderStroke(2.dp, borderColor),
-                            color = MaterialTheme.colorScheme.surface,
-                        ) {
-                            Column(
-                                modifier = Modifier.fillMaxSize().padding(12.dp),
-                                verticalArrangement = Arrangement.Center,
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = null,
-                                    tint = tint,
-                                    modifier = Modifier.size(32.dp),
-                                )
-                                Spacer(Modifier.height(10.dp))
-                                Text(text = label, color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        ModeCard(UiThemeMode.SYSTEM, stringResource(R.string.settings_ui_theme_system), Icons.Outlined.Android)
-                        ModeCard(UiThemeMode.LIGHT, stringResource(R.string.settings_ui_theme_light), Icons.Outlined.LightMode)
-                        ModeCard(UiThemeMode.DARK, stringResource(R.string.settings_ui_theme_dark), Icons.Outlined.DarkMode)
-                    }
-
-                    Text(
-                        text = stringResource(R.string.settings_ui_font_title),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 13.sp,
-                    )
-
-                    @Composable
-                    fun fontRow(option: UiFontOption, label: String) {
-                        Row(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clickable { scope.launch { uiPrefs.setFontOption(option) } }
-                                    .padding(vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(text = label, modifier = Modifier.weight(1f))
-                            if (uiSettings.fontOption == option) {
-                                Icon(
-                                    painter = painterResource(Ionicons.CheckmarkCircle),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        }
-                    }
-
-                    fontRow(UiFontOption.SOURCE_SANS_PRO_LIGHT, stringResource(R.string.settings_ui_font_source_sans_pro_light))
-                    fontRow(UiFontOption.SOURCE_SANS_PRO_REGULAR, stringResource(R.string.settings_ui_font_source_sans_pro_regular))
-                    fontRow(UiFontOption.LXGW_WENKAI_MONO_LIGHT, stringResource(R.string.settings_ui_font_lxgw_wenkai))
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showUiDialog = false }) { Text(stringResource(R.string.action_close)) }
-            },
-        )
     }
 
     if (showUpdateDialog) {

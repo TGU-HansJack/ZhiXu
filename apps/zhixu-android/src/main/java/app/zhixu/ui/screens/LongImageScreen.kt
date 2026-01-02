@@ -219,7 +219,7 @@ fun LongImageScreen(
             Column {
                 TopAppBar(
                     windowInsets = TopAppBarDefaults.windowInsets,
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White),
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
                     title = {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -301,7 +301,7 @@ fun LongImageScreen(
                 }
             }
 
-            Surface(color = Color.White, tonalElevation = 2.dp) {
+            Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
                 Column(
                     modifier =
                         Modifier
