@@ -1,9 +1,9 @@
-﻿package app.zhixu.ui.theme
+package app.zhixu.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -97,6 +97,7 @@ private fun ColorScheme.withFlatSurfaces(): ColorScheme =
 fun ZhixuTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
+    appFontFamily: FontFamily = SourceSansProLightDefaultFamily,
     content: @Composable () -> Unit,
 ) {
     val colorScheme =
@@ -109,7 +110,7 @@ fun ZhixuTheme(
 
     val baseResolver = LocalFontFamilyResolver.current
     val appResolver =
-        remember(baseResolver) {
+        remember(baseResolver, appFontFamily) {
             Proxy.newProxyInstance(
                 FontFamily.Resolver::class.java.classLoader,
                 arrayOf(FontFamily.Resolver::class.java),
@@ -117,7 +118,7 @@ fun ZhixuTheme(
                 val args = argsOrNull ?: emptyArray()
                 if (args.isNotEmpty() && args[0] == FontFamily.Default) {
                     val nextArgs = args.copyOf()
-                    nextArgs[0] = AppFontFamily
+                    nextArgs[0] = appFontFamily
                     method.invoke(baseResolver, *nextArgs)
                 } else {
                     method.invoke(baseResolver, *args)

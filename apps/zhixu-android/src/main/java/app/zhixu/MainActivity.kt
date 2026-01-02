@@ -1,25 +1,35 @@
-﻿package app.zhixu
+package app.zhixu
 
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import app.zhixu.data.UiFontOption
+import app.zhixu.data.UiPreferences
+import app.zhixu.data.UiThemeMode
 import app.zhixu.ui.ZhixuApp
+import app.zhixu.ui.theme.LxgwWenKaiMonoLightDefaultFamily
+import app.zhixu.ui.theme.SourceSansProLightDefaultFamily
+import app.zhixu.ui.theme.SourceSansProRegularDefaultFamily
 import app.zhixu.ui.theme.ZhixuTheme
 
 class MainActivity : AppCompatActivity() {
@@ -27,7 +37,27 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            ZhixuTheme {
+            val context = LocalContext.current
+            val uiPrefs = remember(context) { UiPreferences(context.applicationContext) }
+
+            val themeMode by uiPrefs.themeMode.collectAsState(initial = UiThemeMode.SYSTEM)
+            val fontOption by uiPrefs.fontOption.collectAsState(initial = UiFontOption.SOURCE_SANS_PRO_LIGHT)
+
+            val darkTheme =
+                when (themeMode) {
+                    UiThemeMode.SYSTEM -> isSystemInDarkTheme()
+                    UiThemeMode.LIGHT -> false
+                    UiThemeMode.DARK -> true
+                }
+
+            val appFontFamily =
+                when (fontOption) {
+                    UiFontOption.SOURCE_SANS_PRO_LIGHT -> SourceSansProLightDefaultFamily
+                    UiFontOption.SOURCE_SANS_PRO_REGULAR -> SourceSansProRegularDefaultFamily
+                    UiFontOption.LXGW_WENKAI_MONO_LIGHT -> LxgwWenKaiMonoLightDefaultFamily
+                }
+
+            ZhixuTheme(darkTheme = darkTheme, appFontFamily = appFontFamily) {
                 SystemBarsAppearance()
                 PostNotificationsPermissionRequester()
                 ZhixuApp()
@@ -77,7 +107,6 @@ private fun PostNotificationsPermissionRequester() {
         )
 
     LaunchedEffect(Unit) {
-        // Defer permission prompt until after the first frame to reduce cold-start jank.
         withFrameNanos { }
         val granted =
             ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED

@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
@@ -22,6 +23,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.documentfile.provider.DocumentFile
+import app.zhixu.data.UiFontOption
+import app.zhixu.data.UiPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -42,6 +45,9 @@ fun MarkdownPreview(
     val colors = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
 
+    val uiPrefs = remember(context) { UiPreferences(context.applicationContext) }
+    val fontOption by uiPrefs.fontOption.collectAsState(initial = UiFontOption.SOURCE_SANS_PRO_LIGHT)
+
     var previewDialog by remember { mutableStateOf<WikiPreviewDialogState?>(null) }
 
     val vaultResolver =
@@ -52,6 +58,7 @@ fun MarkdownPreview(
     val rawMarkdown = markdown
     val vaultRoot = vaultRootUri?.toString().orEmpty()
     val effectiveFontScale = fontScale.coerceIn(0.5f, 2.5f)
+    val fontKey = fontOption.raw
     val nextTheme =
         PreviewTheme(
             isDark = colors.surface.toArgb().isProbablyDark(),
@@ -66,7 +73,7 @@ fun MarkdownPreview(
     val themeJson = nextTheme.toJson()
 
     var prepared by remember { mutableStateOf<PreparedPreviewState?>(null) }
-    LaunchedEffect(rawMarkdown, vaultRoot, themeJson, effectiveFontScale) {
+    LaunchedEffect(rawMarkdown, vaultRoot, themeJson, effectiveFontScale, fontKey) {
         // Move heavy string processing (regex + JSON escaping) off the main thread to avoid traversal jank.
         val next =
             withContext(Dispatchers.Default) {
@@ -76,6 +83,7 @@ fun MarkdownPreview(
                     vaultRootQuoted = JSONObject.quote(vaultRoot),
                     markdownQuoted = JSONObject.quote(preprocessed),
                     fontScale = effectiveFontScale,
+                    fontKeyQuoted = JSONObject.quote(fontKey),
                 )
             }
         prepared = next
@@ -233,6 +241,7 @@ private data class PreparedPreviewState(
     val vaultRootQuoted: String,
     val markdownQuoted: String,
     val fontScale: Float,
+    val fontKeyQuoted: String,
 )
 
 private data class PreviewTheme(
@@ -412,6 +421,7 @@ private fun applyPreparedState(
           window.__setVaultRoot(${pending.vaultRootQuoted});
           window.__setMarkdown(${pending.markdownQuoted});
           window.__setFontScale(${pending.fontScale});
+          window.__setFontKey(${pending.fontKeyQuoted});
         })();
         """.trimIndent()
     view.post { view.evaluateJavascript(js, null) }

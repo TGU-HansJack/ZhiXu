@@ -103,6 +103,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -154,6 +155,8 @@ import kotlin.math.abs
 import app.zhixu.R
 import app.zhixu.data.dataStore
 import app.zhixu.data.VaultRepository
+import app.zhixu.data.UiFontOption
+import app.zhixu.data.UiPreferences
 import app.zhixu.ui.Ionicons
 import app.zhixu.sync.SyncServerClient
 import app.zhixu.sync.resolveSyncServerAuth
@@ -307,10 +310,18 @@ fun EditorScreen(
     val editorFontSize = editorFontSizeSpValue.sp
     val editorLineHeight = editorFontSize * 1.5f
     val editorLetterSpacing = 0.2.sp
+
+    val uiPrefs = remember(context) { UiPreferences(context.applicationContext) }
+    val fontOption by uiPrefs.fontOption.collectAsState(initial = UiFontOption.SOURCE_SANS_PRO_LIGHT)
+    val editorFontWeight =
+        when (fontOption) {
+            UiFontOption.SOURCE_SANS_PRO_REGULAR -> FontWeight.Normal
+            else -> FontWeight.Light
+        }
     val editorTextStyle =
         MaterialTheme.typography.bodyLarge.copy(
             fontFamily = FontFamily.Default,
-            fontWeight = FontWeight.Light,
+            fontWeight = editorFontWeight,
             fontSynthesis = FontSynthesis.None,
             fontSize = editorFontSize,
             lineHeight = editorLineHeight,
