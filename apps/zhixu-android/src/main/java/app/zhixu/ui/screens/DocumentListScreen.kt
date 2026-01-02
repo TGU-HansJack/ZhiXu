@@ -85,6 +85,7 @@ import app.zhixu.data.UiDoc
 import app.zhixu.data.VaultIndexUpdater
 import app.zhixu.data.VaultRepository
 import app.zhixu.ui.Ionicons
+import app.zhixu.ui.DocListMutation
 import app.zhixu.ui.components.RefreshStatusBanner
 import app.zhixu.ui.components.SheetActionRow
 import app.zhixu.ui.components.SheetQuickAction
@@ -108,6 +109,7 @@ fun DocumentListScreen(
     onOpenDoc: (String, String?, Int?) -> Unit,
     onNewDoc: () -> Unit,
     onChangeVault: () -> Unit,
+    onDocListMutated: (DocListMutation) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -368,6 +370,8 @@ fun DocumentListScreen(
                                 }
                             if (renamed == null) {
                                 Toast.makeText(context, context.getString(R.string.editor_rename_failed_generic), Toast.LENGTH_SHORT).show()
+                            } else {
+                                onDocListMutated(DocListMutation.Renamed(oldUri = doc.uri, newUri = renamed))
                             }
                         }
                     },

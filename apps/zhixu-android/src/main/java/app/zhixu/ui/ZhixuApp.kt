@@ -267,7 +267,7 @@ fun ZhixuApp() {
     var dirStructureMutationToken by remember { mutableLongStateOf(0L) }
     var dirStructureMutation by remember { mutableStateOf<DocListMutation?>(null) }
 
-    val showTopBar = currentRoute in setOf("home", "me")
+    val showTopBar = currentRoute == "home"
     val showBottomBar = currentRoute in setOf("home", "me")
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 1, pageCount = { 3 })
     val settledPage by remember { derivedStateOf { pagerState.settledPage } }
@@ -448,6 +448,10 @@ fun ZhixuApp() {
                         docSearchRequestToken = docSearchRequestToken,
                         dirStructureMutationToken = dirStructureMutationToken,
                         dirStructureMutation = dirStructureMutation,
+                        onDocListMutated = { mutation ->
+                            dirStructureMutation = mutation
+                            dirStructureMutationToken += 1L
+                        },
                         onOpenDoc = ::openDoc,
                         onNewDoc = { navController.navigate("newDoc") },
                         onChangeVault = {
@@ -709,47 +713,50 @@ private fun MainBottomBar(
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.navigationBars),
     ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(70.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceEvenly,
-        ) {
-            ZhixuIconButton(onClick = onHome) {
-                Icon(
-                    painter = painterResource(if (selectedHome) Ionicons.HomeFilled else Ionicons.Home),
-                    contentDescription = null,
-                    tint = if (selectedHome) selectedTint else unselectedTint,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-            Surface(
-                color = MaterialTheme.colorScheme.primary,
-                shape = RoundedCornerShape(19.dp),
+        Column(modifier = Modifier.fillMaxWidth()) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.85f))
+            Row(
                 modifier =
                     Modifier
-                        .width(68.dp)
-                        .height(38.dp)
-                        .clickable(onClick = onPlus),
+                        .fillMaxWidth()
+                        .height(70.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
-                Box(contentAlignment = Alignment.Center) {
+                ZhixuIconButton(onClick = onHome) {
                     Icon(
-                        painter = painterResource(Ionicons.Add),
+                        painter = painterResource(if (selectedHome) Ionicons.HomeFilled else Ionicons.Home),
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(28.dp),
+                        tint = if (selectedHome) selectedTint else unselectedTint,
+                        modifier = Modifier.size(24.dp),
                     )
                 }
-            }
-            ZhixuIconButton(onClick = onMe) {
-                Icon(
-                    painter = painterResource(if (selectedMe) Ionicons.UserFilled else Ionicons.User),
-                    contentDescription = null,
-                    tint = if (selectedMe) selectedTint else unselectedTint,
-                    modifier = Modifier.size(24.dp),
-                )
+                Surface(
+                    color = MaterialTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(19.dp),
+                    modifier =
+                        Modifier
+                            .width(68.dp)
+                            .height(38.dp)
+                            .clickable(onClick = onPlus),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(Ionicons.Add),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
+                }
+                ZhixuIconButton(onClick = onMe) {
+                    Icon(
+                        painter = painterResource(if (selectedMe) Ionicons.UserFilled else Ionicons.User),
+                        contentDescription = null,
+                        tint = if (selectedMe) selectedTint else unselectedTint,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
             }
         }
     }
@@ -771,6 +778,7 @@ private fun HomePager(
     docSearchRequestToken: Long,
     dirStructureMutationToken: Long,
     dirStructureMutation: DocListMutation?,
+    onDocListMutated: (DocListMutation) -> Unit,
     onOpenDoc: (String, String?, Int?) -> Unit,
     onNewDoc: () -> Unit,
     onChangeVault: () -> Unit,
@@ -806,6 +814,7 @@ private fun HomePager(
                     onOpenDoc = onOpenDoc,
                     onNewDoc = onNewDoc,
                     onChangeVault = onChangeVault,
+                    onDocListMutated = onDocListMutated,
                 )
 
             2 ->

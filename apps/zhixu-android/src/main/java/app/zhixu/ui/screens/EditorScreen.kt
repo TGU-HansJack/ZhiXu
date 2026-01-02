@@ -259,6 +259,7 @@ fun EditorScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     var isRenamingDoc by remember { mutableStateOf(false) }
     val docNameFocusRequester = remember { FocusRequester() }
+    var docNameHadFocus by remember { mutableStateOf(false) }
     var showOverflowSheet by remember { mutableStateOf(false) }
     val overflowSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showFontSizeSheet by remember { mutableStateOf(false) }
@@ -285,6 +286,7 @@ fun EditorScreen(
         )
 
     LaunchedEffect(isRenamingDoc) {
+        docNameHadFocus = false
         if (isRenamingDoc) docNameFocusRequester.requestFocus()
     }
 
@@ -1347,7 +1349,13 @@ fun EditorScreen(
                                         modifier =
                                             Modifier
                                                 .focusRequester(docNameFocusRequester)
-                                                .onFocusChanged { if (!it.isFocused) isRenamingDoc = false }
+                                                .onFocusChanged {
+                                                    if (it.isFocused) {
+                                                        docNameHadFocus = true
+                                                    } else if (docNameHadFocus) {
+                                                        isRenamingDoc = false
+                                                    }
+                                                }
                                                 .fillMaxWidth(),
                                         singleLine = true,
                                         textStyle =

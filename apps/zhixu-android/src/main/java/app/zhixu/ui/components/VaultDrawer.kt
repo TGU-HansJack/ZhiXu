@@ -236,20 +236,32 @@ fun VaultDrawer(
         handledRefreshToken = refreshToken
 
         val m = mutation ?: run { persistCache(); return@LaunchedEffect }
-        val rel =
+        val dirsToRefresh =
             when (m) {
-                is DocListMutation.Created -> repository.computeRelativePath(vaultRootUri, m.doc.uri)
-                is DocListMutation.Deleted -> repository.computeRelativePath(vaultRootUri, m.docUri)
-                is DocListMutation.Renamed -> repository.computeRelativePath(vaultRootUri, m.newUri)
-            } ?: run { persistCache(); return@LaunchedEffect }
+                is DocListMutation.Created ->
+                    listOfNotNull(repository.computeRelativePath(vaultRootUri, m.doc.uri))
+                        .map { parentPathOf(it) ?: "" }
 
-        val parentDir = parentPathOf(rel) ?: ""
-        if (loadedDirs[parentDir] == true) {
-            runCatching { repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir) }
-            reloadDir(parentDir)
-        } else {
-            persistCache()
+                is DocListMutation.Deleted ->
+                    listOfNotNull(repository.computeRelativePath(vaultRootUri, m.docUri))
+                        .map { parentPathOf(it) ?: "" }
+
+                is DocListMutation.Renamed ->
+                    listOfNotNull(
+                        repository.computeRelativePath(vaultRootUri, m.oldUri),
+                        repository.computeRelativePath(vaultRootUri, m.newUri),
+                    ).map { parentPathOf(it) ?: "" }
+            }.distinct()
+
+        var refreshedAny = false
+        for (dir in dirsToRefresh) {
+            if (loadedDirs[dir] == true) {
+                refreshedAny = true
+                runCatching { repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = dir) }
+                reloadDir(dir)
+            }
         }
+        if (!refreshedAny) persistCache()
     }
 
     val entryByPath = remember(entries) { entries.associateBy { it.relativePath } }

@@ -60,6 +60,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.zhixu.R
@@ -234,9 +235,10 @@ fun WorkshopScreen(
                     val id = plugin.manifest.id
                     val version = plugin.manifest.version?.let { "v$it" }.orEmpty()
                     val desc = plugin.manifest.description.orEmpty()
-                    Text(text = "ID: $id", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (version.isNotBlank()) Text(text = version, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (desc.isNotBlank()) Text(text = desc, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val infoStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light)
+                    Text(text = "ID: $id", color = MaterialTheme.colorScheme.onSurfaceVariant, style = infoStyle)
+                    if (version.isNotBlank()) Text(text = version, color = MaterialTheme.colorScheme.onSurfaceVariant, style = infoStyle)
+                    if (desc.isNotBlank()) Text(text = desc, color = MaterialTheme.colorScheme.onSurfaceVariant, style = infoStyle)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
                     when {
@@ -515,7 +517,7 @@ private fun PluginRow(
                 ).joinToString(" · ")
             Text(
                 text = meta,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -527,7 +529,7 @@ private fun PluginRow(
             Text(
                 modifier = Modifier.padding(top = 6.dp),
                 text = desc,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -856,7 +858,7 @@ private fun OfficialPluginRow(
                     ).joinToString(" · ")
                 Text(
                     text = meta,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -879,7 +881,7 @@ private fun OfficialPluginRow(
             Text(
                 modifier = Modifier.padding(top = 6.dp),
                 text = desc,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
