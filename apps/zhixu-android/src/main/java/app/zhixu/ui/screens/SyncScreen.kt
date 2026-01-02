@@ -31,7 +31,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -77,6 +76,7 @@ import app.zhixu.sync.OfficialSync
 import app.zhixu.sync.OfficialVaultSyncEngine
 import app.zhixu.sync.WebDavSyncEngine
 import app.zhixu.ui.components.ZhixuDialogDefaults
+import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
 import app.zhixu.ui.components.ZhixuTextField
 import kotlinx.coroutines.Dispatchers
@@ -129,7 +129,7 @@ fun SyncScreen(
                         title = { Text(stringResource(R.string.settings_section_sync)) },
                         navigationIcon = {
                             val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-                            IconButton(onClick = onBack) {
+                            ZhixuIconButton(onClick = onBack) {
                                 Icon(
                                     painter = painterResource(if (isRtl) app.zhixu.ui.Ionicons.ArrowForward else app.zhixu.ui.Ionicons.ArrowBack),
                                     contentDescription = stringResource(R.string.action_back),
@@ -224,7 +224,7 @@ fun SyncScreen(
                     title = { Text(stringResource(R.string.settings_section_sync)) },
                     navigationIcon = {
                         val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-                        IconButton(onClick = onBack) {
+                        ZhixuIconButton(onClick = onBack) {
                             Icon(
                                 painter = painterResource(if (isRtl) app.zhixu.ui.Ionicons.ArrowForward else app.zhixu.ui.Ionicons.ArrowBack),
                                 contentDescription = stringResource(R.string.action_back),

@@ -34,7 +34,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -89,6 +88,7 @@ import app.zhixu.ui.Ionicons
 import app.zhixu.ui.components.RefreshStatusBanner
 import app.zhixu.ui.components.SheetActionRow
 import app.zhixu.ui.components.SheetQuickAction
+import app.zhixu.ui.components.ZhixuIconButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
@@ -755,7 +755,7 @@ private fun DocRow(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        IconButton(onClick = onMoreClick) {
+        ZhixuIconButton(onClick = onMoreClick) {
             Icon(
                 painter = painterResource(Ionicons.EllipsisHorizontal),
                 contentDescription = null,

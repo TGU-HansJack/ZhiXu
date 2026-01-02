@@ -29,7 +29,6 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -58,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTextField
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -497,7 +497,7 @@ private fun TaskComposer(
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = { submit() }),
         trailingIcon = {
-            IconButton(
+            ZhixuIconButton(
                 onClick = { submit() },
                 enabled = text.isNotBlank(),
             ) {
@@ -519,21 +519,21 @@ private fun TaskComposer(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                IconButton(onClick = { showDateSheet = true }) {
+                ZhixuIconButton(onClick = { showDateSheet = true }) {
                     Icon(
                         imageVector = Icons.Outlined.Today,
                         contentDescription = stringResource(R.string.task_input_date),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
                     )
                 }
-                IconButton(onClick = { showPrioritySheet = true }) {
+                ZhixuIconButton(onClick = { showPrioritySheet = true }) {
                     Icon(
                         imageVector = Icons.Outlined.Flag,
                         contentDescription = stringResource(R.string.task_input_priority),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
                     )
                 }
-                IconButton(onClick = { showTagSheet = true }) {
+                ZhixuIconButton(onClick = { showTagSheet = true }) {
                     Icon(
                         imageVector = Icons.Outlined.Label,
                         contentDescription = stringResource(R.string.task_input_tags),
@@ -902,7 +902,7 @@ private fun TaskRow(
             Text(task.docName, maxLines = 1, overflow = TextOverflow.Ellipsis, color = metaColor)
         },
         leadingContent = {
-            IconButton(onClick = onToggle) {
+            ZhixuIconButton(onClick = onToggle) {
                 Icon(
                     painter = painterResource(if (task.checked) Ionicons.CheckmarkCircle else Ionicons.RadioOff),
                     contentDescription = null,

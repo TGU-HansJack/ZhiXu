@@ -33,7 +33,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -88,6 +87,7 @@ import app.zhixu.data.WebDavConfig
 import app.zhixu.data.appManagedVaultRootUri
 import app.zhixu.sync.VaultAutoSync
 import app.zhixu.sync.WebDavAutoSync
+import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.screens.AccountScreen
 import app.zhixu.ui.screens.AboutScreen
 import app.zhixu.ui.screens.DocumentListScreen
@@ -365,7 +365,7 @@ fun ZhixuApp() {
                                         },
                                         actions = {
                                             if (settledPage == 1) {
-                                                IconButton(onClick = { docSearchRequestToken += 1L }) {
+                                                ZhixuIconButton(onClick = { docSearchRequestToken += 1L }) {
                                                     Icon(
                                                         painter = painterResource(Ionicons.Search),
                                                         contentDescription = stringResource(R.string.action_search),
@@ -716,7 +716,7 @@ private fun MainBottomBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            IconButton(onClick = onHome) {
+            ZhixuIconButton(onClick = onHome) {
                 Icon(
                     painter = painterResource(if (selectedHome) Ionicons.HomeFilled else Ionicons.Home),
                     contentDescription = null,
@@ -742,7 +742,7 @@ private fun MainBottomBar(
                     )
                 }
             }
-            IconButton(onClick = onMe) {
+            ZhixuIconButton(onClick = onMe) {
                 Icon(
                     painter = painterResource(if (selectedMe) Ionicons.UserFilled else Ionicons.User),
                     contentDescription = null,

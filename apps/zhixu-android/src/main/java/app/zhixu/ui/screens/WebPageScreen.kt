@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -32,6 +31,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 import app.zhixu.R
 import app.zhixu.ui.Ionicons
+import app.zhixu.ui.components.ZhixuIconButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,7 +67,7 @@ fun WebPageScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
                 title = { Text(stringResource(titleRes)) },
                 navigationIcon = {
-                    IconButton(onClick = ::back) {
+                    ZhixuIconButton(onClick = ::back) {
                         Icon(
                             painter = painterResource(Ionicons.ArrowBack),
                             contentDescription = stringResource(R.string.action_back),
@@ -76,7 +76,7 @@ fun WebPageScreen(
                 },
                 actions = {
                     if (canGoBack) {
-                        IconButton(onClick = { webView?.goForward() }, enabled = webView?.canGoForward() == true) {
+                        ZhixuIconButton(onClick = { webView?.goForward() }, enabled = webView?.canGoForward() == true) {
                             Icon(
                                 painter = painterResource(Ionicons.ArrowForward),
                                 contentDescription = null,

@@ -25,7 +25,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
@@ -53,6 +52,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.zhixu.R
+import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
 import app.zhixu.ui.components.ZhixuTextField
 import app.zhixu.data.AccountPreferences
@@ -145,7 +145,7 @@ fun AccountScreen(
                     title = { Text(stringResource(R.string.account_manage_title)) },
                     navigationIcon = {
                         val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-                        IconButton(onClick = onBack) {
+                        ZhixuIconButton(onClick = onBack) {
                             Icon(
                                 painter = painterResource(if (isRtl) app.zhixu.ui.Ionicons.ArrowForward else app.zhixu.ui.Ionicons.ArrowBack),
                                 contentDescription = stringResource(R.string.action_back),

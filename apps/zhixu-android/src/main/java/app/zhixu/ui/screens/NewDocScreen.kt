@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -38,6 +37,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTextField
 import app.zhixu.R
 import app.zhixu.data.UiDoc
@@ -77,7 +77,7 @@ fun NewDocScreen(
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
                     title = { Text(stringResource(R.string.new_doc_title)) },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
+                        ZhixuIconButton(onClick = onBack) {
                             Icon(
                                 painter = painterResource(if (LocalLayoutDirection.current == LayoutDirection.Rtl) Ionicons.ArrowForward else Ionicons.ArrowBack),
                                 contentDescription = stringResource(R.string.action_back),

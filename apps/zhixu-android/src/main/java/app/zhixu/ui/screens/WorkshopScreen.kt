@@ -34,7 +34,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -71,6 +70,7 @@ import app.zhixu.plugins.PluginRepository
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.components.MarkdownPreview
 import app.zhixu.ui.components.ZhixuDialogDefaults
+import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
 import app.zhixu.ui.components.ZhixuTextField
 import kotlinx.coroutines.launch
@@ -269,7 +269,7 @@ fun WorkshopScreen(
                     title = { Text(stringResource(R.string.workshop_title)) },
                     navigationIcon = {
                         val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-                        IconButton(onClick = onBack) {
+                        ZhixuIconButton(onClick = onBack) {
                             Icon(
                                 painter = painterResource(if (isRtl) app.zhixu.ui.Ionicons.ArrowForward else app.zhixu.ui.Ionicons.ArrowBack),
                                 contentDescription = stringResource(R.string.action_back),
@@ -321,11 +321,11 @@ fun WorkshopScreen(
                         modifier = Modifier.weight(1f),
                     )
 
-                    IconButton(onClick = { scope.launch { refresh() } }) {
+                    ZhixuIconButton(onClick = { scope.launch { refresh() } }) {
                         Icon(painter = painterResource(Ionicons.SyncOutline), contentDescription = stringResource(R.string.workshop_refresh))
                     }
                     Box {
-                        IconButton(onClick = { showInstallMenu = true }) {
+                        ZhixuIconButton(onClick = { showInstallMenu = true }) {
                             Icon(
                                 painter = painterResource(Ionicons.ArrowDownCircleOutline),
                                 contentDescription = stringResource(R.string.workshop_section_install),
@@ -437,7 +437,7 @@ fun WorkshopScreen(
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f),
                     )
-                    IconButton(enabled = !officialLoading, onClick = { scope.launch { refreshOfficial() } }) {
+                    ZhixuIconButton(enabled = !officialLoading, onClick = { scope.launch { refreshOfficial() } }) {
                         Icon(painter = painterResource(Ionicons.SyncOutline), contentDescription = stringResource(R.string.workshop_refresh))
                     }
                 }
@@ -541,7 +541,7 @@ private fun PluginRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                IconButton(onClick = onViewDetails) {
+                ZhixuIconButton(onClick = onViewDetails) {
                     Icon(
                         painter = painterResource(Ionicons.InformationCircleOutline),
                         contentDescription = stringResource(R.string.workshop_view_details),
@@ -549,7 +549,7 @@ private fun PluginRow(
                 }
 
                 if (onUpdate != null) {
-                    IconButton(enabled = !updating, onClick = onUpdate) {
+                    ZhixuIconButton(enabled = !updating, onClick = onUpdate) {
                         Icon(
                             painter =
                                 painterResource(
@@ -561,7 +561,7 @@ private fun PluginRow(
                 }
 
                 if (onSettings != null) {
-                    IconButton(onClick = onSettings) {
+                    ZhixuIconButton(onClick = onSettings) {
                         Icon(
                             painter = painterResource(Ionicons.SettingsOutline),
                             contentDescription = stringResource(R.string.action_settings),
@@ -569,7 +569,7 @@ private fun PluginRow(
                     }
                 }
 
-                IconButton(onClick = onRemove) {
+                ZhixuIconButton(onClick = onRemove) {
                     Icon(
                         painter = painterResource(Ionicons.TrashOutline),
                         contentDescription = stringResource(R.string.workshop_remove),
@@ -869,7 +869,7 @@ private fun OfficialPluginRow(
                 )
             }
 
-            IconButton(enabled = !installed, onClick = onInstall) {
+            ZhixuIconButton(enabled = !installed, onClick = onInstall) {
                 Icon(
                     painter =
                         painterResource(

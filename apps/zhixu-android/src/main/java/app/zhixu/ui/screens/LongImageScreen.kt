@@ -33,7 +33,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -68,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.ContentScale
 import androidx.core.content.FileProvider
 import app.zhixu.R
+import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.data.SyncPreferences
 import app.zhixu.ui.Ionicons
 import app.zhixu.data.WebDavConfig
@@ -239,7 +239,7 @@ fun LongImageScreen(
                         }
                     },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
+                        ZhixuIconButton(onClick = onBack) {
                             Icon(painter = painterResource(Ionicons.Close), contentDescription = null)
                         }
                     },

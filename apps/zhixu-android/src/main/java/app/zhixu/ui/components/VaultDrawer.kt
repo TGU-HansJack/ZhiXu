@@ -22,7 +22,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
@@ -420,7 +419,7 @@ fun VaultDrawer(
                             )
                         }
                         if (entry.isDirectory) {
-                            IconButton(
+                            ZhixuIconButton(
                                 onClick = {
                                     newDocTargetDir = entry
                                     newDocName = context.getString(R.string.new_doc_default_title)
@@ -437,7 +436,7 @@ fun VaultDrawer(
                                 )
                             }
                         }
-                        IconButton(
+                        ZhixuIconButton(
                             onClick = {
                                 selectedEntry = entry
                                 showEntryMenu = true

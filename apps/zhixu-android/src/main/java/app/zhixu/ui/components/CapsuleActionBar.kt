@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -49,16 +48,16 @@ fun CapsuleActionBar(
             horizontalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             if (onSearch != null) {
-                IconButton(onClick = onSearch, modifier = Modifier.size(CapsuleActionBarDefaults.ButtonSize)) {
+                ZhixuIconButton(onClick = onSearch, modifier = Modifier.size(CapsuleActionBarDefaults.ButtonSize)) {
                     Icon(painter = painterResource(Ionicons.Search), contentDescription = null)
                 }
                 CapsuleDivider()
             }
-            IconButton(onClick = onAdd, modifier = Modifier.size(CapsuleActionBarDefaults.ButtonSize)) {
+            ZhixuIconButton(onClick = onAdd, modifier = Modifier.size(CapsuleActionBarDefaults.ButtonSize)) {
                 Icon(painter = painterResource(Ionicons.Add), contentDescription = null)
             }
             CapsuleDivider()
-            IconButton(onClick = onAi, modifier = Modifier.size(CapsuleActionBarDefaults.ButtonSize)) {
+            ZhixuIconButton(onClick = onAi, modifier = Modifier.size(CapsuleActionBarDefaults.ButtonSize)) {
                 Box(
                     modifier =
                         Modifier

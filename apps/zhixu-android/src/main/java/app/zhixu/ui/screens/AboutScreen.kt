@@ -26,7 +26,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -50,6 +49,7 @@ import androidx.core.graphics.drawable.toBitmap
 import app.zhixu.BuildConfig
 import app.zhixu.R
 import app.zhixu.ui.Ionicons
+import app.zhixu.ui.components.ZhixuIconButton
 
 private const val OFFICIAL_SITE_URL = "https://zhixu.app"
 private const val OFFICIAL_TOS_URL = "https://zhixu.app/tos"
@@ -112,7 +112,7 @@ fun AboutScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
                 title = { Text(stringResource(R.string.settings_placeholder_about)) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    ZhixuIconButton(onClick = onBack) {
                         Icon(
                             painter = painterResource(Ionicons.ArrowBack),
                             contentDescription = stringResource(R.string.action_back),

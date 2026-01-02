@@ -15,7 +15,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -121,13 +120,13 @@ fun ContribCalendarDialog(
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f),
                     )
-                    IconButton(onClick = { currentMonth = currentMonth.minusMonths(1) }) {
+                    ZhixuIconButton(onClick = { currentMonth = currentMonth.minusMonths(1) }) {
                         Icon(painter = painterResource(Ionicons.ChevronBack), contentDescription = "Prev month")
                     }
-                    IconButton(onClick = { currentMonth = YearMonth.now() }) {
+                    ZhixuIconButton(onClick = { currentMonth = YearMonth.now() }) {
                         Icon(painter = painterResource(Ionicons.RadioOff), contentDescription = "Today")
                     }
-                    IconButton(onClick = { currentMonth = currentMonth.plusMonths(1) }) {
+                    ZhixuIconButton(onClick = { currentMonth = currentMonth.plusMonths(1) }) {
                         Icon(painter = painterResource(Ionicons.ChevronForward), contentDescription = "Next month")
                     }
                 }

@@ -76,7 +76,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ListItem
@@ -180,6 +179,7 @@ import app.zhixu.ui.components.ZhixuDialogDefaults
 import app.zhixu.ui.components.SheetActionRow
 import app.zhixu.ui.components.SheetQuickAction
 import app.zhixu.ui.components.ZhixuTextField
+import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.VaultDrawer
 import app.zhixu.ui.components.ZhixuSwipeDualDrawer
 import app.zhixu.core.tasks.TaskSyntax
@@ -1388,21 +1388,21 @@ fun EditorScreen(
                             },
                             navigationIcon = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(onClick = { requestExit() }, enabled = !isExitSaveInProgress) {
+                                    ZhixuIconButton(onClick = { requestExit() }, enabled = !isExitSaveInProgress) {
                                         Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.action_back))
                                     }
                                 }
                             },
                             actions = {
                                 if (!isPdfDoc) {
-                                    IconButton(onClick = { isPreview = !isPreview }) {
+                                    ZhixuIconButton(onClick = { isPreview = !isPreview }) {
                                         Icon(
                                             imageVector = if (isPreview) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
                                             contentDescription = stringResource(R.string.action_preview),
                                         )
                                     }
                                 }
-                                IconButton(onClick = { showOverflowSheet = true }) {
+                                ZhixuIconButton(onClick = { showOverflowSheet = true }) {
                                     Icon(painter = painterResource(Ionicons.EllipsisHorizontal), contentDescription = "More")
                                 }
                             },
@@ -1447,7 +1447,7 @@ fun EditorScreen(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(2.dp),
                                         ) {
-                                            IconButton(onClick = { showPdfThumbnails = true }, modifier = Modifier.size(32.dp)) {
+                                            ZhixuIconButton(onClick = { showPdfThumbnails = true }, modifier = Modifier.size(32.dp)) {
                                                 Icon(
                                                     painter = painterResource(Ionicons.GridOutline),
                                                     contentDescription = "Thumbnails",
@@ -1455,7 +1455,7 @@ fun EditorScreen(
                                                     modifier = Modifier.size(19.dp),
                                                 )
                                             }
-                                            IconButton(onClick = { pdfController.zoomOut() }, modifier = Modifier.size(32.dp)) {
+                                            ZhixuIconButton(onClick = { pdfController.zoomOut() }, modifier = Modifier.size(32.dp)) {
                                                 Icon(
                                                     painter = painterResource(Ionicons.RemoveCircleOutline),
                                                     contentDescription = "Zoom out",
@@ -1463,7 +1463,7 @@ fun EditorScreen(
                                                     modifier = Modifier.size(19.dp),
                                                 )
                                             }
-                                            IconButton(onClick = { pdfController.zoomIn() }, modifier = Modifier.size(32.dp)) {
+                                            ZhixuIconButton(onClick = { pdfController.zoomIn() }, modifier = Modifier.size(32.dp)) {
                                                 Icon(
                                                     painter = painterResource(Ionicons.AddCircleOutline),
                                                     contentDescription = "Zoom in",
@@ -1504,7 +1504,7 @@ fun EditorScreen(
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
 
-                                            IconButton(onClick = { showPdfMenu = true }, modifier = Modifier.size(32.dp)) {
+                                            ZhixuIconButton(onClick = { showPdfMenu = true }, modifier = Modifier.size(32.dp)) {
                                                 Icon(
                                                     painter = painterResource(Ionicons.ChevronDown),
                                                     contentDescription = "Layout",
@@ -2843,7 +2843,7 @@ private fun EditorToolIcon(
     onClick: () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    IconButton(
+    ZhixuIconButton(
         enabled = enabled,
         onClick = onClick,
         modifier = Modifier

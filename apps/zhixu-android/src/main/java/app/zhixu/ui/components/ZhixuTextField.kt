@@ -5,7 +5,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.TextFieldDefaults
@@ -82,7 +81,7 @@ fun ZhixuPasswordToggleIconButton(
     onClick: () -> Unit,
     enabled: Boolean = true,
 ) {
-    IconButton(enabled = enabled, onClick = onClick) {
+    ZhixuIconButton(enabled = enabled, onClick = onClick) {
         Icon(
             painter = painterResource(if (show) Ionicons.EyeOffOutline else Ionicons.EyeOutline),
             contentDescription = null,
