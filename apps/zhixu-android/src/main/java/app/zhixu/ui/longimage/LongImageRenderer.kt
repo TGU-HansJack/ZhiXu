@@ -27,7 +27,6 @@ internal data class LongImageRenderInput(
     val vaultRootUri: Uri?,
     val themeJson: String,
     val fontScale: Float,
-    val fontKey: String,
     val backgroundArgb: Int,
     val targetWidthPx: Int,
 )
@@ -81,7 +80,6 @@ internal suspend fun renderLongImage(input: LongImageRenderInput): Bitmap =
             val themeQuoted = JSONObject.quote(input.themeJson)
             val vaultRootQuoted = JSONObject.quote(input.vaultRootUri?.toString().orEmpty())
             val markdownQuoted = JSONObject.quote(preprocessWikiLinks(input.markdown))
-            val fontKeyQuoted = JSONObject.quote(input.fontKey)
             val js =
                 """
                 (function(){
@@ -90,7 +88,6 @@ internal suspend fun renderLongImage(input: LongImageRenderInput): Bitmap =
                   window.__setVaultRoot($vaultRootQuoted);
                   window.__setMarkdown($markdownQuoted);
                   window.__setFontScale(${input.fontScale.coerceIn(0.5f, 2.5f)});
-                  window.__setFontKey($fontKeyQuoted);
                 })();
                 """.trimIndent()
             evalJs(webView, js)

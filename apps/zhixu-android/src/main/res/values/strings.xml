@@ -302,11 +302,6 @@
     <string name="settings_ui_theme_system">Follow system</string>
     <string name="settings_ui_theme_light">Light</string>
     <string name="settings_ui_theme_dark">Dark</string>
-    <string name="settings_ui_font_title">Font</string>
-    <string name="settings_ui_font_system">System font</string>
-    <string name="settings_ui_font_source_sans_pro_light">Source Sans Pro Light</string>
-    <string name="settings_ui_font_source_sans_pro_regular">Source Sans Pro Regular</string>
-    <string name="settings_ui_font_lxgw_wenkai">LXGW WenKai</string>
     <string name="settings_placeholder_accessibility">Accessibility</string>
     <string name="settings_placeholder_notifications">Notifications</string>
     <string name="settings_placeholder_update">Update software</string>

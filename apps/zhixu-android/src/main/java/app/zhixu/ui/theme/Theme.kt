@@ -9,13 +9,8 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFontFamilyResolver
-import androidx.compose.ui.text.font.FontFamily
-import java.lang.reflect.Proxy
 
 private val ZhixuLightColorScheme =
     lightColorScheme(
@@ -97,7 +92,6 @@ private fun ColorScheme.withFlatSurfaces(): ColorScheme =
 fun ZhixuTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
-    appFontFamily: FontFamily = SourceSansProLightDefaultFamily,
     content: @Composable () -> Unit,
 ) {
     val colorScheme =
@@ -108,32 +102,10 @@ fun ZhixuTheme(
             (if (darkTheme) ZhixuDarkColorScheme else ZhixuLightColorScheme).withFlatSurfaces()
         }
 
-    val baseResolver = LocalFontFamilyResolver.current
-    val shouldOverrideFonts = appFontFamily != FontFamily.Default
-    val appResolver =
-        remember(baseResolver, appFontFamily, shouldOverrideFonts) {
-            if (!shouldOverrideFonts) return@remember baseResolver
-            Proxy.newProxyInstance(
-                FontFamily.Resolver::class.java.classLoader,
-                arrayOf(FontFamily.Resolver::class.java),
-            ) { _, method, argsOrNull ->
-                val args = argsOrNull ?: emptyArray()
-                if (args.isNotEmpty() && (args[0] == FontFamily.Default || args[0] == FontFamily.SansSerif)) {
-                    val nextArgs = args.copyOf()
-                    nextArgs[0] = appFontFamily
-                    method.invoke(baseResolver, *nextArgs)
-                } else {
-                    method.invoke(baseResolver, *args)
-                }
-            } as FontFamily.Resolver
-        }
-
-    CompositionLocalProvider(LocalFontFamilyResolver provides appResolver) {
-        MaterialTheme(
-            colorScheme = colorScheme,
-            typography = Typography,
-            shapes = Shapes,
-            content = content,
-        )
-    }
+    MaterialTheme(
+        colorScheme = colorScheme,
+        typography = Typography,
+        shapes = Shapes,
+        content = content,
+    )
 }

@@ -68,8 +68,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.ContentScale
 import androidx.core.content.FileProvider
 import app.zhixu.R
-import app.zhixu.data.UiFontOption
-import app.zhixu.data.UiPreferences
 import app.zhixu.data.SyncPreferences
 import app.zhixu.ui.Ionicons
 import app.zhixu.data.WebDavConfig
@@ -132,10 +130,6 @@ fun LongImageScreen(
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showFullPreview by remember { mutableStateOf(false) }
 
-    val uiPrefs = remember(context) { UiPreferences(context.applicationContext) }
-    val fontOption by uiPrefs.fontOption.collectAsState(initial = UiFontOption.SYSTEM)
-    val fontKey = fontOption.raw
-
     val themeColors = MaterialTheme.colorScheme
     val themeJson =
         remember(bgColorArgb, themeColors) {
@@ -151,7 +145,7 @@ fun LongImageScreen(
             ).toJson()
         }
 
-    LaunchedEffect(markdown, vaultRootUri, fontScale, bgColor, themeJson, fontKey) {
+    LaunchedEffect(markdown, vaultRootUri, fontScale, bgColor, themeJson) {
         isGenerating = true
         previewBitmap = null
         baseBitmap =
@@ -164,7 +158,6 @@ fun LongImageScreen(
                         vaultRootUri = vaultRootUri,
                         themeJson = themeJson,
                         fontScale = fontScale,
-                        fontKey = fontKey,
                         backgroundArgb = bgColorArgb,
                         targetWidthPx = widthPx,
                     ),

@@ -23,13 +23,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import app.zhixu.data.UiFontOption
 import app.zhixu.data.UiPreferences
 import app.zhixu.data.UiThemeMode
 import app.zhixu.ui.ZhixuApp
-import app.zhixu.ui.theme.LxgwWenKaiMonoLightDefaultFamily
-import app.zhixu.ui.theme.SourceSansProLightDefaultFamily
-import app.zhixu.ui.theme.SourceSansProRegularDefaultFamily
 import app.zhixu.ui.theme.ZhixuTheme
 
 class MainActivity : AppCompatActivity() {
@@ -41,7 +37,6 @@ class MainActivity : AppCompatActivity() {
             val uiPrefs = remember(context) { UiPreferences(context.applicationContext) }
 
             val themeMode by uiPrefs.themeMode.collectAsState(initial = UiThemeMode.SYSTEM)
-            val fontOption by uiPrefs.fontOption.collectAsState(initial = UiFontOption.SYSTEM)
 
             val darkTheme =
                 when (themeMode) {
@@ -50,15 +45,7 @@ class MainActivity : AppCompatActivity() {
                     UiThemeMode.DARK -> true
                 }
 
-            val appFontFamily =
-                when (fontOption) {
-                    UiFontOption.SYSTEM -> androidx.compose.ui.text.font.FontFamily.Default
-                    UiFontOption.SOURCE_SANS_PRO_LIGHT -> SourceSansProLightDefaultFamily
-                    UiFontOption.SOURCE_SANS_PRO_REGULAR -> SourceSansProRegularDefaultFamily
-                    UiFontOption.LXGW_WENKAI_MONO_LIGHT -> LxgwWenKaiMonoLightDefaultFamily
-                }
-
-            ZhixuTheme(darkTheme = darkTheme, appFontFamily = appFontFamily) {
+            ZhixuTheme(darkTheme = darkTheme) {
                 SystemBarsAppearance()
                 PostNotificationsPermissionRequester()
                 ZhixuApp()

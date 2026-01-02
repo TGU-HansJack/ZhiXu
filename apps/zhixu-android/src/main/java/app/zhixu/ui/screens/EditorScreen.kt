@@ -157,8 +157,6 @@ import kotlin.math.abs
 import app.zhixu.R
 import app.zhixu.data.dataStore
 import app.zhixu.data.VaultRepository
-import app.zhixu.data.UiFontOption
-import app.zhixu.data.UiPreferences
 import app.zhixu.ui.Ionicons
 import app.zhixu.sync.SyncServerClient
 import app.zhixu.sync.resolveSyncServerAuth
@@ -314,13 +312,7 @@ fun EditorScreen(
     val editorLineHeight = editorFontSize * 1.5f
     val editorLetterSpacing = 0.2.sp
 
-    val uiPrefs = remember(context) { UiPreferences(context.applicationContext) }
-    val fontOption by uiPrefs.fontOption.collectAsState(initial = UiFontOption.SYSTEM)
-    val editorFontWeight =
-        when (fontOption) {
-            UiFontOption.SOURCE_SANS_PRO_REGULAR -> FontWeight.Normal
-            else -> FontWeight.Light
-        }
+    val editorFontWeight = FontWeight.Light
     val editorTextStyle =
         MaterialTheme.typography.bodyLarge.copy(
             fontFamily = FontFamily.Default,

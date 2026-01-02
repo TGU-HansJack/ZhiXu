@@ -51,7 +51,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.zhixu.R
-import app.zhixu.data.UiFontOption
 import app.zhixu.data.UiPreferences
 import app.zhixu.data.UiSettings
 import app.zhixu.data.UiThemeMode
@@ -73,7 +72,6 @@ fun UiSettingsScreen(
                 UiSettings(
                     languageTag = "",
                     themeMode = UiThemeMode.SYSTEM,
-                    fontOption = UiFontOption.SYSTEM,
                 ),
         )
 
@@ -164,55 +162,6 @@ fun UiSettingsScreen(
                     ModeCard(UiThemeMode.SYSTEM, stringResource(R.string.settings_ui_theme_system), Icons.Outlined.Android)
                     ModeCard(UiThemeMode.LIGHT, stringResource(R.string.settings_ui_theme_light), Icons.Outlined.LightMode)
                     ModeCard(UiThemeMode.DARK, stringResource(R.string.settings_ui_theme_dark), Icons.Outlined.DarkMode)
-                }
-            }
-
-            item { Spacer(modifier = Modifier.height(18.dp)) }
-
-            item {
-                Text(
-                    text = stringResource(R.string.settings_ui_font_title),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
-                )
-            }
-
-            item {
-                fun fontLabel(option: UiFontOption): String =
-                    when (option) {
-                        UiFontOption.SYSTEM -> context.getString(R.string.settings_ui_font_system)
-                        UiFontOption.SOURCE_SANS_PRO_LIGHT -> context.getString(R.string.settings_ui_font_source_sans_pro_light)
-                        UiFontOption.SOURCE_SANS_PRO_REGULAR -> context.getString(R.string.settings_ui_font_source_sans_pro_regular)
-                        UiFontOption.LXGW_WENKAI_MONO_LIGHT -> context.getString(R.string.settings_ui_font_lxgw_wenkai)
-                    }
-
-                UiFontOption.entries.forEach { option ->
-                    ListItem(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable { scope.launch { uiPrefs.setFontOption(option) } },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(Ionicons.TextOutline),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        },
-                        headlineContent = { Text(fontLabel(option)) },
-                        trailingContent = {
-                            if (uiSettings.fontOption == option) {
-                                Icon(
-                                    painter = painterResource(Ionicons.CheckmarkCircle),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        },
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
                 }
             }
 

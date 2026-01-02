@@ -250,11 +250,6 @@
     <string name="settings_ui_theme_system">跟随系统</string>
     <string name="settings_ui_theme_light">浅色</string>
     <string name="settings_ui_theme_dark">深色</string>
-    <string name="settings_ui_font_title">字体设定</string>
-    <string name="settings_ui_font_system">系统字体</string>
-    <string name="settings_ui_font_source_sans_pro_light">Source Sans Pro Light</string>
-    <string name="settings_ui_font_source_sans_pro_regular">Source Sans Pro Regular</string>
-    <string name="settings_ui_font_lxgw_wenkai">霞鹜文楷</string>
     <string name="settings_placeholder_accessibility">无障碍</string>
     <string name="settings_placeholder_notifications">通知</string>
     <string name="settings_placeholder_update">检查更新</string>
