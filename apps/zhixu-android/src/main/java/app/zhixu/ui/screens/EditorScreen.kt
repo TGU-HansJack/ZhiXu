@@ -157,6 +157,7 @@ import app.zhixu.R
 import app.zhixu.data.dataStore
 import app.zhixu.data.VaultRepository
 import app.zhixu.ui.Ionicons
+import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.sync.SyncServerClient
 import app.zhixu.sync.resolveSyncServerAuth
 import app.zhixu.sync.VaultAutoSync
@@ -1207,10 +1208,10 @@ fun EditorScreen(
                     refreshToken = 0L,
                     mutation = null,
                     headerMinHeight = 64.dp,
-                    itemMinHeight = 44.dp,
-                    itemTextStyle = MaterialTheme.typography.bodyLarge,
-                    itemIconSize = 22.dp,
-                    itemChevronSize = 20.dp,
+                    itemMinHeight = 40.dp,
+                    itemTextStyle = MaterialTheme.typography.bodyMedium,
+                    itemIconSize = 20.dp,
+                    itemChevronSize = 18.dp,
                     modifier = modifier,
                 )
             }
@@ -1319,6 +1320,7 @@ fun EditorScreen(
                                     scrolledContainerColor = MaterialTheme.colorScheme.surface,
                                 ),
                             title = {
+                                val docNameStyle = MaterialTheme.typography.titleSmall
                                 val displayName =
                                     when {
                                         isPdfDoc ->
@@ -1332,7 +1334,12 @@ fun EditorScreen(
                                     }
 
                                 if (isPdfDoc) {
-                                    Text(text = displayName, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        text = displayName,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = docNameStyle,
+                                    )
                                 } else if (isRenamingDoc) {
                                     BasicTextField(
                                         value = title,
@@ -1344,8 +1351,9 @@ fun EditorScreen(
                                                 .fillMaxWidth(),
                                         singleLine = true,
                                         textStyle =
-                                            MaterialTheme.typography.labelSmall.copy(
+                                            docNameStyle.copy(
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontWeight = docNameStyle.fontWeight,
                                             ),
                                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -1359,37 +1367,43 @@ fun EditorScreen(
                                         decorationBox = { inner ->
                                             Box(modifier = Modifier.fillMaxWidth()) {
                                                 if (title.isBlank()) {
-                                                    Text(
-                                                        text = displayName,
-                                                        style =
-                                                            MaterialTheme.typography.labelSmall.copy(
+                                                     Text(
+                                                         text = displayName,
+                                                         style =
+                                                            docNameStyle.copy(
                                                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                                                                fontWeight = docNameStyle.fontWeight,
                                                             ),
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                    )
+                                                         maxLines = 1,
+                                                         overflow = TextOverflow.Ellipsis,
+                                                     )
                                                 }
                                                 inner()
                                             }
                                         },
                                     )
                                 } else {
-                                    Text(
-                                        text = displayName,
-                                        modifier = Modifier.clickable { isRenamingDoc = true },
-                                        style =
-                                            MaterialTheme.typography.labelSmall.copy(
+                                     Text(
+                                         text = displayName,
+                                         modifier = Modifier.clickable { isRenamingDoc = true },
+                                         style =
+                                            docNameStyle.copy(
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                                                fontWeight = docNameStyle.fontWeight,
                                             ),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
+                                         maxLines = 1,
+                                         overflow = TextOverflow.Ellipsis,
+                                     )
                                 }
                             },
                             navigationIcon = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     ZhixuIconButton(onClick = { requestExit() }, enabled = !isExitSaveInProgress) {
-                                        Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                                            contentDescription = stringResource(R.string.action_back),
+                                            modifier = Modifier.size(ZhixuTopBarIconSize),
+                                        )
                                     }
                                 }
                             },
@@ -1399,11 +1413,16 @@ fun EditorScreen(
                                         Icon(
                                             imageVector = if (isPreview) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
                                             contentDescription = stringResource(R.string.action_preview),
+                                            modifier = Modifier.size(ZhixuTopBarIconSize),
                                         )
                                     }
                                 }
                                 ZhixuIconButton(onClick = { showOverflowSheet = true }) {
-                                    Icon(painter = painterResource(Ionicons.EllipsisHorizontal), contentDescription = "More")
+                                    Icon(
+                                        painter = painterResource(Ionicons.EllipsisHorizontal),
+                                        contentDescription = "More",
+                                        modifier = Modifier.size(ZhixuTopBarIconSize),
+                                    )
                                 }
                             },
                         )

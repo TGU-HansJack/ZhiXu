@@ -55,6 +55,7 @@ import app.zhixu.data.UiPreferences
 import app.zhixu.data.UiSettings
 import app.zhixu.data.UiThemeMode
 import app.zhixu.ui.Ionicons
+import app.zhixu.ui.ZhixuTopBarIconSize
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -83,10 +84,14 @@ fun UiSettingsScreen(
                 TopAppBar(
                     windowInsets = TopAppBarDefaults.windowInsets,
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                    title = { Text(stringResource(R.string.settings_placeholder_ui)) },
+                    title = { Text(stringResource(R.string.settings_placeholder_ui), style = MaterialTheme.typography.titleMedium) },
                     navigationIcon = {
                         ZhixuIconButton(onClick = onBack) {
-                            Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                                contentDescription = stringResource(R.string.action_back),
+                                modifier = Modifier.size(ZhixuTopBarIconSize),
+                            )
                         }
                     },
                 )

@@ -267,7 +267,7 @@ fun ZhixuApp() {
     var dirStructureMutationToken by remember { mutableLongStateOf(0L) }
     var dirStructureMutation by remember { mutableStateOf<DocListMutation?>(null) }
 
-    val showTopBar = currentRoute in setOf("home")
+    val showTopBar = currentRoute in setOf("home", "me")
     val showBottomBar = currentRoute in setOf("home", "me")
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 1, pageCount = { 3 })
     val settledPage by remember { derivedStateOf { pagerState.settledPage } }
@@ -312,11 +312,11 @@ fun ZhixuApp() {
                         if (!showTopBar) return@Scaffold
                         Column {
                             when (currentRoute) {
-                                "home" -> {
-                                    TopAppBar(
-                                        windowInsets = TopAppBarDefaults.windowInsets,
-                                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                                        title = {
+                                 "home" -> {
+                                     TopAppBar(
+                                         windowInsets = TopAppBarDefaults.windowInsets,
+                                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                                         title = {
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -369,6 +369,7 @@ fun ZhixuApp() {
                                                     Icon(
                                                         painter = painterResource(Ionicons.Search),
                                                         contentDescription = stringResource(R.string.action_search),
+                                                        modifier = Modifier.size(ZhixuTopBarIconSize),
                                                     )
                                                 }
                                             }
@@ -376,15 +377,15 @@ fun ZhixuApp() {
                                     )
                                 }
 
-                                "me" -> {
-                                    TopAppBar(
-                                        windowInsets = TopAppBarDefaults.windowInsets,
-                                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                                        title = { Text(stringResource(R.string.nav_me)) },
-                                    )
-                                }
-                            }
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                 "me" -> {
+                                     TopAppBar(
+                                         windowInsets = TopAppBarDefaults.windowInsets,
+                                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                                         title = { Text(stringResource(R.string.nav_me), style = MaterialTheme.typography.titleMedium) },
+                                     )
+                                 }
+                             }
+                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
                     },
                     bottomBar = {
@@ -674,14 +675,14 @@ private fun TabText(
         modifier =
             Modifier
                 .clickable(onClick = onClick)
-                .height(36.dp)
+                .height(32.dp)
                 .padding(horizontal = 2.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = text,
             color = color,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,
         )

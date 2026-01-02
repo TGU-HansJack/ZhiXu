@@ -242,7 +242,6 @@ fun SettingsScreen(
             SettingsNavRow(
                 iconRes = Ionicons.ArrowUpCircleOutline,
                 title = stringResource(R.string.settings_update_title),
-                subtitle = stringResource(R.string.settings_update_subtitle_fmt, BuildConfig.VERSION_NAME),
                 onClick = {
                     showUpdateDialog = true
                     startUpdateCheck()

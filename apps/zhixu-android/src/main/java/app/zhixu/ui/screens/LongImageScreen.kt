@@ -38,7 +38,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -67,7 +66,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.ContentScale
 import androidx.core.content.FileProvider
 import app.zhixu.R
+import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
+import app.zhixu.ui.components.ZhixuSwitch
 import app.zhixu.data.SyncPreferences
 import app.zhixu.ui.Ionicons
 import app.zhixu.data.WebDavConfig
@@ -230,17 +231,23 @@ fun LongImageScreen(
                                 text = "文本",
                                 modifier = Modifier.padding(horizontal = 10.dp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.titleMedium,
                             )
                             Text(
                                 text = "图片",
                                 modifier = Modifier.padding(horizontal = 10.dp),
                                 color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.titleMedium,
                             )
                         }
                     },
                     navigationIcon = {
                         ZhixuIconButton(onClick = onBack) {
-                            Icon(painter = painterResource(Ionicons.Close), contentDescription = null)
+                            Icon(
+                                painter = painterResource(Ionicons.Close),
+                                contentDescription = null,
+                                modifier = Modifier.size(ZhixuTopBarIconSize),
+                            )
                         }
                     },
                 )
@@ -383,7 +390,7 @@ fun LongImageScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(text = "水印", modifier = Modifier.weight(1f))
-                                Switch(checked = showWatermark, onCheckedChange = { showWatermark = it })
+                                ZhixuSwitch(checked = showWatermark, onCheckedChange = { showWatermark = it })
                             }
                         }
 

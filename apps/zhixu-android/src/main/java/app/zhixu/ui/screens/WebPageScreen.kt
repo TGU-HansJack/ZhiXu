@@ -8,7 +8,9 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -31,6 +33,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 import app.zhixu.R
 import app.zhixu.ui.Ionicons
+import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,12 +68,13 @@ fun WebPageScreen(
             TopAppBar(
                 windowInsets = TopAppBarDefaults.windowInsets,
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                title = { Text(stringResource(titleRes)) },
+                title = { Text(stringResource(titleRes), style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
                     ZhixuIconButton(onClick = ::back) {
                         Icon(
                             painter = painterResource(Ionicons.ArrowBack),
                             contentDescription = stringResource(R.string.action_back),
+                            modifier = Modifier.size(ZhixuTopBarIconSize),
                         )
                     }
                 },
@@ -80,6 +84,7 @@ fun WebPageScreen(
                             Icon(
                                 painter = painterResource(Ionicons.ArrowForward),
                                 contentDescription = null,
+                                modifier = Modifier.size(ZhixuTopBarIconSize),
                             )
                         }
                     }

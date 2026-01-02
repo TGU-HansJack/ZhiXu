@@ -752,7 +752,7 @@ private fun DocRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
             )
         }
         ZhixuIconButton(onClick = onMoreClick) {

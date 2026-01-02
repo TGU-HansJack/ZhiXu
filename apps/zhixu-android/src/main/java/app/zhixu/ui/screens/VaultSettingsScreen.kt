@@ -35,7 +35,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -71,9 +70,11 @@ import app.zhixu.data.appManagedVaultRootUri
 import app.zhixu.data.vaultRootToDocumentFile
 import app.zhixu.sync.OfficialSync
 import app.zhixu.ui.Ionicons
+import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
 import app.zhixu.ui.components.ZhixuTextField
+import app.zhixu.ui.components.ZhixuSwitch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.map
@@ -110,13 +111,14 @@ fun VaultSettingsScreen(
                     TopAppBar(
                         windowInsets = TopAppBarDefaults.windowInsets,
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                        title = { Text(stringResource(R.string.settings_section_vault)) },
+                        title = { Text(stringResource(R.string.settings_section_vault), style = MaterialTheme.typography.titleMedium) },
                         navigationIcon = {
                             val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                             ZhixuIconButton(onClick = onBack) {
                                 Icon(
                                     painter = painterResource(if (isRtl) app.zhixu.ui.Ionicons.ArrowForward else app.zhixu.ui.Ionicons.ArrowBack),
                                     contentDescription = stringResource(R.string.action_back),
+                                    modifier = Modifier.size(ZhixuTopBarIconSize),
                                 )
                             }
                         },
@@ -217,13 +219,14 @@ fun VaultSettingsScreen(
                 TopAppBar(
                     windowInsets = TopAppBarDefaults.windowInsets,
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                    title = { Text(stringResource(R.string.settings_section_vault)) },
+                    title = { Text(stringResource(R.string.settings_section_vault), style = MaterialTheme.typography.titleMedium) },
                     navigationIcon = {
                         val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                         ZhixuIconButton(onClick = onBack) {
                             Icon(
                                 painter = painterResource(if (isRtl) app.zhixu.ui.Ionicons.ArrowForward else app.zhixu.ui.Ionicons.ArrowBack),
                                 contentDescription = stringResource(R.string.action_back),
+                                modifier = Modifier.size(ZhixuTopBarIconSize),
                             )
                         }
                     },
@@ -480,7 +483,7 @@ fun VaultSettingsScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(stringResource(R.string.vault_settings_third_party_e2ee))
-                                Switch(
+                                ZhixuSwitch(
                                     checked = thirdPartyE2eeEnabled,
                                     onCheckedChange = { thirdPartyE2eeEnabled = it },
                                 )

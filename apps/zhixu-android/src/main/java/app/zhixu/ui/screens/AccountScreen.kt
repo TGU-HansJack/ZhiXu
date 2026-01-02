@@ -61,6 +61,7 @@ import app.zhixu.sync.OfficialSync
 import app.zhixu.sync.SyncServerClient
 import app.zhixu.sync.SyncServerResult
 import app.zhixu.ui.Ionicons
+import app.zhixu.ui.ZhixuTopBarIconSize
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -142,13 +143,14 @@ fun AccountScreen(
                 TopAppBar(
                     windowInsets = TopAppBarDefaults.windowInsets,
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                    title = { Text(stringResource(R.string.account_manage_title)) },
+                    title = { Text(stringResource(R.string.account_manage_title), style = MaterialTheme.typography.titleMedium) },
                     navigationIcon = {
                         val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                         ZhixuIconButton(onClick = onBack) {
                             Icon(
                                 painter = painterResource(if (isRtl) app.zhixu.ui.Ionicons.ArrowForward else app.zhixu.ui.Ionicons.ArrowBack),
                                 contentDescription = stringResource(R.string.action_back),
+                                modifier = Modifier.size(ZhixuTopBarIconSize),
                             )
                         }
                     },

@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,6 +45,7 @@ import app.zhixu.R
 import app.zhixu.data.UiDoc
 import app.zhixu.data.VaultRepository
 import app.zhixu.ui.Ionicons
+import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.sync.VaultAutoSync
 import kotlinx.coroutines.launch
 
@@ -75,12 +78,13 @@ fun NewDocScreen(
                 TopAppBar(
                     windowInsets = TopAppBarDefaults.windowInsets,
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                    title = { Text(stringResource(R.string.new_doc_title)) },
+                    title = { Text(stringResource(R.string.new_doc_title), style = MaterialTheme.typography.titleMedium) },
                     navigationIcon = {
                         ZhixuIconButton(onClick = onBack) {
                             Icon(
                                 painter = painterResource(if (LocalLayoutDirection.current == LayoutDirection.Rtl) Ionicons.ArrowForward else Ionicons.ArrowBack),
                                 contentDescription = stringResource(R.string.action_back),
+                                modifier = Modifier.size(ZhixuTopBarIconSize),
                             )
                         }
                     },

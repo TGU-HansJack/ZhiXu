@@ -53,10 +53,10 @@ fun SpaceScreen(
         contentPadding = contentPadding,
         useSystemInsets = false,
         showHeader = false,
-        itemMinHeight = 44.dp,
-        itemTextStyle = MaterialTheme.typography.bodyLarge,
-        itemIconSize = 22.dp,
-        itemChevronSize = 20.dp,
+        itemMinHeight = 40.dp,
+        itemTextStyle = MaterialTheme.typography.bodyMedium,
+        itemIconSize = 20.dp,
+        itemChevronSize = 18.dp,
         modifier = Modifier.fillMaxSize(),
     )
 }

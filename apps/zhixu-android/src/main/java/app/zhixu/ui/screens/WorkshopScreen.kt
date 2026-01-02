@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -38,7 +39,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TextButton
@@ -62,17 +62,18 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.draw.scale
 import app.zhixu.R
 import app.zhixu.plugins.InstalledPlugin
 import app.zhixu.plugins.PluginManifest
 import app.zhixu.plugins.PluginRepository
 import app.zhixu.ui.Ionicons
+import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.MarkdownPreview
 import app.zhixu.ui.components.ZhixuDialogDefaults
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
 import app.zhixu.ui.components.ZhixuTextField
+import app.zhixu.ui.components.ZhixuSwitch
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -266,13 +267,14 @@ fun WorkshopScreen(
                 TopAppBar(
                     windowInsets = TopAppBarDefaults.windowInsets,
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                    title = { Text(stringResource(R.string.workshop_title)) },
+                    title = { Text(stringResource(R.string.workshop_title), style = MaterialTheme.typography.titleMedium) },
                     navigationIcon = {
                         val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                         ZhixuIconButton(onClick = onBack) {
                             Icon(
                                 painter = painterResource(if (isRtl) app.zhixu.ui.Ionicons.ArrowForward else app.zhixu.ui.Ionicons.ArrowBack),
                                 contentDescription = stringResource(R.string.action_back),
+                                modifier = Modifier.size(ZhixuTopBarIconSize),
                             )
                         }
                     },
@@ -577,11 +579,7 @@ private fun PluginRow(
                 }
             }
 
-            Switch(
-                modifier = Modifier.scale(0.82f),
-                checked = plugin.enabled,
-                onCheckedChange = onToggle,
-            )
+            ZhixuSwitch(checked = plugin.enabled, onCheckedChange = onToggle)
         }
 
         if (showDivider) {
@@ -699,11 +697,7 @@ private fun JsonObjectForm(
                                 Text(text = hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                        Switch(
-                            modifier = Modifier.scale(0.82f),
-                            checked = v,
-                            onCheckedChange = { checked -> onChange(configWithPathValue(root, nextPath, checked)) },
-                        )
+                        ZhixuSwitch(checked = v, onCheckedChange = { checked -> onChange(configWithPathValue(root, nextPath, checked)) })
                     }
                 }
 

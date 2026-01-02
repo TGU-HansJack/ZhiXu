@@ -49,6 +49,7 @@ import androidx.core.graphics.drawable.toBitmap
 import app.zhixu.BuildConfig
 import app.zhixu.R
 import app.zhixu.ui.Ionicons
+import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
 
 private const val OFFICIAL_SITE_URL = "https://zhixu.app"
@@ -110,12 +111,13 @@ fun AboutScreen(
             TopAppBar(
                 windowInsets = TopAppBarDefaults.windowInsets,
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                title = { Text(stringResource(R.string.settings_placeholder_about)) },
+                title = { Text(stringResource(R.string.settings_placeholder_about), style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
                     ZhixuIconButton(onClick = onBack) {
                         Icon(
                             painter = painterResource(Ionicons.ArrowBack),
                             contentDescription = stringResource(R.string.action_back),
+                            modifier = Modifier.size(ZhixuTopBarIconSize),
                         )
                     }
                 },

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -75,10 +76,12 @@ import app.zhixu.data.vaultRootToDocumentFile
 import app.zhixu.sync.OfficialSync
 import app.zhixu.sync.OfficialVaultSyncEngine
 import app.zhixu.sync.WebDavSyncEngine
+import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuDialogDefaults
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
 import app.zhixu.ui.components.ZhixuTextField
+import app.zhixu.ui.components.ZhixuSwitch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -126,13 +129,14 @@ fun SyncScreen(
                     TopAppBar(
                         windowInsets = TopAppBarDefaults.windowInsets,
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                        title = { Text(stringResource(R.string.settings_section_sync)) },
+                        title = { Text(stringResource(R.string.settings_section_sync), style = MaterialTheme.typography.titleMedium) },
                         navigationIcon = {
                             val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                             ZhixuIconButton(onClick = onBack) {
                                 Icon(
                                     painter = painterResource(if (isRtl) app.zhixu.ui.Ionicons.ArrowForward else app.zhixu.ui.Ionicons.ArrowBack),
                                     contentDescription = stringResource(R.string.action_back),
+                                    modifier = Modifier.size(ZhixuTopBarIconSize),
                                 )
                             }
                         },
@@ -221,13 +225,14 @@ fun SyncScreen(
                 TopAppBar(
                     windowInsets = TopAppBarDefaults.windowInsets,
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                    title = { Text(stringResource(R.string.settings_section_sync)) },
+                    title = { Text(stringResource(R.string.settings_section_sync), style = MaterialTheme.typography.titleMedium) },
                     navigationIcon = {
                         val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                         ZhixuIconButton(onClick = onBack) {
                             Icon(
                                 painter = painterResource(if (isRtl) app.zhixu.ui.Ionicons.ArrowForward else app.zhixu.ui.Ionicons.ArrowBack),
                                 contentDescription = stringResource(R.string.action_back),
+                                modifier = Modifier.size(ZhixuTopBarIconSize),
                             )
                         }
                     },
@@ -685,6 +690,6 @@ private fun RowSwitch(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title)
-        androidx.compose.material3.Switch(checked = checked, onCheckedChange = onCheckedChange)
+        ZhixuSwitch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
