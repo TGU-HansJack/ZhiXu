@@ -718,7 +718,7 @@ private fun MainBottomBar(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(70.dp),
+                        .height(ZhixuBottomBarContentHeight),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {

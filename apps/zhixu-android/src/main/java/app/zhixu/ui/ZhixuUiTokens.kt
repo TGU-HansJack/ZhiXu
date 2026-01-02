@@ -6,3 +6,4 @@ const val ZhixuSwitchScale = 0.82f
 
 val ZhixuTopBarIconSize = 24.dp
 val ZhixuTopBarContentHeight = 56.dp
+val ZhixuBottomBarContentHeight = 56.dp
