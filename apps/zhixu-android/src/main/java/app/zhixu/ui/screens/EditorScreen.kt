@@ -1428,7 +1428,12 @@ fun EditorScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = if (isPdfDoc) 0.dp else 12.dp, vertical = if (isPdfDoc) 0.dp else 6.dp),
+                                .padding(
+                                    start = if (isPdfDoc) 0.dp else 12.dp,
+                                    end = if (isPdfDoc) 0.dp else 12.dp,
+                                    top = if (isPdfDoc) 0.dp else 0.dp,
+                                    bottom = if (isPdfDoc) 0.dp else 6.dp,
+                                ),
                         ) {
                             if (isPdfDoc) {
                                 Surface(
@@ -1664,6 +1669,7 @@ fun EditorScreen(
                                         onTextLayout = { textLayoutResult = it },
                                         decorationBox = { inner ->
                                             Column {
+                                                Spacer(modifier = Modifier.height(6.dp))
                                                 Box(modifier = Modifier.fillMaxWidth()) {
                                                     if (isLoaded && content.text.isEmpty()) {
                                                         Text(
