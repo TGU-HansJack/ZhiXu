@@ -1,4 +1,4 @@
-package com.zhixu.android.perf
+﻿package app.zhixu.perf
 
 import android.app.Activity
 import android.app.Application

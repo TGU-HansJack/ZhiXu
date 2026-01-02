@@ -1,11 +1,11 @@
-package com.zhixu.android.plugins
+﻿package app.zhixu.plugins
 
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
-import com.zhixu.android.data.vaultRootToDocumentFile
+import app.zhixu.data.vaultRootToDocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient

@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.components
+﻿package app.zhixu.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -21,7 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import com.zhixu.android.ui.Ionicons
+import app.zhixu.ui.Ionicons
 
 object CapsuleActionBarDefaults {
     val Height = 52.dp

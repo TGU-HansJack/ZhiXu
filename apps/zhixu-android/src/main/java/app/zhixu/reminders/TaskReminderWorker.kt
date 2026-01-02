@@ -1,4 +1,4 @@
-package com.zhixu.android.reminders
+﻿package app.zhixu.reminders
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -10,9 +10,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.zhixu.android.MainActivity
-import com.zhixu.android.R
-import com.zhixu.android.data.VaultIndexRepository
+import app.zhixu.MainActivity
+import app.zhixu.R
+import app.zhixu.data.VaultIndexRepository
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter

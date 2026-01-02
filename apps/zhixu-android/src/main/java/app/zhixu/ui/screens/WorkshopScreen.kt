@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.screens
+﻿package app.zhixu.ui.screens
 
 import android.content.Intent
 import android.net.Uri
@@ -64,15 +64,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.scale
-import com.zhixu.android.R
-import com.zhixu.android.plugins.InstalledPlugin
-import com.zhixu.android.plugins.PluginManifest
-import com.zhixu.android.plugins.PluginRepository
-import com.zhixu.android.ui.Ionicons
-import com.zhixu.android.ui.components.MarkdownPreview
-import com.zhixu.android.ui.components.ZhixuDialogDefaults
-import com.zhixu.android.ui.components.ZhixuPasswordToggleIconButton
-import com.zhixu.android.ui.components.ZhixuTextField
+import app.zhixu.R
+import app.zhixu.plugins.InstalledPlugin
+import app.zhixu.plugins.PluginManifest
+import app.zhixu.plugins.PluginRepository
+import app.zhixu.ui.Ionicons
+import app.zhixu.ui.components.MarkdownPreview
+import app.zhixu.ui.components.ZhixuDialogDefaults
+import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
+import app.zhixu.ui.components.ZhixuTextField
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -271,7 +271,7 @@ fun WorkshopScreen(
                         val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                         IconButton(onClick = onBack) {
                             Icon(
-                                painter = painterResource(if (isRtl) com.zhixu.android.ui.Ionicons.ArrowForward else com.zhixu.android.ui.Ionicons.ArrowBack),
+                                painter = painterResource(if (isRtl) app.zhixu.ui.Ionicons.ArrowForward else app.zhixu.ui.Ionicons.ArrowBack),
                                 contentDescription = stringResource(R.string.action_back),
                             )
                         }
@@ -304,7 +304,7 @@ fun WorkshopScreen(
                     onValueChange = { searchText = it },
                     singleLine = true,
                     placeholder = { Text(stringResource(R.string.workshop_search_hint)) },
-                    leadingIcon = { Icon(painter = painterResource(com.zhixu.android.ui.Ionicons.Search), contentDescription = null) },
+                    leadingIcon = { Icon(painter = painterResource(app.zhixu.ui.Ionicons.Search), contentDescription = null) },
                     shape = MaterialTheme.shapes.extraLarge,
                     modifier = Modifier.fillMaxWidth(),
                 )

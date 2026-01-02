@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.screens
+﻿package app.zhixu.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -38,15 +38,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import com.zhixu.android.R
-import com.zhixu.android.data.AccountPreferences
-import com.zhixu.android.data.AccountState
-import com.zhixu.android.ui.components.ZhixuDialogDefaults
-import com.zhixu.android.ui.components.ZhixuPasswordToggleIconButton
-import com.zhixu.android.ui.components.ZhixuTextField
-import com.zhixu.android.sync.OfficialSync
-import com.zhixu.android.sync.SyncServerClient
-import com.zhixu.android.sync.SyncServerResult
+import app.zhixu.R
+import app.zhixu.data.AccountPreferences
+import app.zhixu.data.AccountState
+import app.zhixu.ui.components.ZhixuDialogDefaults
+import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
+import app.zhixu.ui.components.ZhixuTextField
+import app.zhixu.sync.OfficialSync
+import app.zhixu.sync.SyncServerClient
+import app.zhixu.sync.SyncServerResult
 import kotlinx.coroutines.launch
 
 @Composable
@@ -302,7 +302,7 @@ fun AccountManagementDialog(
                                 Text(text = price, style = MaterialTheme.typography.titleSmall)
                                 if (selected) {
                                     androidx.compose.material3.Icon(
-                                        painter = androidx.compose.ui.res.painterResource(com.zhixu.android.ui.Ionicons.CheckmarkCircle),
+                                        painter = androidx.compose.ui.res.painterResource(app.zhixu.ui.Ionicons.CheckmarkCircle),
                                         contentDescription = null,
                                         modifier = Modifier.size(18.dp),
                                         tint = MaterialTheme.colorScheme.primary,

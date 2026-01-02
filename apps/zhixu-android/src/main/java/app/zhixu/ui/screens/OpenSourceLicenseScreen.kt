@@ -1,8 +1,8 @@
-package com.zhixu.android.ui.screens
+﻿package app.zhixu.ui.screens
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
-import com.zhixu.android.R
+import app.zhixu.R
 
 private const val OPEN_SOURCE_LICENSE_URL = "https://zhixu.app/license"
 

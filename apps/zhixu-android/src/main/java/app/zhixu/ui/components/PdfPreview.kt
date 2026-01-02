@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.components
+﻿package app.zhixu.ui.components
 
 import android.content.Intent
 import android.net.Uri

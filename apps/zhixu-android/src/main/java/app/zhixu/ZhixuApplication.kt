@@ -1,7 +1,7 @@
-package com.zhixu.android
+﻿package app.zhixu
 
 import android.app.Application
-import com.zhixu.android.perf.DebugMonitors
+import app.zhixu.perf.DebugMonitors
 
 class ZhixuApplication : Application() {
     override fun onCreate() {

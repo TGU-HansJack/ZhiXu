@@ -1,12 +1,12 @@
-package com.zhixu.android.sync
+﻿package app.zhixu.sync
 
 import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
-import com.zhixu.android.data.VaultRepository
-import com.zhixu.android.data.WebDavClient
-import com.zhixu.android.data.WebDavConfig
-import com.zhixu.android.data.vaultRootToDocumentFile
+import app.zhixu.data.VaultRepository
+import app.zhixu.data.WebDavClient
+import app.zhixu.data.WebDavConfig
+import app.zhixu.data.vaultRootToDocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl

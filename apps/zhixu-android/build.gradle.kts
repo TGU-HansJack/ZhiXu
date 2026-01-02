@@ -10,11 +10,11 @@ configurations.configureEach {
 }
 
 android {
-    namespace = "com.zhixu.android"
+    namespace = "app.zhixu"
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.zhixu.android"
+        applicationId = "app.zhixu"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 1

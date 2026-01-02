@@ -1,4 +1,4 @@
-package com.zhixu.android.sync
+﻿package app.zhixu.sync
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

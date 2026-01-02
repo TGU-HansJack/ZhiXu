@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.components
+﻿package app.zhixu.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -25,8 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.zhixu.android.R
-import com.zhixu.android.ui.Ionicons
+import app.zhixu.R
+import app.zhixu.ui.Ionicons
 import kotlinx.coroutines.delay
 
 @Composable

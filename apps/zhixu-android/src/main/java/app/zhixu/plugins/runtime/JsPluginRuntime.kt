@@ -1,12 +1,12 @@
-package com.zhixu.android.plugins.runtime
+﻿package app.zhixu.plugins.runtime
 
 import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.util.Log
-import com.zhixu.android.BuildConfig
-import com.zhixu.android.plugins.PluginManifest
-import com.zhixu.android.plugins.PluginRepository
+import app.zhixu.BuildConfig
+import app.zhixu.plugins.PluginManifest
+import app.zhixu.plugins.PluginRepository
 import com.eclipsesource.v8.JavaCallback
 import com.eclipsesource.v8.JavaVoidCallback
 import com.eclipsesource.v8.V8

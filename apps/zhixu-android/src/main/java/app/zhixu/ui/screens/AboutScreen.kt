@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.screens
+﻿package app.zhixu.ui.screens
 
 import android.content.Intent
 import android.net.Uri
@@ -47,9 +47,9 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
-import com.zhixu.android.BuildConfig
-import com.zhixu.android.R
-import com.zhixu.android.ui.Ionicons
+import app.zhixu.BuildConfig
+import app.zhixu.R
+import app.zhixu.ui.Ionicons
 
 private const val OFFICIAL_SITE_URL = "https://zhixu.app"
 private const val OFFICIAL_TOS_URL = "https://zhixu.app/tos"

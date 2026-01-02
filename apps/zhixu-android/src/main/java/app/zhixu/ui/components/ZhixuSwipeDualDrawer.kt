@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.components
+﻿package app.zhixu.ui.components
 
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState

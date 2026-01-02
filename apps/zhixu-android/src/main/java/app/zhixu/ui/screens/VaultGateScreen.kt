@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.screens
+﻿package app.zhixu.ui.screens
 
 import android.content.Intent
 import android.net.Uri
@@ -27,8 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
-import com.zhixu.android.R
-import com.zhixu.android.data.VaultStorageLocation
+import app.zhixu.R
+import app.zhixu.data.VaultStorageLocation
 import kotlinx.coroutines.launch
 
 @Composable

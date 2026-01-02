@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.screens
+﻿package app.zhixu.ui.screens
 
 import android.app.Activity
 import android.content.Context
@@ -148,35 +148,35 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlin.math.abs
-import com.zhixu.android.R
-import com.zhixu.android.data.dataStore
-import com.zhixu.android.data.VaultRepository
-import com.zhixu.android.ui.Ionicons
-import com.zhixu.android.sync.SyncServerClient
-import com.zhixu.android.sync.resolveSyncServerAuth
-import com.zhixu.android.sync.VaultAutoSync
-import com.zhixu.android.plugins.InstalledPlugin
-import com.zhixu.android.plugins.FrontMatterParser
-import com.zhixu.android.plugins.PluginRepository
-import com.zhixu.android.plugins.runtime.EditorActionContext
-import com.zhixu.android.plugins.runtime.JsPluginRuntime
+import app.zhixu.R
+import app.zhixu.data.dataStore
+import app.zhixu.data.VaultRepository
+import app.zhixu.ui.Ionicons
+import app.zhixu.sync.SyncServerClient
+import app.zhixu.sync.resolveSyncServerAuth
+import app.zhixu.sync.VaultAutoSync
+import app.zhixu.plugins.InstalledPlugin
+import app.zhixu.plugins.FrontMatterParser
+import app.zhixu.plugins.PluginRepository
+import app.zhixu.plugins.runtime.EditorActionContext
+import app.zhixu.plugins.runtime.JsPluginRuntime
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
-import com.zhixu.android.ui.components.MarkdownPreview
-import com.zhixu.android.ui.components.PdfPreview
-import com.zhixu.android.ui.components.PdfPreviewController
-import com.zhixu.android.ui.components.PdfLayoutMode
-import com.zhixu.android.ui.components.RadialFabAction
-import com.zhixu.android.ui.components.LineDiff
-import com.zhixu.android.ui.components.DiffOp
-import com.zhixu.android.ui.components.DiffLine
-import com.zhixu.android.ui.components.ZhixuDialogDefaults
-import com.zhixu.android.ui.components.SheetActionRow
-import com.zhixu.android.ui.components.SheetQuickAction
-import com.zhixu.android.ui.components.ZhixuTextField
-import com.zhixu.android.ui.components.VaultDrawer
-import com.zhixu.android.ui.components.ZhixuSwipeDualDrawer
-import com.zhixu.core.tasks.TaskSyntax
+import app.zhixu.ui.components.MarkdownPreview
+import app.zhixu.ui.components.PdfPreview
+import app.zhixu.ui.components.PdfPreviewController
+import app.zhixu.ui.components.PdfLayoutMode
+import app.zhixu.ui.components.RadialFabAction
+import app.zhixu.ui.components.LineDiff
+import app.zhixu.ui.components.DiffOp
+import app.zhixu.ui.components.DiffLine
+import app.zhixu.ui.components.ZhixuDialogDefaults
+import app.zhixu.ui.components.SheetActionRow
+import app.zhixu.ui.components.SheetQuickAction
+import app.zhixu.ui.components.ZhixuTextField
+import app.zhixu.ui.components.VaultDrawer
+import app.zhixu.ui.components.ZhixuSwipeDualDrawer
+import app.zhixu.core.tasks.TaskSyntax
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -190,7 +190,7 @@ import kotlinx.coroutines.withContext
 import java.io.FileNotFoundException
 import org.json.JSONObject
 import androidx.documentfile.provider.DocumentFile
-import com.zhixu.android.ui.DocListMutation
+import app.zhixu.ui.DocListMutation
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 
@@ -411,8 +411,8 @@ fun EditorScreen(
         )
 
         repository.recordDailyDocEdited(docUri = uri)
-        val beforeDone = beforeForDelta?.let { runCatching { com.zhixu.core.tasks.TaskSyntax.parseTasks(it).count { t -> t.checked } }.getOrNull() } ?: 0
-        val afterDone = runCatching { com.zhixu.core.tasks.TaskSyntax.parseTasks(text).count { t -> t.checked } }.getOrNull() ?: 0
+        val beforeDone = beforeForDelta?.let { runCatching { app.zhixu.core.tasks.TaskSyntax.parseTasks(it).count { t -> t.checked } }.getOrNull() } ?: 0
+        val afterDone = runCatching { app.zhixu.core.tasks.TaskSyntax.parseTasks(text).count { t -> t.checked } }.getOrNull() ?: 0
         val deltaDone = (afterDone - beforeDone).coerceAtLeast(0)
         if (deltaDone > 0) repository.recordDailyTasksDone(delta = deltaDone)
 
@@ -1883,7 +1883,7 @@ fun EditorScreen(
         var selected by remember(showHistorySheet, latestDocUri) { mutableStateOf<VaultVersionEntryV2?>(null) }
         var selectedText by remember(showHistorySheet, latestDocUri) { mutableStateOf("") }
         var historyRelPath by remember(showHistorySheet, latestDocUri) { mutableStateOf<String?>(null) }
-        var historyAuth by remember(showHistorySheet, latestDocUri) { mutableStateOf<com.zhixu.android.sync.SyncServerAuth?>(null) }
+        var historyAuth by remember(showHistorySheet, latestDocUri) { mutableStateOf<app.zhixu.sync.SyncServerAuth?>(null) }
         var showOnlyChanges by remember(showHistorySheet, latestDocUri) { mutableStateOf(true) }
         val currentTextSnapshot by rememberUpdatedState(latestContentText)
         val offlineText = stringResource(R.string.error_server_unreachable)

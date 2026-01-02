@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.screens
+﻿package app.zhixu.ui.screens
 
 import android.content.Intent
 import android.graphics.Bitmap
@@ -67,12 +67,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.ContentScale
 import androidx.core.content.FileProvider
-import com.zhixu.android.R
-import com.zhixu.android.data.SyncPreferences
-import com.zhixu.android.ui.Ionicons
-import com.zhixu.android.data.WebDavConfig
-import com.zhixu.android.ui.longimage.LongImageRenderInput
-import com.zhixu.android.ui.longimage.renderLongImage
+import app.zhixu.R
+import app.zhixu.data.SyncPreferences
+import app.zhixu.ui.Ionicons
+import app.zhixu.data.WebDavConfig
+import app.zhixu.ui.longimage.LongImageRenderInput
+import app.zhixu.ui.longimage.renderLongImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

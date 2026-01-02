@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.components
+﻿package app.zhixu.ui.components
 
 import android.net.Uri
 import androidx.compose.foundation.clickable
@@ -57,11 +57,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.Surface
-import com.zhixu.android.R
-import com.zhixu.android.data.VaultRepository
-import com.zhixu.android.data.VaultTreeEntry
-import com.zhixu.android.ui.Ionicons
-import com.zhixu.android.ui.DocListMutation
+import app.zhixu.R
+import app.zhixu.data.VaultRepository
+import app.zhixu.data.VaultTreeEntry
+import app.zhixu.ui.Ionicons
+import app.zhixu.ui.DocListMutation
 import kotlinx.coroutines.launch
 
 private object VaultDrawerCache {

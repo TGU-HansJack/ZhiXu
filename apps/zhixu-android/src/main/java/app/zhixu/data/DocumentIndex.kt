@@ -1,4 +1,4 @@
-package com.zhixu.android.data
+﻿package app.zhixu.data
 
 import android.net.Uri
 import kotlinx.coroutines.flow.SharedFlow

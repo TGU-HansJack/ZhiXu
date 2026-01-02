@@ -1,4 +1,4 @@
-package com.zhixu.android.ui
+﻿package app.zhixu.ui
 
 import android.net.Uri
 import androidx.appcompat.app.AppCompatDelegate
@@ -71,39 +71,39 @@ import androidx.navigation.navArgument
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import com.zhixu.android.R
-import com.zhixu.android.data.AccountPreferences
-import com.zhixu.android.data.AccountState
-import com.zhixu.android.data.DocumentIndex
-import com.zhixu.android.data.SyncPreferences
-import com.zhixu.android.data.ThirdPartyServiceConfig
-import com.zhixu.android.data.UiPreferences
-import com.zhixu.android.data.VaultPreferences
-import com.zhixu.android.data.VaultIndexUpdater
-import com.zhixu.android.data.VaultRepository
-import com.zhixu.android.data.VaultStorageLocation
-import com.zhixu.android.data.VaultSyncConfig
-import com.zhixu.android.data.VaultSyncPreferences
-import com.zhixu.android.data.WebDavConfig
-import com.zhixu.android.data.appManagedVaultRootUri
-import com.zhixu.android.sync.VaultAutoSync
-import com.zhixu.android.sync.WebDavAutoSync
-import com.zhixu.android.ui.screens.AccountScreen
-import com.zhixu.android.ui.screens.AboutScreen
-import com.zhixu.android.ui.screens.DocumentListScreen
-import com.zhixu.android.ui.screens.EditorScreen
-import com.zhixu.android.ui.screens.LongImageScreen
-import com.zhixu.android.ui.screens.NewDocScreen
-import com.zhixu.android.ui.screens.OpenSourceLicenseScreen
-import com.zhixu.android.ui.screens.PrivacyPolicyScreen
-import com.zhixu.android.ui.screens.SettingsScreen
-import com.zhixu.android.ui.screens.SpaceScreen
-import com.zhixu.android.ui.screens.SyncScreen
-import com.zhixu.android.ui.screens.TasksScreen
-import com.zhixu.android.ui.screens.TermsOfUseScreen
-import com.zhixu.android.ui.screens.VaultGateScreen
-import com.zhixu.android.ui.screens.VaultSettingsScreen
-import com.zhixu.android.ui.screens.WorkshopScreen
+import app.zhixu.R
+import app.zhixu.data.AccountPreferences
+import app.zhixu.data.AccountState
+import app.zhixu.data.DocumentIndex
+import app.zhixu.data.SyncPreferences
+import app.zhixu.data.ThirdPartyServiceConfig
+import app.zhixu.data.UiPreferences
+import app.zhixu.data.VaultPreferences
+import app.zhixu.data.VaultIndexUpdater
+import app.zhixu.data.VaultRepository
+import app.zhixu.data.VaultStorageLocation
+import app.zhixu.data.VaultSyncConfig
+import app.zhixu.data.VaultSyncPreferences
+import app.zhixu.data.WebDavConfig
+import app.zhixu.data.appManagedVaultRootUri
+import app.zhixu.sync.VaultAutoSync
+import app.zhixu.sync.WebDavAutoSync
+import app.zhixu.ui.screens.AccountScreen
+import app.zhixu.ui.screens.AboutScreen
+import app.zhixu.ui.screens.DocumentListScreen
+import app.zhixu.ui.screens.EditorScreen
+import app.zhixu.ui.screens.LongImageScreen
+import app.zhixu.ui.screens.NewDocScreen
+import app.zhixu.ui.screens.OpenSourceLicenseScreen
+import app.zhixu.ui.screens.PrivacyPolicyScreen
+import app.zhixu.ui.screens.SettingsScreen
+import app.zhixu.ui.screens.SpaceScreen
+import app.zhixu.ui.screens.SyncScreen
+import app.zhixu.ui.screens.TasksScreen
+import app.zhixu.ui.screens.TermsOfUseScreen
+import app.zhixu.ui.screens.VaultGateScreen
+import app.zhixu.ui.screens.VaultSettingsScreen
+import app.zhixu.ui.screens.WorkshopScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -168,7 +168,7 @@ fun ZhixuApp() {
         withFrameNanos { }
         withContext(Dispatchers.Default) {
             val request =
-                PeriodicWorkRequestBuilder<com.zhixu.android.reminders.TaskReminderWorker>(
+                PeriodicWorkRequestBuilder<app.zhixu.reminders.TaskReminderWorker>(
                     java.time.Duration.ofMinutes(30),
                 ).build()
             WorkManager.getInstance(appContext).enqueueUniquePeriodicWork(
@@ -498,7 +498,7 @@ fun ZhixuApp() {
                     )
                 }
                 composable("account") {
-                    val accountPrefs = remember(appContext) { com.zhixu.android.data.AccountPreferences(appContext) }
+                    val accountPrefs = remember(appContext) { app.zhixu.data.AccountPreferences(appContext) }
                     AccountScreen(
                         contentPadding = padding,
                         accountPrefs = accountPrefs,

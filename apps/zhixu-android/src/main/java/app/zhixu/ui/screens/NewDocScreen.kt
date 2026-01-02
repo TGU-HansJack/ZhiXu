@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.screens
+﻿package app.zhixu.ui.screens
 
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
@@ -38,12 +38,12 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import com.zhixu.android.ui.components.ZhixuTextField
-import com.zhixu.android.R
-import com.zhixu.android.data.UiDoc
-import com.zhixu.android.data.VaultRepository
-import com.zhixu.android.ui.Ionicons
-import com.zhixu.android.sync.VaultAutoSync
+import app.zhixu.ui.components.ZhixuTextField
+import app.zhixu.R
+import app.zhixu.data.UiDoc
+import app.zhixu.data.VaultRepository
+import app.zhixu.ui.Ionicons
+import app.zhixu.sync.VaultAutoSync
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)

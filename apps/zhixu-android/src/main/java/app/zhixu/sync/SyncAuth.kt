@@ -1,11 +1,11 @@
-package com.zhixu.android.sync
+﻿package app.zhixu.sync
 
 import android.content.Context
-import com.zhixu.android.data.AccountPreferences
-import com.zhixu.android.data.ThirdPartyAuthPreferences
-import com.zhixu.android.data.ThirdPartyServiceConfig
-import com.zhixu.android.data.VaultStorageLocation
-import com.zhixu.android.data.VaultSyncPreferences
+import app.zhixu.data.AccountPreferences
+import app.zhixu.data.ThirdPartyAuthPreferences
+import app.zhixu.data.ThirdPartyServiceConfig
+import app.zhixu.data.VaultStorageLocation
+import app.zhixu.data.VaultSyncPreferences
 import kotlinx.coroutines.flow.first
 
 data class SyncServerAuth(

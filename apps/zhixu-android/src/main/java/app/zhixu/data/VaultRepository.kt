@@ -1,4 +1,4 @@
-package com.zhixu.android.data
+﻿package app.zhixu.data
 
 import android.content.ContentResolver
 import android.content.Context
@@ -7,8 +7,8 @@ import android.provider.DocumentsContract
 import android.os.SystemClock
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
-import com.zhixu.core.tasks.TaskSyntax
-import com.zhixu.core.tasks.Ulid
+import app.zhixu.core.tasks.TaskSyntax
+import app.zhixu.core.tasks.Ulid
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive

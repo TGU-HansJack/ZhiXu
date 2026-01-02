@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.screens
+﻿package app.zhixu.ui.screens
 
 import android.content.Intent
 import android.net.Uri
@@ -30,8 +30,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
-import com.zhixu.android.R
-import com.zhixu.android.ui.Ionicons
+import app.zhixu.R
+import app.zhixu.ui.Ionicons
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

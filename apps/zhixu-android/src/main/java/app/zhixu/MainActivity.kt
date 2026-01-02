@@ -1,4 +1,4 @@
-package com.zhixu.android
+﻿package app.zhixu
 
 import android.Manifest
 import android.app.Activity
@@ -19,8 +19,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.content.ContextCompat
-import com.zhixu.android.ui.ZhixuApp
-import com.zhixu.android.ui.theme.ZhixuTheme
+import app.zhixu.ui.ZhixuApp
+import app.zhixu.ui.theme.ZhixuTheme
 
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

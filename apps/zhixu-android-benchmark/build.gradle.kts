@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.zhixu.android.benchmark"
+    namespace = "app.zhixu.benchmark"
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {

@@ -1,4 +1,4 @@
-package com.zhixu.android.benchmark
+﻿package app.zhixu.benchmark
 
 import androidx.benchmark.macro.ExperimentalMetricApi
 import androidx.benchmark.macro.FrameTimingMetric
@@ -20,7 +20,7 @@ class BaselineProfileGenerator {
 
     @Test
     fun generate() =
-        baselineProfileRule.collect(packageName = "com.zhixu.android") {
+        baselineProfileRule.collect(packageName = "app.zhixu") {
             pressHome()
             startActivityAndWait()
 
@@ -45,7 +45,7 @@ class Macrobenchmarks {
     @Test
     fun startupAndScrollJank() {
         benchmarkRule.measureRepeated(
-            packageName = "com.zhixu.android",
+            packageName = "app.zhixu",
             metrics = listOf(StartupTimingMetric(), FrameTimingMetric()),
             startupMode = StartupMode.COLD,
             iterations = 5,

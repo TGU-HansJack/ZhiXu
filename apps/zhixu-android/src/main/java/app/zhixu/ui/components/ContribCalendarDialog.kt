@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.components
+﻿package app.zhixu.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,11 +33,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.zhixu.android.data.DailyContrib
-import com.zhixu.android.data.UiDoc
-import com.zhixu.android.data.UiTask
-import com.zhixu.android.data.VaultRepository
-import com.zhixu.android.ui.Ionicons
+import app.zhixu.data.DailyContrib
+import app.zhixu.data.UiDoc
+import app.zhixu.data.UiTask
+import app.zhixu.data.VaultRepository
+import app.zhixu.ui.Ionicons
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth

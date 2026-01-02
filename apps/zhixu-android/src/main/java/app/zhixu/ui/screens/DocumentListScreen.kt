@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.screens
+﻿package app.zhixu.ui.screens
 
 import android.content.Intent
 import android.net.Uri
@@ -55,7 +55,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import com.zhixu.android.ui.components.ZhixuTextField
+import app.zhixu.ui.components.ZhixuTextField
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -77,18 +77,18 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.zhixu.android.R
-import com.zhixu.android.data.DocSearchResult
-import com.zhixu.android.data.DocumentIndex
-import com.zhixu.android.data.SearchResult
-import com.zhixu.android.data.TaskSearchResult
-import com.zhixu.android.data.UiDoc
-import com.zhixu.android.data.VaultIndexUpdater
-import com.zhixu.android.data.VaultRepository
-import com.zhixu.android.ui.Ionicons
-import com.zhixu.android.ui.components.RefreshStatusBanner
-import com.zhixu.android.ui.components.SheetActionRow
-import com.zhixu.android.ui.components.SheetQuickAction
+import app.zhixu.R
+import app.zhixu.data.DocSearchResult
+import app.zhixu.data.DocumentIndex
+import app.zhixu.data.SearchResult
+import app.zhixu.data.TaskSearchResult
+import app.zhixu.data.UiDoc
+import app.zhixu.data.VaultIndexUpdater
+import app.zhixu.data.VaultRepository
+import app.zhixu.ui.Ionicons
+import app.zhixu.ui.components.RefreshStatusBanner
+import app.zhixu.ui.components.SheetActionRow
+import app.zhixu.ui.components.SheetQuickAction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
@@ -571,7 +571,7 @@ private fun DocumentSearchSheet(
                             onValueChange = onQueryChange,
                             singleLine = true,
                             placeholder = { Text(stringResource(R.string.action_search)) },
-                            leadingIcon = { Icon(painter = painterResource(com.zhixu.android.ui.Ionicons.Search), contentDescription = null) },
+                            leadingIcon = { Icon(painter = painterResource(app.zhixu.ui.Ionicons.Search), contentDescription = null) },
                             modifier = Modifier.weight(1f).focusRequester(focusRequester),
                             shape = MaterialTheme.shapes.extraLarge,
                             colors =

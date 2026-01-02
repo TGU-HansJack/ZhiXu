@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.screens
+﻿package app.zhixu.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -52,15 +52,15 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import com.zhixu.android.R
-import com.zhixu.android.ui.components.ZhixuPasswordToggleIconButton
-import com.zhixu.android.ui.components.ZhixuTextField
-import com.zhixu.android.data.AccountPreferences
-import com.zhixu.android.data.AccountState
-import com.zhixu.android.sync.OfficialSync
-import com.zhixu.android.sync.SyncServerClient
-import com.zhixu.android.sync.SyncServerResult
-import com.zhixu.android.ui.Ionicons
+import app.zhixu.R
+import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
+import app.zhixu.ui.components.ZhixuTextField
+import app.zhixu.data.AccountPreferences
+import app.zhixu.data.AccountState
+import app.zhixu.sync.OfficialSync
+import app.zhixu.sync.SyncServerClient
+import app.zhixu.sync.SyncServerResult
+import app.zhixu.ui.Ionicons
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -147,7 +147,7 @@ fun AccountScreen(
                         val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                         IconButton(onClick = onBack) {
                             Icon(
-                                painter = painterResource(if (isRtl) com.zhixu.android.ui.Ionicons.ArrowForward else com.zhixu.android.ui.Ionicons.ArrowBack),
+                                painter = painterResource(if (isRtl) app.zhixu.ui.Ionicons.ArrowForward else app.zhixu.ui.Ionicons.ArrowBack),
                                 contentDescription = stringResource(R.string.action_back),
                             )
                         }

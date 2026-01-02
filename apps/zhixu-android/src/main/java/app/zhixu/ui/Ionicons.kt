@@ -1,7 +1,7 @@
-package com.zhixu.android.ui
+﻿package app.zhixu.ui
 
 import androidx.annotation.DrawableRes
-import com.zhixu.android.R
+import app.zhixu.R
 
 object Ionicons {
     @DrawableRes val Vault: Int = R.drawable.ic_ion_folder_open_outline

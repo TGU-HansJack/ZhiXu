@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.screens
+﻿package app.zhixu.ui.screens
 
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
@@ -58,7 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import com.zhixu.android.ui.components.ZhixuTextField
+import app.zhixu.ui.components.ZhixuTextField
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -67,13 +67,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
-import com.zhixu.android.R
-import com.zhixu.android.ui.Ionicons
-import com.zhixu.android.ui.components.RefreshStatusBanner
-import com.zhixu.android.data.UiTask
-import com.zhixu.android.data.VaultIndexRepository
-import com.zhixu.android.data.VaultRepository
-import com.zhixu.android.sync.VaultAutoSync
+import app.zhixu.R
+import app.zhixu.ui.Ionicons
+import app.zhixu.ui.components.RefreshStatusBanner
+import app.zhixu.data.UiTask
+import app.zhixu.data.VaultIndexRepository
+import app.zhixu.data.VaultRepository
+import app.zhixu.sync.VaultAutoSync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext

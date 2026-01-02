@@ -1,4 +1,4 @@
-package com.zhixu.android.sync
+﻿package app.zhixu.sync
 
 data class ThreeWayMergeResult(
     val ok: Boolean,

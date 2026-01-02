@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.screens
+﻿package app.zhixu.ui.screens
 
 import android.net.Uri
 import androidx.compose.foundation.clickable
@@ -13,10 +13,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.zhixu.android.R
-import com.zhixu.android.data.VaultRepository
-import com.zhixu.android.ui.DocListMutation
-import com.zhixu.android.ui.components.VaultDrawer
+import app.zhixu.R
+import app.zhixu.data.VaultRepository
+import app.zhixu.ui.DocListMutation
+import app.zhixu.ui.components.VaultDrawer
 
 @Composable
 fun SpaceScreen(

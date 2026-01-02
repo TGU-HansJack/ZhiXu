@@ -1,7 +1,7 @@
-package com.zhixu.android.ui
+﻿package app.zhixu.ui
 
 import android.net.Uri
-import com.zhixu.android.data.UiDoc
+import app.zhixu.data.UiDoc
 
 sealed interface DocListMutation {
     data class Created(val doc: UiDoc) : DocListMutation

@@ -1,4 +1,4 @@
-package com.zhixu.android.ui.screens
+﻿package app.zhixu.ui.screens
 
 import android.content.Intent
 import android.net.Uri
@@ -61,19 +61,19 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
-import com.zhixu.android.R
-import com.zhixu.android.data.ThirdPartyServiceConfig
-import com.zhixu.android.data.VaultPreferences
-import com.zhixu.android.data.VaultRepository
-import com.zhixu.android.data.VaultStorageLocation
-import com.zhixu.android.data.VaultSyncConfig
-import com.zhixu.android.data.VaultSyncPreferences
-import com.zhixu.android.data.appManagedVaultRootUri
-import com.zhixu.android.data.vaultRootToDocumentFile
-import com.zhixu.android.sync.OfficialSync
-import com.zhixu.android.ui.Ionicons
-import com.zhixu.android.ui.components.ZhixuPasswordToggleIconButton
-import com.zhixu.android.ui.components.ZhixuTextField
+import app.zhixu.R
+import app.zhixu.data.ThirdPartyServiceConfig
+import app.zhixu.data.VaultPreferences
+import app.zhixu.data.VaultRepository
+import app.zhixu.data.VaultStorageLocation
+import app.zhixu.data.VaultSyncConfig
+import app.zhixu.data.VaultSyncPreferences
+import app.zhixu.data.appManagedVaultRootUri
+import app.zhixu.data.vaultRootToDocumentFile
+import app.zhixu.sync.OfficialSync
+import app.zhixu.ui.Ionicons
+import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
+import app.zhixu.ui.components.ZhixuTextField
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.map
@@ -115,7 +115,7 @@ fun VaultSettingsScreen(
                             val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                             IconButton(onClick = onBack) {
                                 Icon(
-                                    painter = painterResource(if (isRtl) com.zhixu.android.ui.Ionicons.ArrowForward else com.zhixu.android.ui.Ionicons.ArrowBack),
+                                    painter = painterResource(if (isRtl) app.zhixu.ui.Ionicons.ArrowForward else app.zhixu.ui.Ionicons.ArrowBack),
                                     contentDescription = stringResource(R.string.action_back),
                                 )
                             }
@@ -222,7 +222,7 @@ fun VaultSettingsScreen(
                         val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                         IconButton(onClick = onBack) {
                             Icon(
-                                painter = painterResource(if (isRtl) com.zhixu.android.ui.Ionicons.ArrowForward else com.zhixu.android.ui.Ionicons.ArrowBack),
+                                painter = painterResource(if (isRtl) app.zhixu.ui.Ionicons.ArrowForward else app.zhixu.ui.Ionicons.ArrowBack),
                                 contentDescription = stringResource(R.string.action_back),
                             )
                         }
