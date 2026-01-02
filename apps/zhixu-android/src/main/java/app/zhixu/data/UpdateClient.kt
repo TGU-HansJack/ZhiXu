@@ -21,7 +21,8 @@ sealed class UpdateCheckResult {
 }
 
 object UpdateClient {
-    private const val BASE_URL = "https://zhixu.app/upload"
+    private const val UPDATE_INFO_URL = "https://zhixu.app/update/update.json"
+    private const val OFFICIAL_DOWNLOAD_BASE_URL = "https://zhixu.app/update"
 
     private val client: OkHttpClient =
         OkHttpClient.Builder()
@@ -29,14 +30,13 @@ object UpdateClient {
             .followSslRedirects(true)
             .build()
 
-    suspend fun check(currentVersion: String): UpdateCheckResult = withContext(Dispatchers.IO) {
-        val base = BASE_URL.trimEnd('/')
+    suspend fun check(
+        currentVersion: String,
+        platform: String = "android",
+    ): UpdateCheckResult = withContext(Dispatchers.IO) {
         val candidates =
             listOf(
-                "$base/update.json",
-                "$base/latest.json",
-                "$base/version.json",
-                base,
+                UPDATE_INFO_URL,
             )
 
         val attempts = mutableListOf<String>()
@@ -45,10 +45,34 @@ object UpdateClient {
             attempts += url
             val result = runCatching { fetchUpdateInfo(url) }.getOrNull() ?: continue
             val hasUpdate = compareVersions(result.latestVersion, currentVersion) > 0
-            return@withContext UpdateCheckResult.Success(result, hasUpdate)
+            val info =
+                if (hasUpdate) {
+                    result.copy(downloadUrl = officialDownloadUrl(platform = platform, version = result.latestVersion))
+                } else {
+                    result
+                }
+            return@withContext UpdateCheckResult.Success(info, hasUpdate)
         }
 
         UpdateCheckResult.Failure("Failed to fetch update info. Tried: ${attempts.joinToString(", ")}")
+    }
+
+    fun officialDownloadUrl(platform: String, version: String): String {
+        val normalizedPlatform = platform.trim().lowercase()
+        val normalizedVersion =
+            version
+                .trim()
+                .removePrefix("v")
+                .removePrefix("V")
+
+        val fileName =
+            when (normalizedPlatform) {
+                "android" -> "zhixu.apk"
+                "windows", "win" -> "zhixu.exe"
+                else -> "zhixu"
+            }
+
+        return "${OFFICIAL_DOWNLOAD_BASE_URL.trimEnd('/')}/$normalizedPlatform/$normalizedVersion/$fileName"
     }
 
     private fun fetchUpdateInfo(url: String): UpdateInfo? {

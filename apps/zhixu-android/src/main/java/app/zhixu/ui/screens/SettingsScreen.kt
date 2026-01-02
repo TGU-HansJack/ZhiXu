@@ -54,6 +54,7 @@ import app.zhixu.R
 import app.zhixu.data.AccountPreferences
 import app.zhixu.data.AccountState
 import app.zhixu.data.DailyContrib
+import app.zhixu.data.UpdateDownloader
 import app.zhixu.data.UpdateCheckResult
 import app.zhixu.data.UpdateClient
 import app.zhixu.data.UpdateInfo
@@ -110,11 +111,21 @@ fun SettingsScreen(
         }
     }
 
+    fun startDownloadAndInstall(latestVersion: String) {
+        val url = UpdateClient.officialDownloadUrl(platform = "android", version = latestVersion)
+        val downloadId = UpdateDownloader.downloadApkAndInstall(context, url = url, version = latestVersion)
+        if (downloadId == null) {
+            Toast.makeText(context, "Failed to start download.", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "Downloading…", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     fun startUpdateCheck() {
         updateUiState = UpdateUiState.Loading
         scope.launch {
             updateUiState =
-                when (val res = runCatching { UpdateClient.check(BuildConfig.VERSION_NAME) }.getOrNull()) {
+                when (val res = runCatching { UpdateClient.check(currentVersion = BuildConfig.VERSION_NAME, platform = "android") }.getOrNull()) {
                     is UpdateCheckResult.Success -> UpdateUiState.Success(res.info, res.hasUpdate)
                     is UpdateCheckResult.Failure -> UpdateUiState.Error(res.message)
                     null -> UpdateUiState.Error("Failed to check updates.")
@@ -331,9 +342,13 @@ fun SettingsScreen(
                         TextButton(onClick = { startUpdateCheck() }) { Text(stringResource(R.string.action_retry)) }
                     }
                     is UpdateUiState.Success -> {
-                        val url = s.info.downloadUrl
-                        if (!url.isNullOrBlank()) {
-                            TextButton(onClick = { openUrl(url) }) { Text(stringResource(R.string.settings_update_open_download)) }
+                        if (s.hasUpdate) {
+                            TextButton(
+                                onClick = {
+                                    startDownloadAndInstall(s.info.latestVersion)
+                                    showUpdateDialog = false
+                                },
+                            ) { Text(stringResource(R.string.settings_update_open_download)) }
                         } else {
                             TextButton(onClick = { openUrl(s.info.sourceUrl) }) { Text(stringResource(R.string.settings_update_open_page)) }
                         }
