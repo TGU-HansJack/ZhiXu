@@ -41,7 +41,7 @@ class MainActivity : AppCompatActivity() {
             val uiPrefs = remember(context) { UiPreferences(context.applicationContext) }
 
             val themeMode by uiPrefs.themeMode.collectAsState(initial = UiThemeMode.SYSTEM)
-            val fontOption by uiPrefs.fontOption.collectAsState(initial = UiFontOption.SOURCE_SANS_PRO_LIGHT)
+            val fontOption by uiPrefs.fontOption.collectAsState(initial = UiFontOption.SYSTEM)
 
             val darkTheme =
                 when (themeMode) {
@@ -52,6 +52,7 @@ class MainActivity : AppCompatActivity() {
 
             val appFontFamily =
                 when (fontOption) {
+                    UiFontOption.SYSTEM -> androidx.compose.ui.text.font.FontFamily.Default
                     UiFontOption.SOURCE_SANS_PRO_LIGHT -> SourceSansProLightDefaultFamily
                     UiFontOption.SOURCE_SANS_PRO_REGULAR -> SourceSansProRegularDefaultFamily
                     UiFontOption.LXGW_WENKAI_MONO_LIGHT -> LxgwWenKaiMonoLightDefaultFamily

@@ -6,7 +6,7 @@
 
     <script>
       // Kotlin might call these before scripts finish loading; buffer and apply later.
-      window.__payload = { themeJson: null, pdfUrl: "" };
+      window.__payload = { themeJson: null, pdfUrl: "", fontKey: "source_sans_pro_light" };
       window.__applyQueued = false;
       window.__scheduleApply = () => {
         if (window.__applyQueued) return;
@@ -18,6 +18,7 @@
       };
       window.__setTheme = (json) => { window.__payload.themeJson = json; window.__scheduleApply(); };
       window.__setPdfUrl = (url) => { window.__payload.pdfUrl = url || ""; window.__scheduleApply(); };
+      window.__setFontKey = (s) => { window.__payload.fontKey = String(s || ""); window.__scheduleApply(); };
     </script>
 
     <style>
@@ -28,10 +29,24 @@
         font-weight: 300;
         src: url("file:///android_asset/fonts/source_sans_pro_light.ttf") format("truetype");
       }
+      @font-face {
+        font-family: "Source Sans Pro";
+        font-style: normal;
+        font-weight: 400;
+        src: url("file:///android_asset/fonts/source_sans_pro_regular.ttf") format("truetype");
+      }
+      @font-face {
+        font-family: "LXGW WenKai Mono";
+        font-style: normal;
+        font-weight: 300;
+        src: url("file:///android_asset/fonts/lxgw_wenkai_mono_light.ttf") format("truetype");
+      }
       :root {
         --surface: #FFFFFF;
         --onSurface: #111111;
         --outline: rgba(0, 0, 0, 0.18);
+        --app-font-family: "Source Sans Pro";
+        --app-font-weight: 300;
       }
       html, body {
         margin: 0;
@@ -41,9 +56,9 @@
         height: 100%;
       }
       body {
-        font-family: "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial,
+        font-family: var(--app-font-family), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial,
           "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-        font-weight: 300;
+        font-weight: var(--app-font-weight);
       }
       #status {
         position: sticky;
@@ -368,6 +383,21 @@
         window.__apply = () => {
           if (!window.__payload) return;
           applyTheme(window.__payload.themeJson);
+
+          const fontKey = String(window.__payload.fontKey || "").trim();
+          if (fontKey === "system") {
+            document.documentElement.style.setProperty("--app-font-family", "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Noto Sans\", \"Helvetica Neue\", Arial, \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif");
+            document.documentElement.style.setProperty("--app-font-weight", "400");
+          } else if (fontKey === "lxgw_wenkai_mono_light") {
+            document.documentElement.style.setProperty("--app-font-family", "\"LXGW WenKai Mono\"");
+            document.documentElement.style.setProperty("--app-font-weight", "300");
+          } else if (fontKey === "source_sans_pro_regular") {
+            document.documentElement.style.setProperty("--app-font-family", "\"Source Sans Pro\"");
+            document.documentElement.style.setProperty("--app-font-weight", "400");
+          } else {
+            document.documentElement.style.setProperty("--app-font-family", "\"Source Sans Pro\"");
+            document.documentElement.style.setProperty("--app-font-weight", "300");
+          }
 
           const nextUrl = window.__payload.pdfUrl || "";
           if (!nextUrl) return;

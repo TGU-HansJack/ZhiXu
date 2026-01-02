@@ -73,7 +73,7 @@ fun UiSettingsScreen(
                 UiSettings(
                     languageTag = "",
                     themeMode = UiThemeMode.SYSTEM,
-                    fontOption = UiFontOption.SOURCE_SANS_PRO_LIGHT,
+                    fontOption = UiFontOption.SYSTEM,
                 ),
         )
 
@@ -181,6 +181,7 @@ fun UiSettingsScreen(
             item {
                 fun fontLabel(option: UiFontOption): String =
                     when (option) {
+                        UiFontOption.SYSTEM -> context.getString(R.string.settings_ui_font_system)
                         UiFontOption.SOURCE_SANS_PRO_LIGHT -> context.getString(R.string.settings_ui_font_source_sans_pro_light)
                         UiFontOption.SOURCE_SANS_PRO_REGULAR -> context.getString(R.string.settings_ui_font_source_sans_pro_regular)
                         UiFontOption.LXGW_WENKAI_MONO_LIGHT -> context.getString(R.string.settings_ui_font_lxgw_wenkai)
@@ -269,4 +270,3 @@ fun UiSettingsScreen(
         }
     }
 }
-

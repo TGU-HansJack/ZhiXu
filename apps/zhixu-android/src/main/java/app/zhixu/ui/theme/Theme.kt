@@ -109,14 +109,16 @@ fun ZhixuTheme(
         }
 
     val baseResolver = LocalFontFamilyResolver.current
+    val shouldOverrideFonts = appFontFamily != FontFamily.Default
     val appResolver =
-        remember(baseResolver, appFontFamily) {
+        remember(baseResolver, appFontFamily, shouldOverrideFonts) {
+            if (!shouldOverrideFonts) return@remember baseResolver
             Proxy.newProxyInstance(
                 FontFamily.Resolver::class.java.classLoader,
                 arrayOf(FontFamily.Resolver::class.java),
             ) { _, method, argsOrNull ->
                 val args = argsOrNull ?: emptyArray()
-                if (args.isNotEmpty() && args[0] == FontFamily.Default) {
+                if (args.isNotEmpty() && (args[0] == FontFamily.Default || args[0] == FontFamily.SansSerif)) {
                     val nextArgs = args.copyOf()
                     nextArgs[0] = appFontFamily
                     method.invoke(baseResolver, *nextArgs)

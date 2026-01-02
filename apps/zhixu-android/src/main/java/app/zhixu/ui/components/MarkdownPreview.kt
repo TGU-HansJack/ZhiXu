@@ -46,7 +46,7 @@ fun MarkdownPreview(
     val scope = rememberCoroutineScope()
 
     val uiPrefs = remember(context) { UiPreferences(context.applicationContext) }
-    val fontOption by uiPrefs.fontOption.collectAsState(initial = UiFontOption.SOURCE_SANS_PRO_LIGHT)
+    val fontOption by uiPrefs.fontOption.collectAsState(initial = UiFontOption.SYSTEM)
 
     var previewDialog by remember { mutableStateOf<WikiPreviewDialogState?>(null) }
 

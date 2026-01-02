@@ -119,6 +119,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -148,6 +149,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.luminance
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -223,15 +225,16 @@ fun EditorScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val view = LocalView.current
-    DisposableEffect(view) {
+    val topBarSurfaceColor = MaterialTheme.colorScheme.surface
+    DisposableEffect(view, topBarSurfaceColor) {
         val activity = view.context.findActivity() ?: return@DisposableEffect onDispose { }
         val window = activity.window
         val controller = WindowInsetsControllerCompat(window, view)
         val previousStatusBarColor = window.statusBarColor
         val previousLightStatusBars = controller.isAppearanceLightStatusBars
 
-        window.statusBarColor = android.graphics.Color.WHITE
-        controller.isAppearanceLightStatusBars = true
+        window.statusBarColor = topBarSurfaceColor.toArgb()
+        controller.isAppearanceLightStatusBars = topBarSurfaceColor.luminance() > 0.5f
 
         onDispose {
             window.statusBarColor = previousStatusBarColor
@@ -312,7 +315,7 @@ fun EditorScreen(
     val editorLetterSpacing = 0.2.sp
 
     val uiPrefs = remember(context) { UiPreferences(context.applicationContext) }
-    val fontOption by uiPrefs.fontOption.collectAsState(initial = UiFontOption.SOURCE_SANS_PRO_LIGHT)
+    val fontOption by uiPrefs.fontOption.collectAsState(initial = UiFontOption.SYSTEM)
     val editorFontWeight =
         when (fontOption) {
             UiFontOption.SOURCE_SANS_PRO_REGULAR -> FontWeight.Normal
@@ -1314,14 +1317,14 @@ fun EditorScreen(
                     Column(
                         modifier =
                             Modifier
-                                .background(Color.White)
+                                .background(MaterialTheme.colorScheme.surface)
                     ) {
                         CenterAlignedTopAppBar(
                             windowInsets = TopAppBarDefaults.windowInsets,
                             colors =
                                 TopAppBarDefaults.topAppBarColors(
-                                    containerColor = Color.White,
-                                    scrolledContainerColor = Color.White,
+                                    containerColor = MaterialTheme.colorScheme.surface,
+                                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
                                 ),
                             title = {
                                 val displayName =
@@ -1973,7 +1976,7 @@ fun EditorScreen(
         ModalBottomSheet(
             onDismissRequest = { showHistorySheet = false },
             sheetState = historySheetState,
-            containerColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.surface,
             dragHandle = null,
         ) {
             val diffLines =
@@ -2144,7 +2147,7 @@ fun EditorScreen(
         ModalBottomSheet(
             onDismissRequest = { showFontSizeSheet = false },
             sheetState = fontSizeSheetState,
-            containerColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.surface,
             dragHandle = null,
         ) {
             Column(
@@ -2206,7 +2209,7 @@ fun EditorScreen(
         ModalBottomSheet(
             onDismissRequest = { showPdfMenu = false },
             sheetState = pdfMenuState,
-            containerColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.surface,
             dragHandle = null,
         ) {
             Column(
@@ -2254,7 +2257,7 @@ fun EditorScreen(
         ModalBottomSheet(
             onDismissRequest = { showPdfThumbnails = false },
             sheetState = pdfThumbState,
-            containerColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.surface,
             dragHandle = null,
         ) {
             Column(
@@ -2350,7 +2353,7 @@ fun EditorScreen(
             modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showDeleteConfirm = false },
             properties = ZhixuDialogDefaults.properties,
-            containerColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.surface,
             title = { Text(stringResource(R.string.dialog_delete_doc_title)) },
             text = { Text(originalFileName.ifBlank { title }) },
             confirmButton = {
@@ -2389,7 +2392,7 @@ fun EditorScreen(
             modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showFindReplace = false },
             properties = ZhixuDialogDefaults.properties,
-            containerColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.surface,
             title = { Text(stringResource(R.string.dialog_find_replace_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -2432,7 +2435,7 @@ fun EditorScreen(
             modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showLinkDialog = false },
             properties = ZhixuDialogDefaults.properties,
-            containerColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.surface,
             title = { Text("Insert link") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -2469,7 +2472,7 @@ fun EditorScreen(
             modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showImageDialog = false },
             properties = ZhixuDialogDefaults.properties,
-            containerColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.surface,
             title = { Text("Insert image") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -2507,7 +2510,7 @@ fun EditorScreen(
             modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showCodeDialog = false },
             properties = ZhixuDialogDefaults.properties,
-            containerColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.surface,
             title = { Text("Insert code block") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -2537,7 +2540,7 @@ fun EditorScreen(
             modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showTableDialog = false },
             properties = ZhixuDialogDefaults.properties,
-            containerColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.surface,
             title = { Text("Insert table") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

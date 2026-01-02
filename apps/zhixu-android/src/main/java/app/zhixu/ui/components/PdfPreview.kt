@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -20,6 +21,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebViewAssetLoader
+import app.zhixu.data.UiFontOption
+import app.zhixu.data.UiPreferences
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -108,6 +111,10 @@ fun PdfPreview(
     val colors = MaterialTheme.colorScheme
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
 
+    val uiPrefs = remember(context) { UiPreferences(context.applicationContext) }
+    val fontOption by uiPrefs.fontOption.collectAsState(initial = UiFontOption.SYSTEM)
+    val fontKey = fontOption.raw
+
     val themeJson =
         remember(colors.surface, colors.onSurface, colors.outline) {
             PdfTheme(
@@ -122,6 +129,7 @@ fun PdfPreview(
     var pageLoaded by remember { mutableStateOf(false) }
     var lastSentTheme by remember { mutableStateOf<String?>(null) }
     var lastSentUri by remember { mutableStateOf<String?>(null) }
+    var lastSentFontKey by remember { mutableStateOf<String?>(null) }
 
     val assetLoader =
         remember(context) {
@@ -204,18 +212,21 @@ fun PdfPreview(
             val themeKey = themeJson
             val needsPdfUrl = lastSentUri != uriKey
             val needsTheme = lastSentTheme != themeKey
-            if (!needsPdfUrl && !needsTheme) return@AndroidView
+            val needsFontKey = lastSentFontKey != fontKey
+            if (!needsPdfUrl && !needsTheme && !needsFontKey) return@AndroidView
 
             val js =
                 """
                 (function() {
                   ${if (needsTheme) "window.__setTheme($themeJsonQuoted);" else ""}
+                  ${if (needsFontKey) "window.__setFontKey(${JSONObject.quote(fontKey)});" else ""}
                   ${if (needsPdfUrl) "window.__setPdfUrl(${JSONObject.quote("$APPASSETS_ORIGIN/__pdf?t=${System.currentTimeMillis()}")});" else ""}
                 })();
                 """.trimIndent()
 
             lastSentUri = uriKey
             lastSentTheme = themeKey
+            lastSentFontKey = fontKey
 
             if (pageLoaded) {
                 webView.post { webView.evaluateJavascript(js, null) }

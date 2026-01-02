@@ -68,6 +68,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.ContentScale
 import androidx.core.content.FileProvider
 import app.zhixu.R
+import app.zhixu.data.UiFontOption
+import app.zhixu.data.UiPreferences
 import app.zhixu.data.SyncPreferences
 import app.zhixu.ui.Ionicons
 import app.zhixu.data.WebDavConfig
@@ -130,6 +132,10 @@ fun LongImageScreen(
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showFullPreview by remember { mutableStateOf(false) }
 
+    val uiPrefs = remember(context) { UiPreferences(context.applicationContext) }
+    val fontOption by uiPrefs.fontOption.collectAsState(initial = UiFontOption.SYSTEM)
+    val fontKey = fontOption.raw
+
     val themeColors = MaterialTheme.colorScheme
     val themeJson =
         remember(bgColorArgb, themeColors) {
@@ -145,7 +151,7 @@ fun LongImageScreen(
             ).toJson()
         }
 
-    LaunchedEffect(markdown, vaultRootUri, fontScale, bgColor, themeJson) {
+    LaunchedEffect(markdown, vaultRootUri, fontScale, bgColor, themeJson, fontKey) {
         isGenerating = true
         previewBitmap = null
         baseBitmap =
@@ -158,6 +164,7 @@ fun LongImageScreen(
                         vaultRootUri = vaultRootUri,
                         themeJson = themeJson,
                         fontScale = fontScale,
+                        fontKey = fontKey,
                         backgroundArgb = bgColorArgb,
                         targetWidthPx = widthPx,
                     ),
@@ -254,7 +261,7 @@ fun LongImageScreen(
                 Modifier
                     .padding(padding)
                     .fillMaxSize()
-                    .background(Color(0xFFF6F6F6))
+                    .background(MaterialTheme.colorScheme.background)
                     .imePadding()
                     .windowInsetsPadding(WindowInsets.navigationBars),
         ) {
@@ -274,7 +281,7 @@ fun LongImageScreen(
                             .fillMaxWidth()
                             .clickable(enabled = bmp != null && !isGenerating) { showFullPreview = true },
                     shape = RoundedCornerShape(16.dp),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                 ) {
                     if (bmp == null) {
                         Box(
@@ -311,7 +318,7 @@ fun LongImageScreen(
                 ) {
                     TabRow(
                         selectedTabIndex = bottomTab,
-                        containerColor = Color.White,
+                        containerColor = MaterialTheme.colorScheme.surface,
                     ) {
                         Tab(
                             selected = bottomTab == 0,
@@ -366,7 +373,7 @@ fun LongImageScreen(
                                                     Icon(
                                                         painter = painterResource(Ionicons.Checkmark),
                                                         contentDescription = null,
-                                                        tint = Color.White,
+                                                        tint = MaterialTheme.colorScheme.onPrimary,
                                                         modifier = Modifier.size(12.dp),
                                                     )
                                                 }
@@ -425,7 +432,7 @@ fun LongImageScreen(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .background(Color.Black)
+                        .background(MaterialTheme.colorScheme.scrim)
                         .clickable { showFullPreview = false },
                 contentAlignment = Alignment.Center,
             ) {

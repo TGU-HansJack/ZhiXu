@@ -27,6 +27,7 @@ enum class UiThemeMode(
 enum class UiFontOption(
     val raw: String,
 ) {
+    SYSTEM("system"),
     SOURCE_SANS_PRO_LIGHT("source_sans_pro_light"),
     SOURCE_SANS_PRO_REGULAR("source_sans_pro_regular"),
     LXGW_WENKAI_MONO_LIGHT("lxgw_wenkai_mono_light"),
@@ -35,9 +36,11 @@ enum class UiFontOption(
     companion object {
         fun fromRaw(raw: String?): UiFontOption =
             when (raw?.trim()) {
+                SYSTEM.raw -> SYSTEM
                 SOURCE_SANS_PRO_REGULAR.raw -> SOURCE_SANS_PRO_REGULAR
                 LXGW_WENKAI_MONO_LIGHT.raw -> LXGW_WENKAI_MONO_LIGHT
-                else -> SOURCE_SANS_PRO_LIGHT
+                SOURCE_SANS_PRO_LIGHT.raw -> SOURCE_SANS_PRO_LIGHT
+                else -> SYSTEM
             }
     }
 }
