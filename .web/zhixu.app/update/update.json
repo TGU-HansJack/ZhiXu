@@ -1,6 +1,4 @@
 {
   "latestVersion": "0.2.1",
-  "downloadUrl": "https://zhixu.app/downloads/zhixu-android-release.apk",
-  "changelog": "## 0.2.1\n- 修复：检查更新入口与弹窗\n- 优化：更新日志展示\n- 其他：细节与稳定性改进\n"
+  "changelog": "## 0.2.1\n- 修复：检查更新与下载流程\n- 优化：下载通知与安装引导\n- 其他：细节与稳定性改进\n"
 }
-

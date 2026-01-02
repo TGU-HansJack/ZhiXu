@@ -9,7 +9,6 @@ import android.net.Uri
 import android.os.Environment
 import android.widget.Toast
 import androidx.core.content.ContextCompat
-import java.io.File
 
 object UpdateDownloader {
     private const val APK_MIME = "application/vnd.android.package-archive"
@@ -22,20 +21,20 @@ object UpdateDownloader {
         val appContext = context.applicationContext
         val dm = appContext.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager ?: return null
 
-        val destinationDir = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-        if (destinationDir != null) {
-            runCatching { File(destinationDir, "zhixu.apk").delete() }
-        }
-
         val request =
             DownloadManager.Request(Uri.parse(url))
                 .setTitle("Zhixu")
                 .setDescription("Downloading $version")
                 .setMimeType(APK_MIME)
+                .addRequestHeader("User-Agent", "Zhixu-Android")
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(true)
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalFilesDir(appContext, Environment.DIRECTORY_DOWNLOADS, "zhixu.apk")
+                .setAllowedNetworkTypes(
+                    DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE,
+                )
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+                .setVisibleInDownloadsUi(true)
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "zhixu.apk")
 
         val downloadId = runCatching { dm.enqueue(request) }.getOrNull() ?: return null
         registerAutoInstallReceiver(appContext, dm, downloadId)
@@ -100,4 +99,3 @@ object UpdateDownloader {
         return null
     }
 }
-
