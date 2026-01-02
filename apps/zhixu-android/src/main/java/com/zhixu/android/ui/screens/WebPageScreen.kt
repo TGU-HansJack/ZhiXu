@@ -8,12 +8,8 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -95,10 +91,7 @@ fun WebPageScreen(
         AndroidView(
             modifier =
                 Modifier
-                    .padding(contentPadding)
                     .padding(innerPadding)
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .imePadding()
                     .fillMaxSize(),
             factory = {
                 WebView(it).apply {
@@ -144,4 +137,3 @@ fun WebPageScreen(
         )
     }
 }
-

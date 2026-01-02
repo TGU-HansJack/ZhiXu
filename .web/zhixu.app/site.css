@@ -314,6 +314,26 @@ code {
   padding-bottom: 44px;
 }
 
+.legalPage .topnav,
+.legalPage .footnav {
+  padding-top: 28px;
+  align-items: center;
+}
+
+.legalPage .legal {
+  padding-top: 18px;
+  padding-bottom: 26px;
+}
+
+.legalPage .footer {
+  padding-top: 18px;
+  padding-bottom: 28px;
+}
+
+.legalPage .legal__title {
+  margin-top: 10px;
+}
+
 .legal__title {
   margin: 14px 0 8px;
   font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
