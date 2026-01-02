@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
@@ -47,10 +49,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zhixu.android.BuildConfig
 import com.zhixu.android.R
 import com.zhixu.android.data.AccountPreferences
 import com.zhixu.android.data.AccountState
 import com.zhixu.android.data.DailyContrib
+import com.zhixu.android.data.UpdateCheckResult
+import com.zhixu.android.data.UpdateClient
+import com.zhixu.android.data.UpdateInfo
 import com.zhixu.android.data.UiPreferences
 import com.zhixu.android.data.VaultRepository
 import com.zhixu.android.ui.Ionicons
@@ -84,6 +90,8 @@ fun SettingsScreen(
 
     var contribPerDay by remember { mutableStateOf<Map<LocalDate, DailyContrib>?>(null) }
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    var updateUiState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
 
     LaunchedEffect(refreshToken) {
         val year = LocalDate.now().year
@@ -91,6 +99,27 @@ fun SettingsScreen(
             runCatching { repository.getDailyContribForYear(year = year) }
                 .getOrNull()
                 ?: emptyMap()
+    }
+
+    fun openUrl(url: String) {
+        val intent =
+            android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(url))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(intent) }.onFailure {
+            Toast.makeText(context, context.getString(R.string.about_open_failed), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun startUpdateCheck() {
+        updateUiState = UpdateUiState.Loading
+        scope.launch {
+            updateUiState =
+                when (val res = runCatching { UpdateClient.check(BuildConfig.VERSION_NAME) }.getOrNull()) {
+                    is UpdateCheckResult.Success -> UpdateUiState.Success(res.info, res.hasUpdate)
+                    is UpdateCheckResult.Failure -> UpdateUiState.Error(res.message)
+                    null -> UpdateUiState.Error("Failed to check updates.")
+                }
+        }
     }
 
     val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
@@ -213,8 +242,12 @@ fun SettingsScreen(
 
             SettingsNavRow(
                 iconRes = Ionicons.ArrowUpCircleOutline,
-                title = stringResource(R.string.settings_placeholder_update),
-                onClick = ::comingSoon,
+                title = stringResource(R.string.settings_update_title),
+                subtitle = stringResource(R.string.settings_update_subtitle_fmt, BuildConfig.VERSION_NAME),
+                onClick = {
+                    showUpdateDialog = true
+                    startUpdateCheck()
+                },
             )
             HorizontalDivider(color = dividerColor)
 
@@ -268,6 +301,98 @@ fun SettingsScreen(
                 TextButton(onClick = { showLanguageDialog = false }) { Text(stringResource(R.string.action_close)) }
             },
         )
+    }
+
+    if (showUpdateDialog) {
+        AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
+            onDismissRequest = { showUpdateDialog = false },
+            properties = ZhixuDialogDefaults.properties,
+            title = { Text(stringResource(R.string.settings_update_title)) },
+            text = {
+                when (val s = updateUiState) {
+                    UpdateUiState.Idle, UpdateUiState.Loading ->
+                        Text(stringResource(R.string.settings_update_checking))
+                    is UpdateUiState.Error ->
+                        Text(s.message)
+                    is UpdateUiState.Success ->
+                        UpdateResultBody(
+                            info = s.info,
+                            hasUpdate = s.hasUpdate,
+                            currentVersion = BuildConfig.VERSION_NAME,
+                        )
+                }
+            },
+            confirmButton = {
+                when (val s = updateUiState) {
+                    UpdateUiState.Idle, UpdateUiState.Loading ->
+                        TextButton(onClick = { showUpdateDialog = false }) { Text(stringResource(R.string.action_close)) }
+                    is UpdateUiState.Error -> {
+                        TextButton(onClick = { startUpdateCheck() }) { Text(stringResource(R.string.action_retry)) }
+                    }
+                    is UpdateUiState.Success -> {
+                        val url = s.info.downloadUrl
+                        if (!url.isNullOrBlank()) {
+                            TextButton(onClick = { openUrl(url) }) { Text(stringResource(R.string.settings_update_open_download)) }
+                        } else {
+                            TextButton(onClick = { openUrl(s.info.sourceUrl) }) { Text(stringResource(R.string.settings_update_open_page)) }
+                        }
+                    }
+                }
+            },
+            dismissButton = {
+                when (updateUiState) {
+                    UpdateUiState.Idle, UpdateUiState.Loading ->
+                        null
+                    else ->
+                        TextButton(onClick = { showUpdateDialog = false }) { Text(stringResource(R.string.action_close)) }
+                }
+            },
+        )
+    }
+}
+
+private sealed class UpdateUiState {
+    data object Idle : UpdateUiState()
+
+    data object Loading : UpdateUiState()
+
+    data class Success(val info: UpdateInfo, val hasUpdate: Boolean) : UpdateUiState()
+
+    data class Error(val message: String) : UpdateUiState()
+}
+
+@Composable
+private fun UpdateResultBody(
+    info: UpdateInfo,
+    hasUpdate: Boolean,
+    currentVersion: String,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.settings_update_current_fmt, currentVersion))
+        Text(stringResource(R.string.settings_update_latest_fmt, info.latestVersion))
+        Text(
+            text =
+                if (hasUpdate) {
+                    stringResource(R.string.settings_update_available)
+                } else {
+                    stringResource(R.string.settings_update_latest)
+                },
+            color = if (hasUpdate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        val log = info.changelog.trim()
+        if (log.isNotBlank()) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+            Text(stringResource(R.string.settings_update_changelog))
+            Text(
+                log,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier =
+                    Modifier
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState()),
+            )
+        }
     }
 }
 

@@ -303,6 +303,19 @@
     <string name="settings_placeholder_update">Update software</string>
     <string name="settings_placeholder_about">About</string>
 
+    <!-- Updates -->
+    <string name="settings_update_title">Check for updates</string>
+    <string name="settings_update_subtitle_fmt">Current: %1$s</string>
+    <string name="settings_update_checking">Checking...</string>
+    <string name="settings_update_current_fmt">Current version: %1$s</string>
+    <string name="settings_update_latest_fmt">Latest version: %1$s</string>
+    <string name="settings_update_latest">You are up to date.</string>
+    <string name="settings_update_available">Update available.</string>
+    <string name="settings_update_changelog">Changelog</string>
+    <string name="settings_update_open_download">Open download</string>
+    <string name="settings_update_open_page">Open update page</string>
+    <string name="action_retry">Retry</string>
+
     <!-- About -->
     <string name="about_version_fmt">Version: %1$s</string>
     <string name="about_visit_website">Visit website</string>
