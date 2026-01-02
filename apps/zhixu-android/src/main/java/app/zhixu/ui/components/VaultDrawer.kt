@@ -623,7 +623,9 @@ fun VaultDrawer(
                             val ok =
                                 runCatching {
                                     if (entry.isDirectory) {
-                                        repository.deleteEntry(uri)
+                                        val deleted = repository.deleteEntry(uri)
+                                        if (!deleted) return@runCatching false
+                                        onDocListMutated(DocListMutation.Deleted(docUri = uri))
                                         repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)
                                         expandedDirs.clear()
                                         reloadDir("")
@@ -634,6 +636,7 @@ fun VaultDrawer(
                                             if (!deleted) return@runCatching false
                                         } else {
                                             val deleted = repository.deleteEntry(uri)
+                                            if (deleted) onDocListMutated(DocListMutation.Deleted(docUri = uri))
                                             if (!deleted) return@runCatching false
                                         }
                                         repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)

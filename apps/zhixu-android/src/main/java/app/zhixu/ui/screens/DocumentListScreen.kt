@@ -406,6 +406,8 @@ fun DocumentListScreen(
                                 }
                             if (!ok) {
                                 Toast.makeText(context, context.getString(R.string.doc_delete_failed), Toast.LENGTH_SHORT).show()
+                            } else {
+                                onDocListMutated(DocListMutation.Deleted(docUri = doc.uri))
                             }
                             showDeleteDialog = false
                             selectedDoc = null
