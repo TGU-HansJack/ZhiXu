@@ -42,8 +42,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -75,6 +73,7 @@ import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
 import app.zhixu.ui.components.ZhixuTextField
 import app.zhixu.ui.components.ZhixuSwitch
+import app.zhixu.ui.components.ZhixuTopAppBar
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -266,9 +265,8 @@ fun WorkshopScreen(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             Column {
-                TopAppBar(
-                    windowInsets = TopAppBarDefaults.windowInsets,
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                ZhixuTopAppBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
                     title = { Text(stringResource(R.string.workshop_title), style = MaterialTheme.typography.titleMedium) },
                     navigationIcon = {
                         val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl

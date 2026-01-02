@@ -37,8 +37,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -88,6 +86,7 @@ import app.zhixu.data.appManagedVaultRootUri
 import app.zhixu.sync.VaultAutoSync
 import app.zhixu.sync.WebDavAutoSync
 import app.zhixu.ui.components.ZhixuIconButton
+import app.zhixu.ui.components.ZhixuTopAppBar
 import app.zhixu.ui.screens.AccountScreen
 import app.zhixu.ui.screens.AboutScreen
 import app.zhixu.ui.screens.DocumentListScreen
@@ -313,9 +312,8 @@ fun ZhixuApp() {
                         Column {
                             when (currentRoute) {
                                  "home" -> {
-                                     TopAppBar(
-                                         windowInsets = TopAppBarDefaults.windowInsets,
-                                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                                     ZhixuTopAppBar(
+                                         containerColor = MaterialTheme.colorScheme.surface,
                                          title = {
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
@@ -378,9 +376,8 @@ fun ZhixuApp() {
                                 }
 
                                  "me" -> {
-                                     TopAppBar(
-                                         windowInsets = TopAppBarDefaults.windowInsets,
-                                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                                     ZhixuTopAppBar(
+                                         containerColor = MaterialTheme.colorScheme.surface,
                                          title = { Text(stringResource(R.string.nav_me), style = MaterialTheme.typography.titleMedium) },
                                      )
                                  }

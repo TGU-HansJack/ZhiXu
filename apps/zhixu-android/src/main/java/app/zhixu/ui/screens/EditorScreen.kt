@@ -89,8 +89,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -181,6 +179,7 @@ import app.zhixu.ui.components.SheetActionRow
 import app.zhixu.ui.components.SheetQuickAction
 import app.zhixu.ui.components.ZhixuTextField
 import app.zhixu.ui.components.ZhixuIconButton
+import app.zhixu.ui.components.ZhixuCenterAlignedTopAppBar
 import app.zhixu.ui.components.VaultDrawer
 import app.zhixu.ui.components.ZhixuSwipeDualDrawer
 import app.zhixu.core.tasks.TaskSyntax
@@ -1317,13 +1316,8 @@ fun EditorScreen(
                             Modifier
                                 .background(MaterialTheme.colorScheme.surface)
                     ) {
-                        CenterAlignedTopAppBar(
-                            windowInsets = TopAppBarDefaults.windowInsets,
-                            colors =
-                                TopAppBarDefaults.topAppBarColors(
-                                    containerColor = MaterialTheme.colorScheme.surface,
-                                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                                ),
+                        ZhixuCenterAlignedTopAppBar(
+                            containerColor = MaterialTheme.colorScheme.surface,
                             title = {
                                 val docNameStyle = MaterialTheme.typography.titleSmall
                                 val displayName =

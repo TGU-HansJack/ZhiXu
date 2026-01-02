@@ -18,8 +18,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +33,7 @@ import app.zhixu.R
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
+import app.zhixu.ui.components.ZhixuTopAppBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,9 +64,8 @@ fun WebPageScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                windowInsets = TopAppBarDefaults.windowInsets,
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+            ZhixuTopAppBar(
+                containerColor = MaterialTheme.colorScheme.surface,
                 title = { Text(stringResource(titleRes), style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
                     ZhixuIconButton(onClick = ::back) {

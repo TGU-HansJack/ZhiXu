@@ -34,8 +34,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -56,6 +54,7 @@ import app.zhixu.data.UiSettings
 import app.zhixu.data.UiThemeMode
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.ZhixuTopBarIconSize
+import app.zhixu.ui.components.ZhixuTopAppBar
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,9 +80,8 @@ fun UiSettingsScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Column {
-                TopAppBar(
-                    windowInsets = TopAppBarDefaults.windowInsets,
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                ZhixuTopAppBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
                     title = { Text(stringResource(R.string.settings_placeholder_ui), style = MaterialTheme.typography.titleMedium) },
                     navigationIcon = {
                         ZhixuIconButton(onClick = onBack) {

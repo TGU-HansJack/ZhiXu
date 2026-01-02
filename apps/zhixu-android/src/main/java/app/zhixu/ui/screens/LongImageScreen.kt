@@ -41,8 +41,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -69,6 +67,7 @@ import app.zhixu.R
 import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuSwitch
+import app.zhixu.ui.components.ZhixuTopAppBar
 import app.zhixu.data.SyncPreferences
 import app.zhixu.ui.Ionicons
 import app.zhixu.data.WebDavConfig
@@ -218,9 +217,8 @@ fun LongImageScreen(
     Scaffold(
         topBar = {
             Column {
-                TopAppBar(
-                    windowInsets = TopAppBarDefaults.windowInsets,
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                ZhixuTopAppBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
                     title = {
                         Row(
                             modifier = Modifier.fillMaxWidth(),

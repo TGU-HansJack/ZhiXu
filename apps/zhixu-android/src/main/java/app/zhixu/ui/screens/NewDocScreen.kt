@@ -18,8 +18,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -47,6 +45,7 @@ import app.zhixu.data.VaultRepository
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.sync.VaultAutoSync
+import app.zhixu.ui.components.ZhixuTopAppBar
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -75,9 +74,8 @@ fun NewDocScreen(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             Column {
-                TopAppBar(
-                    windowInsets = TopAppBarDefaults.windowInsets,
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                ZhixuTopAppBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
                     title = { Text(stringResource(R.string.new_doc_title), style = MaterialTheme.typography.titleMedium) },
                     navigationIcon = {
                         ZhixuIconButton(onClick = onBack) {

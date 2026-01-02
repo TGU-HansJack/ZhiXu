@@ -30,8 +30,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +49,7 @@ import app.zhixu.R
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
+import app.zhixu.ui.components.ZhixuTopAppBar
 
 private const val OFFICIAL_SITE_URL = "https://zhixu.app"
 private const val OFFICIAL_TOS_URL = "https://zhixu.app/tos"
@@ -108,9 +107,8 @@ fun AboutScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                windowInsets = TopAppBarDefaults.windowInsets,
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+            ZhixuTopAppBar(
+                containerColor = MaterialTheme.colorScheme.surface,
                 title = { Text(stringResource(R.string.settings_placeholder_about), style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
                     ZhixuIconButton(onClick = onBack) {

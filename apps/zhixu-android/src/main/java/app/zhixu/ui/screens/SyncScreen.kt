@@ -37,8 +37,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -82,6 +80,7 @@ import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
 import app.zhixu.ui.components.ZhixuTextField
 import app.zhixu.ui.components.ZhixuSwitch
+import app.zhixu.ui.components.ZhixuTopAppBar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -126,9 +125,8 @@ fun SyncScreen(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 Column {
-                    TopAppBar(
-                        windowInsets = TopAppBarDefaults.windowInsets,
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                    ZhixuTopAppBar(
+                        containerColor = MaterialTheme.colorScheme.surface,
                         title = { Text(stringResource(R.string.settings_section_sync), style = MaterialTheme.typography.titleMedium) },
                         navigationIcon = {
                             val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
@@ -222,9 +220,8 @@ fun SyncScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Column {
-                TopAppBar(
-                    windowInsets = TopAppBarDefaults.windowInsets,
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                ZhixuTopAppBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
                     title = { Text(stringResource(R.string.settings_section_sync), style = MaterialTheme.typography.titleMedium) },
                     navigationIcon = {
                         val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
