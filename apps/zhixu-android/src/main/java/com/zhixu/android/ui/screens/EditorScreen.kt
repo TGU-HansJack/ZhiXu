@@ -6,6 +6,8 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
+import android.graphics.BitmapFactory
+import android.util.Base64
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -15,6 +17,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
@@ -90,7 +93,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -107,6 +116,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -151,6 +162,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import com.zhixu.android.ui.components.MarkdownPreview
 import com.zhixu.android.ui.components.PdfPreview
+import com.zhixu.android.ui.components.PdfPreviewController
+import com.zhixu.android.ui.components.PdfLayoutMode
 import com.zhixu.android.ui.components.RadialFabAction
 import com.zhixu.android.ui.components.LineDiff
 import com.zhixu.android.ui.components.DiffOp
@@ -176,6 +189,8 @@ import java.io.FileNotFoundException
 import org.json.JSONObject
 import androidx.documentfile.provider.DocumentFile
 import com.zhixu.android.ui.DocListMutation
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 
 data class LongImageRequest(
     val markdown: String,
@@ -221,6 +236,13 @@ fun EditorScreen(
     var content by remember { mutableStateOf(TextFieldValue("")) }
     var isPreview by remember { mutableStateOf(false) }
     var isPdfDoc by remember { mutableStateOf(false) }
+    val pdfController = remember { PdfPreviewController() }
+    var pdfCurrentPage by remember { mutableIntStateOf(1) }
+    var pdfTotalPages by remember { mutableIntStateOf(0) }
+    var pdfLayoutMode by remember { mutableStateOf(PdfLayoutMode.FitWidth) }
+    var showPdfMenu by remember { mutableStateOf(false) }
+    var showPdfThumbnails by remember { mutableStateOf(false) }
+    var pdfPageInput by remember { mutableStateOf("1") }
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
@@ -331,6 +353,16 @@ fun EditorScreen(
     val latestOriginalFileName by rememberUpdatedState(originalFileName)
     val latestOutline by rememberUpdatedState(outline)
     val latestWikiLinks by rememberUpdatedState(wikiLinks)
+    val latestPdfCurrentPage by rememberUpdatedState(pdfCurrentPage)
+    val latestPdfTotalPages by rememberUpdatedState(pdfTotalPages)
+
+    fun decodeDataUrlToImageBitmap(dataUrl: String): ImageBitmap? {
+        val comma = dataUrl.indexOf(',')
+        val raw = if (comma >= 0) dataUrl.substring(comma + 1) else dataUrl
+        val bytes = runCatching { Base64.decode(raw, Base64.DEFAULT) }.getOrNull() ?: return null
+        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+        return bmp.asImageBitmap()
+    }
 
     suspend fun persistNow(uri: Uri, text: String): Boolean {
         val beforeCached = lastPersistedText
@@ -439,6 +471,16 @@ fun EditorScreen(
             "cloud_upload", "upload", "publish" -> Icons.Outlined.CloudUpload
             else -> Icons.Outlined.Extension
         }
+
+    fun applyPdfJump() {
+        val total = latestPdfTotalPages
+        val desired = pdfPageInput.trim().toIntOrNull() ?: return
+        val clamped = if (total > 0) desired.coerceIn(1, total) else desired.coerceAtLeast(1)
+        pdfController.goToPage(clamped)
+        pdfCurrentPage = clamped
+        pdfPageInput = clamped.toString()
+        focusManager.clearFocus(force = true)
+    }
 
     fun buildPluginFabActions(installed: List<InstalledPlugin>): List<RadialFabAction> {
         val actions =
@@ -1312,6 +1354,88 @@ fun EditorScreen(
                                 .fillMaxSize()
                                 .padding(horizontal = if (isPdfDoc) 0.dp else 12.dp, vertical = if (isPdfDoc) 0.dp else 6.dp),
                         ) {
+                            if (isPdfDoc) {
+                                Surface(
+                                    tonalElevation = 0.dp,
+                                    color = MaterialTheme.colorScheme.surface,
+                                ) {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                        ) {
+                                            IconButton(onClick = { showPdfThumbnails = true }, modifier = Modifier.size(32.dp)) {
+                                                Icon(
+                                                    painter = painterResource(Ionicons.GridOutline),
+                                                    contentDescription = "Thumbnails",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(19.dp),
+                                                )
+                                            }
+                                            IconButton(onClick = { pdfController.zoomOut() }, modifier = Modifier.size(32.dp)) {
+                                                Icon(
+                                                    painter = painterResource(Ionicons.RemoveCircleOutline),
+                                                    contentDescription = "Zoom out",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(19.dp),
+                                                )
+                                            }
+                                            IconButton(onClick = { pdfController.zoomIn() }, modifier = Modifier.size(32.dp)) {
+                                                Icon(
+                                                    painter = painterResource(Ionicons.AddCircleOutline),
+                                                    contentDescription = "Zoom in",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(19.dp),
+                                                )
+                                            }
+
+                                            Spacer(modifier = Modifier.weight(1f))
+
+                                            Surface(
+                                                tonalElevation = 0.dp,
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                                            ) {
+                                                BasicTextField(
+                                                    value = pdfPageInput,
+                                                    onValueChange = { s ->
+                                                        pdfPageInput = s.filter { it.isDigit() }.take(6)
+                                                    },
+                                                    singleLine = true,
+                                                    modifier =
+                                                        Modifier
+                                                            .widthIn(min = 42.dp, max = 64.dp)
+                                                            .height(28.dp)
+                                                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                    textStyle =
+                                                        MaterialTheme.typography.labelMedium.copy(
+                                                            color = MaterialTheme.colorScheme.onSurface,
+                                                        ),
+                                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                                                    keyboardActions = KeyboardActions(onDone = { applyPdfJump() }),
+                                                )
+                                            }
+                                            Text(
+                                                text = "/ ${pdfTotalPages.takeIf { it > 0 }?.toString() ?: "-"}",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+
+                                            IconButton(onClick = { showPdfMenu = true }, modifier = Modifier.size(32.dp)) {
+                                                Icon(
+                                                    painter = painterResource(Ionicons.ChevronDown),
+                                                    contentDescription = "Layout",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(19.dp),
+                                                )
+                                            }
+                                        }
+                                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                                    }
+                                }
+                            }
                             if (!isPdfDoc) {
                                 BasicTextField(
                                     value = title,
@@ -1350,6 +1474,12 @@ fun EditorScreen(
                                 PdfPreview(
                                     modifier = Modifier.fillMaxSize(),
                                     docUri = currentDocUri,
+                                    controller = pdfController,
+                                    onPageState = { current, total ->
+                                        pdfCurrentPage = current
+                                        pdfTotalPages = total
+                                        pdfPageInput = current.toString()
+                                    },
                                 )
                             } else if (isPreview) {
                                 MarkdownPreview(
@@ -2020,6 +2150,150 @@ fun EditorScreen(
                         modifier = Modifier.weight(1f),
                     ) { Text("完成") }
                 }
+            }
+        }
+    }
+
+    if (showPdfMenu) {
+        val pdfMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showPdfMenu = false },
+            sheetState = pdfMenuState,
+            containerColor = Color.White,
+            dragHandle = null,
+        ) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .windowInsetsPadding(WindowInsets.navigationBars),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(text = "PDF", style = MaterialTheme.typography.titleMedium)
+
+                @Composable
+                fun option(
+                    label: String,
+                    mode: PdfLayoutMode,
+                ) {
+                    ListItem(
+                        headlineContent = { Text(label) },
+                        supportingContent = { if (pdfLayoutMode == mode) Text("当前", color = MaterialTheme.colorScheme.primary) },
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    pdfLayoutMode = mode
+                                    pdfController.setLayoutMode(mode)
+                                    showPdfMenu = false
+                                },
+                    )
+                }
+
+                option("适应宽度", PdfLayoutMode.FitWidth)
+                option("适应高度", PdfLayoutMode.FitHeight)
+                option("单页", PdfLayoutMode.SinglePage)
+                option("双页奇数", PdfLayoutMode.SpreadOdd)
+                option("双页偶数", PdfLayoutMode.SpreadEven)
+
+                Spacer(modifier = Modifier.height(18.dp))
+            }
+        }
+    }
+
+    if (showPdfThumbnails) {
+        val pdfThumbState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showPdfThumbnails = false },
+            sheetState = pdfThumbState,
+            containerColor = Color.White,
+            dragHandle = null,
+        ) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .windowInsetsPadding(WindowInsets.navigationBars),
+            ) {
+                Text(text = "缩略图", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val total = pdfTotalPages.coerceAtLeast(0)
+                if (total <= 0) {
+                    Text(
+                        text = "加载中…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 10.dp),
+                    )
+                } else {
+                    val density = LocalDensity.current
+                    val thumbMaxWidthPx = remember(density) { with(density) { 160.dp.roundToPx() } }
+                    val pages = remember(total) { (1..total).toList() }
+                    val thumbs = remember(showPdfThumbnails, total) { androidx.compose.runtime.mutableStateMapOf<Int, ImageBitmap>() }
+                    val requested = remember(showPdfThumbnails, total) { androidx.compose.runtime.mutableStateMapOf<Int, Boolean>() }
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(84.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        items(pages, key = { it }) { p ->
+                            val img = thumbs[p]
+                            if (img == null && requested[p] != true) {
+                                requested[p] = true
+                                pdfController.requestThumbnail(page = p, maxWidthPx = thumbMaxWidthPx) { dataUrl ->
+                                    if (dataUrl != null) {
+                                        decodeDataUrlToImageBitmap(dataUrl)?.let { thumbs[p] = it }
+                                    }
+                                }
+                            }
+                            Surface(
+                                tonalElevation = 0.dp,
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            pdfController.goToPage(p)
+                                            pdfCurrentPage = p
+                                            pdfPageInput = p.toString()
+                                            showPdfThumbnails = false
+                                        },
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
+                                ) {
+                                    if (img != null) {
+                                        Image(
+                                            bitmap = img,
+                                            contentDescription = "Page $p",
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    } else {
+                                        Text(
+                                            text = p.toString(),
+                                            style = MaterialTheme.typography.titleMedium,
+                                        )
+                                    }
+                                    if (p == pdfCurrentPage) {
+                                        Text(
+                                            text = "当前",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(18.dp))
             }
         }
     }

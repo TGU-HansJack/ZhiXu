@@ -7,6 +7,8 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,16 +24,89 @@ import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.min
+
+enum class PdfLayoutMode {
+    FitWidth,
+    FitHeight,
+    SinglePage,
+    SpreadOdd,
+    SpreadEven,
+}
+
+class PdfPreviewController {
+    @Volatile private var webView: WebView? = null
+    private val nextThumbRequestId = AtomicLong(1)
+    private val thumbCallbacks = ConcurrentHashMap<Long, (String?) -> Unit>()
+
+    internal fun attach(view: WebView?) {
+        webView = view
+    }
+
+    fun zoomIn() {
+        evalJs("window.__zoomIn && window.__zoomIn();")
+    }
+
+    fun zoomOut() {
+        evalJs("window.__zoomOut && window.__zoomOut();")
+    }
+
+    fun setLayoutMode(mode: PdfLayoutMode) {
+        val raw =
+            when (mode) {
+                PdfLayoutMode.FitWidth -> "fit_width"
+                PdfLayoutMode.FitHeight -> "fit_height"
+                PdfLayoutMode.SinglePage -> "single"
+                PdfLayoutMode.SpreadOdd -> "spread_odd"
+                PdfLayoutMode.SpreadEven -> "spread_even"
+            }
+        evalJs("window.__setLayout && window.__setLayout(${JSONObject.quote(raw)});")
+    }
+
+    fun goToPage(page: Int) {
+        val n = page.coerceAtLeast(1)
+        evalJs("window.__goToPage && window.__goToPage($n);")
+    }
+
+    fun requestThumbnail(
+        page: Int,
+        maxWidthPx: Int,
+        onResult: (String?) -> Unit,
+    ) {
+        val id = nextThumbRequestId.getAndIncrement()
+        thumbCallbacks[id] = onResult
+        val p = page.coerceAtLeast(1)
+        val w = maxWidthPx.coerceIn(32, 512)
+        evalJs("window.__requestThumbnail && window.__requestThumbnail(${JSONObject.quote(id.toString())}, ${JSONObject.quote(p.toString())}, $w);")
+    }
+
+    internal fun deliverThumbnail(
+        requestId: Long,
+        dataUrl: String?,
+    ) {
+        val cb = thumbCallbacks.remove(requestId) ?: return
+        cb(dataUrl)
+    }
+
+    private fun evalJs(js: String) {
+        val view = webView ?: return
+        view.post { view.evaluateJavascript(js, null) }
+    }
+}
 
 @Composable
 fun PdfPreview(
     modifier: Modifier = Modifier,
     docUri: Uri,
+    controller: PdfPreviewController? = null,
+    onPageState: ((currentPage: Int, totalPages: Int) -> Unit)? = null,
     onOpenExternal: ((Uri) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
 
     val themeJson =
         remember(colors.surface, colors.onSurface, colors.outline) {
@@ -70,12 +145,24 @@ fun PdfPreview(
                 settings.loadsImagesAutomatically = true
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = true
+                // Enable pinch-to-zoom for PDF reading; the editor drawer gestures are disabled in PDF mode.
                 settings.setSupportZoom(true)
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
                 settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                 settings.allowFileAccess = false
                 settings.allowContentAccess = true
+
+                addJavascriptInterface(
+                    PdfBridge(
+                        handler = mainHandler,
+                        onState = { current, total -> onPageState?.invoke(current, total) },
+                        onThumbnail = { requestId, dataUrl ->
+                            controller?.deliverThumbnail(requestId, dataUrl)
+                        },
+                    ),
+                    "ZhixuPdf",
+                )
 
                 webViewClient =
                     PdfWebViewClient(
@@ -104,12 +191,14 @@ fun PdfPreview(
                     )
 
                 setTag(TAG_PDF_DOC_URI, docUri)
+                controller?.attach(this)
                 loadUrl("$APPASSETS_ORIGIN/assets/pdf-preview/index.html")
             }
         },
         update = { webView ->
             webView.setBackgroundColor(colors.surface.toArgb())
             webView.setTag(TAG_PDF_DOC_URI, docUri)
+            controller?.attach(webView)
 
             val uriKey = docUri.toString()
             val themeKey = themeJson
@@ -135,6 +224,25 @@ fun PdfPreview(
             }
         },
     )
+}
+
+private class PdfBridge(
+    private val handler: Handler,
+    private val onState: (current: Int, total: Int) -> Unit,
+    private val onThumbnail: (requestId: Long, dataUrl: String?) -> Unit,
+) {
+    @android.webkit.JavascriptInterface
+    fun onState(current: String?, total: String?) {
+        val c = current?.trim()?.toIntOrNull() ?: 1
+        val t = total?.trim()?.toIntOrNull() ?: 0
+        handler.post { onState(c.coerceAtLeast(1), t.coerceAtLeast(0)) }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun onThumbnail(requestId: String?, dataUrl: String?) {
+        val rid = requestId?.trim()?.toLongOrNull() ?: return
+        handler.post { onThumbnail(rid, dataUrl) }
+    }
 }
 
 private data class PdfTheme(

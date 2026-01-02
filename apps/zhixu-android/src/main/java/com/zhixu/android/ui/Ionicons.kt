@@ -33,6 +33,9 @@ object Ionicons {
     @DrawableRes val ExtensionPuzzleOutline: Int = R.drawable.ic_ion_extension_puzzle_outline
     @DrawableRes val CloudDownloadOutline: Int = R.drawable.ic_ion_cloud_download_outline
     @DrawableRes val CloseCircleOutline: Int = R.drawable.ic_ion_close_circle_outline
+    @DrawableRes val AddCircleOutline: Int = R.drawable.ic_ion_add_circle_outline
+    @DrawableRes val RemoveCircleOutline: Int = R.drawable.ic_ion_remove_circle_outline
+    @DrawableRes val GridOutline: Int = R.drawable.ic_ion_grid_outline
 
     @DrawableRes val ArrowBack: Int = R.drawable.ic_ion_arrow_back_outline
     @DrawableRes val ArrowForward: Int = R.drawable.ic_ion_arrow_forward_outline
