@@ -135,6 +135,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontSynthesis
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.IntOffset
@@ -306,6 +309,9 @@ fun EditorScreen(
     val editorLetterSpacing = 0.2.sp
     val editorTextStyle =
         MaterialTheme.typography.bodyLarge.copy(
+            fontFamily = FontFamily.Default,
+            fontWeight = FontWeight.Light,
+            fontSynthesis = FontSynthesis.None,
             fontSize = editorFontSize,
             lineHeight = editorLineHeight,
             letterSpacing = editorLetterSpacing,

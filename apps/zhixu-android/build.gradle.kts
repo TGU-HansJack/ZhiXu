@@ -17,8 +17,8 @@ android {
         applicationId = "app.zhixu"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 2
-        versionName = "0.2.1"
+        versionCode = 3
+        versionName = "0.2.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
         // J2V8 AAR currently bundles both arm64-v8a and armeabi-v7a native libs.
