@@ -40,7 +40,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -579,15 +578,6 @@ private fun DocumentSearchSheet(
                             placeholder = { Text(stringResource(R.string.action_search)) },
                             leadingIcon = { Icon(painter = painterResource(app.zhixu.ui.Ionicons.Search), contentDescription = null) },
                             modifier = Modifier.weight(1f).focusRequester(focusRequester),
-                            shape = MaterialTheme.shapes.extraLarge,
-                            colors =
-                                TextFieldDefaults.colors(
-                                    focusedIndicatorColor = Color.Transparent,
-                                    unfocusedIndicatorColor = Color.Transparent,
-                                    disabledIndicatorColor = Color.Transparent,
-                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                                ),
                         )
                         TextButton(onClick = onDismiss) {
                             Text(stringResource(R.string.action_cancel))

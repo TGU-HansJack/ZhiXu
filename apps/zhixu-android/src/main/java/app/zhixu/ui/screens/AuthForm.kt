@@ -13,7 +13,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,6 +38,7 @@ import app.zhixu.sync.OfficialSync
 import app.zhixu.sync.SyncServerClient
 import app.zhixu.sync.SyncServerResult
 import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
+import app.zhixu.ui.components.ZhixuTextField
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -99,24 +99,16 @@ fun AuthForm(
         trailing: (@Composable () -> Unit)? = null,
         modifier: Modifier = Modifier,
     ) {
-        Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValueChange,
-                enabled = enabled,
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = MaterialTheme.typography.bodyMedium,
-                visualTransformation = visualTransformation,
-                keyboardOptions =
-                    KeyboardOptions(
-                        keyboardType = keyboardType,
-                        imeAction = ImeAction.Next,
-                    ),
-                trailingIcon = trailing,
-            )
-        }
+        ZhixuTextField(
+            value = value,
+            onValueChange = onValueChange,
+            enabled = enabled,
+            label = { Text(label) },
+            visualTransformation = visualTransformation,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Next),
+            trailingIcon = trailing,
+            modifier = modifier,
+        )
     }
 
     Column(
@@ -147,17 +139,13 @@ fun AuthForm(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
+                    ZhixuTextField(
                         value = emailCode,
                         onValueChange = { emailCode = it },
                         enabled = !busy,
-                        singleLine = true,
+                        label = null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
                         modifier = Modifier.weight(1f),
-                        keyboardOptions =
-                            KeyboardOptions(
-                                keyboardType = KeyboardType.Number,
-                                imeAction = ImeAction.Next,
-                            ),
                     )
                     Spacer(Modifier.width(10.dp))
                     OutlinedButton(
