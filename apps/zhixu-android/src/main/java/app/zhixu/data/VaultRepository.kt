@@ -898,7 +898,21 @@ class VaultRepository(
                 coroutineContext.ensureActive()
                 runCatching {
                     val content = readText(doc.uri)
-                    indexRepository.indexDocument(doc, content)
+                    val normalized = TaskSyntax.normalizeMarkdown(content)
+                    val finalContent =
+                        if (normalized.insertedIds > 0) {
+                            writeText(doc.uri, normalized.markdown)
+                            normalized.markdown
+                        } else {
+                            content
+                        }
+                    val stat = DocumentFile.fromSingleUri(context, doc.uri)
+                    val indexedDoc =
+                        doc.copy(
+                            lastModified = stat?.lastModified() ?: doc.lastModified,
+                            size = stat?.length() ?: finalContent.toByteArray(StandardCharsets.UTF_8).size.toLong(),
+                        )
+                    indexRepository.indexDocument(indexedDoc, finalContent)
                 }.onFailure {
                     Log.e("Zhixu", "Index failed for ${doc.uri}", it)
                 }

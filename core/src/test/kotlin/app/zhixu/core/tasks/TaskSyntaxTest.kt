@@ -40,5 +40,12 @@ class TaskSyntaxTest {
         assertTrue(!out.contains("@done("))
         assertTrue(out.contains("@id("))
     }
-}
 
+    @Test
+    fun `parseTasks parses priority`() {
+        val input = "- [ ] A @priority(2) @id(01JTESTTESTTESTTESTTESTTEST)"
+        val tasks = TaskSyntax.parseTasks(input)
+        assertEquals(1, tasks.size)
+        assertEquals(2, tasks.first().priority)
+    }
+}

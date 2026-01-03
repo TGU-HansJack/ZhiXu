@@ -36,6 +36,8 @@ class TaskReminderWorker(
 
             val dueText = dueFormatter.format(Instant.ofEpochMilli(due).atZone(ZoneId.systemDefault()))
             val intent = Intent(applicationContext, MainActivity::class.java)
+                .putExtra(EXTRA_DOC_URI, task.docUri.toString())
+                .putExtra(EXTRA_LINE_INDEX, task.lineIndex)
             val pendingIntent =
                 PendingIntent.getActivity(
                     applicationContext,
@@ -75,5 +77,7 @@ class TaskReminderWorker(
 
     companion object {
         const val CHANNEL_ID = "tasks_due"
+        const val EXTRA_DOC_URI = "task_doc_uri"
+        const val EXTRA_LINE_INDEX = "task_line_index"
     }
 }

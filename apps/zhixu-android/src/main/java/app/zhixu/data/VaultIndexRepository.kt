@@ -171,8 +171,8 @@ class VaultIndexRepository(
                     database.execSQL(
                         """
                         INSERT OR REPLACE INTO tasks(
-                          doc_uri, doc_name, line_index, checked, task_id, title, tags, due_epoch_ms, done_epoch_ms, raw_line
-                        ) VALUES(?,?,?,?,?,?,?,?,?,?)
+                          doc_uri, doc_name, line_index, checked, task_id, title, tags, priority, due_epoch_ms, done_epoch_ms, raw_line
+                        ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
                         """.trimIndent(),
                         arrayOf<Any?>(
                             doc.uri.toString(),
@@ -182,6 +182,7 @@ class VaultIndexRepository(
                             task.id,
                             task.title,
                             tags,
+                            task.priority,
                             dueMs,
                             doneMs,
                             task.rawLine,
@@ -436,7 +437,7 @@ class VaultIndexRepository(
             val out = ArrayList<UiTask>()
             database.rawQuery(
                 """
-                SELECT t.doc_uri, t.doc_name, t.line_index, t.checked, t.task_id, t.title, t.due_epoch_ms
+                SELECT t.doc_uri, t.doc_name, t.line_index, t.checked, t.task_id, t.title, t.due_epoch_ms, t.priority
                 FROM tasks_meta m
                 JOIN tasks t ON t.task_id = m.task_id
                 WHERE m.created_epoch_ms BETWEEN ? AND ?
@@ -452,6 +453,7 @@ class VaultIndexRepository(
                 val idIdx = cursor.getColumnIndexOrThrow("task_id")
                 val titleIdx = cursor.getColumnIndexOrThrow("title")
                 val dueIdx = cursor.getColumnIndexOrThrow("due_epoch_ms")
+                val priorityIdx = cursor.getColumnIndexOrThrow("priority")
                 while (cursor.moveToNext()) {
                     out +=
                         UiTask(
@@ -462,6 +464,7 @@ class VaultIndexRepository(
                             checked = cursor.getInt(checkedIdx) != 0,
                             taskId = cursor.getString(idIdx),
                             dueEpochMillis = if (cursor.isNull(dueIdx)) null else cursor.getLong(dueIdx),
+                            priority = if (cursor.isNull(priorityIdx)) null else cursor.getInt(priorityIdx),
                         )
                 }
             }
@@ -579,12 +582,12 @@ class VaultIndexRepository(
             val out = ArrayList<UiTask>()
             database.rawQuery(
                 """
-                SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms
+                SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms, priority
                 FROM tasks
                 WHERE checked = 0
                   AND due_epoch_ms IS NOT NULL
                   AND due_epoch_ms BETWEEN ? AND ?
-                ORDER BY due_epoch_ms ASC
+                ORDER BY (priority IS NULL) ASC, priority ASC, due_epoch_ms ASC
                 LIMIT ?
                 """.trimIndent(),
                 arrayOf(nowEpochMillis.toString(), end.toString(), limit.toString()),
@@ -596,6 +599,7 @@ class VaultIndexRepository(
                 val idIdx = cursor.getColumnIndexOrThrow("task_id")
                 val titleIdx = cursor.getColumnIndexOrThrow("title")
                 val dueIdx = cursor.getColumnIndexOrThrow("due_epoch_ms")
+                val priorityIdx = cursor.getColumnIndexOrThrow("priority")
                 while (cursor.moveToNext()) {
                     out += UiTask(
                         title = cursor.getString(titleIdx),
@@ -605,6 +609,7 @@ class VaultIndexRepository(
                         checked = cursor.getInt(checkedIdx) != 0,
                         taskId = cursor.getString(idIdx),
                         dueEpochMillis = if (cursor.isNull(dueIdx)) null else cursor.getLong(dueIdx),
+                        priority = if (cursor.isNull(priorityIdx)) null else cursor.getInt(priorityIdx),
                     )
                 }
             }
@@ -641,7 +646,7 @@ class VaultIndexRepository(
             val out = ArrayList<UiTask>()
             database.rawQuery(
                 """
-                SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms
+                SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms, priority
                 FROM tasks
                 WHERE checked = 1
                 ORDER BY COALESCE(done_epoch_ms, due_epoch_ms, 0) DESC
@@ -656,6 +661,7 @@ class VaultIndexRepository(
                 val idIdx = cursor.getColumnIndexOrThrow("task_id")
                 val titleIdx = cursor.getColumnIndexOrThrow("title")
                 val dueIdx = cursor.getColumnIndexOrThrow("due_epoch_ms")
+                val priorityIdx = cursor.getColumnIndexOrThrow("priority")
                 while (cursor.moveToNext()) {
                     out += UiTask(
                         title = cursor.getString(titleIdx),
@@ -664,7 +670,8 @@ class VaultIndexRepository(
                         lineIndex = cursor.getInt(lineIdx),
                         checked = cursor.getInt(checkedIdx) != 0,
                         taskId = cursor.getString(idIdx),
-                        dueEpochMillis = cursor.getLong(dueIdx),
+                        dueEpochMillis = if (cursor.isNull(dueIdx)) null else cursor.getLong(dueIdx),
+                        priority = if (cursor.isNull(priorityIdx)) null else cursor.getInt(priorityIdx),
                     )
                 }
             }
@@ -696,13 +703,13 @@ class VaultIndexRepository(
         }.toTypedArray()
         database.rawQuery(
             """
-            SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms
+            SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms, priority
             FROM tasks
             WHERE due_epoch_ms IS NOT NULL
               AND due_epoch_ms BETWEEN ? AND ?
               $statusClause
               $tagClause
-            ORDER BY due_epoch_ms ASC
+            ORDER BY (priority IS NULL) ASC, priority ASC, due_epoch_ms ASC
             LIMIT ?
             """.trimIndent(),
             args,
@@ -714,6 +721,7 @@ class VaultIndexRepository(
             val idIdx = cursor.getColumnIndexOrThrow("task_id")
             val titleIdx = cursor.getColumnIndexOrThrow("title")
             val dueIdx = cursor.getColumnIndexOrThrow("due_epoch_ms")
+            val priorityIdx = cursor.getColumnIndexOrThrow("priority")
             while (cursor.moveToNext()) {
                 out += UiTask(
                     title = cursor.getString(titleIdx),
@@ -723,6 +731,7 @@ class VaultIndexRepository(
                     checked = cursor.getInt(checkedIdx) != 0,
                     taskId = cursor.getString(idIdx),
                     dueEpochMillis = if (cursor.isNull(dueIdx)) null else cursor.getLong(dueIdx),
+                    priority = if (cursor.isNull(priorityIdx)) null else cursor.getInt(priorityIdx),
                 )
             }
         }
@@ -749,12 +758,12 @@ class VaultIndexRepository(
         }.toTypedArray()
         database.rawQuery(
             """
-            SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms
+            SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms, priority
             FROM tasks
             WHERE 1 = 1
               $statusClause
               $tagClause
-            ORDER BY (due_epoch_ms IS NULL) ASC, due_epoch_ms ASC, doc_name COLLATE NOCASE ASC, line_index ASC
+            ORDER BY (priority IS NULL) ASC, priority ASC, (due_epoch_ms IS NULL) ASC, due_epoch_ms ASC, doc_name COLLATE NOCASE ASC, line_index ASC
             LIMIT ?
             """.trimIndent(),
             args,
@@ -766,6 +775,7 @@ class VaultIndexRepository(
             val idIdx = cursor.getColumnIndexOrThrow("task_id")
             val titleIdx = cursor.getColumnIndexOrThrow("title")
             val dueIdx = cursor.getColumnIndexOrThrow("due_epoch_ms")
+            val priorityIdx = cursor.getColumnIndexOrThrow("priority")
             while (cursor.moveToNext()) {
                 out += UiTask(
                     title = cursor.getString(titleIdx),
@@ -774,7 +784,8 @@ class VaultIndexRepository(
                     lineIndex = cursor.getInt(lineIdx),
                     checked = cursor.getInt(checkedIdx) != 0,
                     taskId = cursor.getString(idIdx),
-                    dueEpochMillis = cursor.getLong(dueIdx),
+                    dueEpochMillis = if (cursor.isNull(dueIdx)) null else cursor.getLong(dueIdx),
+                    priority = if (cursor.isNull(priorityIdx)) null else cursor.getInt(priorityIdx),
                 )
             }
         }

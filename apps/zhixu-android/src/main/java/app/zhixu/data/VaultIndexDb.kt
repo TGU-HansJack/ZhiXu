@@ -60,6 +60,7 @@ internal class VaultIndexDb(
               task_id TEXT,
               title TEXT NOT NULL,
               tags TEXT NOT NULL DEFAULT '',
+              priority INTEGER,
               due_epoch_ms INTEGER,
               done_epoch_ms INTEGER,
               raw_line TEXT NOT NULL,
@@ -70,6 +71,7 @@ internal class VaultIndexDb(
 
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_tasks_due_checked ON tasks(due_epoch_ms, checked);")
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_tasks_doc ON tasks(doc_uri);")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_tasks_priority_due ON tasks(priority, due_epoch_ms);")
 
         db.execSQL(
             """
@@ -200,10 +202,15 @@ internal class VaultIndexDb(
             )
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_dir_index_parent ON dir_index_entries(root_uri, parent_path, is_dir, name COLLATE NOCASE);")
         }
+
+        if (oldVersion < 10) {
+            runCatching { db.execSQL("ALTER TABLE tasks ADD COLUMN priority INTEGER;") }
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_tasks_priority_due ON tasks(priority, due_epoch_ms);")
+        }
     }
 
     companion object {
         private const val DB_NAME = "vault_index.db"
-        private const val DB_VERSION = 9
+        private const val DB_VERSION = 10
     }
 }

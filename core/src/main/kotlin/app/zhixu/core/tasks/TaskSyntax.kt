@@ -11,6 +11,7 @@ data class TaskItem(
     val due: String?,
     val done: String?,
     val tags: List<String>,
+    val priority: Int?,
     val rawLine: String,
 )
 
@@ -27,6 +28,7 @@ object TaskSyntax {
     private val doneRegex = Regex("""@done\(([^)]*)\)""")
     private val dueRegex = Regex("""@due\(([^)]*)\)""")
     private val tagRegex = Regex("""@tag\(([^)]*)\)""")
+    private val priorityRegex = Regex("""@priority\(([^)]*)\)""", RegexOption.IGNORE_CASE)
     private val nowFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
     fun parseTasks(markdown: String): List<TaskItem> {
@@ -40,6 +42,9 @@ object TaskSyntax {
             val due = dueRegex.find(rest)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
             val done = doneRegex.find(rest)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
             val tags = tagRegex.findAll(rest).mapNotNull { it.groupValues[1].takeIf(String::isNotBlank) }.toList()
+            val priority =
+                priorityRegex.find(rest)?.groupValues?.get(1)?.trim()?.toIntOrNull()
+                    ?.coerceIn(1, 4)
             val title = rest.replace(fieldRegex, "").replace(Regex("""\s{2,}"""), " ").trim()
             tasks += TaskItem(
                 lineIndex = index,
@@ -49,6 +54,7 @@ object TaskSyntax {
                 due = due,
                 done = done,
                 tags = tags,
+                priority = priority,
                 rawLine = line,
             )
         }
@@ -116,4 +122,3 @@ object TaskSyntax {
         return lines.joinToString("\n")
     }
 }
-

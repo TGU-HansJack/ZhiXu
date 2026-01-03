@@ -115,7 +115,10 @@ import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ZhixuApp() {
+fun ZhixuApp(
+    navIntent: android.content.Intent? = null,
+    onNavIntentConsumed: () -> Unit = {},
+) {
     val context = LocalContext.current
     val appContext = context.applicationContext
     var uiReady by remember { mutableStateOf(false) }
@@ -316,6 +319,30 @@ fun ZhixuApp() {
         val qParam = Uri.encode(query ?: "")
         val lineParam = (lineIndex ?: -1).toString()
         navController.navigate("edit?uri=$uriParam&q=$qParam&line=$lineParam")
+    }
+
+    LaunchedEffect(navIntent, vaultRootUriString) {
+        val intent = navIntent ?: return@LaunchedEffect
+        val docUri = intent.getStringExtra(app.zhixu.reminders.TaskReminderWorker.EXTRA_DOC_URI).orEmpty()
+        if (docUri.isBlank()) return@LaunchedEffect
+        val lineIndex = intent.getIntExtra(app.zhixu.reminders.TaskReminderWorker.EXTRA_LINE_INDEX, -1).takeIf { it >= 0 }
+
+        // Ensure we are in the main graph; openDoc will navigate to editor.
+        if (vaultRootUriString == null) {
+            navController.navigate("vault") {
+                launchSingleTop = true
+                restoreState = true
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            }
+        } else {
+            navController.navigate("home") {
+                launchSingleTop = true
+                restoreState = true
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            }
+        }
+        openDoc(docUri, null, lineIndex)
+        onNavIntentConsumed()
     }
 
     Surface(color = MaterialTheme.colorScheme.background) {

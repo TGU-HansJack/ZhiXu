@@ -28,5 +28,5 @@ data class UiTask(
     val checked: Boolean,
     val taskId: String?,
     val dueEpochMillis: Long?,
+    val priority: Int?,
 )
-

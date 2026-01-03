@@ -2,6 +2,7 @@ package app.zhixu
 
 import android.Manifest
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -15,7 +16,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
@@ -29,8 +32,11 @@ import app.zhixu.ui.ZhixuApp
 import app.zhixu.ui.theme.ZhixuTheme
 
 class MainActivity : AppCompatActivity() {
+    private var pendingNavIntent: Intent? by mutableStateOf(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingNavIntent = intent
 
         setContent {
             val context = LocalContext.current
@@ -48,9 +54,20 @@ class MainActivity : AppCompatActivity() {
             ZhixuTheme(darkTheme = darkTheme) {
                 SystemBarsAppearance()
                 PostNotificationsPermissionRequester()
-                ZhixuApp()
+                val navIntent = pendingNavIntent
+                ZhixuApp(
+                    navIntent = navIntent,
+                    onNavIntentConsumed = {
+                        if (pendingNavIntent === navIntent) pendingNavIntent = null
+                    },
+                )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        pendingNavIntent = intent
     }
 }
 
