@@ -84,6 +84,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.markwon.core)
+    implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("com.github.CanHub:Android-Image-Cropper:4.5.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.concurrent:concurrent-futures:1.2.0")

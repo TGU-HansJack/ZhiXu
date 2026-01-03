@@ -108,7 +108,7 @@ fun SyncScreen(
 
     val accountPrefs = remember(context) { AccountPreferences(context.applicationContext) }
     val accountState by accountPrefs.state.collectAsState(
-        initial = AccountState(token = "", username = "", userId = 0L),
+        initial = AccountState(token = "", username = "", userId = 0L, email = "", avatarUri = ""),
     )
     val savedConfig by
         syncPrefs.webDavConfig

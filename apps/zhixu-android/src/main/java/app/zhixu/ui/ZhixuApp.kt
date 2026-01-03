@@ -90,6 +90,8 @@ import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTopAppBar
 import app.zhixu.ui.screens.AccountScreen
 import app.zhixu.ui.screens.AboutScreen
+import app.zhixu.ui.screens.AuthScreen
+import app.zhixu.ui.screens.DeviceManagementScreen
 import app.zhixu.ui.screens.DocumentListScreen
 import app.zhixu.ui.screens.EditorScreen
 import app.zhixu.ui.screens.ImagePreviewScreen
@@ -151,7 +153,7 @@ fun ZhixuApp() {
     )
     val accountPrefs = remember(appContext) { AccountPreferences(appContext) }
     val accountState by accountPrefs.state.collectAsState(
-        initial = AccountState(token = "", username = "", userId = 0L),
+        initial = AccountState(token = "", username = "", userId = 0L, email = "", avatarUri = ""),
     )
     val syncPrefs = remember(appContext) { SyncPreferences(appContext) }
     val webDavConfig by syncPrefs.webDavConfig.collectAsState(
@@ -522,6 +524,24 @@ fun ZhixuApp() {
                 composable("account") {
                     val accountPrefs = remember(appContext) { app.zhixu.data.AccountPreferences(appContext) }
                     AccountScreen(
+                        contentPadding = padding,
+                        accountPrefs = accountPrefs,
+                        onBack = { navController.popBackStack() },
+                        onOpenAuth = { navController.navigate("auth") },
+                        onOpenDeviceManagement = { navController.navigate("deviceManagement") },
+                    )
+                }
+                composable("auth") {
+                    val accountPrefs = remember(appContext) { app.zhixu.data.AccountPreferences(appContext) }
+                    AuthScreen(
+                        contentPadding = padding,
+                        accountPrefs = accountPrefs,
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable("deviceManagement") {
+                    val accountPrefs = remember(appContext) { app.zhixu.data.AccountPreferences(appContext) }
+                    DeviceManagementScreen(
                         contentPadding = padding,
                         accountPrefs = accountPrefs,
                         onBack = { navController.popBackStack() },

@@ -65,6 +65,7 @@ import app.zhixu.data.VaultRepository
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.components.ContribCalendarDialog
 import app.zhixu.ui.components.ZhixuDialogDefaults
+import coil.compose.AsyncImage
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.launch
@@ -87,7 +88,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val accountPrefs = remember(context) { AccountPreferences(context.applicationContext) }
     val accountState by accountPrefs.state.collectAsState(
-        initial = AccountState(token = "", username = "", userId = 0L),
+        initial = AccountState(token = "", username = "", userId = 0L, email = "", avatarUri = ""),
     )
 
     var contribPerDay by remember { mutableStateOf<Map<LocalDate, DailyContrib>?>(null) }
@@ -161,7 +162,12 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.surfaceVariant,
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Text(text = "Z", style = MaterialTheme.typography.titleLarge)
+                            val avatarUri = accountState.avatarUri
+                            if (avatarUri.isNotBlank()) {
+                                AsyncImage(model = avatarUri, contentDescription = null, modifier = Modifier.fillMaxSize())
+                            } else {
+                                Text(text = accountState.username.firstOrNull()?.uppercase() ?: "Z", style = MaterialTheme.typography.titleLarge)
+                            }
                         }
                     }
                     Spacer(Modifier.width(12.dp))

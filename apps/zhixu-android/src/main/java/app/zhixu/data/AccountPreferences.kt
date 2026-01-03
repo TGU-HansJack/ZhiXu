@@ -11,8 +11,11 @@ data class AccountState(
     val token: String,
     val username: String,
     val userId: Long,
+    val email: String,
+    val avatarUri: String,
 ) {
     val isLoggedIn: Boolean get() = token.isNotBlank()
+    val hasAvatar: Boolean get() = avatarUri.isNotBlank()
 }
 
 class AccountPreferences(
@@ -21,6 +24,8 @@ class AccountPreferences(
     private val tokenKey = stringPreferencesKey("account_token")
     private val usernameKey = stringPreferencesKey("account_username")
     private val userIdKey = longPreferencesKey("account_user_id")
+    private val emailKey = stringPreferencesKey("account_email")
+    private val avatarUriKey = stringPreferencesKey("account_avatar_uri")
 
     val state: Flow<AccountState> =
         context.dataStore.data.map { prefs ->
@@ -28,6 +33,8 @@ class AccountPreferences(
                 token = prefs[tokenKey] ?: "",
                 username = prefs[usernameKey] ?: "",
                 userId = prefs[userIdKey] ?: 0L,
+                email = prefs[emailKey] ?: "",
+                avatarUri = prefs[avatarUriKey] ?: "",
             )
         }
 
@@ -35,11 +42,25 @@ class AccountPreferences(
         token: String,
         username: String,
         userId: Long,
+        email: String = "",
     ) {
         context.dataStore.edit { prefs ->
             prefs[tokenKey] = token
             prefs[usernameKey] = username
             prefs[userIdKey] = userId
+            if (email.isNotBlank()) prefs[emailKey] = email
+        }
+    }
+
+    suspend fun setEmail(email: String) {
+        context.dataStore.edit { prefs ->
+            if (email.isBlank()) prefs.remove(emailKey) else prefs[emailKey] = email
+        }
+    }
+
+    suspend fun setAvatarUri(uri: String) {
+        context.dataStore.edit { prefs ->
+            if (uri.isBlank()) prefs.remove(avatarUriKey) else prefs[avatarUriKey] = uri
         }
     }
 
@@ -48,6 +69,8 @@ class AccountPreferences(
             prefs.remove(tokenKey)
             prefs.remove(usernameKey)
             prefs.remove(userIdKey)
+            prefs.remove(emailKey)
+            prefs.remove(avatarUriKey)
         }
     }
 }

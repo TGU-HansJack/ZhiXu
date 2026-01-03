@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets
 data class SyncServerMe(
     val userId: Long,
     val username: String,
+    val email: String = "",
     val plan: SyncServerPlan? = null,
 )
 
@@ -121,15 +122,16 @@ object SyncServerClient {
         baseUrl: String,
         username: String,
         password: String,
+        email: String = "",
     ): SyncServerResult<Long> = withContext(Dispatchers.IO) {
         safeResult {
             val url = normalizeJoin(baseUrl, "/api/auth/register")
-            val body =
+            val json =
                 JSONObject()
                     .put("username", username)
                     .put("password", password)
-                    .toString()
-                    .toRequestBody("application/json; charset=utf-8".toMediaType())
+                    .also { if (email.isNotBlank()) it.put("email", email) }
+            val body = json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
             val req = Request.Builder().url(url).post(body).header("User-Agent", "Zhixu-Android").build()
             client.newCall(req).execute().use { resp ->
                 val text = resp.body?.string().orEmpty()
@@ -183,6 +185,7 @@ object SyncServerClient {
                 val obj = runCatching { JSONObject(text) }.getOrNull() ?: return@use SyncServerResult(false, errorMessage = "Invalid response", statusCode = resp.code)
                 val userId = obj.optLong("userId", 0L)
                 val username = obj.optString("username").orEmpty()
+                val email = obj.optString("email").orEmpty()
                 val planObj = obj.optJSONObject("plan")
                 val plan =
                     planObj?.let {
@@ -193,7 +196,111 @@ object SyncServerClient {
                             priceCnyYear = it.optInt("priceCnyYear", 0).coerceAtLeast(0),
                         )
                     }
-                SyncServerResult(ok = true, value = SyncServerMe(userId = userId, username = username, plan = plan), statusCode = resp.code)
+                SyncServerResult(ok = true, value = SyncServerMe(userId = userId, username = username, email = email, plan = plan), statusCode = resp.code)
+            }
+        }
+    }
+
+    suspend fun changePassword(
+        baseUrl: String,
+        token: String,
+        currentPassword: String,
+        newPassword: String,
+    ): SyncServerResult<Unit> = withContext(Dispatchers.IO) {
+        safeResult {
+            val url = normalizeJoin(baseUrl, "/api/account/password")
+            val body =
+                JSONObject()
+                    .put("currentPassword", currentPassword)
+                    .put("newPassword", newPassword)
+                    .toString()
+                    .toRequestBody("application/json; charset=utf-8".toMediaType())
+            val req =
+                Request.Builder()
+                    .url(url)
+                    .post(body)
+                    .header("Authorization", "Bearer $token")
+                    .header("User-Agent", "Zhixu-Android")
+                    .build()
+            client.newCall(req).execute().use { resp ->
+                val text = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
+                SyncServerResult(ok = true, value = Unit, statusCode = resp.code)
+            }
+        }
+    }
+
+    data class AccountSession(
+        val sessionId: String,
+        val name: String,
+        val client: String,
+        val lastSeenText: String,
+        val ip: String,
+        val location: String,
+        val isCurrent: Boolean,
+    )
+
+    suspend fun listSessions(
+        baseUrl: String,
+        token: String,
+    ): SyncServerResult<List<AccountSession>> = withContext(Dispatchers.IO) {
+        safeResult {
+            val url = normalizeJoin(baseUrl, "/api/account/sessions")
+            val req =
+                Request.Builder()
+                    .url(url)
+                    .get()
+                    .header("Authorization", "Bearer $token")
+                    .header("User-Agent", "Zhixu-Android")
+                    .build()
+            client.newCall(req).execute().use { resp ->
+                val text = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
+                val arr = runCatching { JSONObject(text).optJSONArray("sessions") ?: JSONArray() }.getOrNull() ?: JSONArray()
+                val out = ArrayList<AccountSession>(arr.length())
+                for (i in 0 until arr.length()) {
+                    val item = arr.optJSONObject(i) ?: continue
+                    val sessionId = item.optString("sessionId").orEmpty().ifBlank { item.optString("id").orEmpty() }
+                    if (sessionId.isBlank()) continue
+                    out +=
+                        AccountSession(
+                            sessionId = sessionId,
+                            name = item.optString("name").orEmpty().ifBlank { item.optString("deviceName").orEmpty() },
+                            client = item.optString("client").orEmpty().ifBlank { item.optString("platform").orEmpty() },
+                            lastSeenText = item.optString("lastSeenText").orEmpty().ifBlank { item.optString("lastSeenAt").orEmpty() },
+                            ip = item.optString("ip").orEmpty(),
+                            location = item.optString("location").orEmpty(),
+                            isCurrent = item.optBoolean("current", false) || item.optBoolean("isCurrent", false),
+                        )
+                }
+                SyncServerResult(ok = true, value = out, statusCode = resp.code)
+            }
+        }
+    }
+
+    suspend fun revokeSession(
+        baseUrl: String,
+        token: String,
+        sessionId: String,
+    ): SyncServerResult<Unit> = withContext(Dispatchers.IO) {
+        safeResult {
+            val url = normalizeJoin(baseUrl, "/api/account/sessions/revoke")
+            val body =
+                JSONObject()
+                    .put("sessionId", sessionId)
+                    .toString()
+                    .toRequestBody("application/json; charset=utf-8".toMediaType())
+            val req =
+                Request.Builder()
+                    .url(url)
+                    .post(body)
+                    .header("Authorization", "Bearer $token")
+                    .header("User-Agent", "Zhixu-Android")
+                    .build()
+            client.newCall(req).execute().use { resp ->
+                val text = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
+                SyncServerResult(ok = true, value = Unit, statusCode = resp.code)
             }
         }
     }
