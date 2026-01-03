@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -723,12 +724,22 @@ private fun MainBottomBar(
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 ZhixuIconButton(onClick = onHome) {
-                    Icon(
-                        painter = painterResource(if (selectedHome) Ionicons.HomeFilled else Ionicons.Home),
-                        contentDescription = null,
-                        tint = if (selectedHome) selectedTint else unselectedTint,
-                        modifier = Modifier.size(24.dp),
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            painter = painterResource(if (selectedHome) Ionicons.HomeFilled else Ionicons.Home),
+                            contentDescription = "首页",
+                            tint = if (selectedHome) selectedTint else unselectedTint,
+                            modifier = Modifier.size(24.dp),
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "首页",
+                            color = if (selectedHome) selectedTint else unselectedTint,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (selectedHome) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1,
+                        )
+                    }
                 }
                 Surface(
                     color = MaterialTheme.colorScheme.primary,
@@ -749,12 +760,22 @@ private fun MainBottomBar(
                     }
                 }
                 ZhixuIconButton(onClick = onMe) {
-                    Icon(
-                        painter = painterResource(if (selectedMe) Ionicons.UserFilled else Ionicons.User),
-                        contentDescription = null,
-                        tint = if (selectedMe) selectedTint else unselectedTint,
-                        modifier = Modifier.size(24.dp),
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            painter = painterResource(if (selectedMe) Ionicons.UserFilled else Ionicons.User),
+                            contentDescription = "我的",
+                            tint = if (selectedMe) selectedTint else unselectedTint,
+                            modifier = Modifier.size(24.dp),
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "我的",
+                            color = if (selectedMe) selectedTint else unselectedTint,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (selectedMe) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
         }
