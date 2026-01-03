@@ -52,6 +52,8 @@ object Ionicons {
     @DrawableRes val SquareOutline: Int = R.drawable.ic_ion_square_outline
     @DrawableRes val CheckboxOutline: Int = R.drawable.ic_ion_checkbox_outline
     @DrawableRes val ChevronDown: Int = R.drawable.ic_ion_chevron_down_outline
+    @DrawableRes val ChevronExpandOutline: Int = R.drawable.ic_ion_chevron_expand_outline
+    @DrawableRes val ChevronCollapseOutline: Int = R.drawable.ic_ion_chevron_collapse_outline
 
     @DrawableRes val DocumentText: Int = R.drawable.ic_ion_document_text_outline
     @DrawableRes val DocumentOutline: Int = R.drawable.ic_ion_document_outline

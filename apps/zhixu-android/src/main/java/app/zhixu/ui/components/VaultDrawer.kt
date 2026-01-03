@@ -110,6 +110,7 @@ fun VaultDrawer(
     itemTextStyle: TextStyle = MaterialTheme.typography.bodySmall,
     itemIconSize: Dp = 18.dp,
     itemChevronSize: Dp = 16.dp,
+    allDirsExpanded: Boolean? = null,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -267,6 +268,18 @@ fun VaultDrawer(
     }
 
     val entryByPath = remember(entries) { entries.associateBy { it.relativePath } }
+
+    LaunchedEffect(allDirsExpanded, entries) {
+        when (allDirsExpanded) {
+            true -> {
+                for (entry in entries) {
+                    if (entry.isDirectory) expandedDirs[entry.relativePath] = true
+                }
+            }
+            false -> expandedDirs.clear()
+            null -> Unit
+        }
+    }
 
     fun isVisible(entry: VaultTreeEntry): Boolean {
         var parent = entry.parentPath
