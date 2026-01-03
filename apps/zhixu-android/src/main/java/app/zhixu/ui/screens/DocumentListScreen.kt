@@ -751,7 +751,7 @@ private fun DocRow(
                 text = title,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.bodyMedium,
             )
             Text(
                 text = stringResource(R.string.edited_at_fmt, editedAt),

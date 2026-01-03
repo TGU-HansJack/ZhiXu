@@ -2303,7 +2303,7 @@ fun EditorScreen(
                         .windowInsetsPadding(WindowInsets.navigationBars),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(text = "PDF", style = MaterialTheme.typography.titleMedium)
+                Text(text = "PDF", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal))
 
                 @Composable
                 fun option(
