@@ -156,6 +156,7 @@ import kotlin.math.abs
 import app.zhixu.R
 import app.zhixu.data.dataStore
 import app.zhixu.data.VaultRepository
+import app.zhixu.ui.Heroicons
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.sync.SyncServerClient
@@ -2887,39 +2888,40 @@ private fun EditorBottomToolbar(
         color = Color(0xFFFFFFFF),
         contentColor = Color(0xFF111111),
     ) {
+        val toolbarIconSize = 18.dp
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(toolbarScrollState)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                .padding(horizontal = 8.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            EditorToolIcon(enabled = canUndo, onClick = onUndo) { Icon(Icons.Outlined.Undo, null) }
-            EditorToolIcon(enabled = canRedo, onClick = onRedo) { Icon(Icons.Outlined.Redo, null) }
+            EditorToolIcon(enabled = canUndo, onClick = onUndo) { Icon(painter = painterResource(Heroicons.ArrowUturnLeft), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(enabled = canRedo, onClick = onRedo) { Icon(painter = painterResource(Heroicons.ArrowUturnRight), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
             EditorToolDivider()
-            EditorToolIcon(onClick = onHeading1) { Text("H1", style = MaterialTheme.typography.labelLarge) }
-            EditorToolIcon(onClick = onHeading2) { Text("H2", style = MaterialTheme.typography.labelLarge) }
-            EditorToolIcon(onClick = onHeading3) { Text("H3", style = MaterialTheme.typography.labelLarge) }
-            EditorToolIcon(onClick = onBold) { Icon(Icons.Outlined.FormatBold, null) }
-            EditorToolIcon(onClick = onItalic) { Icon(Icons.Outlined.FormatItalic, null) }
-            EditorToolIcon(onClick = onStrike) { Icon(Icons.Outlined.StrikethroughS, null) }
+            EditorToolIcon(onClick = onHeading1) { Icon(painter = painterResource(Heroicons.H1), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onHeading2) { Icon(painter = painterResource(Heroicons.H2), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onHeading3) { Icon(painter = painterResource(Heroicons.H3), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onBold) { Icon(painter = painterResource(Heroicons.Bold), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onItalic) { Icon(painter = painterResource(Heroicons.Italic), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onStrike) { Icon(Icons.Outlined.StrikethroughS, null, modifier = Modifier.size(toolbarIconSize)) }
             EditorToolDivider()
-            EditorToolIcon(onClick = onTask) { Icon(Icons.Outlined.CheckBox, null) }
-            EditorToolIcon(onClick = onBullets) { Icon(Icons.Outlined.FormatListBulleted, null) }
-            EditorToolIcon(onClick = onNumbers) { Icon(Icons.Outlined.FormatListNumbered, null) }
+            EditorToolIcon(onClick = onTask) { Icon(Icons.Outlined.CheckBox, null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onBullets) { Icon(Icons.Outlined.FormatListBulleted, null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onNumbers) { Icon(Icons.Outlined.FormatListNumbered, null, modifier = Modifier.size(toolbarIconSize)) }
             EditorToolDivider()
-            EditorToolIcon(onClick = onQuote) { Icon(Icons.Outlined.FormatQuote, null) }
-            EditorToolIcon(onClick = onDivider) { Icon(Icons.Outlined.HorizontalRule, null) }
+            EditorToolIcon(onClick = onQuote) { Icon(painter = painterResource(Heroicons.Quote), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onDivider) { Icon(Icons.Outlined.HorizontalRule, null, modifier = Modifier.size(toolbarIconSize)) }
             EditorToolDivider()
-            EditorToolIcon(onClick = onLink) { Icon(Icons.Outlined.Link, null) }
-            EditorToolIcon(onClick = onImage) { Icon(Icons.Outlined.Image, null) }
-            EditorToolIcon(onClick = onCode) { Icon(Icons.Outlined.Code, null) }
-            EditorToolIcon(onClick = onTable) { Icon(Icons.Outlined.TableChart, null) }
+            EditorToolIcon(onClick = onLink) { Icon(Icons.Outlined.Link, null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onImage) { Icon(Icons.Outlined.Image, null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onCode) { Icon(Icons.Outlined.Code, null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onTable) { Icon(Icons.Outlined.TableChart, null, modifier = Modifier.size(toolbarIconSize)) }
             EditorToolDivider()
 
             Box {
-                EditorToolIcon(onClick = { showMore = true }) { Icon(painter = painterResource(Ionicons.EllipsisHorizontal), contentDescription = null) }
+                EditorToolIcon(onClick = { showMore = true }) { Icon(painter = painterResource(Ionicons.EllipsisHorizontal), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
                 DropdownMenu(
                     expanded = showMore,
                     onDismissRequest = { showMore = false },
@@ -2927,13 +2929,17 @@ private fun EditorBottomToolbar(
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.action_find_replace)) },
                         onClick = { showMore = false; onMoreFindReplace() },
-                        leadingIcon = { Icon(Icons.Outlined.FindReplace, null) },
+                        leadingIcon = { Icon(Icons.Outlined.FindReplace, null, modifier = Modifier.size(toolbarIconSize)) },
                     )
                     DropdownMenuItem(text = { Text("Heading 4") }, onClick = { showMore = false; onMoreHeading4() })
                     DropdownMenuItem(text = { Text("Heading 5") }, onClick = { showMore = false; onMoreHeading5() })
                     DropdownMenuItem(text = { Text("Heading 6") }, onClick = { showMore = false; onMoreHeading6() })
                     DropdownMenuItem(text = { Text("Highlight") }, onClick = { showMore = false; onMoreHighlight() })
-                    DropdownMenuItem(text = { Text("Underline") }, onClick = { showMore = false; onMoreUnderline() })
+                    DropdownMenuItem(
+                        text = { Text("Underline") },
+                        onClick = { showMore = false; onMoreUnderline() },
+                        leadingIcon = { Icon(painter = painterResource(Heroicons.Underline), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) },
+                    )
                     DropdownMenuItem(text = { Text("Toggle task done") }, onClick = { showMore = false; onMoreTaskToggle() })
                     DropdownMenuItem(text = { Text("Mermaid") }, onClick = { showMore = false; onMoreMermaid() })
                     DropdownMenuItem(text = { Text("Inline math") }, onClick = { showMore = false; onMoreMathInline() })
@@ -2954,8 +2960,8 @@ private fun EditorToolIcon(
         enabled = enabled,
         onClick = onClick,
         modifier = Modifier
-            .width(40.dp)
-            .height(40.dp),
+            .width(30.dp)
+            .height(30.dp),
     ) {
         content()
     }
@@ -2966,7 +2972,7 @@ private fun EditorToolDivider() {
     Box(
         modifier = Modifier
             .width(1.dp)
-            .height(22.dp)
+            .height(16.dp)
             .background(Color.Black.copy(alpha = 0.18f)),
     )
 }
