@@ -756,7 +756,7 @@ class VaultRepository(
 
     suspend fun rebuildDirIndex(
         rootUri: Uri,
-        includeNonMarkdownFiles: Boolean = false,
+        includeNonMarkdownFiles: Boolean = true,
         includeHidden: Boolean = false,
     ) = withContext(Dispatchers.IO) {
         val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext
@@ -820,7 +820,7 @@ class VaultRepository(
     suspend fun refreshDirIndexForDirectory(
         rootUri: Uri,
         parentRelativePath: String?,
-        includeNonMarkdownFiles: Boolean = false,
+        includeNonMarkdownFiles: Boolean = true,
         includeHidden: Boolean = false,
     ) {
         val rootKey = rootUri.toString().trim()
