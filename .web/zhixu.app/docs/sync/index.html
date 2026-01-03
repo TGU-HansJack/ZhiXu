@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>同步协议 · Zhixu.app</title>
+    <meta name="description" content="Zhixu WebDAV 同步协议：文件级变更检测、冲突处理与建议流程。" />
+    <link rel="icon" href="../../assets/zhixu.png" />
+    <link rel="stylesheet" href="../../site.css" />
+  </head>
+  <body class="legalPage">
+    <header class="page">
+      <nav class="topnav" aria-label="主导航">
+        <a class="brand" href="../../" aria-label="Zhixu.app 首页">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="28" height="28" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../../">首页</a>
+          <a role="listitem" href="../">文档</a>
+          <a role="listitem" href="../../plugins/">插件</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="page legal">
+      <h1 class="legal__title">WebDAV 同步协议（草案）</h1>
+      <p class="legal__meta">同步范围以 Vault 为单位，传输以文件为单位。</p>
+
+      <article class="legal__content" aria-label="同步协议正文">
+        <h2>同步范围</h2>
+        <ul>
+          <li>同步整个 <code>VaultRoot/</code>（包含 <code>.zhixu/</code>），但允许策略性忽略可重建文件。</li>
+          <li>推荐默认同步：<code>docs/</code>、<code>attachments/</code>、<code>.zhixu/settings.json</code></li>
+          <li>可选不同步：<code>.zhixu/index.sqlite</code>（可重建）</li>
+        </ul>
+
+        <h2>变更检测（文件级）</h2>
+        <ul>
+          <li>以文件为单位对比（不做行级 diff）。</li>
+          <li>建议判定字段：<code>sha256 + mtime + size</code></li>
+        </ul>
+
+        <h2>冲突处理（可追溯）</h2>
+        <ul>
+          <li>本地保留原文件。</li>
+          <li>远端或合并失败时生成：<code>conflict &lt;timestamp&gt; &lt;name&gt;.md</code></li>
+          <li>记录冲突日志：<code>.zhixu/sync/conflicts.jsonl</code></li>
+        </ul>
+
+        <h2>建议流程</h2>
+        <ol>
+          <li>拉取远端清单（path, size, mtime, hash）。</li>
+          <li>本地扫描生成清单。</li>
+          <li>计算需要 upload / download 的集合。</li>
+          <li>执行传输（失败可重试）。</li>
+          <li>生成冲突（不做“聪明合并”）。</li>
+          <li>同步完成后触发索引重建或增量更新。</li>
+        </ol>
+      </article>
+    </main>
+
+    <footer class="page footer">
+      <nav class="footnav" aria-label="页脚导航">
+        <a class="brand" href="../../">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="24" height="24" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../">Docs</a>
+          <a role="listitem" href="../../tos/">Terms</a>
+          <a role="listitem" href="../../privacy/">Privacy</a>
+          <a role="listitem" href="../../license/">License</a>
+        </div>
+      </nav>
+      <p class="tiny muted">&copy; <span id="year"></span> Zhixu contributors.</p>
+    </footer>
+
+    <script src="../../main.js"></script>
+  </body>
+</html>
+

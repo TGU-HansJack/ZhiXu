@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Typecho XML-RPC 发布器 · Zhixu.app</title>
+    <meta name="description" content="通过 MetaWeblog XML-RPC 将当前笔记发布到 Typecho 博客的 Zhixu 插件。" />
+    <link rel="icon" href="../../assets/zhixu.png" />
+    <link rel="stylesheet" href="../../site.css" />
+  </head>
+  <body class="legalPage">
+    <header class="page">
+      <nav class="topnav" aria-label="主导航">
+        <a class="brand" href="../../" aria-label="Zhixu.app 首页">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="28" height="28" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../../">首页</a>
+          <a role="listitem" href="../../docs/">文档</a>
+          <a role="listitem" href="../">插件</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="page legal">
+      <h1 class="legal__title">Typecho XML-RPC 发布器</h1>
+      <p class="legal__meta">通过 XML-RPC（MetaWeblog API）将当前笔记发布到 Typecho 博客。</p>
+
+      <article class="legal__content" aria-label="插件说明正文">
+        <h2>用途</h2>
+        <p>把当前笔记作为文章发布/更新到 Typecho，并支持同步文章时间、查看最近文章、删除文章等操作。</p>
+
+        <h2>配置（创意工坊 → Settings）</h2>
+        <p>编辑 <code>config.json</code>：</p>
+        <ul>
+          <li><code>endpoint</code>：Typecho XML-RPC 地址（通常类似 <code>https://your.site/action/xmlrpc</code>）</li>
+          <li><code>username</code> / <code>password</code>：账号密码</li>
+          <li><code>blogId</code>：默认 <code>0</code></li>
+          <li><code>useFrontmatter</code>：是否优先使用 frontmatter（如 <code>title</code>）作为发布字段</li>
+          <li><code>useCurrentTime</code>：发布时是否强制使用当前时间</li>
+          <li><code>publishTimeOffsetHours</code>：发布时对时间做偏移（小时）</li>
+          <li><code>syncTimeOffsetHours</code>：从服务器同步时间时的偏移（小时）</li>
+          <li><code>managePostsCount</code>：最近文章列表拉取数量</li>
+          <li><code>defaultCategories</code>：frontmatter 未填写分类时的默认分类（数组）</li>
+          <li><code>frontmatterKeys</code>：映射到你笔记 frontmatter 的字段名（title/cid/slug/tags/categories/draft/dateCreated/lastPublished）</li>
+        </ul>
+
+        <h2>操作</h2>
+        <ul>
+          <li><strong>发布</strong>：发布/更新（存在 <code>cid</code> 则调用 <code>metaWeblog.editPost</code>，否则 <code>metaWeblog.newPost</code>）</li>
+          <li><strong>同步时间</strong>：从服务器读取 <code>dateCreated</code> 并回写到笔记 frontmatter</li>
+          <li><strong>最近文章</strong>：获取最近文章列表（<code>metaWeblog.getRecentPosts</code>）</li>
+          <li><strong>删除</strong>：删除当前笔记对应文章（<code>blogger.deletePost</code>）</li>
+        </ul>
+
+        <h2>开发参考</h2>
+        <ul>
+          <li><a href="../../docs/plugins/">插件开发指南</a></li>
+          <li><a href="../">返回插件目录</a></li>
+        </ul>
+      </article>
+    </main>
+
+    <footer class="page footer">
+      <nav class="footnav" aria-label="页脚导航">
+        <a class="brand" href="../../">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="24" height="24" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../../docs/">Docs</a>
+          <a role="listitem" href="../../tos/">Terms</a>
+          <a role="listitem" href="../../privacy/">Privacy</a>
+          <a role="listitem" href="../../license/">License</a>
+          <a role="listitem" href="mailto:support@zhixu.app">Contact</a>
+        </div>
+      </nav>
+      <p class="tiny muted">&copy; <span id="year"></span> Zhixu contributors.</p>
+    </footer>
+
+    <script src="../../main.js"></script>
+  </body>
+</html>
+

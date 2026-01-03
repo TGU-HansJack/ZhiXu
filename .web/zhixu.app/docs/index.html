@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>文档 · Zhixu.app</title>
+    <meta name="description" content="Zhixu（知序）使用文档：Vault、任务语法、同步协议与插件。" />
+    <link rel="icon" href="../assets/zhixu.png" />
+    <link rel="stylesheet" href="../site.css" />
+  </head>
+  <body class="legalPage">
+    <header class="page">
+      <nav class="topnav" aria-label="主导航">
+        <a class="brand" href="../" aria-label="Zhixu.app 首页">
+          <img class="brand__logo" src="../assets/zhixu.png" alt="" width="28" height="28" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../">首页</a>
+          <a role="listitem" href="../docs/">文档</a>
+          <a role="listitem" href="../plugins/">插件</a>
+          <a role="listitem" href="../tos/">条款</a>
+          <a role="listitem" href="../privacy/">隐私</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="page legal">
+      <h1 class="legal__title">文档</h1>
+      <p class="legal__meta">面向使用者与插件开发者的“核心语义”文档。</p>
+
+      <article class="legal__content" aria-label="Zhixu 文档正文">
+        <h2>快速开始</h2>
+        <ul>
+          <li>下载并安装 Android 版：<a href="../#download">zhixu.app</a></li>
+          <li>首次启动选择或创建一个 Vault（一个普通文件夹）。</li>
+          <li>在 Vault 的 <code>docs/</code> 里创建 Markdown 文档并编辑。</li>
+          <li>在 Markdown 中使用任务语法（如 <code>- [ ]</code> 与 <code>@id(...)</code>）建立可同步的待办。</li>
+          <li>需要跨设备时再开启同步（例如 WebDAV），保持“文件级边界”。</li>
+        </ul>
+
+        <h2>Vault（数据边界）</h2>
+        <p>
+          Zhixu 的核心原则是：<strong>数据以文件为边界</strong>，可迁移、可导出、可备份。应用的索引/缓存不等于数据本身，可删除重建。
+        </p>
+        <p>推荐目录结构：</p>
+        <pre class="legal__pre"><code class="language-text">VaultRoot/
+├─ docs/                 # 全部 Markdown 文档
+├─ attachments/          # 图片 / 音频 / 文件
+└─ .zhixu/
+   ├─ index.sqlite       # 索引库（可删除重建）
+   ├─ settings.json      # Vault 设置
+   └─ sync/              # 同步元数据/冲突日志</code></pre>
+        <p><a href="./vault/">阅读：Vault 规范</a></p>
+
+        <h2>任务语法（跨端稳定）</h2>
+        <p>任务身份使用行内 <code>@id(...)</code> 保持稳定（而不是依赖数据库自增 ID）。</p>
+        <pre class="legal__pre"><code class="language-markdown">- [ ] 标题 @due(2026-01-10 09:00) @tag(work) @id(01J...)
+- [x] 标题 @done(2026-01-10 10:03) @id(01J...)</code></pre>
+        <p><a href="./tasks/">阅读：任务语法</a></p>
+
+        <h2>同步（文件级协议）</h2>
+        <p>同步以文件为单位比较与传输，并把冲突记录为可追溯的文件与日志。</p>
+        <p><a href="./sync/">阅读：同步协议</a></p>
+
+        <h2>插件（Actions 驱动的扩展）</h2>
+        <p>
+          插件以文件夹形式安装到 <code>.zhixu/plugins/&lt;pluginId&gt;/</code>，由 <code>manifest.json</code> 描述，并通过 JS 入口导出
+          <code>actions</code> 供编辑器触发。
+        </p>
+        <p><a href="./plugins/">阅读：插件文档（安装 + 开发）</a></p>
+
+        <h2>更多</h2>
+        <ul>
+          <li><a href="./editor/">编辑器方案</a></li>
+          <li><a href="./faq/">常见问题</a></li>
+          <li>需要帮助：<a href="mailto:support@zhixu.app">support@zhixu.app</a></li>
+        </ul>
+      </article>
+    </main>
+
+    <footer class="page footer">
+      <nav class="footnav" aria-label="页脚导航">
+        <a class="brand" href="../">
+          <img class="brand__logo" src="../assets/zhixu.png" alt="" width="24" height="24" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../docs/">Docs</a>
+          <a role="listitem" href="../tos/">Terms</a>
+          <a role="listitem" href="../privacy/">Privacy</a>
+          <a role="listitem" href="../license/">License</a>
+          <a role="listitem" href="mailto:support@zhixu.app">Contact</a>
+        </div>
+      </nav>
+      <p class="tiny muted">&copy; <span id="year"></span> Zhixu contributors.</p>
+    </footer>
+
+    <script src="../main.js"></script>
+  </body>
+</html>

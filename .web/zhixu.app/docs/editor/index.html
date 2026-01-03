@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>编辑器方案 · Zhixu.app</title>
+    <meta name="description" content="Zhixu 编辑器方案：Markdown 编辑与预览的一致性与可维护性。" />
+    <link rel="icon" href="../../assets/zhixu.png" />
+    <link rel="stylesheet" href="../../site.css" />
+  </head>
+  <body class="legalPage">
+    <header class="page">
+      <nav class="topnav" aria-label="主导航">
+        <a class="brand" href="../../" aria-label="Zhixu.app 首页">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="28" height="28" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../../">首页</a>
+          <a role="listitem" href="../">文档</a>
+          <a role="listitem" href="../../plugins/">插件</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="page legal">
+      <h1 class="legal__title">编辑器方案（摘要）</h1>
+      <p class="legal__meta">目标：稳定、细节一致、可扩展。</p>
+
+      <article class="legal__content" aria-label="编辑器方案正文">
+        <h2>设计目标</h2>
+        <ul>
+          <li>编辑与预览在同一份语义与渲染规则上保持一致。</li>
+          <li>Markdown 渲染稳定，可离线使用。</li>
+          <li>插件 Actions 能在编辑场景中低成本接入。</li>
+        </ul>
+
+        <h2>能力边界</h2>
+        <ul>
+          <li>“真数据”始终是 <code>docs/*.md</code> 文件本身。</li>
+          <li>编辑器负责编辑体验与预览一致性，不把业务逻辑藏在 UI 里。</li>
+          <li>任务语义通过文本规则表达，见 <a href="../tasks/">任务语法</a>。</li>
+        </ul>
+      </article>
+    </main>
+
+    <footer class="page footer">
+      <nav class="footnav" aria-label="页脚导航">
+        <a class="brand" href="../../">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="24" height="24" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../">Docs</a>
+          <a role="listitem" href="../../tos/">Terms</a>
+          <a role="listitem" href="../../privacy/">Privacy</a>
+          <a role="listitem" href="../../license/">License</a>
+        </div>
+      </nav>
+      <p class="tiny muted">&copy; <span id="year"></span> Zhixu contributors.</p>
+    </footer>
+
+    <script src="../../main.js"></script>
+  </body>
+</html>
+

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>插件文档 · Zhixu.app</title>
+    <meta name="description" content="Zhixu 插件文档：安装、manifest.json 规范、actions、context 与内置 API。" />
+    <link rel="icon" href="../../assets/zhixu.png" />
+    <link rel="stylesheet" href="../../site.css" />
+  </head>
+  <body class="legalPage">
+    <header class="page">
+      <nav class="topnav" aria-label="主导航">
+        <a class="brand" href="../../" aria-label="Zhixu.app 首页">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="28" height="28" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../../">首页</a>
+          <a role="listitem" href="../">文档</a>
+          <a role="listitem" href="../../plugins/">插件</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="page legal">
+      <h1 class="legal__title">插件文档（Android）</h1>
+      <p class="legal__meta">插件以文件夹安装，Actions 驱动能力扩展。</p>
+
+      <article class="legal__content" aria-label="插件文档正文">
+        <h2>安装方式（使用者）</h2>
+        <p>在应用内进入：<code>设置 → 创意工坊</code>。</p>
+        <ul>
+          <li><strong>本地安装</strong>：选择一个包含 <code>manifest.json</code> 的文件夹。</li>
+          <li><strong>Git 安装</strong>：填写一个可访问的 Git 仓库地址（仓库根目录必须包含 <code>manifest.json</code>）。</li>
+        </ul>
+        <p>安装后可启用/停用插件；点 <strong>Settings</strong> 可编辑该插件的 <code>config.json</code>。</p>
+
+        <h2>目录结构（开发者）</h2>
+        <pre class="legal__pre"><code class="language-text">my-plugin/
+  manifest.json
+  main.js
+  README.md            # 可选，用于“查看详情”
+  config.json          # 可选，默认可由应用创建/编辑</code></pre>
+
+        <h2>manifest.json 规范</h2>
+        <p>必须字段：</p>
+        <ul>
+          <li><code>id</code>：插件 ID（同时作为安装目录名），建议使用小写、短横线，如 <code>typecho-xmlrpc-publisher</code>。</li>
+        </ul>
+        <p>推荐字段：</p>
+        <ul>
+          <li><code>name</code>：插件名称</li>
+          <li><code>version</code>：版本号</li>
+          <li><code>description</code>：简介</li>
+          <li><code>entry</code>：JS 入口文件名（默认 <code>main.js</code>；如果写成 <code>foo</code> 会尝试 <code>foo</code> 和 <code>foo.js</code>）</li>
+          <li><code>actions</code>：动作列表（用于编辑器浮动按钮）</li>
+        </ul>
+
+        <p><code>actions[]</code> 字段：</p>
+        <ul>
+          <li><code>id</code>：动作 ID（JS 中对应函数名）</li>
+          <li><code>label</code>：按钮文案</li>
+          <li><code>icon</code>：图标名（当前内置简易映射）</li>
+          <li><code>place</code>：动作位置（目前支持 <code>editor_fab</code>；为空也视作 <code>editor_fab</code>）</li>
+          <li><code>ringIndex</code>：在圆形菜单中的分组/层级（整数）</li>
+        </ul>
+
+        <pre class="legal__pre"><code class="language-json">{
+  "id": "hello-plugin",
+  "name": "Hello Plugin",
+  "version": "0.1.0",
+  "description": "A demo plugin",
+  "entry": "main.js",
+  "actions": [
+    { "id": "hello", "label": "Say Hello", "icon": "publish", "place": "editor_fab", "ringIndex": 0 }
+  ]
+}</code></pre>
+
+        <h2>JS 入口与 actions</h2>
+        <p>入口文件以 CommonJS 形式导出：</p>
+        <pre class="legal__pre"><code class="language-javascript">function hello(context) {
+  api.log("hello called");
+  return { ok: true, message: "Hello from plugin!" };
+}
+
+module.exports = {
+  actions: { hello },
+};</code></pre>
+        <p>触发时调用：<code>module.exports.actions[actionId](context)</code>。</p>
+
+        <h2>context（上下文）</h2>
+        <ul>
+          <li><code>context.note</code>：<code>docUri</code>、<code>title</code>、<code>fileName</code>、<code>text</code></li>
+          <li><code>context.config</code>：插件 <code>config.json</code>（对象；不存在则为空对象）</li>
+          <li><code>context.plugin</code>：<code>id</code> / <code>name</code> / <code>version</code></li>
+          <li><code>context.app</code>：<code>platform</code>（<code>android</code>）、<code>versionName</code></li>
+        </ul>
+
+        <h2>api（内置能力）</h2>
+        <ul>
+          <li><code>api.log(any)</code>：写入日志（Logcat tag：<code>ZhixuPlugin</code>）。</li>
+          <li><code>api.http(method, url, body?, contentType?)</code>：同步 HTTP 请求，返回响应体字符串；非 2xx 抛异常。</li>
+        </ul>
+        <pre class="legal__pre"><code class="language-javascript">function ping(ctx) {
+  const text = api.http("GET", "https://example.com/");
+  return { ok: true, message: "len=" + text.length };
+}</code></pre>
+
+        <h2>返回值（动作执行结果）</h2>
+        <ul>
+          <li><code>string</code>：作为提示信息展示。</li>
+          <li><code>object</code>：可包含 <code>ok</code>（布尔）、<code>message</code>（字符串）、<code>setText</code>（替换当前文档并保存）。</li>
+        </ul>
+        <pre class="legal__pre"><code class="language-javascript">function appendTimestamp(ctx) {
+  const next = ctx.note.text + "\\n\\nupdatedAt: " + new Date().toISOString() + "\\n";
+  return { ok: true, message: "Updated", setText: next };
+}</code></pre>
+
+        <h2>示例插件</h2>
+        <p><a href="../../plugins/">查看：插件目录</a></p>
+      </article>
+    </main>
+
+    <footer class="page footer">
+      <nav class="footnav" aria-label="页脚导航">
+        <a class="brand" href="../../">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="24" height="24" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../">Docs</a>
+          <a role="listitem" href="../../tos/">Terms</a>
+          <a role="listitem" href="../../privacy/">Privacy</a>
+          <a role="listitem" href="../../license/">License</a>
+        </div>
+      </nav>
+      <p class="tiny muted">&copy; <span id="year"></span> Zhixu contributors.</p>
+    </footer>
+
+    <script src="../../main.js"></script>
+  </body>
+</html>

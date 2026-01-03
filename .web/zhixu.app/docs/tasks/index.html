@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>任务语法 · Zhixu.app</title>
+    <meta name="description" content="Zhixu Markdown 任务语法：@id、@due、@done 等字段约定。" />
+    <link rel="icon" href="../../assets/zhixu.png" />
+    <link rel="stylesheet" href="../../site.css" />
+  </head>
+  <body class="legalPage">
+    <header class="page">
+      <nav class="topnav" aria-label="主导航">
+        <a class="brand" href="../../" aria-label="Zhixu.app 首页">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="28" height="28" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../../">首页</a>
+          <a role="listitem" href="../">文档</a>
+          <a role="listitem" href="../../plugins/">插件</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="page legal">
+      <h1 class="legal__title">Markdown 任务语法</h1>
+      <p class="legal__meta">任务身份由 <code>@id(...)</code> 保证跨端一致。</p>
+
+      <article class="legal__content" aria-label="任务语法正文">
+        <h2>核心原则</h2>
+        <ul>
+          <li>任务身份 = 行内 <code>@id(...)</code>（跨端一致，可写回 Markdown）。</li>
+          <li>索引是派生物：解析结果写入索引库用于检索/提醒，索引库可重建。</li>
+          <li>MVP：首次索引时为缺失的任务补 <code>@id(...)</code> 并写回文档。</li>
+        </ul>
+
+        <h2>MVP 语法</h2>
+        <pre class="legal__pre"><code class="language-markdown">- [ ] 标题 @due(2026-01-10 09:00) @tag(work) @id(01J...)
+- [x] 标题 @done(2026-01-10 10:03) @id(01J...)</code></pre>
+
+        <h2>字段约定（建议）</h2>
+        <ul>
+          <li><code>@id(&lt;ulid&gt;)</code>：任务唯一标识（建议 ULID）。</li>
+          <li><code>@due(YYYY-MM-DD HH:mm)</code>：到期时间（本地时区）。</li>
+          <li><code>@done(YYYY-MM-DD HH:mm)</code>：完成时间。</li>
+          <li><code>@tag(xxx)</code>：标签（可重复）。</li>
+          <li><code>@priority(high)</code> 或 <code>p(1..4)</code>：优先级（建议统一一种写法）。</li>
+          <li><code>@rrule(...)</code>：重复规则（iCalendar RRULE，后续版本逐步支持）。</li>
+        </ul>
+
+        <h2>解析与容错</h2>
+        <ul>
+          <li>允许任务行出现在任意 Markdown 文档中。</li>
+          <li>忽略未知 <code>@xxx(...)</code> 字段（向前兼容）。</li>
+          <li>字段格式错误时保留原文，不阻断整行解析。</li>
+        </ul>
+      </article>
+    </main>
+
+    <footer class="page footer">
+      <nav class="footnav" aria-label="页脚导航">
+        <a class="brand" href="../../">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="24" height="24" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../">Docs</a>
+          <a role="listitem" href="../../tos/">Terms</a>
+          <a role="listitem" href="../../privacy/">Privacy</a>
+          <a role="listitem" href="../../license/">License</a>
+        </div>
+      </nav>
+      <p class="tiny muted">&copy; <span id="year"></span> Zhixu contributors.</p>
+    </footer>
+
+    <script src="../../main.js"></script>
+  </body>
+</html>

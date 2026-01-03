@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Vault 规范 · Zhixu.app</title>
+    <meta name="description" content="Zhixu Vault 规范：可迁移、可导出、可重建。" />
+    <link rel="icon" href="../../assets/zhixu.png" />
+    <link rel="stylesheet" href="../../site.css" />
+  </head>
+  <body class="legalPage">
+    <header class="page">
+      <nav class="topnav" aria-label="主导航">
+        <a class="brand" href="../../" aria-label="Zhixu.app 首页">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="28" height="28" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../../">首页</a>
+          <a role="listitem" href="../">文档</a>
+          <a role="listitem" href="../../plugins/">插件</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="page legal">
+      <h1 class="legal__title">Vault 规范</h1>
+      <p class="legal__meta">目标：可迁移、可导出、索引可重建。</p>
+
+      <article class="legal__content" aria-label="Vault 规范正文">
+        <h2>目标</h2>
+        <ul>
+          <li>数据不被应用锁死：任何时候都能把 Vault 复制到别处继续使用。</li>
+          <li>索引可重建：删除索引库不等于丢数据。</li>
+          <li>同步以文件为单位：协议更简单、冲突更可追溯。</li>
+        </ul>
+
+        <h2>目录结构</h2>
+        <pre class="legal__pre"><code class="language-text">VaultRoot/
+├─ docs/                 # 全部 Markdown 文档
+├─ attachments/          # 图片 / 音频 / 文件
+└─ .zhixu/
+   ├─ index.sqlite       # 索引库（可删除重建）
+   ├─ settings.json      # Vault 设置
+   ├─ sync/              # 同步元数据/冲突日志
+   └─ exports/           # 导出产物（可选）</code></pre>
+
+        <h2>导出规则</h2>
+        <ul>
+          <li>最小导出：<code>docs/</code> 与 <code>attachments/</code></li>
+          <li>完整导出：整个 <code>VaultRoot/</code>（可选加密压缩）</li>
+        </ul>
+
+        <h2>“真数据”与派生数据</h2>
+        <ul>
+          <li>真数据：<code>docs/*.md</code> 与 <code>attachments/*</code></li>
+          <li>派生数据（可重建）：<code>.zhixu/index.sqlite</code>、<code>.zhixu/sync/*</code></li>
+        </ul>
+
+        <h2>命名建议</h2>
+        <ul>
+          <li>文档文件名由用户自由命名，不强制 UUID 文件名。</li>
+          <li>任务身份通过行内 <code>@id(...)</code> 保持跨端稳定，见 <a href="../tasks/">任务语法</a>。</li>
+        </ul>
+      </article>
+    </main>
+
+    <footer class="page footer">
+      <nav class="footnav" aria-label="页脚导航">
+        <a class="brand" href="../../">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="24" height="24" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../">Docs</a>
+          <a role="listitem" href="../../tos/">Terms</a>
+          <a role="listitem" href="../../privacy/">Privacy</a>
+          <a role="listitem" href="../../license/">License</a>
+        </div>
+      </nav>
+      <p class="tiny muted">&copy; <span id="year"></span> Zhixu contributors.</p>
+    </footer>
+
+    <script src="../../main.js"></script>
+  </body>
+</html>

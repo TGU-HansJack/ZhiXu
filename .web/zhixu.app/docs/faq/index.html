@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>常见问题 · Zhixu.app</title>
+    <meta name="description" content="Zhixu 常见问题：数据存储、同步、插件与隐私。" />
+    <link rel="icon" href="../../assets/zhixu.png" />
+    <link rel="stylesheet" href="../../site.css" />
+  </head>
+  <body class="legalPage">
+    <header class="page">
+      <nav class="topnav" aria-label="主导航">
+        <a class="brand" href="../../" aria-label="Zhixu.app 首页">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="28" height="28" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../../">首页</a>
+          <a role="listitem" href="../">文档</a>
+          <a role="listitem" href="../../plugins/">插件</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="page legal">
+      <h1 class="legal__title">常见问题</h1>
+      <p class="legal__meta">如果这里没有你需要的答案，请发邮件联系我们。</p>
+
+      <article class="legal__content" aria-label="常见问题正文">
+        <h2>数据存在哪里？</h2>
+        <p>默认存储在你选择的本地 Vault（一个普通文件夹）中，以文件形式存在。</p>
+
+        <h2>删除应用会丢数据吗？</h2>
+        <p>不会。只要 Vault 文件夹还在，你可以重新安装后继续使用。索引库属于可重建数据。</p>
+
+        <h2>同步会上传哪些内容？</h2>
+        <p>以文件为单位同步整个 Vault，可根据策略忽略可重建文件。详见 <a href="../sync/">同步协议</a>。</p>
+
+        <h2>插件安全吗？</h2>
+        <p>
+          插件是可执行的 JS 代码，可能访问网络并修改当前文档内容。只安装你信任来源的插件，并优先使用只读/可审计的工作流。
+        </p>
+
+        <h2>如何反馈问题或咨询？</h2>
+        <p>邮件：<a href="mailto:support@zhixu.app">support@zhixu.app</a></p>
+      </article>
+    </main>
+
+    <footer class="page footer">
+      <nav class="footnav" aria-label="页脚导航">
+        <a class="brand" href="../../">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="24" height="24" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../">Docs</a>
+          <a role="listitem" href="../../tos/">Terms</a>
+          <a role="listitem" href="../../privacy/">Privacy</a>
+          <a role="listitem" href="../../license/">License</a>
+        </div>
+      </nav>
+      <p class="tiny muted">&copy; <span id="year"></span> Zhixu contributors.</p>
+    </footer>
+
+    <script src="../../main.js"></script>
+  </body>
+</html>
+
