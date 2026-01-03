@@ -58,7 +58,9 @@ class WebDavSyncEngine(
 
         runCatching {
             val prevPaths = readStatePaths(stateFile?.uri)
-            val localFiles = listLocalFiles(root, includeIndexSqlite = config.includeIndexSqlite).filter { shouldSyncPath(it.path) }
+            val localFiles =
+                listLocalFiles(root, includeIndexSqlite = config.includeIndexSqlite)
+                    .filter { shouldSyncPath(it.path, includeIndexSqlite = config.includeIndexSqlite) }
             val remoteRootUrl =
                 WebDavClient.normalizeJoin(config.baseUrl.trim(), config.remoteRoot.trim().ifBlank { "/" }).trimEnd('/') + "/"
             logger.logEvent("remote_root", mapOf("url" to remoteRootUrl))
@@ -72,7 +74,11 @@ class WebDavSyncEngine(
             var conflicts = 0
             var failed = 0
 
-            val remoteByPath = remoteFiles.filter { !it.isDir }.filter { shouldSyncPath(it.path) }.associateBy { it.path }
+            val remoteByPath =
+                remoteFiles
+                    .filter { !it.isDir }
+                    .filter { shouldSyncPath(it.path, includeIndexSqlite = config.includeIndexSqlite) }
+                    .associateBy { it.path }
             val localByPath = localFiles.associateBy { it.path }
 
             // Remote-only: download new files, or propagate local deletions.
@@ -153,7 +159,11 @@ class WebDavSyncEngine(
             }
 
             runCatching {
-                val currentPaths = listLocalFiles(root, includeIndexSqlite = config.includeIndexSqlite).map { it.path }.filter { shouldSyncPath(it) }.sorted()
+                val currentPaths =
+                    listLocalFiles(root, includeIndexSqlite = config.includeIndexSqlite)
+                        .map { it.path }
+                        .filter { shouldSyncPath(it, includeIndexSqlite = config.includeIndexSqlite) }
+                        .sorted()
                 writeStatePaths(stateFile?.uri, currentPaths)
             }
 
@@ -250,6 +260,22 @@ class WebDavSyncEngine(
                 val name = child.name ?: continue
                 val path = if (prefix.isBlank()) name else "$prefix/$name"
                 if (child.isDirectory) {
+                    if (path.equals(".zhixu", ignoreCase = true)) {
+                        if (includeIndexSqlite) {
+                            val idx = child.findFile("index.sqlite")
+                            if (idx?.isFile == true) {
+                                out +=
+                                    LocalEntry(
+                                        path = ".zhixu/index.sqlite",
+                                        file = idx,
+                                        size = idx.length(),
+                                        lastModifiedEpochMs = idx.lastModified(),
+                                    )
+                            }
+                        }
+                        continue
+                    }
+                    if (path.startsWith(".zhixu/", ignoreCase = true)) continue
                     if (path.equals(".zhixu/sync", ignoreCase = true)) continue
                     if (path.startsWith(".zhixu/sync/", ignoreCase = true)) continue
                     if (path.equals(".zhixu/conflicts", ignoreCase = true)) continue
@@ -274,13 +300,13 @@ class WebDavSyncEngine(
         return out
     }
 
-    private fun shouldSyncPath(path: String): Boolean {
+    private fun shouldSyncPath(path: String, includeIndexSqlite: Boolean): Boolean {
         val p = path.trimStart('/')
         val name = p.substringAfterLast('/', missingDelimiterValue = p)
         if (name.startsWith("conflict ", ignoreCase = true)) return false
-        if (p.startsWith(".zhixu/sync/", ignoreCase = true)) return false
-        if (p.startsWith(".zhixu/conflicts/", ignoreCase = true)) return false
-        if (p.startsWith(".zhixu/history/", ignoreCase = true)) return false
+        if (p.equals(".zhixu/index.sqlite", ignoreCase = true)) return includeIndexSqlite
+        if (p.equals(".zhixu", ignoreCase = true)) return false
+        if (p.startsWith(".zhixu/", ignoreCase = true)) return false
         return true
     }
 

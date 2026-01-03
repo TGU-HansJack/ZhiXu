@@ -1,0 +1,20 @@
+                        -HE:\Zhixu-main\ZhiXu\apps\zhixu-android\src\main\cpp
+-DCMAKE_SYSTEM_NAME=Android
+-DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+-DCMAKE_SYSTEM_VERSION=26
+-DANDROID_PLATFORM=android-26
+-DANDROID_ABI=arm64-v8a
+-DCMAKE_ANDROID_ARCH_ABI=arm64-v8a
+-DANDROID_NDK=D:\Android\Sdk\ndk\27.0.12077973
+-DCMAKE_ANDROID_NDK=D:\Android\Sdk\ndk\27.0.12077973
+-DCMAKE_TOOLCHAIN_FILE=D:\Android\Sdk\ndk\27.0.12077973\build\cmake\android.toolchain.cmake
+-DCMAKE_MAKE_PROGRAM=D:\Android\Sdk\cmake\3.22.1\bin\ninja.exe
+-DCMAKE_CXX_FLAGS=-frtti -fexceptions
+-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=E:\Zhixu-main\ZhiXu\apps\zhixu-android\build\intermediates\cxx\Debug\4r3p5i2x\obj\arm64-v8a
+-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=E:\Zhixu-main\ZhiXu\apps\zhixu-android\build\intermediates\cxx\Debug\4r3p5i2x\obj\arm64-v8a
+-DCMAKE_BUILD_TYPE=Debug
+-BE:\Zhixu-main\ZhiXu\apps\zhixu-android\.cxx\Debug\4r3p5i2x\arm64-v8a
+-GNinja
+-DOCR_DEPS_DIR=E:\Zhixu-main\ZhiXu\apps\zhixu-android\build\ocrNativeDeps
+                        Build command args: []
+                        Version: 2

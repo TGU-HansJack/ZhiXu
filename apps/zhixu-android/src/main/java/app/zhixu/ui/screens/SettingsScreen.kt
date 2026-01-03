@@ -82,6 +82,7 @@ fun SettingsScreen(
     onOpenWorkshop: () -> Unit,
     onOpenSync: () -> Unit,
     onOpenUiSettings: () -> Unit,
+    onOpenAiSettings: () -> Unit,
     onOpenAbout: () -> Unit,
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -231,6 +232,14 @@ fun SettingsScreen(
                 iconRes = Ionicons.LayersOutline,
                 title = stringResource(R.string.settings_placeholder_ui),
                 onClick = onOpenUiSettings,
+            )
+            HorizontalDivider(color = dividerColor)
+
+            SettingsNavRow(
+                iconRes = Ionicons.ExtensionPuzzleOutline,
+                title = "AI 设置",
+                enabled = true,
+                onClick = onOpenAiSettings,
             )
             HorizontalDivider(color = dividerColor)
 

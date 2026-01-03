@@ -1,3 +1,7 @@
+import java.io.File
+import java.net.URL
+import java.security.MessageDigest
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -8,6 +12,165 @@ plugins {
 configurations.configureEach {
     exclude(group = "org.jetbrains", module = "annotations-java5")
 }
+
+val ocrDepsDir = layout.buildDirectory.dir("ocrNativeDeps")
+val ocrDownloadsDir = layout.buildDirectory.dir("ocrNativeDeps/downloads")
+val ocrExtractDir = layout.buildDirectory.dir("ocrNativeDeps/extracted")
+
+val ncnnAndroidSharedUrls =
+    listOf(
+        "https://github.com/Tencent/ncnn/releases/download/20250916/ncnn-20250916-android-shared.zip",
+        "https://ghproxy.com/https://github.com/Tencent/ncnn/releases/download/20250916/ncnn-20250916-android-shared.zip",
+    )
+val opencvAndroidUrls =
+    listOf(
+        // Official OpenCV Android SDK (shared libs) to avoid OpenMP/static-link issues.
+        "https://github.com/opencv/opencv/releases/download/4.10.0/opencv-4.10.0-android-sdk.zip",
+        "https://ghproxy.com/https://github.com/opencv/opencv/releases/download/4.10.0/opencv-4.10.0-android-sdk.zip",
+    )
+
+fun sha256(file: File): String {
+    val md = MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { input ->
+        val buf = ByteArray(8192)
+        while (true) {
+            val n = input.read(buf)
+            if (n <= 0) break
+            md.update(buf, 0, n)
+        }
+    }
+    return md.digest().joinToString("") { "%02x".format(it) }
+}
+
+fun downloadIfMissing(dest: File, urls: List<String>) {
+    if (dest.exists() && dest.length() > 0L) return
+    dest.parentFile?.mkdirs()
+    // Prefer curl.exe for reliability on Windows CI networks.
+    for (u in urls) {
+        val curlOk =
+            runCatching {
+                exec {
+                    commandLine(
+                        "curl.exe",
+                        "-L",
+                        "--retry",
+                        "8",
+                        "--retry-delay",
+                        "2",
+                        "--max-time",
+                        "600",
+                        u,
+                        "-o",
+                        dest.absolutePath,
+                    )
+                    isIgnoreExitValue = false
+                }
+                dest.exists() && dest.length() > 0L
+            }.getOrDefault(false)
+        if (curlOk) return
+        runCatching { dest.delete() }
+    }
+
+    // Fallback: Java URL connection.
+    val attempts = 4
+    var lastErr: Throwable? = null
+    for (i in 1..attempts) {
+        try {
+            for (u in urls) {
+                val conn = URL(u).openConnection().apply {
+                    connectTimeout = 30_000
+                    readTimeout = 180_000
+                }
+                conn.getInputStream().use { input ->
+                    dest.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                if (dest.length() > 0L) return
+                runCatching { dest.delete() }
+            }
+        } catch (t: Throwable) {
+            lastErr = t
+            runCatching { dest.delete() }
+            if (i < attempts) Thread.sleep(1_500L * i)
+        }
+    }
+    throw lastErr ?: error("download failed: ${urls.firstOrNull().orEmpty()}")
+}
+
+val prepareOcrNativeDeps =
+    tasks.register("prepareOcrNativeDeps") {
+        outputs.dir(ocrDepsDir)
+        doLast {
+            val depsDir = ocrDepsDir.get().asFile
+            val downloadsDir = ocrDownloadsDir.get().asFile
+            val extractedDir = ocrExtractDir.get().asFile
+            val includeDir = File(depsDir, "include")
+            val jniLibsRoot = File(depsDir, "jniLibs")
+
+            downloadsDir.mkdirs()
+            extractedDir.mkdirs()
+            includeDir.mkdirs()
+            jniLibsRoot.mkdirs()
+
+            val ncnnZip = File(downloadsDir, "ncnn-android-shared.zip")
+            val opencvZip = File(downloadsDir, "opencv-android-sdk.zip")
+
+            downloadIfMissing(ncnnZip, ncnnAndroidSharedUrls)
+            downloadIfMissing(opencvZip, opencvAndroidUrls)
+
+            val ncnnOut = File(extractedDir, "ncnn")
+            val opencvOut = File(extractedDir, "opencv-sdk")
+            if (!ncnnOut.exists()) copy { from(zipTree(ncnnZip)); into(ncnnOut) }
+            if (!opencvOut.exists()) copy { from(zipTree(opencvZip)); into(opencvOut) }
+
+            // Normalize include dirs.
+            // - ncnn: include/ncnn/*.h
+            // - opencv: include/opencv2/... (from OpenCV Android SDK)
+            val ncnnInclude =
+                ncnnOut.walkTopDown().firstOrNull { it.isDirectory && it.name == "include" && File(it, "ncnn").isDirectory }
+                    ?: error("ncnn include/ not found")
+            val opencvInclude =
+                opencvOut.walkTopDown().firstOrNull { it.isDirectory && File(it, "opencv2").isDirectory }
+                    ?: opencvOut.walkTopDown().firstOrNull { it.isDirectory && it.name == "include" && File(it, "opencv2").isDirectory }
+                    ?: error("opencv include/ not found")
+
+            copy { from(ncnnInclude); into(includeDir) }
+            copy { from(opencvInclude); into(includeDir) }
+
+            // Normalize jniLibs: only keep arm64-v8a (the app is arm64-only).
+            val abi = "arm64-v8a"
+            val abiDir = File(jniLibsRoot, abi).apply { mkdirs() }
+
+            val ncnnSo =
+                ncnnOut.walkTopDown().firstOrNull { it.isFile && it.name == "libncnn.so" && it.path.contains("${File.separator}$abi${File.separator}") }
+                    ?: error("libncnn.so for $abi not found")
+            copy { from(ncnnSo); into(abiDir) }
+
+            // OpenCV Android SDK uses libopencv_java4.so (monolithic shared library).
+            val opencvSo =
+                opencvOut.walkTopDown().firstOrNull {
+                    it.isFile && it.name == "libopencv_java4.so" && it.path.contains("${File.separator}$abi${File.separator}")
+                } ?: error("libopencv_java4.so for $abi not found")
+            copy { from(opencvSo); into(abiDir) }
+
+            // Store a small fingerprint for debugging.
+            val meta =
+                File(depsDir, "deps.json").apply {
+                    writeText(
+                        """
+                        {
+                          "ncnnUrl": "${ncnnAndroidSharedUrls.first()}",
+                          "opencvUrl": "${opencvAndroidUrls.first()}",
+                          "ncnnZipSha256": "${sha256(ncnnZip)}",
+                          "opencvZipSha256": "${sha256(opencvZip)}"
+                        }
+                        """.trimIndent() + "\n",
+                    )
+                }
+            meta.length()
+        }
+    }
 
 android {
     namespace = "app.zhixu"
@@ -26,6 +189,13 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
+
+        externalNativeBuild {
+            cmake {
+                arguments += listOf("-DOCR_DEPS_DIR=${ocrDepsDir.get().asFile.absolutePath}")
+                cppFlags += listOf("-frtti", "-fexceptions")
+            }
+        }
     }
 
     packaging {
@@ -37,6 +207,19 @@ android {
         // Ensure native libs are extractable/deflate-compressed; helps compatibility and reduces APK size.
         jniLibs {
             useLegacyPackaging = true
+        }
+    }
+
+    sourceSets {
+        getByName("main") {
+            // Native dependencies fetched at build time (ncnn + opencv).
+            jniLibs.srcDir(ocrDepsDir.map { it.dir("jniLibs") })
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
         }
     }
 
@@ -70,6 +253,9 @@ android {
         compose = true
     }
 }
+
+tasks.named("preBuild").configure { dependsOn(prepareOcrNativeDeps) }
+tasks.matching { it.name.startsWith("externalNativeBuild") }.configureEach { dependsOn(prepareOcrNativeDeps) }
 
 dependencies {
     implementation(project(":core"))
