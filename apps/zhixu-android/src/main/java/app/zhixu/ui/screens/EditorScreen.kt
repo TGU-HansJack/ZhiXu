@@ -1604,7 +1604,7 @@ fun EditorScreen(
                                         onValueChange = { next ->
                                             val normalized =
                                                 if (next.composition == null) {
-                                                    next.copy(text = next.text.toHalfWidthAscii())
+                                                    next.copy(text = next.text.toHalfWidthEditorSymbols())
                                                 } else {
                                                     next
                                                 }
@@ -2644,23 +2644,46 @@ private data class JumpTarget(
     val end: Int,
 )
 
-private fun String.toHalfWidthAscii(): String {
-    var hasFullWidth = false
+private fun String.toHalfWidthEditorSymbols(): String {
+    var needsNormalize = false
     for (ch in this) {
-        if (ch == '\u3000' || ch in '\uFF01'..'\uFF5E') {
-            hasFullWidth = true
+        if (
+            ch == '\u3000' ||
+                ch == '＃' ||
+                ch == '＊' ||
+                ch == '＿' ||
+                ch == '｀' ||
+                ch == '～' ||
+                ch == '＞' ||
+                ch == '｜' ||
+                ch == '－' ||
+                ch == '＋' ||
+                ch == '＝'
+        ) {
+            needsNormalize = true
             break
         }
     }
-    if (!hasFullWidth) return this
+    if (!needsNormalize) return this
 
     val out = StringBuilder(length)
     for (ch in this) {
-        when {
-            ch == '\u3000' -> out.append(' ')
-            ch in '\uFF01'..'\uFF5E' -> out.append((ch.code - 0xFEE0).toChar())
-            else -> out.append(ch)
-        }
+        out.append(
+            when (ch) {
+                '\u3000' -> ' '
+                '＃' -> '#'
+                '＊' -> '*'
+                '＿' -> '_'
+                '｀' -> '`'
+                '～' -> '~'
+                '＞' -> '>'
+                '｜' -> '|'
+                '－' -> '-'
+                '＋' -> '+'
+                '＝' -> '='
+                else -> ch
+            },
+        )
     }
     return out.toString()
 }
