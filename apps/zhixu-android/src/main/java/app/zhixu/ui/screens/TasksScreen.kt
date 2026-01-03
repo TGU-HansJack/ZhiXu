@@ -415,11 +415,10 @@ private object TasksScreenCache {
     }
 }
 
-private data class TaskDraft(
+internal data class TaskDraft(
     val title: String,
     val dueDate: LocalDate?,
     val dueTime: LocalTime?,
-    val timeRange: TimeRange?,
     val tags: List<String>,
     val priority: Int?,
 )
@@ -434,7 +433,7 @@ private enum class TimeRange(val label: String, val defaultTime: LocalTime?) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TaskComposer(
+internal fun TaskComposer(
     onSubmit: (TaskDraft) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -464,7 +463,6 @@ private fun TaskComposer(
                 title = finalTitle,
                 dueDate = finalDate,
                 dueTime = finalTime,
-                timeRange = finalRange,
                 tags = finalTags,
                 priority = finalPriority,
             ),

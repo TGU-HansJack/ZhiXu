@@ -35,9 +35,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -86,6 +88,8 @@ import app.zhixu.data.WebDavConfig
 import app.zhixu.data.appManagedVaultRootUri
 import app.zhixu.sync.VaultAutoSync
 import app.zhixu.sync.WebDavAutoSync
+import app.zhixu.ui.components.CreateMenuSheetContent
+import app.zhixu.ui.components.ZhixuCompactDragHandle
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTopAppBar
 import app.zhixu.ui.screens.AccountScreen
@@ -122,6 +126,8 @@ fun ZhixuApp(
     val context = LocalContext.current
     val appContext = context.applicationContext
     var uiReady by remember { mutableStateOf(false) }
+    var createSheetPage by remember { mutableStateOf<CreateSheetPage?>(null) }
+    val createSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
 
     LaunchedEffect(Unit) {
         withFrameNanos { }
@@ -431,11 +437,60 @@ fun ZhixuApp(
                         MainBottomBar(
                             currentRoute = currentRoute,
                             onHome = { navigateHome(1) },
-                            onPlus = { navController.navigate("newDoc") },
+                            onPlus = { createSheetPage = CreateSheetPage.Menu },
                             onMe = ::navigateMe,
                         )
                     },
                 ) { padding ->
+                    if (createSheetPage != null) {
+                        ModalBottomSheet(
+                            onDismissRequest = { createSheetPage = null },
+                            sheetState = createSheetState,
+                            dragHandle = { ZhixuCompactDragHandle() },
+                        ) {
+                            when (createSheetPage) {
+                                CreateSheetPage.Menu -> {
+                                    CreateMenuSheetContent(
+                                        onOcr = { android.widget.Toast.makeText(context, "OCR识图：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
+                                        onRecord = { android.widget.Toast.makeText(context, "录音：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
+                                        onCamera = { android.widget.Toast.makeText(context, "相机：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
+                                        onDraw = { android.widget.Toast.makeText(context, "绘画：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
+                                        onNewTodo = { createSheetPage = CreateSheetPage.Todo },
+                                        onNewNote = { createSheetPage = CreateSheetPage.Note },
+                                    )
+                                }
+
+                                CreateSheetPage.Todo -> {
+                                    TodoComposerSheet(
+                                        vaultRootUri = vaultRootUri,
+                                        repository = repository,
+                                        onBack = { createSheetPage = CreateSheetPage.Menu },
+                                        onClose = { createSheetPage = null },
+                                    )
+                                }
+
+                                CreateSheetPage.Note -> {
+                                    NoteComposerSheet(
+                                        sheetState = createSheetState,
+                                        vaultRootUri = vaultRootUri,
+                                        repository = repository,
+                                        onBack = { createSheetPage = CreateSheetPage.Menu },
+                                        onCreated = { created ->
+                                            val mutation = DocListMutation.Created(created)
+                                            dirStructureMutation = mutation
+                                            dirStructureMutationToken += 1L
+                                            createSheetPage = null
+                                            navController.navigate("edit?uri=${Uri.encode(created.uri.toString())}") {
+                                                popUpTo("home") { inclusive = false }
+                                            }
+                                        },
+                                    )
+                                }
+
+                                null -> Unit
+                            }
+                        }
+                    }
                     NavHost(
                         navController = navController,
                         startDestination = if (vaultRootUri == null) "vault" else "home",
@@ -932,4 +987,10 @@ private fun parseNavUri(param: String): Uri {
     if (decodedUri.scheme != null) return decodedUri
 
     return direct
+}
+
+private enum class CreateSheetPage {
+    Menu,
+    Todo,
+    Note,
 }
