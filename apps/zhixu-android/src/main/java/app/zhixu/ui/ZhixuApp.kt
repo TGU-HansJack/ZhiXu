@@ -92,6 +92,7 @@ import app.zhixu.ui.screens.AccountScreen
 import app.zhixu.ui.screens.AboutScreen
 import app.zhixu.ui.screens.DocumentListScreen
 import app.zhixu.ui.screens.EditorScreen
+import app.zhixu.ui.screens.ImagePreviewScreen
 import app.zhixu.ui.screens.LongImageScreen
 import app.zhixu.ui.screens.NewDocScreen
 import app.zhixu.ui.screens.OpenSourceLicenseScreen
@@ -299,6 +300,16 @@ fun ZhixuApp() {
     }
 
     fun openDoc(rawUri: String, query: String? = null, lineIndex: Int? = null) {
+        val maybeUri = runCatching { Uri.parse(rawUri) }.getOrNull()
+        val isImage =
+            maybeUri?.scheme != null &&
+                runCatching { context.contentResolver.getType(maybeUri)?.startsWith("image/") == true }.getOrDefault(false)
+        if (isImage) {
+            val uriParam = Uri.encode(rawUri)
+            navController.navigate("image?uri=$uriParam")
+            return
+        }
+
         val uriParam = Uri.encode(rawUri)
         val qParam = Uri.encode(query ?: "")
         val lineParam = (lineIndex ?: -1).toString()
@@ -557,6 +568,21 @@ fun ZhixuApp() {
                         vaultRootUri = vaultRootRaw?.takeIf { it.isNotBlank() }?.let(Uri::parse),
                         fontScale = fontScale,
                         title = title,
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable(
+                    route = "image?uri={uri}",
+                    arguments = listOf(
+                        navArgument("uri") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        },
+                    ),
+                ) { entry ->
+                    val uriParam = entry.arguments?.getString("uri") ?: ""
+                    ImagePreviewScreen(
+                        docUri = parseNavUri(uriParam),
                         onBack = { navController.popBackStack() },
                     )
                 }

@@ -46,7 +46,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -360,6 +359,36 @@ fun VaultDrawer(
                     val isDirLoading = entry.isDirectory && (loadingDirs[entry.relativePath] == true)
                     val isMarkdownDoc = !entry.isDirectory && entry.name.endsWith(".md", ignoreCase = true)
                     val isPdf = !entry.isDirectory && entry.name.endsWith(".pdf", ignoreCase = true)
+                    val isImage =
+                        !entry.isDirectory &&
+                            run {
+                                val ext =
+                                    entry.name
+                                        .lowercase()
+                                        .substringAfterLast('.', missingDelimiterValue = "")
+                                if (
+                                    ext in
+                                        setOf(
+                                            "png",
+                                            "jpg",
+                                            "jpeg",
+                                            "webp",
+                                            "gif",
+                                            "bmp",
+                                            "heic",
+                                            "heif",
+                                            "tif",
+                                            "tiff",
+                                            "svg",
+                                            "avif",
+                                        )
+                                ) {
+                                    true
+                                } else {
+                                    val uri = entry.uri ?: return@run false
+                                    context.contentResolver.getType(uri)?.startsWith("image/") == true
+                                }
+                            }
                     val displayName =
                         if (entry.isDirectory) {
                             entry.name
@@ -367,6 +396,7 @@ fun VaultDrawer(
                             when {
                                 isMarkdownDoc -> entry.name.removeSuffix(".md")
                                 isPdf -> entry.name.removeSuffix(".pdf")
+                                isImage -> entry.name.substringBeforeLast('.', missingDelimiterValue = entry.name)
                                 else -> entry.name
                             }
                         }
@@ -412,7 +442,14 @@ fun VaultDrawer(
                         } else {
                             Spacer(modifier = Modifier.size(itemChevronSize))
                             Icon(
-                                painter = painterResource(Ionicons.DocumentText),
+                                painter =
+                                    painterResource(
+                                        when {
+                                            isImage -> Ionicons.ImageOutline
+                                            isPdf -> Ionicons.DocumentOutline
+                                            else -> Ionicons.DocumentText
+                                        },
+                                    ),
                                 contentDescription = null,
                                 modifier = Modifier.size(itemIconSize),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -425,14 +462,6 @@ fun VaultDrawer(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
-                        if (isPdf) {
-                            Text(
-                                text = "PDF",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Normal),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                maxLines = 1,
-                            )
-                        }
                         if (entry.isDirectory) {
                             ZhixuIconButton(
                                 onClick = {

@@ -54,6 +54,7 @@ object Ionicons {
     @DrawableRes val ChevronDown: Int = R.drawable.ic_ion_chevron_down_outline
 
     @DrawableRes val DocumentText: Int = R.drawable.ic_ion_document_text_outline
+    @DrawableRes val DocumentOutline: Int = R.drawable.ic_ion_document_outline
     @DrawableRes val EllipsisHorizontal: Int = R.drawable.ic_ion_ellipsis_horizontal_outline
 
     @DrawableRes val EyeOutline: Int = R.drawable.ic_ion_eye_outline

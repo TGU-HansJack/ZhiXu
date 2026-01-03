@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <link rel="stylesheet" href="../markdown-preview/vendor/fancybox/fancybox.css" />
+    <style>
+      html, body {
+        height: 100%;
+        margin: 0;
+        background: #000;
+      }
+      .wrap {
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 12px;
+        box-sizing: border-box;
+      }
+      img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        border-radius: 8px;
+      }
+      a {
+        -webkit-tap-highlight-color: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <a id="link" data-fancybox="zhixu-gallery" href="#">
+        <img id="img" alt="" />
+      </a>
+    </div>
+
+    <script src="../markdown-preview/vendor/fancybox/fancybox.umd.js"></script>
+    <script>
+      (function () {
+        const params = new URLSearchParams(location.search || "");
+        const src = params.get("src") || "";
+        const img = document.getElementById("img");
+        const link = document.getElementById("link");
+        if (src) {
+          img.src = src;
+          link.href = src;
+        }
+
+        try {
+          if (window.Fancybox) {
+            Fancybox.bind('[data-fancybox="zhixu-gallery"]', {
+              dragToClose: true,
+              placeFocusBack: false,
+              Toolbar: false,
+              Thumbs: false,
+              contentClick: false,
+              Panzoom: { touch: true },
+            });
+          }
+        } catch (_) {}
+      })();
+    </script>
+  </body>
+</html>
+
