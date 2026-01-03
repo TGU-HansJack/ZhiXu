@@ -101,6 +101,7 @@ import app.zhixu.ui.screens.EditorScreen
 import app.zhixu.ui.screens.ImagePreviewScreen
 import app.zhixu.ui.screens.LongImageScreen
 import app.zhixu.ui.screens.NewDocScreen
+import app.zhixu.ui.screens.OcrScreen
 import app.zhixu.ui.screens.OpenSourceLicenseScreen
 import app.zhixu.ui.screens.PrivacyPolicyScreen
 import app.zhixu.ui.screens.SettingsScreen
@@ -451,7 +452,10 @@ fun ZhixuApp(
                             when (createSheetPage) {
                                 CreateSheetPage.Menu -> {
                                     CreateMenuSheetContent(
-                                        onOcr = { android.widget.Toast.makeText(context, "OCR识图：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
+                                        onOcr = {
+                                            createSheetPage = null
+                                            navController.navigate("ocr")
+                                        },
                                         onRecord = { android.widget.Toast.makeText(context, "录音：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
                                         onCamera = { android.widget.Toast.makeText(context, "相机：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
                                         onDraw = { android.widget.Toast.makeText(context, "绘画：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
@@ -707,6 +711,28 @@ fun ZhixuApp(
                             }
                         },
                         onBack = { navController.popBackStack() },
+                    )
+                }
+                composable("ocr") {
+                    val root = vaultRootUri
+                    if (root == null) {
+                        navController.navigate("vault") {
+                            popUpTo("ocr") { inclusive = true }
+                        }
+                        return@composable
+                    }
+                    OcrScreen(
+                        vaultRootUri = root,
+                        repository = repository,
+                        onBack = { navController.popBackStack() },
+                        onCreated = { created ->
+                            val mutation = DocListMutation.Created(created)
+                            dirStructureMutation = mutation
+                            dirStructureMutationToken += 1L
+                            navController.navigate("edit?uri=${Uri.encode(created.uri.toString())}") {
+                                popUpTo("home") { inclusive = false }
+                            }
+                        },
                     )
                 }
                 composable(

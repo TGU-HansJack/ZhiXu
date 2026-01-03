@@ -69,6 +69,12 @@ class VaultRepository(
     private val indexChangesInternal = MutableSharedFlow<Long>(replay = 1, extraBufferCapacity = 8)
     val indexChanges: SharedFlow<Long> = indexChangesInternal.asSharedFlow()
 
+    data class ImportedAttachment(
+        val uri: Uri,
+        val relativePath: String,
+        val displayName: String,
+    )
+
     fun isIndexBuildInProgress(): Boolean = indexBuildInProgress
     fun isDirIndexBuildInProgress(): Boolean = dirIndexBuildInProgress
 
@@ -319,6 +325,8 @@ class VaultRepository(
     suspend fun ensureVaultStructure(rootUri: Uri) = withContext(Dispatchers.IO) {
         val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
         val zhixu = findChild(root, appConfigDirName) ?: root.createDirectory(appConfigDirName)
+        val docsDir = findChild(root, "docs") ?: root.createDirectory("docs")
+        val attachmentsDir = findChild(root, "attachments") ?: root.createDirectory("attachments")
         val syncDir = zhixu?.let { findChild(it, "sync") ?: it.createDirectory("sync") }
         val exportsDir = zhixu?.let { findChild(it, "exports") ?: it.createDirectory("exports") }
         val pluginsDir = zhixu?.let { findChild(it, "plugins") ?: it.createDirectory("plugins") }
@@ -336,10 +344,85 @@ class VaultRepository(
 
         // Touch to keep variables used (and validate creation).
         requireNotNull(zhixu) { ".zhixu/ directory missing" }
+        requireNotNull(docsDir) { "docs/ directory missing" }
+        requireNotNull(attachmentsDir) { "attachments/ directory missing" }
         // Validate creation of subdirectories too.
         requireNotNull(syncDir) { ".zhixu/sync directory missing" }
         requireNotNull(exportsDir) { ".zhixu/exports directory missing" }
         requireNotNull(pluginsDir) { ".zhixu/plugins directory missing" }
+
+        // Ensure Inbox.md exists (new layout: docs/Inbox.md; keep best-effort backwards compat).
+        val inbox =
+            findChild(root, "Inbox.md")
+                ?: findChild(docsDir, "Inbox.md")
+                ?: createMarkdownFile(docsDir, "Inbox.md")
+        if (inbox != null && inbox.length() == 0L) {
+            writeText(inbox.uri, "# Inbox\n\n")
+        }
+    }
+
+    suspend fun importAttachmentFromUri(
+        rootUri: Uri,
+        sourceUri: Uri,
+        suggestedBaseName: String = "attachment",
+    ): ImportedAttachment = withContext(Dispatchers.IO) {
+        ensureVaultStructure(rootUri)
+        val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
+        val attachmentsDir = findChild(root, "attachments")?.takeIf { it.isDirectory } ?: error("attachments/ directory missing")
+
+        val resolver = context.contentResolver
+        val sourceName =
+            runCatching { DocumentFile.fromSingleUri(context, sourceUri)?.name }
+                .getOrNull()
+                .orEmpty()
+                .trim()
+        val ext =
+            sourceName.substringAfterLast('.', "")
+                .trim()
+                .lowercase()
+                .takeIf { it.isNotBlank() && it.length <= 10 }
+                .orEmpty()
+        val mime =
+            resolver.getType(sourceUri)
+                ?: when (ext) {
+                    "png" -> "image/png"
+                    "jpg", "jpeg" -> "image/jpeg"
+                    "webp" -> "image/webp"
+                    else -> "application/octet-stream"
+                }
+
+        val base = sanitizeFileName(suggestedBaseName).trim().ifBlank { "attachment" }
+        val normalizedExt =
+            when {
+                ext.isNotBlank() -> ext
+                mime.startsWith("image/") -> mime.substringAfter("image/", "")
+                else -> ""
+            }.trim('.')
+        val suffix = if (normalizedExt.isNotBlank()) ".${normalizedExt.lowercase()}" else ""
+
+        var candidate = "$base$suffix"
+        var index = 1
+        while (attachmentsDir.findFile(candidate) != null) {
+            candidate = "$base ($index)$suffix"
+            index++
+        }
+
+        val dest =
+            createFileExact(attachmentsDir, mime, candidate)
+                ?: attachmentsDir.createFile(mime, candidate)
+                ?: error("Failed to create attachment file")
+
+        resolver.openInputStream(sourceUri)?.use { input ->
+            resolver.openOutputStream(dest.uri, "wt")?.use { output ->
+                input.copyTo(output)
+            } ?: error("Failed to open output stream for attachment")
+        } ?: error("Failed to open input stream for attachment")
+
+        ImportedAttachment(
+            uri = dest.uri,
+            relativePath = "attachments/$candidate",
+            displayName = candidate,
+        )
     }
 
     suspend fun computeVaultTotalSizeBytes(rootUri: Uri): Long = withContext(Dispatchers.IO) {
@@ -1001,13 +1084,11 @@ class VaultRepository(
         if (trimmed.isBlank()) return@withContext false
         ensureVaultStructure(rootUri)
         val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext false
+        val docsDir = findChild(root, "docs")?.takeIf { it.isDirectory }
         val inbox =
             findChild(root, "Inbox.md")
-                ?: runCatching {
-                    val docsDir = findChild(root, "docs")?.takeIf { it.isDirectory }
-                    docsDir?.let { findChild(it, "Inbox.md") }
-                }.getOrNull()
-                ?: createMarkdownFile(root, "Inbox.md")
+                ?: docsDir?.let { findChild(it, "Inbox.md") }
+                ?: createMarkdownFile(docsDir ?: root, "Inbox.md")
                 ?: return@withContext false
 
         val createdAtMs = System.currentTimeMillis()
@@ -1046,9 +1127,12 @@ class VaultRepository(
     }
 
     suspend fun createDoc(rootUri: Uri, fileName: String): UiDoc = withContext(Dispatchers.IO) {
+        ensureVaultStructure(rootUri)
         val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
         val baseName = sanitizeFileName(fileName).removeSuffix(".md").trim().ifBlank { "Untitled" }
-        val (created, createdName) = createUniqueMarkdownFile(root, baseName) ?: error("Failed to create document")
+        val docsDir = findChild(root, "docs")?.takeIf { it.isDirectory }
+        val parent = docsDir ?: root
+        val (created, createdName) = createUniqueMarkdownFile(parent, baseName) ?: error("Failed to create document")
         val createdAtMs = System.currentTimeMillis()
         runCatching { indexRepository.upsertDocCreatedAt(created.uri.toString(), createdAtMs) }
         signalIndexChanged()
@@ -1086,6 +1170,17 @@ class VaultRepository(
             createdAtText = formatEditedAt(createdAtMs),
             editedAtText = formatEditedAt(lastModified),
         )
+    }
+
+    suspend fun createDocWithContent(
+        rootUri: Uri,
+        fileName: String,
+        content: String,
+    ): UiDoc {
+        val created = createDoc(rootUri, fileName)
+        writeText(created.uri, content)
+        indexDocUri(created.uri)
+        return created
     }
 
     suspend fun createDocInDirectory(
