@@ -23,8 +23,10 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,6 +66,7 @@ import app.zhixu.sync.SyncServerResult
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
+import app.zhixu.ui.components.ZhixuDialogDefaults
 import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
 import app.zhixu.ui.components.ZhixuTextField
 import app.zhixu.ui.components.ZhixuTopAppBar
@@ -80,7 +83,6 @@ fun AccountScreen(
     contentPadding: PaddingValues,
     accountPrefs: AccountPreferences,
     onBack: () -> Unit,
-    onOpenAuth: () -> Unit,
     onOpenDeviceManagement: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -90,6 +92,7 @@ fun AccountScreen(
     )
 
     var showChangePassword by remember { mutableStateOf(false) }
+    var authMode by remember { mutableStateOf(AuthMode.Login) }
 
     val cropLauncher =
         rememberLauncherForActivityResult(CropImageContract()) { result ->
@@ -167,6 +170,32 @@ fun AccountScreen(
             }
         },
     ) { innerPadding ->
+        if (!state.isLoggedIn) {
+            Column(
+                modifier =
+                    Modifier
+                        .padding(innerPadding)
+                        .padding(contentPadding)
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .fillMaxSize()
+                        .imePadding()
+                        .padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.Top,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().widthIn(max = 420.dp)) {
+                    AuthForm(
+                        accountPrefs = accountPrefs,
+                        mode = authMode,
+                        onModeChange = { authMode = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        onAuthed = {},
+                    )
+                }
+            }
+            return@Scaffold
+        }
+
         Column(
             modifier =
                 Modifier
@@ -176,16 +205,6 @@ fun AccountScreen(
                     .fillMaxSize()
                     .imePadding(),
         ) {
-            if (!state.isLoggedIn) {
-                Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = stringResource(R.string.account_not_logged_in), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = onOpenAuth, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.account_login_register))
-                    }
-                }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-            }
-
             Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
                 AccountRow(
                     title = stringResource(R.string.account_avatar),
@@ -244,13 +263,12 @@ fun AccountScreen(
             }
 
             Spacer(Modifier.height(12.dp))
-            if (state.isLoggedIn) {
-                OutlinedButton(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    onClick = { scope.launch { accountPrefs.logout() } },
-                ) {
-                    Text(stringResource(R.string.account_logout))
-                }
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(8.dp),
+                onClick = { scope.launch { accountPrefs.logout() } },
+            ) {
+                Text(stringResource(R.string.account_logout))
             }
         }
     }
@@ -330,7 +348,9 @@ private fun ChangePasswordDialog(
     }
 
     AlertDialog(
+        modifier = ZhixuDialogDefaults.modifier(),
         onDismissRequest = { if (!busy) onDismiss() },
+        properties = ZhixuDialogDefaults.properties,
         title = { Text(stringResource(R.string.account_change_password)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

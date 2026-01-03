@@ -278,7 +278,7 @@ fun LongImageScreen(
                         Modifier
                             .fillMaxWidth()
                             .clickable(enabled = bmp != null && !isGenerating) { showFullPreview = true },
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.surface,
                 ) {
                     if (bmp == null) {

@@ -22,7 +22,7 @@ import app.zhixu.ui.Ionicons
 
 object ZhixuTextFieldDefaults {
     val minHeight = 44.dp
-    val shape: Shape = RoundedCornerShape(12.dp)
+    val shape: Shape = RoundedCornerShape(8.dp)
 
     @Composable
     fun colors(): TextFieldColors =

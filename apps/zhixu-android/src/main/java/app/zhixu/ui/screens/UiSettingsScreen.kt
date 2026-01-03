@@ -134,7 +134,7 @@ fun UiSettingsScreen(
                             Modifier
                                 .size(width = 96.dp, height = 76.dp)
                                 .clickable { scope.launch { uiPrefs.setThemeMode(mode) } },
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(8.dp),
                         border = BorderStroke(2.dp, borderColor),
                         color = MaterialTheme.colorScheme.surface,
                     ) {

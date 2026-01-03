@@ -1561,7 +1561,7 @@ fun EditorScreen(
 
                                             Surface(
                                                 tonalElevation = 0.dp,
-                                                shape = RoundedCornerShape(10.dp),
+                                                shape = RoundedCornerShape(8.dp),
                                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
                                             ) {
                                                 BasicTextField(
@@ -1916,7 +1916,7 @@ fun EditorScreen(
                 Spacer(modifier = Modifier.size(14.dp))
 
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
@@ -2186,7 +2186,7 @@ fun EditorScreen(
                         Modifier
                             .fillMaxWidth()
                             .heightIn(min = 220.dp, max = 420.dp)
-                            .background(Color(0xFFF7F7F7), RoundedCornerShape(12.dp))
+                            .background(Color(0xFFF7F7F7), RoundedCornerShape(8.dp))
                             .padding(vertical = 6.dp),
                 ) {
                     items(diffLines.size) { idx ->
@@ -2386,7 +2386,7 @@ fun EditorScreen(
                             }
                             Surface(
                                 tonalElevation = 0.dp,
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
                                 modifier =
                                     Modifier

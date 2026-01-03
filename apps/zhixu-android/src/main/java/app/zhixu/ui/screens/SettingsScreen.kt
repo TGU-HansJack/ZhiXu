@@ -139,7 +139,6 @@ fun SettingsScreen(
     LazyColumn(
         modifier =
             Modifier
-                .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(contentPadding)
                 .background(MaterialTheme.colorScheme.background)
                 .fillMaxSize()
@@ -520,7 +519,7 @@ private fun ContribHeatmapCard(
 
     Surface(
         modifier = modifier.clickable { showCalendar = true },
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.surface,
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
@@ -607,7 +606,7 @@ private fun ContribHeatmapCardLegacy(
 
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.surface,
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
@@ -709,7 +708,7 @@ private fun ContributionCell(
     size: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(3.dp)
+    val shape = RoundedCornerShape(8.dp)
     val colors =
         listOf(
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),

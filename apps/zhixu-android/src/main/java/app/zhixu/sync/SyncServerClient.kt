@@ -123,6 +123,7 @@ object SyncServerClient {
         username: String,
         password: String,
         email: String = "",
+        emailCode: String = "",
     ): SyncServerResult<Long> = withContext(Dispatchers.IO) {
         safeResult {
             val url = normalizeJoin(baseUrl, "/api/auth/register")
@@ -131,6 +132,7 @@ object SyncServerClient {
                     .put("username", username)
                     .put("password", password)
                     .also { if (email.isNotBlank()) it.put("email", email) }
+                    .also { if (emailCode.isNotBlank()) it.put("emailCode", emailCode) }
             val body = json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
             val req = Request.Builder().url(url).post(body).header("User-Agent", "Zhixu-Android").build()
             client.newCall(req).execute().use { resp ->

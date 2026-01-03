@@ -562,7 +562,7 @@ fun DraggableRadialFab(
         val viewConfiguration = LocalViewConfiguration.current
         FloatingActionButton(
             onClick = {},
-            shape = if (isEdgeHidden) CircleShape else RoundedCornerShape(18.dp),
+            shape = if (isEdgeHidden) CircleShape else RoundedCornerShape(8.dp),
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
             elevation =

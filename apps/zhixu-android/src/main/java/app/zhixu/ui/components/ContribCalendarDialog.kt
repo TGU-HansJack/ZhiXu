@@ -107,7 +107,7 @@ fun ContribCalendarDialog(
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth().padding(horizontal = ZhixuDialogDefaults.edgePadding, vertical = 24.dp),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(8.dp),
             color = MaterialTheme.colorScheme.surface,
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
@@ -163,7 +163,7 @@ fun ContribCalendarDialog(
                                     Modifier
                                         .weight(1f)
                                         .padding(vertical = 6.dp)
-                                        .clip(RoundedCornerShape(10.dp))
+                                        .clip(RoundedCornerShape(8.dp))
                                         .let { m ->
                                             if (date != null) m.clickable { openDetails(date) } else m
                                         },

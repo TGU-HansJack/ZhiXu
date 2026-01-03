@@ -151,6 +151,12 @@
     <string name="account_password_change_failed">修改密码失败</string>
     <string name="account_avatar_pick_failed">选择图片失败</string>
     <string name="account_avatar_permission_denied">未获得相册权限</string>
+    <string name="account_email_code">邮箱验证码</string>
+    <string name="account_send_code">发送验证码</string>
+    <string name="account_email_code_sent_placeholder">已发送（占位）</string>
+    <string name="account_create_account">创建账号</string>
+    <string name="account_have_account_login">已有账号？登录</string>
+    <string name="account_no_account_create">没有账号？创建账号</string>
 
     <string name="device_management_title">登录设备管理</string>
     <string name="device_current_tag">当前设备</string>

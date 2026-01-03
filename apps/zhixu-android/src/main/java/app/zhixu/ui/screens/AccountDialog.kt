@@ -142,7 +142,7 @@ fun AccountManagementDialog(
                         CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f),
                         ),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(8.dp),
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -182,7 +182,7 @@ fun AccountManagementDialog(
                             Modifier
                                 .fillMaxWidth()
                                 .height(44.dp),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(8.dp),
                         onClick = {
                             val u = username.trim()
                             val p = password

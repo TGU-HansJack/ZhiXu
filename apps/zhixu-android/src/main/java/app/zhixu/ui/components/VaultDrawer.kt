@@ -829,7 +829,7 @@ private fun VaultEntryActionsSheet(
         Spacer(modifier = Modifier.size(14.dp))
 
         Surface(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(8.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
@@ -863,7 +863,7 @@ private fun VaultEntryQuickAction(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,

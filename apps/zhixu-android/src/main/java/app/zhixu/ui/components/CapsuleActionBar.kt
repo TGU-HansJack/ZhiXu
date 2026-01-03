@@ -37,7 +37,7 @@ fun CapsuleActionBar(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(8.dp),
         color = Color(0xFFFFFFFF),
         tonalElevation = 0.dp,
         shadowElevation = 10.dp,
@@ -62,7 +62,7 @@ fun CapsuleActionBar(
                     modifier =
                         Modifier
                             .size(CapsuleActionBarDefaults.AiBadgeSize)
-                            .background(color = Color(0xFF00C853), shape = RoundedCornerShape(10.dp)),
+                            .background(color = Color(0xFF00C853), shape = RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(text = "AI", color = Color.White, style = MaterialTheme.typography.labelLarge)

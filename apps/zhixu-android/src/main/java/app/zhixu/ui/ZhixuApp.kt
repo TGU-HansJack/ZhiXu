@@ -527,7 +527,6 @@ fun ZhixuApp() {
                         contentPadding = padding,
                         accountPrefs = accountPrefs,
                         onBack = { navController.popBackStack() },
-                        onOpenAuth = { navController.navigate("auth") },
                         onOpenDeviceManagement = { navController.navigate("deviceManagement") },
                     )
                 }
@@ -789,7 +788,7 @@ private fun MainBottomBar(
                 }
                 Surface(
                     color = MaterialTheme.colorScheme.primary,
-                    shape = RoundedCornerShape(19.dp),
+                    shape = RoundedCornerShape(8.dp),
                     modifier =
                         Modifier
                             .width(68.dp)
