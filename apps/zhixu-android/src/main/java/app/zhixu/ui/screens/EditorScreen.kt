@@ -134,6 +134,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontSynthesis
 import androidx.compose.ui.text.font.FontWeight
@@ -146,6 +147,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.graphics.luminance
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
@@ -243,6 +245,7 @@ fun EditorScreen(
     }
     val pluginRepo = remember(context) { PluginRepository(context) }
     var title by remember { mutableStateOf("") }
+    var titleFieldValue by remember { mutableStateOf(TextFieldValue(text = "")) }
     var originalFileName by remember { mutableStateOf("") }
     var content by remember { mutableStateOf(TextFieldValue("")) }
     var isPreview by remember { mutableStateOf(false) }
@@ -255,6 +258,9 @@ fun EditorScreen(
     var showPdfThumbnails by remember { mutableStateOf(false) }
     var pdfPageInput by remember { mutableStateOf("1") }
     val scrollState = rememberScrollState()
+    val docNameScrollState = rememberScrollState()
+    var docNameFieldWidthPx by remember { mutableIntStateOf(0) }
+    var docNameLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -288,7 +294,43 @@ fun EditorScreen(
 
     LaunchedEffect(isRenamingDoc) {
         docNameHadFocus = false
-        if (isRenamingDoc) docNameFocusRequester.requestFocus()
+        if (isRenamingDoc) {
+            titleFieldValue = TextFieldValue(text = title, selection = TextRange(title.length))
+            docNameFocusRequester.requestFocus()
+        }
+    }
+
+    LaunchedEffect(title, isRenamingDoc) {
+        if (!isRenamingDoc) {
+            titleFieldValue = TextFieldValue(text = title)
+        }
+    }
+
+    LaunchedEffect(
+        isRenamingDoc,
+        titleFieldValue.text,
+        titleFieldValue.selection,
+        docNameFieldWidthPx,
+        docNameLayoutResult,
+    ) {
+        if (!isRenamingDoc) return@LaunchedEffect
+        val layout = docNameLayoutResult ?: return@LaunchedEffect
+        if (docNameFieldWidthPx <= 0) return@LaunchedEffect
+
+        val cursorOffset = titleFieldValue.selection.end.coerceIn(0, titleFieldValue.text.length)
+        val cursorRect = layout.getCursorRect(cursorOffset)
+        val marginPx = with(density) { 12.dp.toPx() }
+        val visibleStartPx = docNameScrollState.value.toFloat()
+        val visibleEndPx = visibleStartPx + docNameFieldWidthPx
+
+        val targetScrollPx =
+            when {
+                cursorRect.right + marginPx > visibleEndPx -> cursorRect.right + marginPx - docNameFieldWidthPx
+                cursorRect.left - marginPx < visibleStartPx -> cursorRect.left - marginPx
+                else -> visibleStartPx
+            }
+
+        docNameScrollState.scrollTo(targetScrollPx.toInt().coerceIn(0, docNameScrollState.maxValue))
     }
 
     var openOutlineToken by remember { mutableStateOf(0L) }
@@ -1318,8 +1360,10 @@ fun EditorScreen(
                     ) {
                         ZhixuCenterAlignedTopAppBar(
                             containerColor = MaterialTheme.colorScheme.surface,
+                            titleHorizontalPadding = if (isPdfDoc) 56.dp else 104.dp,
                             title = {
                                 val docNameStyle = MaterialTheme.typography.titleSmall
+                                val docNameColor = MaterialTheme.colorScheme.onSurface
                                 val displayName =
                                     when {
                                         isPdfDoc ->
@@ -1335,14 +1379,23 @@ fun EditorScreen(
                                 if (isPdfDoc) {
                                     Text(
                                         text = displayName,
+                                        modifier = Modifier.fillMaxWidth(),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        style = docNameStyle,
+                                        style =
+                                            docNameStyle.copy(
+                                                color = docNameColor,
+                                                fontWeight = FontWeight.Normal,
+                                                textAlign = TextAlign.Center,
+                                            ),
                                     )
                                 } else if (isRenamingDoc) {
                                     BasicTextField(
-                                        value = title,
-                                        onValueChange = { title = it },
+                                        value = titleFieldValue,
+                                        onValueChange = { next ->
+                                            titleFieldValue = next
+                                            title = next.text
+                                        },
                                         modifier =
                                             Modifier
                                                 .focusRequester(docNameFocusRequester)
@@ -1353,12 +1406,15 @@ fun EditorScreen(
                                                         isRenamingDoc = false
                                                     }
                                                 }
-                                                .fillMaxWidth(),
+                                                .fillMaxWidth()
+                                                .onSizeChanged { docNameFieldWidthPx = it.width }
+                                                .horizontalScroll(docNameScrollState, enabled = false),
                                         singleLine = true,
                                         textStyle =
                                             docNameStyle.copy(
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                fontWeight = docNameStyle.fontWeight,
+                                                color = docNameColor,
+                                                fontWeight = FontWeight.Normal,
+                                                textAlign = TextAlign.Center,
                                             ),
                                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -1369,36 +1425,40 @@ fun EditorScreen(
                                                     focusManager.clearFocus()
                                                 },
                                             ),
+                                        onTextLayout = { docNameLayoutResult = it },
                                         decorationBox = { inner ->
-                                            Box(modifier = Modifier.fillMaxWidth()) {
-                                                if (title.isBlank()) {
-                                                     Text(
-                                                         text = displayName,
-                                                         style =
+                                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                                if (titleFieldValue.text.isBlank()) {
+                                                    Text(
+                                                        text = displayName,
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        style =
                                                             docNameStyle.copy(
-                                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                                                                fontWeight = docNameStyle.fontWeight,
+                                                                color = docNameColor.copy(alpha = 0.6f),
+                                                                fontWeight = FontWeight.Normal,
+                                                                textAlign = TextAlign.Center,
                                                             ),
-                                                         maxLines = 1,
-                                                         overflow = TextOverflow.Ellipsis,
-                                                     )
+                                                    )
                                                 }
                                                 inner()
                                             }
                                         },
                                     )
                                 } else {
-                                     Text(
-                                         text = displayName,
-                                         modifier = Modifier.clickable { isRenamingDoc = true },
-                                         style =
+                                    Text(
+                                        text = displayName,
+                                        modifier = Modifier.fillMaxWidth().clickable { isRenamingDoc = true },
+                                        style =
                                             docNameStyle.copy(
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                                                fontWeight = docNameStyle.fontWeight,
+                                                color = docNameColor,
+                                                fontWeight = FontWeight.Normal,
+                                                textAlign = TextAlign.Center,
                                             ),
-                                         maxLines = 1,
-                                         overflow = TextOverflow.Ellipsis,
-                                     )
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
                                 }
                             },
                             navigationIcon = {

@@ -66,6 +66,7 @@ fun ZhixuCenterAlignedTopAppBar(
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
     containerColor: Color = MaterialTheme.colorScheme.surface,
+    titleHorizontalPadding: Dp = 56.dp,
     windowInsets: WindowInsets = WindowInsets.statusBars,
     contentHeight: Dp = ZhixuTopBarContentHeight,
 ) {
@@ -96,7 +97,7 @@ fun ZhixuCenterAlignedTopAppBar(
             )
 
             Box(
-                modifier = Modifier.align(Alignment.Center).padding(horizontal = 56.dp),
+                modifier = Modifier.align(Alignment.Center).padding(horizontal = titleHorizontalPadding),
                 contentAlignment = Alignment.Center,
             ) {
                 title()
