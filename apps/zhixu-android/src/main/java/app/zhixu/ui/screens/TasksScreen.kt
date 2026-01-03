@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,9 +21,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowForward
-import androidx.compose.material.icons.outlined.Flag
-import androidx.compose.material.icons.outlined.Label
-import androidx.compose.material.icons.outlined.Today
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -333,12 +331,15 @@ fun TasksScreen(
                                     Modifier
                                         .fillMaxWidth()
                                         .clickable { showCompleted = !showCompleted }
-                                        .padding(vertical = 12.dp),
+                                        .heightIn(min = 40.dp)
+                                        .padding(start = 0.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Icon(
                                     painter = painterResource(if (showCompleted) Ionicons.ChevronDown else Ionicons.ChevronForward),
                                     contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 Text(stringResource(R.string.tasks_completed))
@@ -516,24 +517,36 @@ private fun TaskComposer(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            ZhixuIconButton(onClick = { showDateSheet = true }) {
+            ZhixuIconButton(
+                onClick = { showDateSheet = true },
+                modifier = Modifier.size(36.dp),
+            ) {
                 Icon(
-                    imageVector = Icons.Outlined.Today,
+                    painter = painterResource(Ionicons.CalendarOutline),
                     contentDescription = stringResource(R.string.task_input_date),
+                    modifier = Modifier.size(18.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
                 )
             }
-            ZhixuIconButton(onClick = { showPrioritySheet = true }) {
+            ZhixuIconButton(
+                onClick = { showPrioritySheet = true },
+                modifier = Modifier.size(36.dp),
+            ) {
                 Icon(
-                    imageVector = Icons.Outlined.Flag,
+                    painter = painterResource(Ionicons.FlagOutline),
                     contentDescription = stringResource(R.string.task_input_priority),
+                    modifier = Modifier.size(18.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
                 )
             }
-            ZhixuIconButton(onClick = { showTagSheet = true }) {
+            ZhixuIconButton(
+                onClick = { showTagSheet = true },
+                modifier = Modifier.size(36.dp),
+            ) {
                 Icon(
-                    imageVector = Icons.Outlined.Label,
+                    painter = painterResource(Ionicons.PricetagsOutline),
                     contentDescription = stringResource(R.string.task_input_tags),
+                    modifier = Modifier.size(18.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
                 )
             }
@@ -895,19 +908,23 @@ private fun TaskRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 46.dp)
+                .heightIn(min = 40.dp)
                 .clickable(onClick = onOpen)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(start = 0.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ZhixuIconButton(onClick = onToggle) {
+        ZhixuIconButton(
+            onClick = onToggle,
+            modifier = Modifier.size(40.dp),
+        ) {
             Icon(
-                painter = painterResource(if (task.checked) Ionicons.CheckmarkCircle else Ionicons.RadioOff),
+                painter = painterResource(if (task.checked) Ionicons.CheckboxOutline else Ionicons.SquareOutline),
                 contentDescription = null,
+                modifier = Modifier.size(20.dp),
                 tint = if (task.checked) metaColor else MaterialTheme.colorScheme.onSurface,
             )
         }
-        Spacer(modifier = Modifier.width(10.dp))
+        Spacer(modifier = Modifier.width(6.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = task.title,

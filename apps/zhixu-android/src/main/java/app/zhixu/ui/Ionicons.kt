@@ -27,6 +27,9 @@ object Ionicons {
     @DrawableRes val TextOutline: Int = R.drawable.ic_ion_text_outline
     @DrawableRes val HourglassOutline: Int = R.drawable.ic_ion_hourglass_outline
     @DrawableRes val TimeOutline: Int = R.drawable.ic_ion_time_outline
+    @DrawableRes val CalendarOutline: Int = R.drawable.ic_ion_calendar_outline
+    @DrawableRes val FlagOutline: Int = R.drawable.ic_ion_flag_outline
+    @DrawableRes val PricetagsOutline: Int = R.drawable.ic_ion_pricetags_outline
     @DrawableRes val CopyOutline: Int = R.drawable.ic_ion_copy_outline
     @DrawableRes val ShareSocialOutline: Int = R.drawable.ic_ion_share_social_outline
     @DrawableRes val TrashOutline: Int = R.drawable.ic_ion_trash_outline
@@ -46,6 +49,8 @@ object Ionicons {
     @DrawableRes val Checkmark: Int = R.drawable.ic_ion_checkmark_outline
     @DrawableRes val CheckmarkCircle: Int = R.drawable.ic_ion_checkmark_circle_outline
     @DrawableRes val RadioOff: Int = R.drawable.ic_ion_radio_button_off_outline
+    @DrawableRes val SquareOutline: Int = R.drawable.ic_ion_square_outline
+    @DrawableRes val CheckboxOutline: Int = R.drawable.ic_ion_checkbox_outline
     @DrawableRes val ChevronDown: Int = R.drawable.ic_ion_chevron_down_outline
 
     @DrawableRes val DocumentText: Int = R.drawable.ic_ion_document_text_outline
