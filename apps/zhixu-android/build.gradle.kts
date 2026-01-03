@@ -91,7 +91,6 @@ dependencies {
     implementation("androidx.concurrent:concurrent-futures:1.2.0")
     implementation("com.google.guava:listenablefuture:1.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
     implementation("org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r")
     implementation("androidx.webkit:webkit:1.11.0")
     // Native V8 for Android (J2V8).
