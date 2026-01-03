@@ -101,7 +101,6 @@ import app.zhixu.ui.screens.EditorScreen
 import app.zhixu.ui.screens.ImagePreviewScreen
 import app.zhixu.ui.screens.LongImageScreen
 import app.zhixu.ui.screens.NewDocScreen
-import app.zhixu.ui.screens.AiSettingsScreen
 import app.zhixu.ui.screens.OcrScreen
 import app.zhixu.ui.screens.OpenSourceLicenseScreen
 import app.zhixu.ui.screens.PrivacyPolicyScreen
@@ -572,16 +571,7 @@ fun ZhixuApp(
                         onOpenWorkshop = { navController.navigate("workshop") },
                         onOpenSync = { navController.navigate("sync") },
                         onOpenUiSettings = { navController.navigate("uiSettings") },
-                        onOpenAiSettings = { navController.navigate("aiSettings") },
                         onOpenAbout = { navController.navigate("about") },
-                    )
-                }
-                composable("aiSettings") {
-                    AiSettingsScreen(
-                        contentPadding = padding,
-                        vaultRootUri = vaultRootUri,
-                        repository = repository,
-                        onBack = { navController.popBackStack() },
                     )
                 }
                 composable("uiSettings") {

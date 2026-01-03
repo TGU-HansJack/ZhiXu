@@ -30,7 +30,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,15 +39,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import app.zhixu.ai.AiPreferences
-import app.zhixu.ai.AiService
-import app.zhixu.ai.AiUseMode
-import app.zhixu.ai.OcrEngineType
 import app.zhixu.data.UiDoc
 import app.zhixu.data.VaultRepository
 import app.zhixu.ocr.MlKitOcrEngine
-import app.zhixu.ocr.PaddleOcrEngine
-import app.zhixu.ocr.PaddleOcrModelManager
 import app.zhixu.ocr.OcrResult
 import app.zhixu.sync.VaultAutoSync
 import app.zhixu.ui.Ionicons
@@ -74,22 +67,11 @@ fun OcrScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val aiPrefs = remember(context) { AiPreferences(context.applicationContext) }
-    val aiSettings by aiPrefs.settings.collectAsState(initial = app.zhixu.ai.AiSettings.default())
-    val aiService = remember { AiService() }
-
-    val modelManager = remember(context, repository) { PaddleOcrModelManager(context.applicationContext, repository) }
-    val paddleEngine = remember(vaultRootUri, repository, modelManager) { PaddleOcrEngine(repository = repository, modelManager = modelManager, vaultRootUri = vaultRootUri) }
-    val mlKitEngine = remember { MlKitOcrEngine() }
-
-    var ocrImageUri by remember { mutableStateOf<Uri?>(null) }
-    var ocrImageRelativePath by remember { mutableStateOf<String?>(null) }
+    var attachmentUri by remember { mutableStateOf<Uri?>(null) }
+    var attachmentRelativePath by remember { mutableStateOf<String?>(null) }
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var recognizing by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<OcrResult?>(null) }
-    var enhancedMarkdown by remember { mutableStateOf<String?>(null) }
-    var aiDebugPrompt by remember { mutableStateOf<String?>(null) }
-    var aiDebugRaw by remember { mutableStateOf<String?>(null) }
 
     val pickLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -98,21 +80,18 @@ fun OcrScreen(
                 recognizing = true
                 result = null
                 previewBitmap = null
-                ocrImageUri = null
-                ocrImageRelativePath = null
-                enhancedMarkdown = null
-                aiDebugPrompt = null
-                aiDebugRaw = null
+                attachmentUri = null
+                attachmentRelativePath = null
                 try {
                     val ts = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss").format(LocalDateTime.now())
                     val imported =
-                        repository.importOcrImageFromUri(
+                        repository.importAttachmentFromUri(
                             rootUri = vaultRootUri,
                             sourceUri = uri,
                             suggestedBaseName = "ocr_$ts",
                         )
-                    ocrImageUri = imported.uri
-                    ocrImageRelativePath = imported.relativePath
+                    attachmentUri = imported.uri
+                    attachmentRelativePath = imported.relativePath
 
                     val bmp = withContext(Dispatchers.IO) { decodeBitmap(context, imported.uri, maxDim = 2200) }
                     previewBitmap = bmp
@@ -121,27 +100,9 @@ fun OcrScreen(
                         return@launch
                     }
 
-                    val engine =
-                        when (aiSettings.ocr.engine) {
-                            OcrEngineType.PaddleOcr -> paddleEngine
-                            OcrEngineType.MlKit -> mlKitEngine
-                        }
+                    val engine = MlKitOcrEngine()
                     val ocr = engine.recognize(bmp)
                     result = ocr
-
-                    val shouldAi =
-                        aiSettings.enabled &&
-                            aiSettings.global.useMode == AiUseMode.Auto &&
-                            aiSettings.ocr.enabled &&
-                            aiSettings.ocr.useAiEnhance
-                    if (shouldAi) {
-                        val enhanced =
-                            runCatching { aiService.enhanceOcrToMarkdown(ocr.fullText, aiSettings, vaultRootUri, repository) }
-                                .getOrNull()
-                        enhancedMarkdown = enhanced?.markdown
-                        aiDebugPrompt = enhanced?.debug?.prompt?.takeIf { it.isNotBlank() }
-                        aiDebugRaw = enhanced?.debug?.rawResponse?.takeIf { it.isNotBlank() }
-                    }
                 } catch (e: Exception) {
                     snackbarHostState.showSnackbar(e.message ?: "OCR失败")
                 } finally {
@@ -193,15 +154,12 @@ fun OcrScreen(
                 Button(onClick = ::startPick, enabled = !recognizing) { Text("从相册选择") }
                 OutlinedButton(
                     onClick = {
-                        ocrImageUri = null
-                        ocrImageRelativePath = null
+                        attachmentUri = null
+                        attachmentRelativePath = null
                         previewBitmap = null
                         result = null
-                        enhancedMarkdown = null
-                        aiDebugPrompt = null
-                        aiDebugRaw = null
                     },
-                    enabled = !recognizing && (ocrImageUri != null || result != null),
+                    enabled = !recognizing && (attachmentUri != null || result != null),
                 ) {
                     Text("清空")
                 }
@@ -218,80 +176,31 @@ fun OcrScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = enhancedMarkdown?.takeIf { it.isNotBlank() } ?: r.fullText,
+                    text = r.fullText,
                     style = MaterialTheme.typography.bodyMedium,
                 )
 
                 Spacer(Modifier.height(6.dp))
 
-                val canManualAi =
-                    aiSettings.enabled &&
-                        aiSettings.global.useMode == AiUseMode.ManualOnly &&
-                        aiSettings.ocr.enabled &&
-                        aiSettings.ocr.useAiEnhance &&
-                        !recognizing
-                if (canManualAi && enhancedMarkdown.isNullOrBlank()) {
-                    OutlinedButton(
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        onClick = {
-                            scope.launch {
-                                val enhanced =
-                                    runCatching { aiService.enhanceOcrToMarkdown(r.fullText, aiSettings, vaultRootUri, repository) }
-                                        .getOrNull()
-                                enhancedMarkdown = enhanced?.markdown
-                                aiDebugPrompt = enhanced?.debug?.prompt?.takeIf { it.isNotBlank() }
-                                aiDebugRaw = enhanced?.debug?.rawResponse?.takeIf { it.isNotBlank() }
-                                if (enhancedMarkdown.isNullOrBlank()) {
-                                    snackbarHostState.showSnackbar("AI 整理失败（已回退为原始 OCR）")
-                                }
-                            }
-                        },
-                    ) {
-                        Text("AI 整理为 Markdown")
-                    }
-                    Spacer(Modifier.height(6.dp))
-                }
-
-                val prompt = aiDebugPrompt
-                val raw = aiDebugRaw
-                if (!prompt.isNullOrBlank()) {
-                    Text("Prompt（调试）", style = MaterialTheme.typography.titleSmall)
-                    Text(prompt, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(6.dp))
-                }
-                if (!raw.isNullOrBlank()) {
-                    Text("Raw Output（调试）", style = MaterialTheme.typography.titleSmall)
-                    Text(raw, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(6.dp))
-                }
-
+                val rel = attachmentRelativePath
                 OutlinedButton(
                     modifier = Modifier.fillMaxWidth().height(48.dp),
-                    enabled = !recognizing,
+                    enabled = !recognizing && rel != null,
                     onClick = {
                         scope.launch {
+                            val relPath = rel ?: return@launch
                             val titleDate = DateTimeFormatter.ofPattern("yyyy-MM-dd").format(LocalDateTime.now())
-                            val noteTitle = "图片识别 · $titleDate"
-
-                            val baseText =
-                                (enhancedMarkdown?.takeIf { it.isNotBlank() } ?: r.fullText)
-                                    .let { if (aiSettings.ocr.cleanupWhitespace) normalizeOcrText(it) else it }
+                            val noteTitle = "图片笔记 · $titleDate"
                             val markdown =
                                 buildString {
                                     append("# ")
                                     append(noteTitle)
                                     append("\n\n")
-                                    append(baseText.trim())
+                                    append("![](")
+                                    append(relPath)
+                                    append(")\n\n---\n\n")
+                                    append(r.fullText.trim())
                                     append("\n")
-
-                                    if (aiSettings.debug.keepOriginal && enhancedMarkdown?.isNotBlank() == true) {
-                                        append("\n---\n\n")
-                                        append("<details><summary>原始 OCR</summary>\n\n")
-                                        append("```\n")
-                                        append(r.fullText.trim())
-                                        append("\n```\n")
-                                        append("</details>\n")
-                                    }
                                 }
 
                             val created =
@@ -315,6 +224,18 @@ fun OcrScreen(
                                     force = true,
                                 )
                             }
+                            val aUri = attachmentUri
+                            if (aUri != null) {
+                                runCatching {
+                                    VaultAutoSync.maybeUploadDoc(
+                                        context = context,
+                                        repository = repository,
+                                        vaultRootUri = vaultRootUri,
+                                        docUri = aUri,
+                                        force = true,
+                                    )
+                                }
+                            }
                             onCreated(created)
                         }
                     },
@@ -329,16 +250,6 @@ fun OcrScreen(
             }
         }
     }
-}
-
-private fun normalizeOcrText(text: String): String {
-    val lines =
-        text
-            .replace('\r', '\n')
-            .split('\n')
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-    return lines.joinToString("\n")
 }
 
 private fun decodeBitmap(context: android.content.Context, uri: Uri, maxDim: Int): Bitmap? {
@@ -360,3 +271,4 @@ private fun decodeBitmap(context: android.content.Context, uri: Uri, maxDim: Int
     }
     return null
 }
+

@@ -75,12 +75,6 @@ class VaultRepository(
         val displayName: String,
     )
 
-    data class ImportedOcrImage(
-        val uri: Uri,
-        val relativePath: String,
-        val displayName: String,
-    )
-
     fun isIndexBuildInProgress(): Boolean = indexBuildInProgress
     fun isDirIndexBuildInProgress(): Boolean = dirIndexBuildInProgress
 
@@ -429,111 +423,6 @@ class VaultRepository(
             relativePath = "attachments/$candidate",
             displayName = candidate,
         )
-    }
-
-    suspend fun importOcrImageFromUri(
-        rootUri: Uri,
-        sourceUri: Uri,
-        suggestedBaseName: String = "ocr",
-    ): ImportedOcrImage = withContext(Dispatchers.IO) {
-        ensureVaultStructure(rootUri)
-        val imagesDir = ensureVaultDirectory(rootUri, ".zhixu/ocr/images") ?: error("Failed to create .zhixu/ocr/images")
-
-        val resolver = context.contentResolver
-        val sourceName =
-            runCatching { DocumentFile.fromSingleUri(context, sourceUri)?.name }
-                .getOrNull()
-                .orEmpty()
-                .trim()
-
-        val ext =
-            sourceName.substringAfterLast('.', "")
-                .trim()
-                .lowercase()
-                .takeIf { it.isNotBlank() && it.length <= 10 }
-                .orEmpty()
-        val mime =
-            resolver.getType(sourceUri)
-                ?: when (ext) {
-                    "png" -> "image/png"
-                    "jpg", "jpeg" -> "image/jpeg"
-                    "webp" -> "image/webp"
-                    else -> "application/octet-stream"
-                }
-
-        val base = sanitizeFileName(suggestedBaseName).trim().ifBlank { "ocr" }
-        val normalizedExt =
-            when {
-                ext.isNotBlank() -> ext
-                mime.startsWith("image/") -> mime.substringAfter("image/", "")
-                else -> "jpg"
-            }.trim('.')
-        val suffix = if (normalizedExt.isNotBlank()) ".${normalizedExt.lowercase()}" else ""
-
-        var candidate = "$base$suffix"
-        var index = 1
-        while (findChild(imagesDir, candidate) != null) {
-            candidate = "$base ($index)$suffix"
-            index++
-        }
-
-        val dest =
-            createFileExact(imagesDir, mime, candidate)
-                ?: imagesDir.createFile(mime, candidate)
-                ?: error("Failed to create OCR image file")
-
-        resolver.openInputStream(sourceUri)?.use { input ->
-            resolver.openOutputStream(dest.uri, "wt")?.use { output ->
-                input.copyTo(output)
-            } ?: error("Failed to open output stream for OCR image")
-        } ?: error("Failed to open input stream for OCR image")
-
-        ImportedOcrImage(
-            uri = dest.uri,
-            relativePath = ".zhixu/ocr/images/$candidate",
-            displayName = candidate,
-        )
-    }
-
-    suspend fun ensureVaultDirectory(
-        rootUri: Uri,
-        relativePath: String,
-    ): DocumentFile? = withContext(Dispatchers.IO) {
-        val rel = relativePath.trim().trimStart('/').replace('\\', '/')
-        if (rel.isBlank()) return@withContext null
-
-        val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext null
-        var current = root
-        for (segment in rel.split('/').map { it.trim() }.filter { it.isNotBlank() }) {
-            val next = findChild(current, segment)
-            current =
-                when {
-                    next?.isDirectory == true -> next
-                    next != null -> return@withContext null
-                    else -> current.createDirectory(segment) ?: return@withContext null
-                }
-        }
-        current
-    }
-
-    suspend fun ensureVaultFile(
-        rootUri: Uri,
-        relativePath: String,
-        mimeType: String = "application/octet-stream",
-    ): DocumentFile? = withContext(Dispatchers.IO) {
-        val rel = relativePath.trim().trimStart('/').replace('\\', '/')
-        if (rel.isBlank()) return@withContext null
-        val parts = rel.split('/').map { it.trim() }.filter { it.isNotBlank() }
-        if (parts.isEmpty()) return@withContext null
-
-        val fileName = parts.last()
-        val dirPath = parts.dropLast(1).joinToString("/")
-        val dir = if (dirPath.isBlank()) vaultRootToDocumentFile(context, rootUri) else ensureVaultDirectory(rootUri, dirPath)
-        if (dir?.isDirectory != true) return@withContext null
-        val existing = findChild(dir, fileName)
-        if (existing?.isFile == true) return@withContext existing
-        if (existing != null) return@withContext null
-        createFileExact(dir, mimeType, fileName) ?: dir.createFile(mimeType, fileName)
     }
 
     suspend fun computeVaultTotalSizeBytes(rootUri: Uri): Long = withContext(Dispatchers.IO) {

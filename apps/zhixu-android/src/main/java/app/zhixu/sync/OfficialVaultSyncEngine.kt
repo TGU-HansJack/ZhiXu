@@ -86,11 +86,9 @@ class OfficialVaultSyncEngine(
             }
 
             suspend fun applyRemote(path: String, remoteRev: Long, remoteDeleted: Boolean): Boolean {
-                if (!shouldSyncPath(path, includeIndexSqlite = includeIndexSqlite)) return true
+                if (!shouldSyncPath(path)) return true
 
-                val localFilesNow =
-                    listLocalFiles(root, includeIndexSqlite = includeIndexSqlite)
-                        .filter { shouldSyncPath(it.path, includeIndexSqlite = includeIndexSqlite) }
+                val localFilesNow = listLocalFiles(root, includeIndexSqlite = includeIndexSqlite).filter { shouldSyncPath(it.path) }
                 val localByPathNow = localFilesNow.associateBy { it.path }
                 val local = localByPathNow[path]
                 val st = state.files[path]
@@ -217,9 +215,7 @@ class OfficialVaultSyncEngine(
             }
 
             // Push local changes (including brand-new files).
-            val localFiles =
-                listLocalFiles(root, includeIndexSqlite = includeIndexSqlite)
-                    .filter { shouldSyncPath(it.path, includeIndexSqlite = includeIndexSqlite) }
+            val localFiles = listLocalFiles(root, includeIndexSqlite = includeIndexSqlite).filter { shouldSyncPath(it.path) }
             val localByPath = localFiles.associateBy { it.path }
             for (local in localFiles) {
                 val st = state.files[local.path]
@@ -257,7 +253,7 @@ class OfficialVaultSyncEngine(
             // Propagate local deletions.
             for ((path, st) in state.files) {
                 if (st.deleted) continue
-                if (!shouldSyncPath(path, includeIndexSqlite = includeIndexSqlite)) continue
+                if (!shouldSyncPath(path)) continue
                 if (localByPath.containsKey(path)) continue
                 val del = SyncServerClient.deleteVaultFileV2(baseUrl, token, path, baseRev = st.baseRev)
                 if (del.ok && del.value != null) {
@@ -338,13 +334,17 @@ class OfficialVaultSyncEngine(
         }
     }
 
-    private fun shouldSyncPath(path: String, includeIndexSqlite: Boolean): Boolean {
+    private fun shouldSyncPath(path: String): Boolean {
         val p = path.trimStart('/')
         val name = p.substringAfterLast('/', missingDelimiterValue = p)
         if (name.startsWith("conflict ", ignoreCase = true)) return false
-        if (p.equals(".zhixu/index.sqlite", ignoreCase = true)) return includeIndexSqlite
-        if (p.equals(".zhixu", ignoreCase = true)) return false
-        if (p.startsWith(".zhixu/", ignoreCase = true)) return false
+        if (p.equals(".zhixu/sync/log.jsonl", ignoreCase = true)) return false
+        if (p.equals(".zhixu/sync/conflicts.jsonl", ignoreCase = true)) return false
+        if (p.equals(".zhixu/sync/official_state.json", ignoreCase = true)) return false
+        if (p.equals(".zhixu/sync/official_state_v2.json", ignoreCase = true)) return false
+        if (p.startsWith(".zhixu/sync/", ignoreCase = true)) return false
+        if (p.startsWith(".zhixu/conflicts/", ignoreCase = true)) return false
+        if (p.startsWith(".zhixu/history/", ignoreCase = true)) return false
         return true
     }
 
@@ -371,22 +371,6 @@ class OfficialVaultSyncEngine(
                 val name = child.name ?: continue
                 val path = if (prefix.isBlank()) name else "$prefix/$name"
                 if (child.isDirectory) {
-                    if (path.equals(".zhixu", ignoreCase = true)) {
-                        if (includeIndexSqlite) {
-                            val idx = child.findFile("index.sqlite")
-                            if (idx?.isFile == true) {
-                                out +=
-                                    OfficialLocalEntry(
-                                        path = ".zhixu/index.sqlite",
-                                        file = idx,
-                                        size = idx.length(),
-                                        lastModifiedEpochMs = idx.lastModified(),
-                                    )
-                            }
-                        }
-                        continue
-                    }
-                    if (path.startsWith(".zhixu/", ignoreCase = true)) continue
                     if (path.equals(".zhixu/sync", ignoreCase = true)) continue
                     if (path.startsWith(".zhixu/sync/", ignoreCase = true)) continue
                     if (path.equals(".zhixu/conflicts", ignoreCase = true)) continue

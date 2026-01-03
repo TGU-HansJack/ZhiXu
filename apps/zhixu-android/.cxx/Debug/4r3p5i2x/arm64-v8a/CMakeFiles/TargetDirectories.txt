@@ -1,3 +1,0 @@
-E:/Zhixu-main/ZhiXu/apps/zhixu-android/.cxx/Debug/4r3p5i2x/arm64-v8a/CMakeFiles/paddleocr_jni.dir
-E:/Zhixu-main/ZhiXu/apps/zhixu-android/.cxx/Debug/4r3p5i2x/arm64-v8a/CMakeFiles/edit_cache.dir
-E:/Zhixu-main/ZhiXu/apps/zhixu-android/.cxx/Debug/4r3p5i2x/arm64-v8a/CMakeFiles/rebuild_cache.dir
