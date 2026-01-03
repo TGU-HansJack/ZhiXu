@@ -1,17 +1,19 @@
 ﻿package app.zhixu.ui.screens
 
 import android.net.Uri
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -29,7 +31,6 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetState
@@ -61,6 +62,7 @@ import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTextField
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -254,7 +256,7 @@ fun TasksScreen(
                 Box(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                        contentPadding = PaddingValues(vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(0.dp),
                     ) {
                         if (vaultRootUri == null) {
@@ -298,10 +300,8 @@ fun TasksScreen(
                             item { Text(stringResource(R.string.tasks_empty), modifier = Modifier.padding(16.dp)) }
                         }
                         items(tasks, key = { it.taskId ?: "${it.docUri}:${it.lineIndex}" }) { task ->
-                            val dueLabel =
-                                remember(task.dueEpochMillis) {
-                                    task.dueEpochMillis?.let(::formatDueLabel)
-                                }
+                            val dueEpochMillis = remember(task.dueEpochMillis) { task.dueEpochMillis?.takeIf { it > 0L } }
+                            val dueLabel = remember(dueEpochMillis) { dueEpochMillis?.let(::formatDueLabel) }
                             TaskRow(
                                 task = task,
                                 dueLabel = dueLabel,
@@ -348,10 +348,11 @@ fun TasksScreen(
 
                         if (showCompleted) {
                             items(completed, key = { "c:${it.docUri}:${it.lineIndex}:${it.taskId}" }) { task ->
+                                val dueEpochMillis = remember(task.dueEpochMillis) { task.dueEpochMillis?.takeIf { it > 0L } }
                                 TaskRow(
                                     task = task,
                                     dueLabel =
-                                        task.dueEpochMillis?.let { dueFormatter.format(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault())) },
+                                        dueEpochMillis?.let { dueFormatter.format(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault())) },
                                     onToggle = {
                                         scope.launch {
                                             repository.toggleTask(task.docUri, task.lineIndex)
@@ -438,7 +439,6 @@ private fun TaskComposer(
     modifier: Modifier = Modifier,
 ) {
     var text by remember { mutableStateOf("") }
-    var expanded by remember { mutableStateOf(false) }
     var dueDate by remember { mutableStateOf<LocalDate?>(null) }
     var timeRange by remember { mutableStateOf<TimeRange?>(null) }
     var tags by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -475,15 +475,11 @@ private fun TaskComposer(
         timeRange = null
         tags = emptyList()
         priority = null
-        expanded = false
     }
 
     ZhixuTextField(
         value = text,
-        onValueChange = {
-            text = it
-            if (!expanded) expanded = true
-        },
+        onValueChange = { text = it },
         modifier = modifier,
         singleLine = true,
         placeholder = { Text(stringResource(R.string.task_input_hint)) },
@@ -511,59 +507,59 @@ private fun TaskComposer(
         interactionSource = remember { MutableInteractionSource() },
     )
 
-    AnimatedVisibility(visible = expanded) {
-        Row(
-            modifier = Modifier
+    Row(
+        modifier =
+            Modifier
                 .fillMaxWidth()
                 .padding(top = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                ZhixuIconButton(onClick = { showDateSheet = true }) {
-                    Icon(
-                        imageVector = Icons.Outlined.Today,
-                        contentDescription = stringResource(R.string.task_input_date),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                    )
-                }
-                ZhixuIconButton(onClick = { showPrioritySheet = true }) {
-                    Icon(
-                        imageVector = Icons.Outlined.Flag,
-                        contentDescription = stringResource(R.string.task_input_priority),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                    )
-                }
-                ZhixuIconButton(onClick = { showTagSheet = true }) {
-                    Icon(
-                        imageVector = Icons.Outlined.Label,
-                        contentDescription = stringResource(R.string.task_input_tags),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                    )
-                }
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            ZhixuIconButton(onClick = { showDateSheet = true }) {
+                Icon(
+                    imageVector = Icons.Outlined.Today,
+                    contentDescription = stringResource(R.string.task_input_date),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                )
             }
+            ZhixuIconButton(onClick = { showPrioritySheet = true }) {
+                Icon(
+                    imageVector = Icons.Outlined.Flag,
+                    contentDescription = stringResource(R.string.task_input_priority),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                )
+            }
+            ZhixuIconButton(onClick = { showTagSheet = true }) {
+                Icon(
+                    imageVector = Icons.Outlined.Label,
+                    contentDescription = stringResource(R.string.task_input_tags),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                )
+            }
+        }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (dueDate != null || timeRange != null) {
-                    AssistChip(
-                        onClick = { showDateSheet = true },
-                        label = { Text(buildDueChipLabel(dueDate, timeRange)) },
-                        colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                    )
-                }
-                if (priority != null) {
-                    AssistChip(
-                        onClick = { showPrioritySheet = true },
-                        label = { Text("P${priority}") },
-                        colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    )
-                }
-                if (tags.isNotEmpty()) {
-                    AssistChip(
-                        onClick = { showTagSheet = true },
-                        label = { Text(tags.joinToString(" ")) },
-                        colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-                    )
-                }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (dueDate != null || timeRange != null) {
+                AssistChip(
+                    onClick = { showDateSheet = true },
+                    label = { Text(buildDueChipLabel(dueDate, timeRange)) },
+                    colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                )
+            }
+            if (priority != null) {
+                AssistChip(
+                    onClick = { showPrioritySheet = true },
+                    label = { Text("P${priority}") },
+                    colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                )
+            }
+            if (tags.isNotEmpty()) {
+                AssistChip(
+                    onClick = { showTagSheet = true },
+                    label = { Text(tags.joinToString(" ")) },
+                    colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                )
             }
         }
     }
@@ -895,31 +891,49 @@ private fun TaskRow(
 ) {
     val titleColor = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
     val metaColor = MaterialTheme.colorScheme.onSurfaceVariant
-    ListItem(
-        modifier = Modifier.clickable(onClick = onOpen),
-        headlineContent = { Text(task.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = titleColor) },
-        supportingContent = {
-            Text(task.docName, maxLines = 1, overflow = TextOverflow.Ellipsis, color = metaColor)
-        },
-        leadingContent = {
-            ZhixuIconButton(onClick = onToggle) {
-                Icon(
-                    painter = painterResource(if (task.checked) Ionicons.CheckmarkCircle else Ionicons.RadioOff),
-                    contentDescription = null,
-                    tint = if (task.checked) metaColor else MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        },
-        trailingContent = {
-            if (!dueLabel.isNullOrBlank()) {
-                Text(
-                    text = dueLabel,
-                    color = if (dimmed) metaColor else MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                )
-            }
-        },
-    )
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 46.dp)
+                .clickable(onClick = onOpen)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ZhixuIconButton(onClick = onToggle) {
+            Icon(
+                painter = painterResource(if (task.checked) Ionicons.CheckmarkCircle else Ionicons.RadioOff),
+                contentDescription = null,
+                tint = if (task.checked) metaColor else MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = task.title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = titleColor,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = task.docName,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = metaColor.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
+            )
+        }
+        if (!dueLabel.isNullOrBlank()) {
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = dueLabel,
+                color = if (dimmed) metaColor else MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+    }
 }
 
 private fun formatDueLabel(dueEpochMillis: Long): String {
