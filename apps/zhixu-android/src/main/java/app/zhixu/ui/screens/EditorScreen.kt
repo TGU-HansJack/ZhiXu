@@ -2904,19 +2904,19 @@ private fun EditorBottomToolbar(
             EditorToolIcon(onClick = onHeading3) { Icon(painter = painterResource(Heroicons.H3), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
             EditorToolIcon(onClick = onBold) { Icon(painter = painterResource(Heroicons.Bold), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
             EditorToolIcon(onClick = onItalic) { Icon(painter = painterResource(Heroicons.Italic), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
-            EditorToolIcon(onClick = onStrike) { Icon(Icons.Outlined.StrikethroughS, null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onStrike) { Icon(painter = painterResource(Heroicons.Strikethrough), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
             EditorToolDivider()
-            EditorToolIcon(onClick = onTask) { Icon(Icons.Outlined.CheckBox, null, modifier = Modifier.size(toolbarIconSize)) }
-            EditorToolIcon(onClick = onBullets) { Icon(Icons.Outlined.FormatListBulleted, null, modifier = Modifier.size(toolbarIconSize)) }
-            EditorToolIcon(onClick = onNumbers) { Icon(Icons.Outlined.FormatListNumbered, null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onTask) { Icon(painter = painterResource(Ionicons.CheckboxOutline), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onBullets) { Icon(painter = painterResource(Heroicons.ListBullets), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onNumbers) { Icon(painter = painterResource(Heroicons.ListNumbers), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
             EditorToolDivider()
             EditorToolIcon(onClick = onQuote) { Icon(painter = painterResource(Heroicons.Quote), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
-            EditorToolIcon(onClick = onDivider) { Icon(Icons.Outlined.HorizontalRule, null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onDivider) { Icon(painter = painterResource(Heroicons.Divider), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
             EditorToolDivider()
-            EditorToolIcon(onClick = onLink) { Icon(Icons.Outlined.Link, null, modifier = Modifier.size(toolbarIconSize)) }
-            EditorToolIcon(onClick = onImage) { Icon(Icons.Outlined.Image, null, modifier = Modifier.size(toolbarIconSize)) }
-            EditorToolIcon(onClick = onCode) { Icon(Icons.Outlined.Code, null, modifier = Modifier.size(toolbarIconSize)) }
-            EditorToolIcon(onClick = onTable) { Icon(Icons.Outlined.TableChart, null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onLink) { Icon(painter = painterResource(Heroicons.Link), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onImage) { Icon(painter = painterResource(Heroicons.Image), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onCode) { Icon(painter = painterResource(Heroicons.Code), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
+            EditorToolIcon(onClick = onTable) { Icon(painter = painterResource(Heroicons.Table), contentDescription = null, modifier = Modifier.size(toolbarIconSize)) }
             EditorToolDivider()
 
             Box {
