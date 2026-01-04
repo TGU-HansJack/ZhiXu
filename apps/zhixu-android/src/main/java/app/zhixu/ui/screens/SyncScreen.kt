@@ -257,14 +257,6 @@ fun SyncScreen(
 
             item {
                 ListItem(
-                    headlineContent = { Text(stringResource(R.string.settings_section_sync)) },
-                    supportingContent = { Text(stringResource(R.string.settings_sync_placeholder)) },
-                    leadingContent = { Icon(painter = painterResource(app.zhixu.ui.Ionicons.Sync), contentDescription = null) },
-                )
-            }
-
-            item {
-                ListItem(
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -290,6 +282,7 @@ fun SyncScreen(
                         )
                     },
                 )
+                HorizontalDivider(color = dividerColor)
             }
 
             if (loadedVaultSyncConfig.location == VaultStorageLocation.OFFICIAL_SERVER) {
