@@ -63,7 +63,6 @@ fun AiSettingsScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    val layoutDirection = LocalLayoutDirection.current
     val prefs = remember(context) { AiPreferences(context.applicationContext) }
     val scope = rememberCoroutineScope()
 
@@ -143,6 +142,7 @@ fun AiSettingsScreen(
                 PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
+                    top = 12.dp,
                     bottom = 16.dp + contentPadding.calculateBottomPadding(),
                 ),
             verticalArrangement = Arrangement.spacedBy(0.dp),
