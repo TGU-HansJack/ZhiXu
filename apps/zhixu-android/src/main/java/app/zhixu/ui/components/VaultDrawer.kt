@@ -283,15 +283,14 @@ fun VaultDrawer(
 
     val entryByPath = remember(entries) { entries.associateBy { it.relativePath } }
 
+    LaunchedEffect(allDirsExpanded) {
+        if (allDirsExpanded == false) expandedDirs.clear()
+    }
+
     LaunchedEffect(allDirsExpanded, entries) {
-        when (allDirsExpanded) {
-            true -> {
-                for (entry in entries) {
-                    if (entry.isDirectory) expandedDirs[entry.relativePath] = true
-                }
-            }
-            false -> expandedDirs.clear()
-            null -> Unit
+        if (allDirsExpanded != true) return@LaunchedEffect
+        for (entry in entries) {
+            if (entry.isDirectory) expandedDirs[entry.relativePath] = true
         }
     }
 
