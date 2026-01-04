@@ -3,6 +3,7 @@
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,10 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -55,7 +53,7 @@ private const val OFFICIAL_SITE_URL = "https://zhixu.app"
 private const val OFFICIAL_TOS_URL = "https://zhixu.app/tos"
 private const val OFFICIAL_PRIVACY_URL = "https://zhixu.app/privacy"
 private const val OFFICIAL_LICENSE_URL = "https://zhixu.app/license"
-private const val QQ_GROUP_NUMBER = "556339740"
+private const val QQ_GROUP_NUMBER = "892430777"
 private const val QQ_GROUP_URI =
     "mqqapi://card/show_pslcard?src_type=internal&version=1&uin=$QQ_GROUP_NUMBER&card_type=group&source=external"
 
@@ -130,13 +128,14 @@ fun AboutScreen(
                     .padding(innerPadding)
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .imePadding()
+                    .background(MaterialTheme.colorScheme.background)
                     .fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(0.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             item {
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     if (appIconBitmap != null) {
@@ -163,52 +162,41 @@ fun AboutScreen(
             }
 
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        AboutNavRow(
-                            iconRes = Ionicons.InformationCircleOutline,
-                            title = stringResource(R.string.about_visit_website),
-                            value = "zhixu.app",
-                            onClick = { openUrl(OFFICIAL_SITE_URL) },
-                        )
-                        HorizontalDivider(color = dividerColor)
-                        AboutNavRow(
-                            iconRes = Ionicons.User,
-                            title = stringResource(R.string.about_join_qq_group),
-                            value = QQ_GROUP_NUMBER,
-                            onClick = ::openQqGroup,
-                        )
-                        HorizontalDivider(color = dividerColor)
-                        AboutNavRow(
-                            iconRes = Ionicons.DocumentText,
-                            title = stringResource(R.string.terms_of_use_title),
-                            value = OFFICIAL_TOS_URL.removePrefix("https://"),
-                            onClick = onOpenTermsOfUse,
-                        )
-                        HorizontalDivider(color = dividerColor)
-                        AboutNavRow(
-                            iconRes = Ionicons.DocumentText,
-                            title = stringResource(R.string.privacy_policy_title),
-                            value = OFFICIAL_PRIVACY_URL.removePrefix("https://"),
-                            onClick = onOpenPrivacyPolicy,
-                        )
-                        HorizontalDivider(color = dividerColor)
-                        AboutNavRow(
-                            iconRes = Ionicons.DocumentText,
-                            title = stringResource(R.string.open_source_license_title),
-                            value = OFFICIAL_LICENSE_URL.removePrefix("https://"),
-                            onClick = onOpenOpenSourceLicense,
-                        )
-                    }
-                }
-            }
-
-            item {
-                Spacer(Modifier.height(4.dp))
+                AboutNavRow(
+                    iconRes = Ionicons.InformationCircleOutline,
+                    title = stringResource(R.string.about_visit_website),
+                    value = "zhixu.app",
+                    onClick = { openUrl(OFFICIAL_SITE_URL) },
+                )
+                HorizontalDivider(color = dividerColor)
+                AboutNavRow(
+                    iconRes = Ionicons.User,
+                    title = stringResource(R.string.about_join_qq_group),
+                    value = QQ_GROUP_NUMBER,
+                    onClick = ::openQqGroup,
+                )
+                HorizontalDivider(color = dividerColor)
+                AboutNavRow(
+                    iconRes = Ionicons.DocumentText,
+                    title = stringResource(R.string.terms_of_use_title),
+                    value = OFFICIAL_TOS_URL.removePrefix("https://"),
+                    onClick = onOpenTermsOfUse,
+                )
+                HorizontalDivider(color = dividerColor)
+                AboutNavRow(
+                    iconRes = Ionicons.DocumentText,
+                    title = stringResource(R.string.privacy_policy_title),
+                    value = OFFICIAL_PRIVACY_URL.removePrefix("https://"),
+                    onClick = onOpenPrivacyPolicy,
+                )
+                HorizontalDivider(color = dividerColor)
+                AboutNavRow(
+                    iconRes = Ionicons.DocumentText,
+                    title = stringResource(R.string.open_source_license_title),
+                    value = OFFICIAL_LICENSE_URL.removePrefix("https://"),
+                    onClick = onOpenOpenSourceLicense,
+                )
+                HorizontalDivider(color = dividerColor)
             }
         }
     }
