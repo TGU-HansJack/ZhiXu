@@ -13,13 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Checklist
-import androidx.compose.material.icons.outlined.DocumentScanner
-import androidx.compose.material.icons.outlined.Draw
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Mic
-import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -30,10 +23,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.zhixu.R
+import androidx.annotation.DrawableRes
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.Description
 
 @Composable
 internal fun ZhixuCompactDragHandle(modifier: Modifier = Modifier) {
@@ -70,36 +68,30 @@ internal fun CreateMenuSheetContent(
                 .padding(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(
-            text = "新建",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             CreateActionItem(
-                icon = Icons.Outlined.DocumentScanner,
+                iconRes = R.drawable.ic_material_document_scanner,
                 label = "OCR识图",
                 onClick = onOcr,
                 modifier = Modifier.weight(1f),
             )
             CreateActionItem(
-                icon = Icons.Outlined.Mic,
+                iconRes = R.drawable.ic_hero_microphone,
                 label = "录音",
                 onClick = onRecord,
                 modifier = Modifier.weight(1f),
             )
             CreateActionItem(
-                icon = Icons.Outlined.PhotoCamera,
+                iconRes = R.drawable.ic_ion_camera_outline,
                 label = "相机",
                 onClick = onCamera,
                 modifier = Modifier.weight(1f),
             )
             CreateActionItem(
-                icon = Icons.Outlined.Draw,
+                iconRes = R.drawable.ic_hero_paint_brush,
                 label = "绘画",
                 onClick = onDraw,
                 modifier = Modifier.weight(1f),
@@ -136,7 +128,7 @@ internal fun CreateMenuSheetContent(
 
 @Composable
 private fun CreateActionItem(
-    icon: ImageVector,
+    @DrawableRes iconRes: Int,
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -158,7 +150,7 @@ private fun CreateActionItem(
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
-                    imageVector = icon,
+                    painter = painterResource(iconRes),
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(26.dp),
