@@ -287,6 +287,12 @@ fun EditorScreen(
     var toolbarHeightPx by remember { mutableIntStateOf(fallbackToolbarHeightPx) }
     val toolbarGapPx = with(density) { 10.dp.roundToPx() }
     val anticipatedToolbarPx = if (showEditorToolbar && !isPreview && !isPdfDoc) (toolbarHeightPx + toolbarGapPx) else 0
+    val drawerGestureExcludeBottomDp =
+        if (showEditorToolbar && effectiveImeBottomPx == 0) {
+            with(density) { (toolbarHeightPx + toolbarGapPx).toDp() }
+        } else {
+            0.dp
+        }
     val extraScrollSpaceDp =
         maxOf(
             376.dp,
@@ -1249,6 +1255,7 @@ fun EditorScreen(
     ZhixuSwipeDualDrawer(
         enabled = !isPdfDoc,
         openGestureEnabled = effectiveImeBottomPx == 0,
+        gestureExcludeBottomHeight = drawerGestureExcludeBottomDp,
         resetKey = "${currentDocUri}|${vaultRootUri}",
         openRightToken = openOutlineToken,
         leftDrawerContent = { modifier, closeDrawer, isOpen ->

@@ -45,6 +45,7 @@ fun ZhixuSwipeDualDrawer(
     threshold: Dp = 96.dp,
     fullScreenSwipeToOpen: Boolean = true,
     edgeSwipeWidth: Dp = 24.dp,
+    gestureExcludeBottomHeight: Dp = 0.dp,
     drawerScrimMaxAlpha: Float = 0.36f,
     leftDrawerContent: @Composable (modifier: Modifier, closeDrawer: () -> Unit, isOpen: Boolean) -> Unit,
     rightDrawerContent: @Composable (modifier: Modifier, closeDrawer: () -> Unit, isOpen: Boolean) -> Unit,
@@ -59,6 +60,7 @@ fun ZhixuSwipeDualDrawer(
     val viewConfig = LocalViewConfiguration.current
     val thresholdPx = with(density) { threshold.toPx() }
     val edgeSwipeWidthPx = with(density) { edgeSwipeWidth.toPx() }
+    val gestureExcludeBottomHeightPx = with(density) { gestureExcludeBottomHeight.toPx() }
 
     var leftWidthPx by remember { mutableFloatStateOf(0f) }
     var rightWidthPx by remember { mutableFloatStateOf(0f) }
@@ -152,7 +154,7 @@ fun ZhixuSwipeDualDrawer(
         modifier =
             Modifier
                 .fillMaxSize()
-                .pointerInput(enabled, openGestureEnabled, fullScreenSwipeToOpen, leftWidthPx, rightWidthPx) {
+                .pointerInput(enabled, openGestureEnabled, fullScreenSwipeToOpen, leftWidthPx, rightWidthPx, gestureExcludeBottomHeightPx) {
                     if (!enabled) return@pointerInput
                     if (leftWidthPx <= 0f && rightWidthPx <= 0f) return@pointerInput
 
@@ -181,6 +183,9 @@ fun ZhixuSwipeDualDrawer(
 
                         if (startedFromOpenDrawer == null) {
                             if (!openGestureEnabled) return@awaitEachGesture
+                            if (gestureExcludeBottomHeightPx > 0f && startY >= (size.height - gestureExcludeBottomHeightPx)) {
+                                return@awaitEachGesture
+                            }
                             if (!fullScreenSwipeToOpen) {
                                 val edgeSide: ZhixuDrawerSide? =
                                     when {
