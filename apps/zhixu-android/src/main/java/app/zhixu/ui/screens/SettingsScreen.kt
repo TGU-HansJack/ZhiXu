@@ -64,6 +64,7 @@ import app.zhixu.data.UpdateInfo
 import app.zhixu.data.VaultRepository
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.components.ContribCalendarDialog
+import app.zhixu.ui.components.MarkdownPreview
 import app.zhixu.ui.components.ZhixuDialogDefaults
 import coil.compose.AsyncImage
 import java.time.LocalDate
@@ -360,13 +361,12 @@ private fun UpdateResultBody(
         if (log.isNotBlank()) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
             Text(stringResource(R.string.settings_update_changelog))
-            Text(
-                log,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            MarkdownPreview(
+                markdown = log,
                 modifier =
                     Modifier
-                        .heightIn(max = 320.dp)
-                        .verticalScroll(rememberScrollState()),
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp),
             )
         }
     }
