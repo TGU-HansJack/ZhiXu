@@ -48,6 +48,7 @@ data class VaultTreeEntry(
     val isDirectory: Boolean,
     val parentPath: String?,
     val depth: Int,
+    val lastModified: Long = 0L,
 )
 
 data class TaskStats(
@@ -469,6 +470,162 @@ class VaultRepository(
         created.uri
     }
 
+    suspend fun createDirectory(
+        rootUri: Uri,
+        parentRelativePath: String?,
+        name: String,
+    ): Uri? = withContext(Dispatchers.IO) {
+        val trimmedName = name.trim()
+        if (trimmedName.isBlank()) return@withContext null
+
+        val parent =
+            parentRelativePath
+                .orEmpty()
+                .replace('\\', '/')
+                .trim()
+                .trimStart('/')
+                .let { p -> if (p.isBlank()) "" else p.trimEnd('/') + "/" }
+
+        val rel =
+            if (parent.isBlank()) trimmedName
+            else parent + trimmedName
+
+        runCatching { ensureVaultDirectory(rootUri, rel) }.getOrNull()
+    }
+
+    suspend fun importFiles(
+        rootUri: Uri,
+        targetDirRelativePath: String?,
+        sourceUris: List<Uri>,
+    ): List<Uri> = withContext(Dispatchers.IO) {
+        ensureVaultStructure(rootUri)
+
+        val targetDir =
+            targetDirRelativePath
+                .orEmpty()
+                .replace('\\', '/')
+                .trim()
+                .trimStart('/')
+                .let { p -> if (p.isBlank()) "" else p.trimEnd('/') + "/" }
+
+        fun guessMimeFromName(name: String): String {
+            val ext = name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+            if (ext.isBlank()) return "application/octet-stream"
+            return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext).orEmpty().ifBlank { "application/octet-stream" }
+        }
+
+        fun queryDisplayName(uri: Uri): String? {
+            if (uri.scheme.equals("file", ignoreCase = true)) {
+                val path = uri.path ?: return null
+                return File(path).name.takeIf { it.isNotBlank() }
+            }
+            val resolver = context.contentResolver
+            return runCatching {
+                resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (!cursor.moveToFirst()) return@use null
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx < 0 || cursor.isNull(idx)) null else cursor.getString(idx)
+                }
+            }.getOrNull()
+        }
+
+        fun sanitizeName(name: String): String {
+            val trimmed = name.trim().trim('.')
+            val cleaned =
+                trimmed
+                    .replace('/', '_')
+                    .replace('\\', '_')
+                    .replace(':', '_')
+                    .replace('*', '_')
+                    .replace('?', '_')
+                    .replace('"', '\'')
+                    .replace('<', '_')
+                    .replace('>', '_')
+                    .replace('|', '_')
+            return cleaned.ifBlank { "file_${System.currentTimeMillis()}" }
+        }
+
+        fun createUniqueName(existingNames: Set<String>, desired: String): String {
+            if (desired !in existingNames) return desired
+            val dot = desired.lastIndexOf('.')
+            val base = if (dot > 0) desired.substring(0, dot) else desired
+            val ext = if (dot > 0) desired.substring(dot) else ""
+            for (i in 1..200) {
+                val candidate = "$base ($i)$ext"
+                if (candidate !in existingNames) return candidate
+            }
+            return "${base}_${System.currentTimeMillis()}$ext"
+        }
+
+        fun writeStream(dst: Uri, src: Uri) {
+            val resolver: ContentResolver = context.contentResolver
+            if (dst.scheme.equals("file", ignoreCase = true)) {
+                val path = dst.path ?: error("Invalid file uri: $dst")
+                File(path).parentFile?.mkdirs()
+                if (src.scheme.equals("file", ignoreCase = true)) {
+                    val srcPath = src.path ?: error("Invalid file uri: $src")
+                    File(srcPath).inputStream().use { input ->
+                        File(path).outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                } else {
+                    resolver.openInputStream(src)?.use { input ->
+                        File(path).outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    } ?: error("Failed to open input stream for $src")
+                }
+                return
+            }
+            resolver.openInputStream(src)?.use { input ->
+                resolver.openOutputStream(dst, "wt")?.use { output ->
+                    input.copyTo(output)
+                } ?: error("Failed to open output stream for $dst")
+            } ?: error("Failed to open input stream for $src")
+        }
+
+        val out = ArrayList<Uri>(sourceUris.size)
+        for (src in sourceUris.distinct()) {
+            val displayNameRaw = queryDisplayName(src) ?: src.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')
+            val displayName = sanitizeName(displayNameRaw.orEmpty())
+            val mime = context.contentResolver.getType(src).orEmpty().ifBlank { guessMimeFromName(displayName) }
+
+            val destUri: Uri =
+                if (rootUri.scheme.equals("file", ignoreCase = true)) {
+                    val rootPath = rootUri.path ?: error("Invalid file vault uri: $rootUri")
+                    val dir = if (targetDir.isBlank()) File(rootPath) else File(rootPath, targetDir)
+                    dir.mkdirs()
+                    val existingNames = dir.list()?.toSet().orEmpty()
+                    val uniqueName = createUniqueName(existingNames, displayName)
+                    val file = File(dir, uniqueName)
+                    if (!file.exists()) file.createNewFile()
+                    Uri.fromFile(file)
+                } else {
+                    val dirUri = if (targetDir.isBlank()) rootUri else ensureVaultDirectory(rootUri, targetDir.trimEnd('/'))
+                    val dirDoc = DocumentFile.fromSingleUri(context, dirUri) ?: DocumentFile.fromTreeUri(context, dirUri)
+                    requireNotNull(dirDoc) { "Invalid target directory uri: $dirUri" }
+                    require(dirDoc.isDirectory) { "Target is not a directory: $dirUri" }
+                    val existingNames = dirDoc.listFiles().mapNotNull { it.name }.toSet()
+                    val uniqueName = createUniqueName(existingNames, displayName)
+                    val created =
+                        createFileExact(dirDoc, mime, uniqueName)
+                            ?: dirDoc.createFile(mime, uniqueName)
+                            ?: error("Failed to create file: $uniqueName")
+                    created.uri
+                }
+
+            writeStream(destUri, src)
+            out += destUri
+
+            runCatching {
+                val doc = DocumentFile.fromSingleUri(context, destUri) ?: DocumentFile.fromTreeUri(context, destUri)
+                if (doc != null) upsertDirIndexEntryForFileIfPresent(rootUri, doc)
+            }
+        }
+        out
+    }
+
     suspend fun listMarkdownDocs(rootUri: Uri): List<UiDoc> = withContext(Dispatchers.IO) {
         val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext emptyList()
         val docs = ArrayList<UiDoc>()
@@ -593,6 +750,7 @@ class VaultRepository(
                             isDirectory = true,
                             parentPath = prefix.takeIf { it.isNotBlank() },
                             depth = depth,
+                            lastModified = child.lastModified(),
                         )
                     walk(child, dirPath, depth + 1)
                 } else if (child.isFile && (includeNonMarkdownFiles || isMarkdown(child))) {
@@ -605,6 +763,7 @@ class VaultRepository(
                             isDirectory = false,
                             parentPath = prefix.takeIf { it.isNotBlank() },
                             depth = depth,
+                            lastModified = child.lastModified(),
                         )
                 }
             }
@@ -790,6 +949,7 @@ class VaultRepository(
                         isDirectory = true,
                         parentPath = parentPathKey,
                         depth = depth,
+                        lastModified = child.lastModified(),
                     )
             } else if (child.isFile && (includeNonMarkdownFiles || isMarkdown(child))) {
                 val filePath = if (cleanedParent.isBlank()) name else "$cleanedParent$name"
@@ -801,6 +961,7 @@ class VaultRepository(
                         isDirectory = false,
                         parentPath = parentPathKey,
                         depth = depth,
+                        lastModified = child.lastModified(),
                     )
             }
         }

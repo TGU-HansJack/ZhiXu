@@ -52,6 +52,18 @@
     <string name="dialog_new_doc_title">New document</string>
     <string name="field_file_name">File name</string>
     <string name="action_create">Create</string>
+    <string name="action_new_folder">New folder</string>
+    <string name="space_filter_title">Filter</string>
+    <string name="space_filter_type">File type</string>
+    <string name="space_filter_type_markdown">Markdown</string>
+    <string name="space_filter_type_pdf">PDF</string>
+    <string name="space_filter_type_image">Image</string>
+    <string name="space_filter_type_other">Other</string>
+    <string name="space_filter_time">Edited time</string>
+    <string name="space_filter_start">Start</string>
+    <string name="space_filter_end">End</string>
+    <string name="space_filter_clear">Clear</string>
+    <string name="space_filter_apply">Apply</string>
     <string name="action_cancel">Cancel</string>
     <string name="dialog_delete_doc_title">Delete document?</string>
     <string name="dialog_delete_selected_title">Delete selected items?</string>
@@ -295,6 +307,7 @@
     <string name="common_not_implemented">Not implemented</string>
     <string name="common_copy">Copy</string>
     <string name="common_copied">Copied</string>
+    <string name="common_failed">Failed</string>
     <string name="error_server_unreachable">Server unreachable. Please check network or server status.</string>
 
     <!-- Sync logs -->

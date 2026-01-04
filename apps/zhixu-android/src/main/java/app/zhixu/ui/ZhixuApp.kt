@@ -1161,7 +1161,7 @@ private fun HomePager(
                     refreshToken = dirStructureMutationToken,
                     mutation = dirStructureMutation,
                     onDocListMutated = onDocListMutated,
-                    onOpenDoc = { rawUri -> onOpenDoc(rawUri, null, null) },
+                    onOpenDoc = { rawUri, lineIndex -> onOpenDoc(rawUri, null, lineIndex) },
                     onChangeVault = onChangeVault,
                     selectedEntryUris = selectedSpaceEntryUris,
                     onToggleEntrySelection = onToggleSpaceEntrySelection,

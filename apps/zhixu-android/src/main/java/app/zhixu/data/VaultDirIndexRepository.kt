@@ -78,12 +78,14 @@ internal class VaultDirIndexRepository(
                 val uriIdx = cursor.getColumnIndexOrThrow("uri")
                 val dirIdx = cursor.getColumnIndexOrThrow("is_dir")
                 val parentIdx = cursor.getColumnIndexOrThrow("parent_path")
+                val lastIdx = cursor.getColumnIndexOrThrow("last_modified")
                 while (cursor.moveToNext()) {
                     val rel = cursor.getString(relIdx).orEmpty()
                     val name = cursor.getString(nameIdx).orEmpty()
                     val uriStr = if (cursor.isNull(uriIdx)) null else cursor.getString(uriIdx)
                     val isDir = cursor.getInt(dirIdx) != 0
                     val parent = if (cursor.isNull(parentIdx)) null else cursor.getString(parentIdx)
+                    val lastModified = if (cursor.isNull(lastIdx)) 0L else cursor.getLong(lastIdx)
                     out +=
                         VaultTreeEntry(
                             relativePath = rel,
@@ -92,6 +94,7 @@ internal class VaultDirIndexRepository(
                             isDirectory = isDir,
                             parentPath = parent,
                             depth = depth,
+                            lastModified = lastModified,
                         )
                 }
             }

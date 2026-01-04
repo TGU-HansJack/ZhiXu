@@ -1,6 +1,7 @@
 ﻿package app.zhixu.ui.components
 
 import android.net.Uri
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -42,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -106,6 +108,8 @@ fun VaultDrawer(
     enableMultiSelect: Boolean = false,
     selectedEntryUris: Set<String> = emptySet(),
     onToggleEntrySelection: (String) -> Unit = {},
+    activeDirectoryRelativePath: String? = null,
+    onActiveDirectoryChange: (String?) -> Unit = {},
     sheetWidth: Dp = 320.dp,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     useSystemInsets: Boolean = true,
@@ -116,6 +120,7 @@ fun VaultDrawer(
     itemIconSize: Dp = 18.dp,
     itemChevronSize: Dp = 16.dp,
     allDirsExpanded: Boolean? = null,
+    entryFilter: ((VaultTreeEntry) -> Boolean)? = null,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -259,6 +264,10 @@ fun VaultDrawer(
                         repository.computeRelativePath(vaultRootUri, m.oldUri),
                         repository.computeRelativePath(vaultRootUri, m.newUri),
                     ).map { parentPathOf(it) ?: "" }
+
+                is DocListMutation.EntryChanged ->
+                    listOfNotNull(repository.computeRelativePath(vaultRootUri, m.entryUri))
+                        .map { parentPathOf(it) ?: "" }
             }.distinct()
 
         var refreshedAny = false
@@ -295,8 +304,14 @@ fun VaultDrawer(
         return true
     }
 
-    val visibleEntries by remember(entries, expandedDirs) {
-        derivedStateOf { entries.filter(::isVisible) }
+    val visibleEntries by remember(entries, expandedDirs, entryFilter) {
+        derivedStateOf {
+            entries
+                .filter(::isVisible)
+                .filter { entry ->
+                    if (entry.isDirectory) true else entryFilter?.invoke(entry) != false
+                }
+        }
     }
 
     val sheetModifier =
@@ -422,14 +437,36 @@ fun VaultDrawer(
                     val selectionMode = enableMultiSelect && selectedEntryUris.isNotEmpty()
                     val uriStr = entry.uri?.toString()
                     val selected = uriStr != null && uriStr in selectedEntryUris
+                    val activeDirSelected =
+                        !selectionMode &&
+                            entry.isDirectory &&
+                            !activeDirectoryRelativePath.isNullOrBlank() &&
+                            entry.relativePath == activeDirectoryRelativePath
 
                     Row(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = itemMinHeight)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .clip(RoundedCornerShape(10.dp))
                                 .background(
-                                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else androidx.compose.ui.graphics.Color.Transparent,
+                                    when {
+                                        selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                        activeDirSelected -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+                                        else -> androidx.compose.ui.graphics.Color.Transparent
+                                    },
+                                )
+                                .then(
+                                    if (activeDirSelected) {
+                                        Modifier.border(
+                                            width = 1.dp,
+                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.85f),
+                                            shape = RoundedCornerShape(10.dp),
+                                        )
+                                    } else {
+                                        Modifier
+                                    },
                                 )
                                 .combinedClickable(
                                     onClick = {
@@ -439,6 +476,7 @@ fun VaultDrawer(
                                         }
                                         if (entry.isDirectory) {
                                             val dirPath = entry.relativePath
+                                            onActiveDirectoryChange(if (activeDirSelected) null else dirPath)
                                             if (isDirLoading) return@combinedClickable
                                             if (!isExpanded && loadedDirs[dirPath] != true) {
                                                 expandedDirs[dirPath] = true
@@ -456,7 +494,7 @@ fun VaultDrawer(
                                             { onToggleEntrySelection(uriStr) }
                                         } else {
                                             null
-                                        },
+                                    },
                                 )
                                 .padding(start = 0.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,

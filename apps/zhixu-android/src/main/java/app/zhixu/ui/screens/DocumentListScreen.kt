@@ -90,6 +90,7 @@ import app.zhixu.ui.components.RefreshStatusBanner
 import app.zhixu.ui.components.SheetActionRow
 import app.zhixu.ui.components.SheetQuickAction
 import app.zhixu.ui.components.ZhixuIconButton
+import app.zhixu.ui.components.VaultSearchDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
@@ -438,7 +439,7 @@ fun DocumentListScreen(
     }
 
     if (showSearchSheet) {
-        DocumentSearchSheet(
+        VaultSearchDialog(
             query = query,
             onQueryChange = ::updateQuery,
             results = results,
@@ -528,189 +529,6 @@ private fun DocumentRowActionsSheet(
         }
 
         Spacer(modifier = Modifier.size(8.dp))
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DocumentSearchSheet(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    results: List<SearchResult>,
-    highlightBg: Color,
-    onDismiss: () -> Unit,
-    onOpenResult: (String, Int?) -> Unit,
-) {
-    val focusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
-
-    DisposableEffect(Unit) {
-        onDispose { keyboardController?.hide() }
-    }
-
-    LaunchedEffect(Unit) {
-        delay(80)
-        focusRequester.requestFocus()
-        keyboardController?.show()
-    }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        AnimatedVisibility(
-            visibleState = visibleState,
-            enter =
-                fadeIn(animationSpec = tween(durationMillis = 120)) +
-                    slideInVertically(animationSpec = tween(durationMillis = 120)) { fullHeight -> fullHeight / 8 },
-            exit =
-                fadeOut(animationSpec = tween(durationMillis = 90)) +
-                    slideOutVertically(animationSpec = tween(durationMillis = 90)) { fullHeight -> fullHeight / 8 },
-        ) {
-            Surface(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
-                        .windowInsetsPadding(WindowInsets.navigationBars),
-                color = MaterialTheme.colorScheme.background,
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp,
-            ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        ZhixuTextField(
-                            value = query,
-                            onValueChange = onQueryChange,
-                            singleLine = true,
-                            placeholder = { Text(stringResource(R.string.action_search)) },
-                            leadingIcon = { Icon(painter = painterResource(app.zhixu.ui.Ionicons.Search), contentDescription = null) },
-                            modifier = Modifier.weight(1f).focusRequester(focusRequester),
-                        )
-                        TextButton(onClick = onDismiss) {
-                            Text(stringResource(R.string.action_cancel))
-                        }
-                    }
-
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 24.dp),
-                    ) {
-                        if (query.isBlank()) {
-                            item {
-                                Text(
-                                    text = "",
-                            modifier = Modifier.padding(16.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                } else if (results.isEmpty()) {
-                    item {
-                        Text(
-                            text = stringResource(R.string.search_empty),
-                            modifier = Modifier.padding(16.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                } else {
-                    itemsIndexed(
-                        results,
-                        key = { index, result ->
-                            when (result) {
-                                is DocSearchResult -> "doc:${result.uri}#$index"
-                                is TaskSearchResult -> "task:${result.docUri}:${result.lineIndex}:${result.taskId}#$index"
-                            }
-                        },
-                    ) { _, result ->
-                        when (result) {
-                            is DocSearchResult -> {
-                                ListItem(
-                                    modifier = Modifier.clickable { onOpenResult(result.uri.toString(), null) },
-                                    headlineContent = {
-                                        Text(
-                                            text = highlightQuery(result.title, query, highlightBg),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    },
-                                    supportingContent = {
-                                        if (!result.snippet.isNullOrBlank()) {
-                                            Text(
-                                                highlightQuery(result.snippet, query, highlightBg),
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                        }
-                                    },
-                                )
-                            }
-
-                            is TaskSearchResult -> {
-                                ListItem(
-                                    modifier = Modifier.clickable { onOpenResult(result.docUri.toString(), result.lineIndex) },
-                                    headlineContent = {
-                                        Text(
-                                            text = highlightQuery(result.title, query, highlightBg),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    },
-                                    supportingContent = { Text(stringResource(R.string.search_task_hit)) },
-                                )
-                            }
-                        }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun highlightQuery(text: String, query: String, highlightBg: Color): AnnotatedString {
-    val q = query.trim()
-    if (q.isBlank()) return AnnotatedString(text)
-    val tokens = q.split(Regex("""\s+""")).filter { it.isNotBlank() }.distinct()
-    if (tokens.isEmpty()) return AnnotatedString(text)
-
-    val lowered = text.lowercase()
-    val ranges = ArrayList<IntRange>()
-    for (token in tokens) {
-        val t = token.lowercase()
-        if (t.length < 2) continue
-        var idx = lowered.indexOf(t)
-        while (idx >= 0) {
-            ranges += (idx until (idx + t.length))
-            idx = lowered.indexOf(t, startIndex = idx + t.length)
-        }
-    }
-    if (ranges.isEmpty()) return AnnotatedString(text)
-
-    val merged = ranges.sortedBy { it.first }.fold(mutableListOf<IntRange>()) { acc, r ->
-        val last = acc.lastOrNull()
-        if (last == null) acc.add(r)
-        else if (r.first <= last.last + 1) acc[acc.lastIndex] = (last.first..maxOf(last.last, r.last))
-        else acc.add(r)
-        acc
-    }
-
-    val highlight = SpanStyle(background = highlightBg, fontWeight = FontWeight.SemiBold)
-    return buildAnnotatedString {
-        var pos = 0
-        for (r in merged) {
-            if (pos < r.first) append(text.substring(pos, r.first))
-            val end = (r.last + 1).coerceAtMost(text.length)
-            pushStyle(highlight)
-            append(text.substring(r.first, end))
-            pop()
-            pos = end
-        }
-        if (pos < text.length) append(text.substring(pos))
     }
 }
 

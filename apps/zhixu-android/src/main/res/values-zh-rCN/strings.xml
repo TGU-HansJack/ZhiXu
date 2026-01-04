@@ -51,6 +51,18 @@
     <string name="dialog_new_doc_title">新建文档</string>
     <string name="field_file_name">文件名</string>
     <string name="action_create">创建</string>
+    <string name="action_new_folder">新建文件夹</string>
+    <string name="space_filter_title">筛选</string>
+    <string name="space_filter_type">文件类型</string>
+    <string name="space_filter_type_markdown">Markdown</string>
+    <string name="space_filter_type_pdf">PDF</string>
+    <string name="space_filter_type_image">图片</string>
+    <string name="space_filter_type_other">其他</string>
+    <string name="space_filter_time">编辑时间</string>
+    <string name="space_filter_start">开始日期</string>
+    <string name="space_filter_end">结束日期</string>
+    <string name="space_filter_clear">清除</string>
+    <string name="space_filter_apply">应用</string>
     <string name="action_cancel">取消</string>
     <string name="dialog_delete_doc_title">删除文档？</string>
     <string name="dialog_delete_selected_title">删除所选项目？</string>
@@ -275,6 +287,7 @@
     <string name="common_not_implemented">暂未实现</string>
     <string name="common_copy">复制</string>
     <string name="common_copied">已复制</string>
+    <string name="common_failed">失败</string>
     <string name="error_server_unreachable">服务器不可达，请检查网络或服务器状态。</string>
 
     <!-- Settings placeholders -->
