@@ -155,7 +155,7 @@ data class DayModel(
             holiday != null -> holiday.name
             lunarHoliday != null -> lunarHoliday
             lunarDate.day == 1 -> lunarDate.getMonthText()
-            else -> lunarDate.getDayText()
+            else -> ""
         }
 
     /**

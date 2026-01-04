@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowForward
@@ -74,6 +76,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import app.zhixu.R
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.components.ZhixuCompactDragHandle
@@ -683,103 +686,146 @@ private fun TaskDateSheet(
         dragHandle = { ZhixuCompactDragHandle() },
     ) {
         val context = LocalContext.current
+        val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+        val contentMinHeight = screenHeight * 0.7f
         fun confirmSelection() {
             onConfirm(selectedDate, range)
         }
 
-        Row(
+        Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                    .height(contentMinHeight),
         ) {
-            ZhixuIconButton(onClick = onDismiss, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    painter = painterResource(Ionicons.Close),
-                    contentDescription = stringResource(R.string.task_input_clear),
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-
-            TabRow(
-                selectedTabIndex = tab,
-                modifier = Modifier.weight(1f),
-                containerColor = Color.Transparent,
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Tab(
-                    selected = tab == 0,
-                    onClick = { tab = 0 },
-                    text = { Text(stringResource(R.string.task_input_date), fontWeight = FontWeight.SemiBold) },
-                )
-                Tab(
-                    selected = tab == 1,
-                    onClick = { tab = 1 },
-                    text = { Text(stringResource(R.string.task_input_time_range), fontWeight = FontWeight.SemiBold) },
-                )
+                ZhixuIconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        painter = painterResource(Ionicons.Close),
+                        contentDescription = stringResource(R.string.task_input_clear),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+
+                TabRow(
+                    selectedTabIndex = tab,
+                    modifier = Modifier.weight(1f),
+                    containerColor = Color.Transparent,
+                    indicator = {},
+                    divider = {},
+                ) {
+                    Tab(
+                        selected = tab == 0,
+                        onClick = { tab = 0 },
+                        modifier = Modifier.height(32.dp),
+                        text = { Text(stringResource(R.string.task_input_date), fontWeight = FontWeight.SemiBold) },
+                    )
+                    Tab(
+                        selected = tab == 1,
+                        onClick = { tab = 1 },
+                        modifier = Modifier.height(32.dp),
+                        text = { Text(stringResource(R.string.task_input_time_range), fontWeight = FontWeight.SemiBold) },
+                    )
+                }
+
+                ZhixuIconButton(onClick = { confirmSelection() }, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        painter = painterResource(Ionicons.Checkmark),
+                        contentDescription = stringResource(R.string.task_input_confirm),
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
 
-            TextButton(onClick = onClear) { Text(stringResource(R.string.task_input_clear)) }
-            ZhixuIconButton(onClick = { confirmSelection() }, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    painter = painterResource(Ionicons.Checkmark),
-                    contentDescription = stringResource(R.string.task_input_confirm),
-                    modifier = Modifier.size(22.dp),
-                    tint = MaterialTheme.colorScheme.primary,
+            Box(modifier = Modifier.weight(1f, fill = true)) {
+                if (tab == 0) {
+                    Column(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                    ) {
+                        TaskDateTab(
+                            currentMonth = currentMonth,
+                            selectedDate = selectedDate,
+                            onMonthChange = { currentMonth = it },
+                            onDateSelect = {
+                                selectedDate = it
+                                currentMonth = YearMonth.from(it)
+                            },
+                            onPickToday = {
+                                range = null
+                                val date = LocalDate.now()
+                                selectedDate = date
+                                currentMonth = YearMonth.from(date)
+                            },
+                            onPickTomorrow = {
+                                range = null
+                                val date = LocalDate.now().plusDays(1)
+                                selectedDate = date
+                                currentMonth = YearMonth.from(date)
+                            },
+                            onPickNextMonday = {
+                                range = null
+                                val today = LocalDate.now()
+                                val delta =
+                                    ((DayOfWeek.MONDAY.value - today.dayOfWeek.value + 7) % 7).let { if (it == 0) 7 else it }
+                                val date = today.plusDays(delta.toLong())
+                                selectedDate = date
+                                currentMonth = YearMonth.from(date)
+                            },
+                            onPickTonight = {
+                                range = TimeRange.Evening
+                                val date = LocalDate.now()
+                                selectedDate = date
+                                currentMonth = YearMonth.from(date)
+                            },
+                        )
+                    }
+                } else {
+                    Column(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                    ) {
+                        TaskTimeRangeTab(
+                            selectedDate = selectedDate,
+                            range = range,
+                            onChangeRange = { range = it },
+                            onGoToDate = { tab = 0 },
+                            onReminderClick = {
+                                android.widget.Toast.makeText(context, "提醒：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            onRepeatClick = {
+                                android.widget.Toast.makeText(context, "重复：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                        )
+                    }
+                }
+            }
+
+            TextButton(
+                onClick = onClear,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.task_input_clear),
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.error,
                 )
             }
-        }
-
-        if (tab == 0) {
-            TaskDateTab(
-                currentMonth = currentMonth,
-                selectedDate = selectedDate,
-                onMonthChange = { currentMonth = it },
-                onDateSelect = {
-                    selectedDate = it
-                    currentMonth = YearMonth.from(it)
-                },
-                onPickToday = {
-                    range = null
-                    val date = LocalDate.now()
-                    selectedDate = date
-                    currentMonth = YearMonth.from(date)
-                },
-                onPickTomorrow = {
-                    range = null
-                    val date = LocalDate.now().plusDays(1)
-                    selectedDate = date
-                    currentMonth = YearMonth.from(date)
-                },
-                onPickNextMonday = {
-                    range = null
-                    val today = LocalDate.now()
-                    val delta =
-                        ((DayOfWeek.MONDAY.value - today.dayOfWeek.value + 7) % 7).let { if (it == 0) 7 else it }
-                    val date = today.plusDays(delta.toLong())
-                    selectedDate = date
-                    currentMonth = YearMonth.from(date)
-                },
-                onPickTonight = {
-                    range = TimeRange.Evening
-                    val date = LocalDate.now()
-                    selectedDate = date
-                    currentMonth = YearMonth.from(date)
-                },
-            )
-        } else {
-            TaskTimeRangeTab(
-                selectedDate = selectedDate,
-                range = range,
-                onChangeRange = { range = it },
-                onGoToDate = { tab = 0 },
-                onReminderClick = {
-                    android.widget.Toast.makeText(context, "提醒：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
-                },
-                onRepeatClick = {
-                    android.widget.Toast.makeText(context, "重复：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
-                },
-            )
         }
     }
 }
@@ -799,7 +845,7 @@ private fun TaskDateTab(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         TaskQuickPick(label = "今天", icon = Icons.Outlined.CalendarMonth, onClick = onPickToday)
@@ -831,21 +877,21 @@ private fun TaskQuickPick(
             Modifier
                 .width(76.dp)
                 .clickable(onClick = onClick)
-                .padding(vertical = 6.dp),
+                .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Surface(
             shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-            modifier = Modifier.size(48.dp),
+            modifier = Modifier.size(44.dp),
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(22.dp),
                 )
             }
         }
@@ -880,21 +926,28 @@ private fun TaskTimeRangeTab(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Surface(
-            modifier = Modifier.weight(1f).clickable(onClick = onGoToDate),
-            shape = RoundedCornerShape(16.dp),
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onGoToDate,
+                    ),
+            shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
         ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(text = stringResource(R.string.task_input_date), fontWeight = FontWeight.SemiBold)
                 Text(text = dateText, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
             }
         }
         Surface(
             modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
         ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(text = stringResource(R.string.task_input_time_range), fontWeight = FontWeight.SemiBold)
                 Text(text = rangeText, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
                 if (range != null && range != TimeRange.AllDay) {
@@ -962,7 +1015,11 @@ private fun TaskSheetRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                )
                 .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

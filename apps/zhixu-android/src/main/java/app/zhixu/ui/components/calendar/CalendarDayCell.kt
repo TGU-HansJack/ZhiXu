@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -21,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.time.LocalDate
 
 /**
  * 日历单元格组件
@@ -33,10 +35,14 @@ fun CalendarDayCell(
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    val today = androidx.compose.runtime.remember { LocalDate.now() }
+    val isPastSelected = isSelected && day?.date?.isBefore(today) == true
+    val selectedBackgroundColor = if (isPastSelected) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    val selectedTextColor = if (isPastSelected) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary
+
     Box(
         modifier = modifier
             .aspectRatio(1f)
-            .clip(CircleShape)
             .then(
                 if (day != null && onClick != null) {
                     Modifier.clickable { onClick() }
@@ -44,56 +50,76 @@ fun CalendarDayCell(
                     Modifier
                 }
             )
-            .background(
-                color = when {
-                    isSelected -> MaterialTheme.colorScheme.primary
-                    day?.isToday == true -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                    else -> Color.Transparent
-                },
-                shape = CircleShape
-            )
-            .padding(vertical = 6.dp),
-        contentAlignment = Alignment.Center
+            .padding(1.dp),
     ) {
         if (day != null) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+            val lunarMonthFirstDayHighlight =
+                !isSelected &&
+                    day.textColorType == DayTextColorType.NORMAL &&
+                    day.lunarDate.day == 1
+
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(4.dp)
+                        .clip(CircleShape)
+                        .background(
+                            color = when {
+                                isSelected -> selectedBackgroundColor
+                                day.isToday -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                else -> Color.Transparent
+                            },
+                            shape = CircleShape,
+                        )
+                        .padding(vertical = 3.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                // 日期数字
-                Text(
-                    text = day.date.dayOfMonth.toString(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (day.isToday || isSelected) FontWeight.Bold else FontWeight.Normal,
-                    color = when {
-                        isSelected -> MaterialTheme.colorScheme.onPrimary
-                        !day.isCurrentMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
-                        day.isToday -> MaterialTheme.colorScheme.primary
-                        else -> MaterialTheme.colorScheme.onSurface
-                    }
-                )
-
-                // 农历/节日/节气
-                Text(
-                    text = day.displayText,
-                    fontSize = 10.sp,
-                    color = when {
-                        isSelected -> MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
-                        !day.isCurrentMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
-                        day.textColorType == DayTextColorType.LEGAL_HOLIDAY -> MaterialTheme.colorScheme.error
-                        day.textColorType == DayTextColorType.LUNAR_HOLIDAY -> MaterialTheme.colorScheme.tertiary
-                        day.textColorType == DayTextColorType.SOLAR_TERM -> MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    }
-                )
-
-                // 调休标记（休/班）
-                if (day.workDayStatus != WorkDayStatus.NONE) {
-                    WorkDayBadge(
-                        workDayStatus = day.workDayStatus,
-                        isSelected = isSelected
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(1.dp),
+                ) {
+                    Text(
+                        text = day.date.dayOfMonth.toString(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (day.isToday || isSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = when {
+                            isSelected -> selectedTextColor
+                            !day.isCurrentMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
+                            day.isToday -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.onSurface
+                        },
                     )
+
+                    if (day.displayText.isNotBlank()) {
+                        Text(
+                            text = day.displayText,
+                            fontSize = 9.sp,
+                            color = when {
+                                isSelected -> selectedTextColor.copy(alpha = 0.85f)
+                                !day.isCurrentMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
+                                day.textColorType == DayTextColorType.LEGAL_HOLIDAY -> MaterialTheme.colorScheme.error
+                                day.textColorType == DayTextColorType.LUNAR_HOLIDAY -> MaterialTheme.colorScheme.tertiary
+                                day.textColorType == DayTextColorType.SOLAR_TERM -> MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                lunarMonthFirstDayHighlight -> Color(0xFFFFC107)
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            },
+                        )
+                    }
                 }
+            }
+
+            if (day.workDayStatus != WorkDayStatus.NONE) {
+                WorkDayBadge(
+                    workDayStatus = day.workDayStatus,
+                    isSelected = isSelected,
+                    selectedContainerColor = selectedTextColor.copy(alpha = 0.9f),
+                    selectedContentColor = selectedBackgroundColor,
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = (-1).dp, y = 1.dp),
+                )
             }
         }
     }
@@ -106,6 +132,8 @@ fun CalendarDayCell(
 private fun WorkDayBadge(
     workDayStatus: WorkDayStatus,
     isSelected: Boolean,
+    selectedContainerColor: Color,
+    selectedContentColor: Color,
     modifier: Modifier = Modifier
 ) {
     val (text, bgColor) = when (workDayStatus) {
@@ -116,18 +144,18 @@ private fun WorkDayBadge(
 
     Box(
         modifier = modifier
-            .size(14.dp)
+            .size(11.dp)
             .background(
-                color = if (isSelected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f) else bgColor,
+                color = if (isSelected) selectedContainerColor else bgColor,
                 shape = CircleShape
             ),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
-            fontSize = 8.sp,
+            fontSize = 6.sp,
             fontWeight = FontWeight.Bold,
-            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White
+            color = if (isSelected) selectedContentColor else Color.White
         )
     }
 }

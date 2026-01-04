@@ -8,17 +8,22 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.components.ZhixuIconButton
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -35,31 +40,58 @@ fun CalendarGrid(
     modifier: Modifier = Modifier,
 ) {
     val today = remember { LocalDate.now() }
-    val dayModels = remember(currentMonth) {
-        buildMonthDays(currentMonth, today)
+    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
+
+    LaunchedEffect(pagerState.settledPage) {
+        when (pagerState.settledPage) {
+            0 -> {
+                onMonthChange(currentMonth.minusMonths(1))
+                pagerState.scrollToPage(1)
+            }
+            2 -> {
+                onMonthChange(currentMonth.plusMonths(1))
+                pagerState.scrollToPage(1)
+            }
+        }
     }
 
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         // 月份导航栏
         MonthNavigationBar(
             currentMonth = currentMonth,
-            onPreviousMonth = { onMonthChange(currentMonth.minusMonths(1)) },
-            onNextMonth = { onMonthChange(currentMonth.plusMonths(1)) },
-            onToday = { onMonthChange(YearMonth.from(today)) }
+            onPreviousMonth = {
+                scope.launch { pagerState.scrollToPage(1) }
+                onMonthChange(currentMonth.minusMonths(1))
+            },
+            onNextMonth = {
+                scope.launch { pagerState.scrollToPage(1) }
+                onMonthChange(currentMonth.plusMonths(1))
+            },
+            onToday = {
+                scope.launch { pagerState.scrollToPage(1) }
+                onMonthChange(YearMonth.from(today))
+            }
         )
 
         // 星期标题行
         WeekdayHeader()
 
-        // 6x7 日期网格
-        DayGrid(
-            dayModels = dayModels,
-            selectedDate = selectedDate,
-            onDateSelect = onDateSelect
-        )
+        HorizontalPager(
+            state = pagerState,
+            beyondViewportPageCount = 1,
+        ) { page ->
+            val month = currentMonth.plusMonths((page - 1).toLong())
+            val dayModels = remember(month) { buildMonthDays(month, today) }
+            DayGrid(
+                dayModels = dayModels,
+                selectedDate = selectedDate,
+                onDateSelect = onDateSelect,
+            )
+        }
     }
 }
 
@@ -81,24 +113,24 @@ private fun MonthNavigationBar(
     ) {
         Text(
             text = "${currentMonth.year} 年 ${currentMonth.monthValue} 月",
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.weight(1f)
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            ZhixuIconButton(onClick = onPreviousMonth) {
+            ZhixuIconButton(onClick = onPreviousMonth, modifier = Modifier.size(36.dp)) {
                 Icon(
                     painter = painterResource(Ionicons.ChevronBack),
                     contentDescription = "上个月"
                 )
             }
-            ZhixuIconButton(onClick = onToday) {
+            ZhixuIconButton(onClick = onToday, modifier = Modifier.size(36.dp)) {
                 Icon(
                     painter = painterResource(Ionicons.RadioOff),
                     contentDescription = "今天"
                 )
             }
-            ZhixuIconButton(onClick = onNextMonth) {
+            ZhixuIconButton(onClick = onNextMonth, modifier = Modifier.size(36.dp)) {
                 Icon(
                     painter = painterResource(Ionicons.ChevronForward),
                     contentDescription = "下个月"
@@ -126,7 +158,7 @@ private fun WeekdayHeader(modifier: Modifier = Modifier) {
             ) {
                 Text(
                     text = weekday,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -146,7 +178,7 @@ private fun DayGrid(
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         dayModels.forEach { week ->
             Row(
