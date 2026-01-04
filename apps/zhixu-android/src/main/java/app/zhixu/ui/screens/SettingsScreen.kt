@@ -229,7 +229,7 @@ fun SettingsScreen(
             }
 
             SettingsNavRow(
-                iconRes = Ionicons.SettingsOutline,
+                iconRes = R.drawable.ic_hi_sparkles_outline,
                 title = "AI 设置",
                 onClick = onOpenAiSettings,
             )
@@ -257,7 +257,7 @@ fun SettingsScreen(
             HorizontalDivider(color = dividerColor)
 
             SettingsNavRow(
-                iconRes = Ionicons.ArrowUpCircleOutline,
+                iconRes = R.drawable.ic_hi_arrow_path_outline,
                 title = stringResource(R.string.settings_update_title),
                 onClick = {
                     showUpdateDialog = true

@@ -564,7 +564,7 @@ private fun PluginRow(
                 if (onSettings != null) {
                     ZhixuIconButton(onClick = onSettings) {
                         Icon(
-                            painter = painterResource(Ionicons.SettingsOutline),
+                            painter = painterResource(R.drawable.ic_hi_cog_6_tooth_outline),
                             contentDescription = stringResource(R.string.action_settings),
                         )
                     }
