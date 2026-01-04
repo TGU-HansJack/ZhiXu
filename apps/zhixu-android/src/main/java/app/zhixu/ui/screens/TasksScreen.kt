@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,6 +24,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material.icons.outlined.NightsStay
+import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -36,6 +41,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -57,6 +64,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTextField
 import androidx.compose.ui.res.painterResource
@@ -70,6 +78,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import app.zhixu.R
 import app.zhixu.ui.Ionicons
+import app.zhixu.ui.components.ZhixuCompactDragHandle
 import app.zhixu.ui.components.RefreshStatusBanner
 import app.zhixu.data.UiTask
 import app.zhixu.data.VaultIndexRepository
@@ -88,7 +97,9 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.time.DayOfWeek
 import kotlin.math.max
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 data class TaskKey(
     val docUri: String,
@@ -536,7 +547,7 @@ internal fun TaskComposer(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(top = 6.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -667,56 +678,324 @@ private fun TaskDateSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = state,
+        dragHandle = { ZhixuCompactDragHandle() },
     ) {
-        TabRow(selectedTabIndex = tab) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.task_input_date)) })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.task_input_time_range)) })
-        }
-
-        if (tab == 0) {
-            DatePicker(state = pickerState)
-        } else {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                for (r in TimeRange.entries) {
-                    FilterChip(
-                        selected = range == r,
-                        onClick = { range = if (range == r) null else r },
-                        label = { Text(r.label) },
-                    )
+        val context = LocalContext.current
+        fun confirmSelection() {
+            val millis = pickerState.selectedDateMillis
+            val date =
+                millis?.let {
+                    Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
                 }
-            }
+            onConfirm(date, range)
         }
 
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Button(
-                modifier = Modifier.weight(1f),
-                onClick = { onClear() },
-            ) { Text(stringResource(R.string.task_input_clear)) }
+            ZhixuIconButton(onClick = onDismiss, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    painter = painterResource(Ionicons.Close),
+                    contentDescription = stringResource(R.string.task_input_clear),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
 
-            Button(
+            TabRow(
+                selectedTabIndex = tab,
                 modifier = Modifier.weight(1f),
-                onClick = {
-                    val millis = pickerState.selectedDateMillis
-                    val date =
-                        millis?.let {
-                            Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
-                        }
-                    onConfirm(date, range)
+                containerColor = Color.Transparent,
+            ) {
+                Tab(
+                    selected = tab == 0,
+                    onClick = { tab = 0 },
+                    text = { Text(stringResource(R.string.task_input_date), fontWeight = FontWeight.SemiBold) },
+                )
+                Tab(
+                    selected = tab == 1,
+                    onClick = { tab = 1 },
+                    text = { Text(stringResource(R.string.task_input_time_range), fontWeight = FontWeight.SemiBold) },
+                )
+            }
+
+            TextButton(onClick = onClear) { Text(stringResource(R.string.task_input_clear)) }
+            ZhixuIconButton(onClick = { confirmSelection() }, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    painter = painterResource(Ionicons.Checkmark),
+                    contentDescription = stringResource(R.string.task_input_confirm),
+                    modifier = Modifier.size(22.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+
+        if (tab == 0) {
+            TaskDateTab(
+                pickerState = pickerState,
+                onPickToday = {
+                    range = null
+                    pickerState.selectedDateMillis =
+                        LocalDate.now()
+                            .atStartOfDay(ZoneId.systemDefault())
+                            .toInstant()
+                            .toEpochMilli()
                 },
-            ) { Text(stringResource(R.string.task_input_confirm)) }
+                onPickTomorrow = {
+                    range = null
+                    pickerState.selectedDateMillis =
+                        LocalDate.now()
+                            .plusDays(1)
+                            .atStartOfDay(ZoneId.systemDefault())
+                            .toInstant()
+                            .toEpochMilli()
+                },
+                onPickNextMonday = {
+                    range = null
+                    val today = LocalDate.now()
+                    val delta =
+                        ((DayOfWeek.MONDAY.value - today.dayOfWeek.value + 7) % 7).let { if (it == 0) 7 else it }
+                    pickerState.selectedDateMillis =
+                        today
+                            .plusDays(delta.toLong())
+                            .atStartOfDay(ZoneId.systemDefault())
+                            .toInstant()
+                            .toEpochMilli()
+                },
+                onPickTonight = {
+                    range = TimeRange.Evening
+                    pickerState.selectedDateMillis =
+                        LocalDate.now()
+                            .atStartOfDay(ZoneId.systemDefault())
+                            .toInstant()
+                            .toEpochMilli()
+                },
+            )
+        } else {
+            TaskTimeRangeTab(
+                selectedDateMillis = pickerState.selectedDateMillis,
+                range = range,
+                onChangeRange = { range = it },
+                onGoToDate = { tab = 0 },
+                onReminderClick = {
+                    android.widget.Toast.makeText(context, "提醒：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
+                },
+                onRepeatClick = {
+                    android.widget.Toast.makeText(context, "重复：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
+                },
+            )
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TaskDateTab(
+    pickerState: androidx.compose.material3.DatePickerState,
+    onPickToday: () -> Unit,
+    onPickTomorrow: () -> Unit,
+    onPickNextMonday: () -> Unit,
+    onPickTonight: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        TaskQuickPick(label = "今天", icon = Icons.Outlined.CalendarMonth, onClick = onPickToday)
+        TaskQuickPick(label = "明天", icon = Icons.Outlined.WbSunny, onClick = onPickTomorrow)
+        TaskQuickPick(label = "下周一", icon = Icons.Outlined.DateRange, onClick = onPickNextMonday)
+        TaskQuickPick(label = "今天晚上", icon = Icons.Outlined.NightsStay, onClick = onPickTonight)
+    }
+
+    DatePicker(
+        state = pickerState,
+        title = null,
+        headline = null,
+        showModeToggle = false,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+    )
+}
+
+@Composable
+private fun TaskQuickPick(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier =
+            Modifier
+                .width(76.dp)
+                .clickable(onClick = onClick)
+                .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+            modifier = Modifier.size(48.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
+        Text(text = label, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun TaskTimeRangeTab(
+    selectedDateMillis: Long?,
+    range: TimeRange?,
+    onChangeRange: (TimeRange?) -> Unit,
+    onGoToDate: () -> Unit,
+    onReminderClick: () -> Unit,
+    onRepeatClick: () -> Unit,
+) {
+    val date =
+        selectedDateMillis?.let {
+            Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
+        }
+    val dateText =
+        if (date == null) {
+            "无"
+        } else {
+            "${date.monthValue}月${date.dayOfMonth}日，${weekdayLabel(date.dayOfWeek)}"
+        }
+    val rangeText = when (range) {
+        null -> "无"
+        TimeRange.AllDay -> "全天"
+        else -> range.label
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Surface(
+            modifier = Modifier.weight(1f).clickable(onClick = onGoToDate),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text = stringResource(R.string.task_input_date), fontWeight = FontWeight.SemiBold)
+                Text(text = dateText, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
+            }
+        }
+        Surface(
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text = stringResource(R.string.task_input_time_range), fontWeight = FontWeight.SemiBold)
+                Text(text = rangeText, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
+                if (range != null && range != TimeRange.AllDay) {
+                    Text(text = "持续时间：1小时", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(text = "全天", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Switch(
+                checked = range == TimeRange.AllDay,
+                onCheckedChange = { checked ->
+                    onChangeRange(if (checked) TimeRange.AllDay else null)
+                },
+            )
+        }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        for (r in TimeRange.entries) {
+            if (r == TimeRange.AllDay) continue
+            FilterChip(
+                selected = range == r,
+                onClick = { onChangeRange(if (range == r) null else r) },
+                label = { Text(r.label) },
+            )
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
+    ) {
+        Column {
+            TaskSheetRow(title = "提醒", value = "无", onClick = onReminderClick)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), modifier = Modifier.padding(horizontal = 16.dp))
+            TaskSheetRow(title = "重复", value = "无", onClick = onRepeatClick)
+        }
+    }
+
+    Spacer(modifier = Modifier.height(12.dp))
+}
+
+@Composable
+private fun TaskSheetRow(
+    title: String,
+    value: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        Text(text = value, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(modifier = Modifier.width(6.dp))
+        Icon(
+            imageVector = Icons.Outlined.ArrowForward,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+private fun weekdayLabel(day: DayOfWeek): String =
+    when (day) {
+        DayOfWeek.MONDAY -> "周一"
+        DayOfWeek.TUESDAY -> "周二"
+        DayOfWeek.WEDNESDAY -> "周三"
+        DayOfWeek.THURSDAY -> "周四"
+        DayOfWeek.FRIDAY -> "周五"
+        DayOfWeek.SATURDAY -> "周六"
+        DayOfWeek.SUNDAY -> "周日"
+    }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -728,8 +1007,12 @@ private fun TaskPrioritySheet(
 ) {
     val state: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var p by remember { mutableStateOf(initial) }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state) {
-        Text(stringResource(R.string.task_input_priority), modifier = Modifier.padding(16.dp))
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = state,
+        dragHandle = { ZhixuCompactDragHandle() },
+    ) {
+        Text(stringResource(R.string.task_input_priority), modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -771,8 +1054,12 @@ private fun TaskTagSheet(
         tagText = ""
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state) {
-        Text(stringResource(R.string.task_input_tags), modifier = Modifier.padding(16.dp))
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = state,
+        dragHandle = { ZhixuCompactDragHandle() },
+    ) {
+        Text(stringResource(R.string.task_input_tags), modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
