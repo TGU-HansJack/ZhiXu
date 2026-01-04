@@ -279,13 +279,14 @@ fun EditorScreen(
     var lastEditorFocusAtMs by remember { mutableStateOf(0L) }
     var lastImeChangeAtMs by remember { mutableStateOf(0L) }
     var imeBottomPx by remember { mutableIntStateOf(0) }
-    val navBarsBottomPx = WindowInsets.navigationBars.getBottom(density)
-    val effectiveImeBottomPx = (imeBottomPx - navBarsBottomPx).coerceAtLeast(0)
-    var showEditorToolbar by remember { mutableStateOf(false) }
+    val effectiveImeBottomPx = imeBottomPx
+    var showEditorToolbar by remember { mutableStateOf(true) }
     var toolbarImeOffsetPx by remember { mutableIntStateOf(0) }
     val toolbarHideThresholdPx = with(density) { 12.dp.roundToPx() }
     val fallbackToolbarHeightPx = with(density) { 56.dp.roundToPx() }
-    val anticipatedToolbarPx = if (!isPreview && imeBottomPx > 0) fallbackToolbarHeightPx else 0
+    var toolbarHeightPx by remember { mutableIntStateOf(fallbackToolbarHeightPx) }
+    val toolbarGapPx = with(density) { 10.dp.roundToPx() }
+    val anticipatedToolbarPx = if (showEditorToolbar && !isPreview && !isPdfDoc) (toolbarHeightPx + toolbarGapPx) else 0
     val extraScrollSpaceDp =
         maxOf(
             376.dp,
@@ -672,41 +673,51 @@ fun EditorScreen(
             }
     }
 
-    LaunchedEffect(isPreview, imeBottomPx) {
-        if (isPreview || imeBottomPx <= 0) {
-            showEditorToolbar = false
+    LaunchedEffect(isPreview, isPdfDoc) {
+        showEditorToolbar = !isPreview && !isPdfDoc
+        if (!showEditorToolbar) {
+            toolbarImeOffsetPx = 0
+        }
+    }
+
+    LaunchedEffect(showEditorToolbar, imeBottomPx) {
+        if (!showEditorToolbar) {
+            toolbarImeOffsetPx = 0
+            return@LaunchedEffect
+        }
+        if (imeBottomPx <= 0) {
             toolbarImeOffsetPx = 0
             return@LaunchedEffect
         }
 
         // Don't animate with IME. Wait until the IME height settles, then show the toolbar.
         delay(180)
-        if (!isPreview && imeBottomPx > 0) {
-            showEditorToolbar = true
-            toolbarImeOffsetPx = effectiveImeBottomPx
+        if (showEditorToolbar && imeBottomPx > 0) {
+            toolbarImeOffsetPx = imeBottomPx
         }
     }
 
     LaunchedEffect(showEditorToolbar, toolbarImeOffsetPx, imeBottomPx) {
-        if (!showEditorToolbar) return@LaunchedEffect
+        if (!showEditorToolbar) {
+            toolbarImeOffsetPx = 0
+            return@LaunchedEffect
+        }
         if (imeBottomPx <= 0) {
-            showEditorToolbar = false
             toolbarImeOffsetPx = 0
             return@LaunchedEffect
         }
 
-        // IME is hiding: hide toolbar immediately instead of following the animation down.
-        if (effectiveImeBottomPx + toolbarHideThresholdPx < toolbarImeOffsetPx) {
-            showEditorToolbar = false
+        // IME is hiding: snap toolbar to bottom instead of following the animation down.
+        if (imeBottomPx + toolbarHideThresholdPx < toolbarImeOffsetPx) {
             toolbarImeOffsetPx = 0
             return@LaunchedEffect
         }
 
         // IME height increases (e.g. suggestion bar): re-anchor after it settles to avoid overlap.
-        if (effectiveImeBottomPx > toolbarImeOffsetPx + toolbarHideThresholdPx) {
+        if (imeBottomPx > toolbarImeOffsetPx + toolbarHideThresholdPx) {
             delay(180)
-            if (showEditorToolbar && effectiveImeBottomPx > toolbarImeOffsetPx) {
-                toolbarImeOffsetPx = effectiveImeBottomPx
+            if (showEditorToolbar && imeBottomPx > toolbarImeOffsetPx) {
+                toolbarImeOffsetPx = imeBottomPx
             }
         }
     }
@@ -1129,6 +1140,7 @@ fun EditorScreen(
                 content.selection.end,
                 stableEditorViewportHeightPx,
                 imeBottomPx,
+                anticipatedToolbarPx,
             )
         }.distinctUntilChanged()
             .collectLatest {
@@ -1835,6 +1847,9 @@ fun EditorScreen(
                         onMoreMermaid = { insertMermaidTemplate() },
                         onMoreMathInline = { insertInlineMath() },
                         onMoreMathBlock = { insertBlockMath() },
+                        onHeightPxChanged = { h ->
+                            if (h > 0 && h != toolbarHeightPx) toolbarHeightPx = h
+                        },
                         modifier =
                             Modifier
                                 .align(Alignment.BottomCenter)
@@ -2872,6 +2887,7 @@ private fun EditorBottomToolbar(
     onMoreMermaid: () -> Unit,
     onMoreMathInline: () -> Unit,
     onMoreMathBlock: () -> Unit,
+    onHeightPxChanged: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var showMore by remember { mutableStateOf(false) }
@@ -2883,6 +2899,7 @@ private fun EditorBottomToolbar(
         modifier =
             Modifier
                 .then(modifier)
+                .onSizeChanged { onHeightPxChanged(it.height) }
                 .fillMaxWidth(),
         color = Color(0xFFFFFFFF),
         contentColor = Color(0xFF111111),
