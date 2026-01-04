@@ -32,7 +32,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
-import androidx.compose.material3.DatePicker
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -47,7 +46,6 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -80,6 +78,7 @@ import app.zhixu.R
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.components.ZhixuCompactDragHandle
 import app.zhixu.ui.components.RefreshStatusBanner
+import app.zhixu.ui.components.calendar.CalendarGrid
 import app.zhixu.data.UiTask
 import app.zhixu.data.VaultIndexRepository
 import app.zhixu.data.VaultRepository
@@ -94,6 +93,7 @@ import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -672,7 +672,9 @@ private fun TaskDateSheet(
 ) {
     val state: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var tab by remember { mutableIntStateOf(0) }
-    val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli())
+    val fallbackDate = remember { initialDate ?: LocalDate.now() }
+    var currentMonth by remember { mutableStateOf(YearMonth.from(fallbackDate)) }
+    var selectedDate by remember { mutableStateOf<LocalDate?>(initialDate) }
     var range by remember { mutableStateOf(initialRange) }
 
     ModalBottomSheet(
@@ -682,12 +684,7 @@ private fun TaskDateSheet(
     ) {
         val context = LocalContext.current
         fun confirmSelection() {
-            val millis = pickerState.selectedDateMillis
-            val date =
-                millis?.let {
-                    Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
-                }
-            onConfirm(date, range)
+            onConfirm(selectedDate, range)
         }
 
         Row(
@@ -735,48 +732,44 @@ private fun TaskDateSheet(
 
         if (tab == 0) {
             TaskDateTab(
-                pickerState = pickerState,
+                currentMonth = currentMonth,
+                selectedDate = selectedDate,
+                onMonthChange = { currentMonth = it },
+                onDateSelect = {
+                    selectedDate = it
+                    currentMonth = YearMonth.from(it)
+                },
                 onPickToday = {
                     range = null
-                    pickerState.selectedDateMillis =
-                        LocalDate.now()
-                            .atStartOfDay(ZoneId.systemDefault())
-                            .toInstant()
-                            .toEpochMilli()
+                    val date = LocalDate.now()
+                    selectedDate = date
+                    currentMonth = YearMonth.from(date)
                 },
                 onPickTomorrow = {
                     range = null
-                    pickerState.selectedDateMillis =
-                        LocalDate.now()
-                            .plusDays(1)
-                            .atStartOfDay(ZoneId.systemDefault())
-                            .toInstant()
-                            .toEpochMilli()
+                    val date = LocalDate.now().plusDays(1)
+                    selectedDate = date
+                    currentMonth = YearMonth.from(date)
                 },
                 onPickNextMonday = {
                     range = null
                     val today = LocalDate.now()
                     val delta =
                         ((DayOfWeek.MONDAY.value - today.dayOfWeek.value + 7) % 7).let { if (it == 0) 7 else it }
-                    pickerState.selectedDateMillis =
-                        today
-                            .plusDays(delta.toLong())
-                            .atStartOfDay(ZoneId.systemDefault())
-                            .toInstant()
-                            .toEpochMilli()
+                    val date = today.plusDays(delta.toLong())
+                    selectedDate = date
+                    currentMonth = YearMonth.from(date)
                 },
                 onPickTonight = {
                     range = TimeRange.Evening
-                    pickerState.selectedDateMillis =
-                        LocalDate.now()
-                            .atStartOfDay(ZoneId.systemDefault())
-                            .toInstant()
-                            .toEpochMilli()
+                    val date = LocalDate.now()
+                    selectedDate = date
+                    currentMonth = YearMonth.from(date)
                 },
             )
         } else {
             TaskTimeRangeTab(
-                selectedDateMillis = pickerState.selectedDateMillis,
+                selectedDate = selectedDate,
                 range = range,
                 onChangeRange = { range = it },
                 onGoToDate = { tab = 0 },
@@ -791,10 +784,12 @@ private fun TaskDateSheet(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TaskDateTab(
-    pickerState: androidx.compose.material3.DatePickerState,
+    currentMonth: YearMonth,
+    selectedDate: LocalDate?,
+    onMonthChange: (YearMonth) -> Unit,
+    onDateSelect: (LocalDate) -> Unit,
     onPickToday: () -> Unit,
     onPickTomorrow: () -> Unit,
     onPickNextMonday: () -> Unit,
@@ -813,11 +808,11 @@ private fun TaskDateTab(
         TaskQuickPick(label = "今天晚上", icon = Icons.Outlined.NightsStay, onClick = onPickTonight)
     }
 
-    DatePicker(
-        state = pickerState,
-        title = null,
-        headline = null,
-        showModeToggle = false,
+    CalendarGrid(
+        currentMonth = currentMonth,
+        selectedDate = selectedDate,
+        onMonthChange = onMonthChange,
+        onDateSelect = onDateSelect,
         modifier =
             Modifier
                 .fillMaxWidth()
@@ -860,17 +855,14 @@ private fun TaskQuickPick(
 
 @Composable
 private fun TaskTimeRangeTab(
-    selectedDateMillis: Long?,
+    selectedDate: LocalDate?,
     range: TimeRange?,
     onChangeRange: (TimeRange?) -> Unit,
     onGoToDate: () -> Unit,
     onReminderClick: () -> Unit,
     onRepeatClick: () -> Unit,
 ) {
-    val date =
-        selectedDateMillis?.let {
-            Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
-        }
+    val date = selectedDate
     val dateText =
         if (date == null) {
             "无"
