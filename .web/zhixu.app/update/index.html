@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>更新日志 · Zhixu.app</title>
+    <meta name="description" content="Zhixu（知序）历史更新日志。" />
+    <link rel="icon" href="../assets/zhixu.png" />
+    <link rel="stylesheet" href="../site.css" />
+  </head>
+  <body class="legalPage">
+    <header class="page">
+      <nav class="topnav" aria-label="主导航">
+        <a class="brand" href="../" aria-label="Zhixu.app 首页">
+          <img class="brand__logo" src="../assets/zhixu.png" alt="" width="28" height="28" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../">首页</a>
+          <a role="listitem" href="../docs/">文档</a>
+          <a role="listitem" href="../plugins/">插件</a>
+          <a role="listitem" href="../tos/">条款</a>
+          <a role="listitem" href="../privacy/">隐私</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="page legal">
+      <h1 class="legal__title">更新日志</h1>
+      <p class="legal__meta">
+        通过 <code>update/update.json</code> 获取版本列表，并从 <code>update/&lt;version&gt;.md</code> 渲染内容。
+      </p>
+
+      <article class="legal__content" aria-label="Zhixu 更新日志">
+        <div id="update-nav" class="listCols" aria-label="版本列表"></div>
+        <div id="update-content" aria-label="更新内容"></div>
+      </article>
+    </main>
+
+    <script defer src="../assets/markdown-it.min.js"></script>
+    <script defer src="./update-page.js"></script>
+  </body>
+</html>
+

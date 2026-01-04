@@ -75,6 +75,24 @@ object UpdateClient {
         return "${OFFICIAL_DOWNLOAD_BASE_URL.trimEnd('/')}/$normalizedPlatform/$normalizedVersion/$fileName"
     }
 
+    fun officialUpdatePageUrl(version: String): String {
+        val normalizedVersion =
+            version
+                .trim()
+                .removePrefix("v")
+                .removePrefix("V")
+        return "${OFFICIAL_DOWNLOAD_BASE_URL.trimEnd('/')}#$normalizedVersion"
+    }
+
+    private fun officialChangelogUrl(version: String): String {
+        val normalizedVersion =
+            version
+                .trim()
+                .removePrefix("v")
+                .removePrefix("V")
+        return "${OFFICIAL_DOWNLOAD_BASE_URL.trimEnd('/')}/$normalizedVersion.md"
+    }
+
     private fun fetchUpdateInfo(url: String): UpdateInfo? {
         val request =
             Request.Builder()
@@ -92,7 +110,11 @@ object UpdateClient {
             if (trimmed.isBlank()) return null
 
             if (trimmed.startsWith("{")) {
-                return parseJson(trimmed, sourceUrl = url)
+                val info = parseJson(trimmed) ?: return null
+                val markdownLog =
+                    runCatching { fetchChangelogMarkdown(info.latestVersion) }.getOrNull()
+                val resolvedLog = markdownLog?.trim().orEmpty().ifBlank { info.changelog }
+                return info.copy(changelog = resolvedLog)
             }
 
             // Fallback: treat as plain text changelog; best-effort extract first version-looking token.
@@ -101,12 +123,28 @@ object UpdateClient {
                 latestVersion = latest,
                 changelog = trimmed,
                 downloadUrl = null,
-                sourceUrl = url,
+                sourceUrl = officialUpdatePageUrl(latest),
             )
         }
     }
 
-    private fun parseJson(json: String, sourceUrl: String): UpdateInfo? {
+    private fun fetchChangelogMarkdown(version: String): String? {
+        val url = officialChangelogUrl(version)
+        val request =
+            Request.Builder()
+                .url(url)
+                .get()
+                .header("User-Agent", "Zhixu-Android")
+                .header("Accept", "text/markdown, text/plain, */*")
+                .build()
+
+        client.newCall(request).execute().use { resp ->
+            if (!resp.isSuccessful) return null
+            return resp.body?.string()
+        }
+    }
+
+    private fun parseJson(json: String): UpdateInfo? {
         val obj = runCatching { JSONObject(json) }.getOrNull() ?: return null
         val latest =
             listOf("latestVersion", "version", "versionName")
@@ -133,7 +171,7 @@ object UpdateClient {
             latestVersion = latest,
             changelog = changelog,
             downloadUrl = downloadUrl,
-            sourceUrl = sourceUrl,
+            sourceUrl = officialUpdatePageUrl(latest),
         )
     }
 

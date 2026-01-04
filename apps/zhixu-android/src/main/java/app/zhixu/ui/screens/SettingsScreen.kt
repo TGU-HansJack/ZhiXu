@@ -305,12 +305,17 @@ fun SettingsScreen(
                     }
                     is UpdateUiState.Success -> {
                         if (s.hasUpdate) {
-                            TextButton(
-                                onClick = {
-                                    startDownloadAndInstall(s.info.latestVersion)
-                                    showUpdateDialog = false
-                                },
-                            ) { Text(stringResource(R.string.settings_update_open_download)) }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                TextButton(onClick = { openUrl(s.info.sourceUrl) }) {
+                                    Text(stringResource(R.string.settings_update_open_page))
+                                }
+                                TextButton(
+                                    onClick = {
+                                        startDownloadAndInstall(s.info.latestVersion)
+                                        showUpdateDialog = false
+                                    },
+                                ) { Text(stringResource(R.string.settings_update_open_download)) }
+                            }
                         } else {
                             TextButton(onClick = { openUrl(s.info.sourceUrl) }) { Text(stringResource(R.string.settings_update_open_page)) }
                         }
