@@ -2,6 +2,7 @@
 
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,15 +26,21 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
@@ -45,9 +53,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -57,6 +70,7 @@ import app.zhixu.R
 import app.zhixu.data.AccountPreferences
 import app.zhixu.data.AccountState
 import app.zhixu.data.DailyContrib
+import app.zhixu.data.ProPreferences
 import app.zhixu.data.UpdateDownloader
 import app.zhixu.data.UpdateCheckResult
 import app.zhixu.data.UpdateClient
@@ -66,6 +80,7 @@ import app.zhixu.ui.Ionicons
 import app.zhixu.ui.components.ContribCalendarDialog
 import app.zhixu.ui.components.MarkdownPreview
 import app.zhixu.ui.components.ZhixuDialogDefaults
+import app.zhixu.ui.components.ZhixuSwitch
 import coil.compose.AsyncImage
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -93,8 +108,12 @@ fun SettingsScreen(
         initial = AccountState(token = "", username = "", userId = 0L, email = "", avatarUri = ""),
     )
 
+    val proPrefs = remember(context) { ProPreferences(context.applicationContext) }
+    val isProEnabled by proPrefs.isProEnabled.collectAsState(initial = false)
+
     var contribPerDay by remember { mutableStateOf<Map<LocalDate, DailyContrib>?>(null) }
     var showUpdateDialog by remember { mutableStateOf(false) }
+    var showProDialog by remember { mutableStateOf(false) }
     var updateUiState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
 
     LaunchedEffect(refreshToken) {
@@ -199,6 +218,17 @@ fun SettingsScreen(
         }
 
         item {
+            // 知序 PRO section
+            ProSettingsRow(
+                isProEnabled = isProEnabled,
+                onClick = { showProDialog = true },
+            )
+            HorizontalDivider(color = dividerColor)
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = dividerColor)
+        }
+
+        item {
             SettingsNavRow(
                 iconRes = Ionicons.Vault,
                 title = stringResource(R.string.settings_section_vault),
@@ -208,7 +238,7 @@ fun SettingsScreen(
             SettingsNavRow(
                 iconRes = Ionicons.Workshop,
                 title = stringResource(R.string.settings_section_workshop),
-                enabled = vaultRootUri != null,
+                enabled = vaultRootUri != null && isProEnabled,
                 onClick = onOpenWorkshop,
             )
             HorizontalDivider(color = dividerColor)
@@ -232,6 +262,7 @@ fun SettingsScreen(
             SettingsNavRow(
                 iconRes = R.drawable.ic_hi_sparkles_outline,
                 title = "AI 设置",
+                enabled = isProEnabled,
                 onClick = onOpenAiSettings,
             )
             HorizontalDivider(color = dividerColor)
@@ -332,6 +363,23 @@ fun SettingsScreen(
             },
         )
     }
+
+    if (showProDialog) {
+        ProPaymentDialog(
+            isProEnabled = isProEnabled,
+            onDismiss = { showProDialog = false },
+            onActivatePro = {
+                scope.launch {
+                    proPrefs.setProEnabled(true)
+                }
+            },
+            onDeactivatePro = {
+                scope.launch {
+                    proPrefs.setProEnabled(false)
+                }
+            },
+        )
+    }
 }
 
 private sealed class UpdateUiState {
@@ -385,10 +433,12 @@ private fun SettingsNavRow(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
+    val alpha = if (enabled) 1f else 0.4f
     ListItem(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .alpha(alpha)
                 .let { m -> if (enabled) m.clickable(onClick = onClick) else m },
         leadingContent = {
             Icon(
@@ -410,6 +460,247 @@ private fun SettingsNavRow(
                 contentDescription = null,
                 modifier = Modifier.size(18.dp),
             )
+        },
+    )
+}
+
+@Composable
+private fun ProSettingsRow(
+    isProEnabled: Boolean,
+    onClick: () -> Unit,
+) {
+    ListItem(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick),
+        leadingContent = {
+            Icon(
+                painter = painterResource(R.drawable.ic_hi_sparkles_outline),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+        },
+        headlineContent = {
+            Text(
+                text = "知序 PRO",
+                color = MaterialTheme.colorScheme.primary,
+            )
+        },
+        supportingContent = {
+            Text(
+                text = if (isProEnabled) "已启用" else "未启用",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = if (isProEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
+            )
+        },
+        trailingContent = {
+            if (isProEnabled) {
+                Icon(
+                    painter = painterResource(Ionicons.CheckmarkCircle),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+            } else {
+                Icon(
+                    painter = painterResource(Ionicons.ChevronForward),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        },
+    )
+}
+
+@Composable
+private fun ProPaymentDialog(
+    isProEnabled: Boolean,
+    onDismiss: () -> Unit,
+    onActivatePro: () -> Unit,
+    onDeactivatePro: () -> Unit,
+) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 2 })
+    var enlargedImageRes by remember { mutableStateOf<Int?>(null) }
+
+    // Enlarged image dialog
+    if (enlargedImageRes != null) {
+        AlertDialog(
+            onDismissRequest = { enlargedImageRes = null },
+            properties = ZhixuDialogDefaults.properties,
+            confirmButton = {
+                TextButton(onClick = { enlargedImageRes = null }) {
+                    Text("关闭")
+                }
+            },
+            text = {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painter = painterResource(enlargedImageRes!!),
+                        contentDescription = "付款码",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Fit,
+                    )
+                }
+            },
+        )
+    }
+
+    AlertDialog(
+        modifier = ZhixuDialogDefaults.modifier().fillMaxWidth(),
+        onDismissRequest = onDismiss,
+        properties = ZhixuDialogDefaults.properties,
+        title = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "¥ 18.00",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "若你喜欢知序，可以尝试为其付费哦~",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = "采取诚信授权模式，灵感来自 WakeUp 课程表",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = "理论上是可以直接使用的，付费后再使用是诚信的表现",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "可通过扫描二维码以支付宝或微信的方式支付",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Tab row for selecting payment method
+                TabRow(
+                    selectedTabIndex = pagerState.currentPage,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Tab(
+                        selected = pagerState.currentPage == 0,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
+                        text = { Text("支付宝") },
+                    )
+                    Tab(
+                        selected = pagerState.currentPage == 1,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
+                        text = { Text("微信支付") },
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Hint text
+                Text(
+                    text = "点击放大截图支付",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    textAlign = TextAlign.Center,
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // QR code pager
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp),
+                ) { page ->
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        val imageRes = if (page == 0) R.drawable.qr_alipay else R.drawable.qr_wechat
+                        Image(
+                            painter = painterResource(imageRes),
+                            contentDescription = if (page == 0) "支付宝付款码" else "微信付款码",
+                            modifier = Modifier
+                                .size(160.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { enlargedImageRes = imageRes },
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "请仔细考虑后再付款",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Activate PRO switch
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = "我已诚信付款，启用知序 PRO",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ZhixuSwitch(
+                        checked = isProEnabled,
+                        onCheckedChange = { checked ->
+                            if (checked) {
+                                onActivatePro()
+                            } else {
+                                onDeactivatePro()
+                            }
+                        },
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
         },
     )
 }

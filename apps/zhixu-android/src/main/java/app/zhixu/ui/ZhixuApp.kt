@@ -216,8 +216,11 @@ fun ZhixuApp(
         }
     }
 
-    val vaultRootUriString by prefs.vaultRootUri.collectAsState(initial = null)
-    val vaultRootUri = vaultRootUriString?.let(Uri::parse)
+    // Use a sentinel value to distinguish "not loaded" from "actually null/empty"
+    // Empty string "" means "not loaded yet", null means "no vault set"
+    val vaultRootUriString by prefs.vaultRootUri.collectAsState(initial = "")
+    val isVaultLoaded = vaultRootUriString != ""
+    val vaultRootUri = vaultRootUriString?.takeIf { it.isNotBlank() }?.let(Uri::parse)
 
     val uiPrefs = remember(appContext) { UiPreferences(appContext) }
     val languageTagOrNull by uiPrefs.languageTagOrNull.collectAsState(initial = null)
@@ -683,6 +686,16 @@ fun ZhixuApp(
                             }
                         }
                     }
+                    // Wait until vault URI is loaded before showing NavHost
+                    if (!isVaultLoaded) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            // Show nothing while loading to avoid flash
+                        }
+                        return@Scaffold
+                    }
                     NavHost(
                         navController = navController,
                         startDestination = if (vaultRootUri == null) "vault" else "home",
@@ -715,6 +728,15 @@ fun ZhixuApp(
                             val uri = appManagedVaultRootUri(appContext)
                             repository.ensureVaultStructure(uri)
                             vaultSyncPrefs.setLocation(VaultStorageLocation.THIRD_PARTY_SERVICE)
+                            prefs.setVaultRootUri(uri.toString())
+                            navController.navigate("home") {
+                                popUpTo("vault") { inclusive = true }
+                            }
+                        },
+                        onSelectLocalPrivateDir = {
+                            val uri = appManagedVaultRootUri(appContext)
+                            repository.ensureVaultStructure(uri)
+                            vaultSyncPrefs.setLocation(VaultStorageLocation.LOCAL)
                             prefs.setVaultRootUri(uri.toString())
                             navController.navigate("home") {
                                 popUpTo("vault") { inclusive = true }

@@ -47,6 +47,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
@@ -58,6 +59,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
 import app.zhixu.R
+import app.zhixu.data.ProPreferences
 import app.zhixu.data.ThirdPartyServiceConfig
 import app.zhixu.data.VaultPreferences
 import app.zhixu.data.VaultRepository
@@ -93,6 +95,8 @@ fun VaultSettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val syncPrefs = remember(context) { VaultSyncPreferences(context.applicationContext) }
+    val proPrefs = remember(context) { ProPreferences(context.applicationContext) }
+    val isProEnabled by proPrefs.isProEnabled.collectAsState(initial = false)
     val saved by
         syncPrefs.config
             .map { it as VaultSyncConfig? }
@@ -253,6 +257,7 @@ fun VaultSettingsScreen(
             item {
                 StorageLocationCards(
                     selected = location,
+                    isProEnabled = isProEnabled,
                     onSelected = { next ->
                         location = next
                         scope.launch {
@@ -546,6 +551,7 @@ fun VaultSettingsScreen(
 @Composable
 private fun StorageLocationCards(
     selected: VaultStorageLocation,
+    isProEnabled: Boolean,
     onSelected: (VaultStorageLocation) -> Unit,
 ) {
     Column(
@@ -556,18 +562,21 @@ private fun StorageLocationCards(
             selected = selected == VaultStorageLocation.LOCAL,
             title = stringResource(R.string.vault_settings_location_local),
             description = stringResource(R.string.vault_settings_local_title),
+            enabled = true,
             onClick = { onSelected(VaultStorageLocation.LOCAL) },
         )
         StorageLocationCard(
             selected = selected == VaultStorageLocation.OFFICIAL_SERVER,
             title = stringResource(R.string.vault_settings_location_official),
-            description = stringResource(R.string.vault_settings_official_desc),
+            description = if (isProEnabled) stringResource(R.string.vault_settings_official_desc) else "需要启用知序 PRO",
+            enabled = isProEnabled,
             onClick = { onSelected(VaultStorageLocation.OFFICIAL_SERVER) },
         )
         StorageLocationCard(
             selected = selected == VaultStorageLocation.THIRD_PARTY_SERVICE,
             title = stringResource(R.string.vault_settings_location_third_party),
-            description = stringResource(R.string.vault_settings_third_party_desc),
+            description = if (isProEnabled) stringResource(R.string.vault_settings_third_party_desc) else "需要启用知序 PRO",
+            enabled = isProEnabled,
             onClick = { onSelected(VaultStorageLocation.THIRD_PARTY_SERVICE) },
         )
     }
@@ -578,8 +587,10 @@ private fun StorageLocationCard(
     selected: Boolean,
     title: String,
     description: String,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
+    val alpha = if (enabled) 1f else 0.4f
     val containerColor =
         if (selected) {
             MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
@@ -588,8 +599,8 @@ private fun StorageLocationCard(
         }
 
     OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().alpha(alpha),
+        onClick = { if (enabled) onClick() },
         colors = CardDefaults.outlinedCardColors(containerColor = containerColor),
     ) {
         Row(
