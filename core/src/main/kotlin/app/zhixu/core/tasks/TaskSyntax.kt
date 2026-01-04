@@ -121,4 +121,18 @@ object TaskSyntax {
         lines[lineIndex] = prefix + nextMark + mid + rest
         return lines.joinToString("\n")
     }
+
+    fun deleteTasksAtLines(
+        markdown: String,
+        lineIndices: Set<Int>,
+    ): String {
+        if (lineIndices.isEmpty()) return markdown
+        val lines = markdown.split('\n').toMutableList()
+        val sorted = lineIndices.filter { it in lines.indices }.distinct().sortedDescending()
+        if (sorted.isEmpty()) return markdown
+        for (idx in sorted) {
+            lines.removeAt(idx)
+        }
+        return lines.joinToString("\n")
+    }
 }

@@ -48,4 +48,16 @@ class TaskSyntaxTest {
         assertEquals(1, tasks.size)
         assertEquals(2, tasks.first().priority)
     }
+
+    @Test
+    fun `deleteTasksAtLines deletes multiple lines`() {
+        val input =
+            """
+                - [ ] A
+                - [ ] B
+                - [ ] C
+            """.trimIndent()
+        val out = TaskSyntax.deleteTasksAtLines(input, setOf(0, 2))
+        assertEquals("- [ ] B", out)
+    }
 }

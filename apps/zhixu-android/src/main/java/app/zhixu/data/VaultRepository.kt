@@ -6,7 +6,9 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.os.SystemClock
 import android.util.Log
+import android.webkit.MimeTypeMap
 import androidx.documentfile.provider.DocumentFile
+import app.zhixu.ocr.OcrImportedImage
 import app.zhixu.core.tasks.TaskSyntax
 import app.zhixu.core.tasks.Ulid
 import kotlinx.coroutines.Dispatchers
@@ -322,6 +324,12 @@ class VaultRepository(
         val syncDir = zhixu?.let { findChild(it, "sync") ?: it.createDirectory("sync") }
         val exportsDir = zhixu?.let { findChild(it, "exports") ?: it.createDirectory("exports") }
         val pluginsDir = zhixu?.let { findChild(it, "plugins") ?: it.createDirectory("plugins") }
+        val ocrDir = zhixu?.let { findChild(it, "ocr") ?: it.createDirectory("ocr") }
+        val ocrImagesDir = ocrDir?.let { findChild(it, "images") ?: it.createDirectory("images") }
+        val ocrModelsDir = ocrDir?.let { findChild(it, ".models") ?: it.createDirectory(".models") }
+        val ocrPpocrv5Dir = ocrModelsDir?.let { findChild(it, "ppocrv5") ?: it.createDirectory("ppocrv5") }
+        val ocrLegacyModelsDir = ocrDir?.let { findChild(it, "model") ?: it.createDirectory("model") }
+        val ocrLegacyPpocrv5Dir = ocrLegacyModelsDir?.let { findChild(it, "ppocrv5") ?: it.createDirectory("ppocrv5") }
         val pluginState =
             pluginsDir?.let {
                 findChild(it, "state.json") ?: createFileExact(it, "application/json", "state.json")
@@ -340,6 +348,12 @@ class VaultRepository(
         requireNotNull(syncDir) { ".zhixu/sync directory missing" }
         requireNotNull(exportsDir) { ".zhixu/exports directory missing" }
         requireNotNull(pluginsDir) { ".zhixu/plugins directory missing" }
+        requireNotNull(ocrDir) { ".zhixu/ocr directory missing" }
+        requireNotNull(ocrImagesDir) { ".zhixu/ocr/images directory missing" }
+        requireNotNull(ocrModelsDir) { ".zhixu/ocr/.models directory missing" }
+        requireNotNull(ocrPpocrv5Dir) { ".zhixu/ocr/.models/ppocrv5 directory missing" }
+        requireNotNull(ocrLegacyModelsDir) { ".zhixu/ocr/model directory missing" }
+        requireNotNull(ocrLegacyPpocrv5Dir) { ".zhixu/ocr/model/ppocrv5 directory missing" }
     }
 
     suspend fun computeVaultTotalSizeBytes(rootUri: Uri): Long = withContext(Dispatchers.IO) {
@@ -388,6 +402,71 @@ class VaultRepository(
             current = next
         }
         current.uri
+    }
+
+    suspend fun ensureVaultDirectory(rootUri: Uri, relativePath: String): Uri = withContext(Dispatchers.IO) {
+        val rel = relativePath.replace('\\', '/').trimStart('/').trim().trimEnd('/')
+        require(rel.isNotBlank()) { "relativePath is blank" }
+
+        if (rootUri.scheme.equals("file", ignoreCase = true)) {
+            val rootPath = rootUri.path ?: error("Invalid file vault uri: $rootUri")
+            val dir = File(rootPath, rel)
+            dir.mkdirs()
+            return@withContext Uri.fromFile(dir)
+        }
+
+        val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
+        var current: DocumentFile = root
+        for (part in rel.split('/').filter { it.isNotBlank() }) {
+            val next = current.findFile(part) ?: current.createDirectory(part)
+            requireNotNull(next) { "Failed to create directory: $part" }
+            require(next.isDirectory) { "Expected directory but got file: $part" }
+            current = next
+        }
+        current.uri
+    }
+
+    suspend fun ensureVaultFile(
+        rootUri: Uri,
+        relativePath: String,
+        mimeType: String,
+    ): Uri = withContext(Dispatchers.IO) {
+        val rel = relativePath.replace('\\', '/').trimStart('/').trim()
+        require(rel.isNotBlank()) { "relativePath is blank" }
+        val parts = rel.split('/').filter { it.isNotBlank() }
+        require(parts.isNotEmpty()) { "relativePath is invalid" }
+        val fileName = parts.last()
+        val dirPath = parts.dropLast(1).joinToString("/")
+
+        if (rootUri.scheme.equals("file", ignoreCase = true)) {
+            val rootPath = rootUri.path ?: error("Invalid file vault uri: $rootUri")
+            val dir = if (dirPath.isBlank()) File(rootPath) else File(rootPath, dirPath)
+            dir.mkdirs()
+            val file = File(dir, fileName)
+            if (!file.exists()) {
+                file.createNewFile()
+            }
+            return@withContext Uri.fromFile(file)
+        }
+
+        val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
+        var current: DocumentFile = root
+        for (part in parts.dropLast(1)) {
+            val next = current.findFile(part) ?: current.createDirectory(part)
+            requireNotNull(next) { "Failed to create directory: $part" }
+            require(next.isDirectory) { "Expected directory but got file: $part" }
+            current = next
+        }
+        val existing = current.findFile(fileName)
+        if (existing != null) {
+            require(existing.isFile) { "Expected file but got directory: $relativePath" }
+            return@withContext existing.uri
+        }
+        val created =
+            createFileExact(current, mimeType, fileName)
+                ?: current.createFile(mimeType, fileName)
+                ?: error("Failed to create file: $relativePath")
+        created.uri
     }
 
     suspend fun listMarkdownDocs(rootUri: Uri): List<UiDoc> = withContext(Dispatchers.IO) {
@@ -1225,6 +1304,60 @@ class VaultRepository(
         } ?: error("Failed to open output stream for $uri")
     }
 
+    suspend fun importOcrImage(rootUri: Uri, sourceImageUri: Uri): OcrImportedImage = withContext(Dispatchers.IO) {
+        ensureVaultStructure(rootUri)
+        val resolver = context.contentResolver
+        val mime = resolver.getType(sourceImageUri).orEmpty().ifBlank { "image/*" }
+
+        fun guessExtension(): String {
+            val fromMime = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)?.lowercase().orEmpty()
+            if (fromMime.isNotBlank()) return fromMime
+            val name = sourceImageUri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':').orEmpty()
+            val dot = name.lastIndexOf('.')
+            if (dot > 0 && dot < name.length - 1) return name.substring(dot + 1).lowercase()
+            return "jpg"
+        }
+
+        val ext = guessExtension().ifBlank { "jpg" }.take(8)
+        val fileName = "ocr_${System.currentTimeMillis()}.$ext"
+        val vaultRelativePath = "$appConfigDirName/ocr/images/$fileName"
+
+        val bytes = resolver.openInputStream(sourceImageUri)?.use { it.readBytes() } ?: byteArrayOf()
+        if (bytes.isEmpty()) error("读取图片失败：无法打开或读取 $sourceImageUri")
+
+        val vaultUri: Uri =
+            if (rootUri.scheme.equals("file", ignoreCase = true)) {
+                val rootPath = rootUri.path ?: error("Invalid file vault uri: $rootUri")
+                val dest = File(rootPath, vaultRelativePath)
+                dest.parentFile?.mkdirs()
+                dest.writeBytes(bytes)
+                Uri.fromFile(dest)
+            } else {
+                val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
+                val zhixu = findChild(root, appConfigDirName) ?: root.createDirectory(appConfigDirName) ?: error("Missing $appConfigDirName dir")
+                val ocr = findChild(zhixu, "ocr") ?: zhixu.createDirectory("ocr") ?: error("Missing .zhixu/ocr dir")
+                val images = findChild(ocr, "images") ?: ocr.createDirectory("images") ?: error("Missing .zhixu/ocr/images dir")
+                runCatching { findChild(images, fileName)?.delete() }
+                val dest =
+                    createFileExact(images, mime, fileName)
+                        ?: images.createFile(mime, fileName)
+                        ?: error("Failed to create OCR image")
+                writeBytes(dest.uri, bytes)
+                dest.uri
+            }
+
+        val localDir = File(context.cacheDir, "zhixu/ocr/images")
+        localDir.mkdirs()
+        val localFile = File(localDir, fileName)
+        runCatching { localFile.writeBytes(bytes) }
+
+        OcrImportedImage(
+            vaultUri = vaultUri,
+            vaultRelativePath = vaultRelativePath,
+            localFile = localFile,
+        )
+    }
+
     suspend fun renameDoc(docUri: Uri, desiredName: String): Uri? = withContext(Dispatchers.IO) {
         val sanitizedBase = sanitizeFileName(desiredName).removeSuffix(".md").trim().ifBlank { "Untitled" }
         val normalizedBase = sanitizedBase.removeSuffix(".md").trim().ifBlank { "Untitled" }
@@ -1603,6 +1736,38 @@ class VaultRepository(
             }
         }
         after
+    }
+
+    suspend fun deleteTasks(
+        docUri: Uri,
+        lineIndices: Set<Int>,
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (lineIndices.isEmpty()) return@withContext true
+        runCatching {
+            val before = readText(docUri)
+            val after = TaskSyntax.deleteTasksAtLines(before, lineIndices)
+            if (after == before) return@runCatching true
+
+            writeText(docUri, after)
+            val docName = DocumentFile.fromSingleUri(context, docUri)?.name ?: "Document"
+            val stat = DocumentFile.fromSingleUri(context, docUri)
+            val lastModified = stat?.lastModified() ?: 0L
+            val uiDoc =
+                UiDoc(
+                    name = docName,
+                    uri = docUri,
+                    lastModified = lastModified,
+                    size = stat?.length() ?: after.toByteArray(StandardCharsets.UTF_8).size.toLong(),
+                    baseName = computeDocBaseName(docName),
+                    editedAtText = if (lastModified == 0L) "" else formatEditedAt(lastModified),
+                )
+            runCatching { indexRepository.indexDocument(uiDoc, after) }
+                .onSuccess { signalIndexChanged() }
+                .onFailure { Log.e("Zhixu", "Index update failed for $docUri", it) }
+
+            recordDailyDocEdited(docUri = docUri)
+            true
+        }.getOrDefault(false)
     }
 
     private fun sanitizeFileName(name: String): String =

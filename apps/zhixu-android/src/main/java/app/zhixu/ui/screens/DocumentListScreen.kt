@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -109,6 +110,9 @@ fun DocumentListScreen(
     onNewDoc: () -> Unit,
     onChangeVault: () -> Unit,
     onDocListMutated: (DocListMutation) -> Unit = {},
+    selectedDocUris: Set<String>,
+    onToggleDocSelection: (String) -> Unit,
+    onClearDocSelection: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -144,6 +148,7 @@ fun DocumentListScreen(
         pendingOpenSearch = false
         showSearchSheet = true
     }
+
 
     suspend fun reloadFromIndex() {
         val root = vaultRootUri ?: return
@@ -216,6 +221,7 @@ fun DocumentListScreen(
                     TextButton(onClick = onChangeVault) { Text(stringResource(R.string.vault_select_button)) }
                 }
             } else {
+                val selectionMode = selectedDocUris.isNotEmpty()
                 val defaultTitle = stringResource(R.string.new_doc_default_title)
                 val editedAtDash = "—"
                 val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
@@ -253,10 +259,16 @@ fun DocumentListScreen(
                             ) { index, doc ->
                                 val title = doc.baseName.ifBlank { defaultTitle }
                                 val editedAt = doc.createdAtText.ifBlank { editedAtDash }
+                                val docUriStr = doc.uri.toString()
                                 DocRow(
                                     title = title,
                                     editedAt = editedAt,
-                                    onClick = { onOpenDoc(doc.uri.toString(), null, null) },
+                                    selectionMode = selectionMode,
+                                    selected = docUriStr in selectedDocUris,
+                                    onClick = {
+                                        if (selectionMode) onToggleDocSelection(docUriStr) else onOpenDoc(docUriStr, null, null)
+                                    },
+                                    onLongClick = { onToggleDocSelection(docUriStr) },
                                     onMoreClick = {
                                         selectedDoc = doc
                                         showDocMenu = true
@@ -706,7 +718,10 @@ private fun highlightQuery(text: String, query: String, highlightBg: Color): Ann
 private fun DocRow(
     title: String,
     editedAt: String,
+    selectionMode: Boolean,
+    selected: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     onMoreClick: () -> Unit,
     showDivider: Boolean,
     dividerColor: Color,
@@ -715,6 +730,7 @@ private fun DocRow(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent)
                 .drawBehind {
                     if (!showDivider) return@drawBehind
                     val strokeWidth = 0.5.dp.toPx()
@@ -726,7 +742,10 @@ private fun DocRow(
                         strokeWidth = strokeWidth,
                     )
                 }
-                .clickable(onClick = onClick)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                )
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -751,11 +770,20 @@ private fun DocRow(
                 style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
             )
         }
-        ZhixuIconButton(onClick = onMoreClick) {
+        ZhixuIconButton(
+            onClick = if (selectionMode) onClick else onMoreClick,
+        ) {
             Icon(
-                painter = painterResource(Ionicons.EllipsisHorizontal),
+                painter =
+                    painterResource(
+                        if (selectionMode) {
+                            if (selected) Ionicons.CheckmarkCircle else Ionicons.SquareOutline
+                        } else {
+                            Ionicons.EllipsisHorizontal
+                        },
+                    ),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (selectionMode && selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

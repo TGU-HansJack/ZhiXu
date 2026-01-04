@@ -1,7 +1,9 @@
 ﻿package app.zhixu.ui.components
 
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -101,6 +103,9 @@ fun VaultDrawer(
     refreshToken: Long,
     mutation: DocListMutation?,
     onDocListMutated: (DocListMutation) -> Unit = {},
+    enableMultiSelect: Boolean = false,
+    selectedEntryUris: Set<String> = emptySet(),
+    onToggleEntrySelection: (String) -> Unit = {},
     sheetWidth: Dp = 320.dp,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     useSystemInsets: Boolean = true,
@@ -414,26 +419,45 @@ fun VaultDrawer(
                             }
                         }
 
+                    val selectionMode = enableMultiSelect && selectedEntryUris.isNotEmpty()
+                    val uriStr = entry.uri?.toString()
+                    val selected = uriStr != null && uriStr in selectedEntryUris
+
                     Row(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = itemMinHeight)
-                                .clickable {
-                                    if (entry.isDirectory) {
-                                        val dirPath = entry.relativePath
-                                        if (isDirLoading) return@clickable
-                                        if (!isExpanded && loadedDirs[dirPath] != true) {
-                                            expandedDirs[dirPath] = true
-                                            scope.launch { reloadDir(dirPath) }
-                                        } else {
-                                            expandedDirs[dirPath] = !isExpanded
+                                .background(
+                                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else androidx.compose.ui.graphics.Color.Transparent,
+                                )
+                                .combinedClickable(
+                                    onClick = {
+                                        if (selectionMode && uriStr != null) {
+                                            onToggleEntrySelection(uriStr)
+                                            return@combinedClickable
                                         }
-                                    } else {
-                                        entry.uri?.toString()?.let(onOpenDoc)
-                                        onCloseDrawer()
-                                    }
-                                }
+                                        if (entry.isDirectory) {
+                                            val dirPath = entry.relativePath
+                                            if (isDirLoading) return@combinedClickable
+                                            if (!isExpanded && loadedDirs[dirPath] != true) {
+                                                expandedDirs[dirPath] = true
+                                                scope.launch { reloadDir(dirPath) }
+                                            } else {
+                                                expandedDirs[dirPath] = !isExpanded
+                                            }
+                                        } else {
+                                            entry.uri?.toString()?.let(onOpenDoc)
+                                            onCloseDrawer()
+                                        }
+                                    },
+                                    onLongClick =
+                                        if (enableMultiSelect && uriStr != null) {
+                                            { onToggleEntrySelection(uriStr) }
+                                        } else {
+                                            null
+                                        },
+                                )
                                 .padding(start = 0.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -482,7 +506,7 @@ fun VaultDrawer(
                                     newDocName = context.getString(R.string.new_doc_default_title)
                                     showNewDocDialog = true
                                 },
-                                enabled = !isDirLoading,
+                                enabled = !isDirLoading && !selectionMode,
                                 modifier = Modifier.size(34.dp),
                             ) {
                                 Icon(
@@ -495,17 +519,30 @@ fun VaultDrawer(
                         }
                         ZhixuIconButton(
                             onClick = {
-                                selectedEntry = entry
-                                showEntryMenu = true
+                                if (selectionMode && uriStr != null) {
+                                    onToggleEntrySelection(uriStr)
+                                } else {
+                                    selectedEntry = entry
+                                    showEntryMenu = true
+                                }
                             },
                             modifier = Modifier.size(34.dp),
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.MoreVert,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
-                            )
+                            if (selectionMode && uriStr != null) {
+                                Icon(
+                                    painter = painterResource(if (selected) Ionicons.CheckmarkCircle else Ionicons.SquareOutline),
+                                    contentDescription = null,
+                                    tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Outlined.MoreVert,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
                         }
                         if (entry.isDirectory && isDirLoading) {
                             CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)

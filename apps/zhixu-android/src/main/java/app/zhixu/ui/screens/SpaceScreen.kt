@@ -48,6 +48,9 @@ fun SpaceScreen(
     onDocListMutated: (DocListMutation) -> Unit,
     onOpenDoc: (String) -> Unit,
     onChangeVault: () -> Unit,
+    selectedEntryUris: Set<String>,
+    onToggleEntrySelection: (String) -> Unit,
+    onClearEntrySelection: () -> Unit,
 ) {
     val root = vaultRootUri
     if (root == null) {
@@ -63,6 +66,7 @@ fun SpaceScreen(
 
     val context = LocalContext.current
     var isTreeExpanded by remember { mutableStateOf(false) }
+
 
     Column(
         modifier =
@@ -98,6 +102,9 @@ fun SpaceScreen(
             refreshToken = refreshToken,
             mutation = mutation,
             onDocListMutated = onDocListMutated,
+            enableMultiSelect = true,
+            selectedEntryUris = selectedEntryUris,
+            onToggleEntrySelection = onToggleEntrySelection,
             sheetWidth = Dp.Unspecified,
             contentPadding = PaddingValues(0.dp),
             useSystemInsets = false,

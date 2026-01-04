@@ -54,6 +54,8 @@
     <string name="action_create">Create</string>
     <string name="action_cancel">Cancel</string>
     <string name="dialog_delete_doc_title">Delete document?</string>
+    <string name="dialog_delete_selected_title">Delete selected items?</string>
+    <string name="dialog_delete_selected_message">Delete %1$d item(s)?</string>
     <string name="action_delete">Delete</string>
     <string name="action_show">Show</string>
     <string name="action_hide">Hide</string>

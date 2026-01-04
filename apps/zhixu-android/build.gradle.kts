@@ -21,10 +21,21 @@ android {
         versionName = "0.2.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+        externalNativeBuild {
+            cmake {
+                arguments += listOf("-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON")
+            }
+        }
         // J2V8 AAR currently bundles both arm64-v8a and armeabi-v7a native libs.
         // Restrict to arm64-v8a to reduce APK size and avoid packaging unused ABIs.
         ndk {
             abiFilters += listOf("arm64-v8a")
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/ppocrv5/CMakeLists.txt")
         }
     }
 

@@ -1,9 +1,34 @@
-.idea/
-.gradle/
-**/build/
-local.properties
+# IntelliJ / Android Studio
+**/.idea/
 *.iml
-.tmp/
+out/
+
+# Gradle / Kotlin
+**/.gradle/
+**/.kotlin/
+**/build/
+**/local.properties
+.gradle/
+!gradle.properties
+
+# Android / NDK build outputs
+**/.cxx/
+**/.externalNativeBuild/
+**/captures/
+**/logs/
+
+# Temp
+**/.tmp/
+
+# C++ specific
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.dylib
+**/CMakeFiles/
+CMakeCache.txt
 
 # VS Code (keep shared workspace settings)
 .vscode/*
@@ -21,9 +46,50 @@ local.properties
 !.key/*.keystore
 
 # OS
+**/.DS_Store
+**/Thumbs.db
+**/ehthumbs.db
+**/Desktop.ini
+**/.Spotlight-V100
+**/.Trashes
+
+# Node (for `.server/`)
+**/node_modules/
+**/.env
+**/.env.*
+!**/.env.example
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/pnpm-debug.log*
+
+# Project-specific build/artifacts
+/apps/zhixu-android/release/
+/.web/zhixu.app/downloads/
+
+# Android specific
+**/gradle/
+**/bin/
+**/gen/
+**/lint/
+**/proguard/
+**/signed/
+**/unsigned/
+**/mapping.txt
+**/outputs/
+**/release/
+**/debug/
+*.ap_
+*.apk
+*.aar
+
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-/typecho-xmlrpc-publisher
-/apps/zhixu-android/release
-/tools
-/.web/zhixu.app/downloads

@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +40,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -85,7 +87,12 @@ import app.zhixu.data.VaultStorageLocation
 import app.zhixu.data.VaultSyncConfig
 import app.zhixu.data.VaultSyncPreferences
 import app.zhixu.data.WebDavConfig
+import app.zhixu.data.AiPreferences
 import app.zhixu.data.appManagedVaultRootUri
+import app.zhixu.ai.AiOcrPostProcessor
+import app.zhixu.ocr.NoopOcrEngine
+import app.zhixu.ocr.OcrWorkflow
+import app.zhixu.ocr.ppocrv5.PpOcrV5OcrEngine
 import app.zhixu.sync.VaultAutoSync
 import app.zhixu.sync.WebDavAutoSync
 import app.zhixu.ui.components.CreateMenuSheetContent
@@ -94,6 +101,7 @@ import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTopAppBar
 import app.zhixu.ui.screens.AccountScreen
 import app.zhixu.ui.screens.AboutScreen
+import app.zhixu.ui.screens.AiSettingsScreen
 import app.zhixu.ui.screens.AuthScreen
 import app.zhixu.ui.screens.DeviceManagementScreen
 import app.zhixu.ui.screens.DocumentListScreen
@@ -107,6 +115,7 @@ import app.zhixu.ui.screens.SettingsScreen
 import app.zhixu.ui.screens.SpaceScreen
 import app.zhixu.ui.screens.SyncScreen
 import app.zhixu.ui.screens.TasksScreen
+import app.zhixu.ui.screens.TaskKey
 import app.zhixu.ui.screens.TermsOfUseScreen
 import app.zhixu.ui.screens.UiSettingsScreen
 import app.zhixu.ui.screens.VaultGateScreen
@@ -144,6 +153,21 @@ fun ZhixuApp(
     val prefs = remember(appContext) { VaultPreferences(appContext) }
     val vaultSyncPrefs = remember(appContext) { VaultSyncPreferences(appContext) }
     val repository = remember(appContext) { VaultRepository(appContext) }
+    val aiPrefs = remember(appContext) { AiPreferences(appContext) }
+    val aiOcrPostProcessor = remember(appContext) { AiOcrPostProcessor(aiPrefs) }
+    val ocrWorkflow =
+        remember(appContext) {
+            OcrWorkflow(
+                context = appContext,
+                repository = repository,
+                engineProvider = { vaultRootUri ->
+                runCatching { PpOcrV5OcrEngine(appContext, repository, vaultRootUri) }
+                    .getOrElse { NoopOcrEngine(engineName = "unavailable") }
+                },
+                aiPostProcessor = aiOcrPostProcessor,
+                aiPrefs = aiPrefs,
+            )
+        }
     val scope = rememberCoroutineScope()
 
     val vaultSyncConfig by vaultSyncPrefs.config.collectAsState(
@@ -279,10 +303,56 @@ fun ZhixuApp(
     var dirStructureMutationToken by remember { mutableLongStateOf(0L) }
     var dirStructureMutation by remember { mutableStateOf<DocListMutation?>(null) }
 
+    var selectedSpaceEntryUris by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedDocUris by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedTasks by remember { mutableStateOf<Set<TaskKey>>(emptySet()) }
+
+    fun <T> toggleSelection(current: Set<T>, item: T): Set<T> = if (item in current) current - item else current + item
+
+    fun onDocListMutated(mutation: DocListMutation) {
+        dirStructureMutation = mutation
+        dirStructureMutationToken += 1L
+    }
+
+    fun clearAllSelections() {
+        selectedSpaceEntryUris = emptySet()
+        selectedDocUris = emptySet()
+        selectedTasks = emptySet()
+    }
+
     val showTopBar = currentRoute == "home"
     val showBottomBar = currentRoute in setOf("home", "me")
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 1, pageCount = { 3 })
     val settledPage by remember { derivedStateOf { pagerState.settledPage } }
+    var lastSettledHomePage by remember { mutableStateOf(settledPage) }
+
+    var bulkDeleteTarget by remember { mutableStateOf<HomeBulkDeleteTarget?>(null) }
+    val bulkDeleteCount =
+        if (currentRoute != "home") {
+            0
+        } else {
+            when (settledPage) {
+                0 -> selectedSpaceEntryUris.size
+                1 -> selectedDocUris.size
+                2 -> selectedTasks.size
+                else -> 0
+            }
+        }
+
+    LaunchedEffect(currentRoute) {
+        if (currentRoute != "home") {
+            clearAllSelections()
+            bulkDeleteTarget = null
+        }
+    }
+
+    LaunchedEffect(currentRoute, settledPage) {
+        if (currentRoute != "home") return@LaunchedEffect
+        if (lastSettledHomePage == settledPage) return@LaunchedEffect
+        lastSettledHomePage = settledPage
+        clearAllSelections()
+        bulkDeleteTarget = null
+    }
 
     fun navigateHome(pageIndex: Int) {
         val targetPage = pageIndex.coerceIn(0, 2)
@@ -434,14 +504,117 @@ fun ZhixuApp(
                     },
                     bottomBar = {
                         if (!showBottomBar) return@Scaffold
+                        val centerIconRes = if (bulkDeleteCount > 0) Ionicons.TrashOutline else Ionicons.Add
+                        val onCenterClick = {
+                            if (bulkDeleteCount > 0) {
+                                bulkDeleteTarget =
+                                    when (settledPage) {
+                                        0 -> HomeBulkDeleteTarget.Space
+                                        1 -> HomeBulkDeleteTarget.Docs
+                                        2 -> HomeBulkDeleteTarget.Tasks
+                                        else -> null
+                                    }
+                            } else {
+                                createSheetPage = CreateSheetPage.Menu
+                            }
+                        }
                         MainBottomBar(
                             currentRoute = currentRoute,
                             onHome = { navigateHome(1) },
-                            onPlus = { createSheetPage = CreateSheetPage.Menu },
+                            centerIconRes = centerIconRes,
+                            onCenter = onCenterClick,
                             onMe = ::navigateMe,
                         )
                     },
                 ) { padding ->
+                    val target = bulkDeleteTarget
+                    if (target != null) {
+                        val count =
+                            when (target) {
+                                HomeBulkDeleteTarget.Space -> selectedSpaceEntryUris.size
+                                HomeBulkDeleteTarget.Docs -> selectedDocUris.size
+                                HomeBulkDeleteTarget.Tasks -> selectedTasks.size
+                            }
+                        AlertDialog(
+                            onDismissRequest = { bulkDeleteTarget = null },
+                            title = { Text(stringResource(R.string.dialog_delete_selected_title)) },
+                            text = { Text(stringResource(R.string.dialog_delete_selected_message, count)) },
+                            confirmButton = {
+                                TextButton(
+                                    enabled = count > 0,
+                                    onClick = {
+                                        val root = vaultRootUri
+                                        scope.launch {
+                                            var failed = 0
+                                            when (target) {
+                                                HomeBulkDeleteTarget.Docs -> {
+                                                    val toDelete = selectedDocUris.toList()
+                                                    selectedDocUris = emptySet()
+                                                    for (uriStr in toDelete) {
+                                                        val uri = runCatching { Uri.parse(uriStr) }.getOrNull() ?: continue
+                                                        val ok = withContext(Dispatchers.IO) { repository.deleteDoc(uri) }
+                                                        if (ok) onDocListMutated(DocListMutation.Deleted(docUri = uri)) else failed += 1
+                                                    }
+                                                }
+
+                                                HomeBulkDeleteTarget.Space -> {
+                                                    val toDelete = selectedSpaceEntryUris.toList()
+                                                    selectedSpaceEntryUris = emptySet()
+                                                    for (uriStr in toDelete) {
+                                                        val uri = runCatching { Uri.parse(uriStr) }.getOrNull() ?: continue
+                                                        val ok =
+                                                            withContext(Dispatchers.IO) {
+                                                                if (uriStr.endsWith(".md", ignoreCase = true)) {
+                                                                    repository.deleteDoc(uri)
+                                                                } else {
+                                                                    repository.deleteEntry(uri)
+                                                                }
+                                                            }
+                                                        if (ok) onDocListMutated(DocListMutation.Deleted(docUri = uri)) else failed += 1
+                                                        if (root != null) {
+                                                            val rel = repository.computeRelativePath(root, uri)
+                                                            val parent = rel?.substringBeforeLast('/', missingDelimiterValue = "").orEmpty()
+                                                            runCatching { withContext(Dispatchers.IO) { repository.refreshDirIndexForDirectory(root, parentRelativePath = parent) } }
+                                                        }
+                                                    }
+                                                }
+
+                                                HomeBulkDeleteTarget.Tasks -> {
+                                                    val toDelete = selectedTasks
+                                                    selectedTasks = emptySet()
+                                                    val byDoc = toDelete.groupBy { it.docUri }
+                                                    for ((docUriStr, keys) in byDoc) {
+                                                        val uri = runCatching { Uri.parse(docUriStr) }.getOrNull() ?: continue
+                                                        val lineIndices = keys.map { it.lineIndex }.toSet()
+                                                        val ok = withContext(Dispatchers.IO) { repository.deleteTasks(uri, lineIndices) }
+                                                        if (!ok) failed += 1
+                                                        runCatching {
+                                                            VaultAutoSync.maybeUploadDoc(
+                                                                context = context,
+                                                                repository = repository,
+                                                                vaultRootUri = root,
+                                                                docUri = uri,
+                                                                force = false,
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            if (failed > 0) {
+                                                android.widget.Toast
+                                                    .makeText(context, context.getString(R.string.editor_delete_failed), android.widget.Toast.LENGTH_SHORT)
+                                                    .show()
+                                            }
+                                            bulkDeleteTarget = null
+                                        }
+                                    },
+                                ) { Text(stringResource(R.string.action_delete)) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { bulkDeleteTarget = null }) { Text(stringResource(R.string.action_cancel)) }
+                            },
+                        )
+                    }
                     if (createSheetPage != null) {
                         ModalBottomSheet(
                             onDismissRequest = { createSheetPage = null },
@@ -451,7 +624,7 @@ fun ZhixuApp(
                             when (createSheetPage) {
                                 CreateSheetPage.Menu -> {
                                     CreateMenuSheetContent(
-                                        onOcr = { android.widget.Toast.makeText(context, "OCR识图：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
+                                        onOcr = { createSheetPage = CreateSheetPage.Ocr },
                                         onRecord = { android.widget.Toast.makeText(context, "录音：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
                                         onCamera = { android.widget.Toast.makeText(context, "相机：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
                                         onDraw = { android.widget.Toast.makeText(context, "绘画：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
@@ -475,6 +648,25 @@ fun ZhixuApp(
                                         vaultRootUri = vaultRootUri,
                                         repository = repository,
                                         onBack = { createSheetPage = CreateSheetPage.Menu },
+                                        onCreated = { created ->
+                                            val mutation = DocListMutation.Created(created)
+                                            dirStructureMutation = mutation
+                                            dirStructureMutationToken += 1L
+                                            createSheetPage = null
+                                            navController.navigate("edit?uri=${Uri.encode(created.uri.toString())}") {
+                                                popUpTo("home") { inclusive = false }
+                                            }
+                                        },
+                                    )
+                                }
+
+                                CreateSheetPage.Ocr -> {
+                                    OcrComposerSheet(
+                                        vaultRootUri = vaultRootUri,
+                                        repository = repository,
+                                        workflow = ocrWorkflow,
+                                        onBack = { createSheetPage = CreateSheetPage.Menu },
+                                        onClose = { createSheetPage = null },
                                         onCreated = { created ->
                                             val mutation = DocListMutation.Created(created)
                                             dirStructureMutation = mutation
@@ -541,10 +733,16 @@ fun ZhixuApp(
                         docSearchRequestToken = docSearchRequestToken,
                         dirStructureMutationToken = dirStructureMutationToken,
                         dirStructureMutation = dirStructureMutation,
-                        onDocListMutated = { mutation ->
-                            dirStructureMutation = mutation
-                            dirStructureMutationToken += 1L
-                        },
+                        onDocListMutated = ::onDocListMutated,
+                        selectedSpaceEntryUris = selectedSpaceEntryUris,
+                        onToggleSpaceEntrySelection = { uri -> selectedSpaceEntryUris = toggleSelection(selectedSpaceEntryUris, uri) },
+                        onClearSpaceEntrySelection = { selectedSpaceEntryUris = emptySet() },
+                        selectedDocUris = selectedDocUris,
+                        onToggleDocSelection = { uri -> selectedDocUris = toggleSelection(selectedDocUris, uri) },
+                        onClearDocSelection = { selectedDocUris = emptySet() },
+                        selectedTasks = selectedTasks,
+                        onToggleTaskSelection = { key -> selectedTasks = toggleSelection(selectedTasks, key) },
+                        onClearTaskSelection = { selectedTasks = emptySet() },
                         onOpenDoc = ::openDoc,
                         onNewDoc = { navController.navigate("newDoc") },
                         onChangeVault = {
@@ -566,8 +764,15 @@ fun ZhixuApp(
                         onOpenVaultSettings = { navController.navigate("vaultSettings") },
                         onOpenWorkshop = { navController.navigate("workshop") },
                         onOpenSync = { navController.navigate("sync") },
+                        onOpenAiSettings = { navController.navigate("aiSettings") },
                         onOpenUiSettings = { navController.navigate("uiSettings") },
                         onOpenAbout = { navController.navigate("about") },
+                    )
+                }
+                composable("aiSettings") {
+                    AiSettingsScreen(
+                        contentPadding = padding,
+                        onBack = { navController.popBackStack() },
                     )
                 }
                 composable("uiSettings") {
@@ -824,7 +1029,8 @@ private fun TabText(
 private fun MainBottomBar(
     currentRoute: String?,
     onHome: () -> Unit,
-    onPlus: () -> Unit,
+    centerIconRes: Int,
+    onCenter: () -> Unit,
     onMe: () -> Unit,
 ) {
     val selectedHome = currentRoute == "home"
@@ -875,11 +1081,11 @@ private fun MainBottomBar(
                         Modifier
                             .width(68.dp)
                             .height(38.dp)
-                            .clickable(onClick = onPlus),
+                            .clickable(onClick = onCenter),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            painter = painterResource(Ionicons.Add),
+                            painter = painterResource(centerIconRes),
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(28.dp),
@@ -926,6 +1132,15 @@ private fun HomePager(
     dirStructureMutationToken: Long,
     dirStructureMutation: DocListMutation?,
     onDocListMutated: (DocListMutation) -> Unit,
+    selectedSpaceEntryUris: Set<String>,
+    onToggleSpaceEntrySelection: (String) -> Unit,
+    onClearSpaceEntrySelection: () -> Unit,
+    selectedDocUris: Set<String>,
+    onToggleDocSelection: (String) -> Unit,
+    onClearDocSelection: () -> Unit,
+    selectedTasks: Set<TaskKey>,
+    onToggleTaskSelection: (TaskKey) -> Unit,
+    onClearTaskSelection: () -> Unit,
     onOpenDoc: (String, String?, Int?) -> Unit,
     onNewDoc: () -> Unit,
     onChangeVault: () -> Unit,
@@ -948,6 +1163,9 @@ private fun HomePager(
                     onDocListMutated = onDocListMutated,
                     onOpenDoc = { rawUri -> onOpenDoc(rawUri, null, null) },
                     onChangeVault = onChangeVault,
+                    selectedEntryUris = selectedSpaceEntryUris,
+                    onToggleEntrySelection = onToggleSpaceEntrySelection,
+                    onClearEntrySelection = onClearSpaceEntrySelection,
                 )
 
             1 ->
@@ -963,6 +1181,9 @@ private fun HomePager(
                     onNewDoc = onNewDoc,
                     onChangeVault = onChangeVault,
                     onDocListMutated = onDocListMutated,
+                    selectedDocUris = selectedDocUris,
+                    onToggleDocSelection = onToggleDocSelection,
+                    onClearDocSelection = onClearDocSelection,
                 )
 
             2 ->
@@ -972,6 +1193,9 @@ private fun HomePager(
                     repository = repository,
                     isActive = isActive,
                     onOpenDoc = onOpenDoc,
+                    selectedTasks = selectedTasks,
+                    onToggleTaskSelection = onToggleTaskSelection,
+                    onClearTaskSelection = onClearTaskSelection,
                 )
         }
     }
@@ -989,8 +1213,15 @@ private fun parseNavUri(param: String): Uri {
     return direct
 }
 
+private enum class HomeBulkDeleteTarget {
+    Space,
+    Docs,
+    Tasks,
+}
+
 private enum class CreateSheetPage {
     Menu,
     Todo,
     Note,
+    Ocr,
 }

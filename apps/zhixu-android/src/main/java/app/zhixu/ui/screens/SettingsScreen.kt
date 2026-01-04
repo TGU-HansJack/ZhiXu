@@ -81,6 +81,7 @@ fun SettingsScreen(
     onOpenVaultSettings: () -> Unit,
     onOpenWorkshop: () -> Unit,
     onOpenSync: () -> Unit,
+    onOpenAiSettings: () -> Unit,
     onOpenUiSettings: () -> Unit,
     onOpenAbout: () -> Unit,
 ) {
@@ -226,6 +227,13 @@ fun SettingsScreen(
             fun comingSoon() {
                 Toast.makeText(context, context.getString(R.string.settings_placeholder_coming_soon), Toast.LENGTH_SHORT).show()
             }
+
+            SettingsNavRow(
+                iconRes = Ionicons.SettingsOutline,
+                title = "AI 设置",
+                onClick = onOpenAiSettings,
+            )
+            HorizontalDivider(color = dividerColor)
 
             SettingsNavRow(
                 iconRes = Ionicons.LayersOutline,

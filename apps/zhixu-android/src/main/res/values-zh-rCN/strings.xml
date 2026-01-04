@@ -53,6 +53,8 @@
     <string name="action_create">创建</string>
     <string name="action_cancel">取消</string>
     <string name="dialog_delete_doc_title">删除文档？</string>
+    <string name="dialog_delete_selected_title">删除所选项目？</string>
+    <string name="dialog_delete_selected_message">将删除 %1$d 项，是否继续？</string>
     <string name="action_delete">删除</string>
     <string name="action_show">显示</string>
     <string name="action_hide">隐藏</string>

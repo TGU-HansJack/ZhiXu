@@ -1,7 +1,9 @@
 ﻿package app.zhixu.ui.screens
 
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -88,6 +90,11 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import kotlin.math.max
 
+data class TaskKey(
+    val docUri: String,
+    val lineIndex: Int,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TasksScreen(
@@ -96,6 +103,9 @@ fun TasksScreen(
     repository: VaultRepository,
     isActive: Boolean,
     onOpenDoc: (String, String?, Int?) -> Unit,
+    selectedTasks: Set<TaskKey>,
+    onToggleTaskSelection: (TaskKey) -> Unit,
+    onClearTaskSelection: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -215,6 +225,7 @@ fun TasksScreen(
         }
     }
 
+
     LaunchedEffect(vaultRootUri, isActive, indexReady) {
         if (!isActive) return@LaunchedEffect
         val root = vaultRootUri ?: return@LaunchedEffect
@@ -251,6 +262,7 @@ fun TasksScreen(
                 indicator = {},
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
+                    val selectionMode = selectedTasks.isNotEmpty()
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(vertical = 12.dp),
@@ -299,25 +311,36 @@ fun TasksScreen(
                         items(tasks, key = { it.taskId ?: "${it.docUri}:${it.lineIndex}" }) { task ->
                             val dueEpochMillis = remember(task.dueEpochMillis) { task.dueEpochMillis?.takeIf { it > 0L } }
                             val dueLabel = remember(dueEpochMillis) { dueEpochMillis?.let(::formatDueLabel) }
+                            val key = remember(task.docUri, task.lineIndex) { TaskKey(task.docUri.toString(), task.lineIndex) }
+                            val selected = key in selectedTasks
                             TaskRow(
                                 task = task,
                                 dueLabel = dueLabel,
                                 onToggle = {
-                                    scope.launch {
-                                        repository.toggleTask(task.docUri, task.lineIndex)
-                                        runCatching {
-                                            VaultAutoSync.maybeUploadDoc(
-                                                context = context,
-                                                repository = repository,
-                                                vaultRootUri = vaultRootUri,
-                                                docUri = task.docUri,
-                                                force = false,
-                                            )
+                                    if (selectionMode) {
+                                        onToggleTaskSelection(key)
+                                    } else {
+                                        scope.launch {
+                                            repository.toggleTask(task.docUri, task.lineIndex)
+                                            runCatching {
+                                                VaultAutoSync.maybeUploadDoc(
+                                                    context = context,
+                                                    repository = repository,
+                                                    vaultRootUri = vaultRootUri,
+                                                    docUri = task.docUri,
+                                                    force = false,
+                                                )
+                                            }
+                                            refresh(force = true, showUpdatedBanner = false)
                                         }
-                                        refresh(force = true, showUpdatedBanner = false)
                                     }
                                 },
-                                onOpen = { onOpenDoc(task.docUri.toString(), null, task.lineIndex) },
+                                selectionMode = selectionMode,
+                                selected = selected,
+                                onOpen = {
+                                    if (selectionMode) onToggleTaskSelection(key) else onOpenDoc(task.docUri.toString(), null, task.lineIndex)
+                                },
+                                onLongPress = { onToggleTaskSelection(key) },
                                 dimmed = false,
                             )
                             HorizontalDivider(thickness = 0.5.dp)
@@ -349,26 +372,37 @@ fun TasksScreen(
                         if (showCompleted) {
                             items(completed, key = { "c:${it.docUri}:${it.lineIndex}:${it.taskId}" }) { task ->
                                 val dueEpochMillis = remember(task.dueEpochMillis) { task.dueEpochMillis?.takeIf { it > 0L } }
+                                val key = remember(task.docUri, task.lineIndex) { TaskKey(task.docUri.toString(), task.lineIndex) }
+                                val selected = key in selectedTasks
                                 TaskRow(
                                     task = task,
                                     dueLabel =
                                         dueEpochMillis?.let { dueFormatter.format(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault())) },
                                     onToggle = {
-                                        scope.launch {
-                                            repository.toggleTask(task.docUri, task.lineIndex)
-                                            runCatching {
-                                                VaultAutoSync.maybeUploadDoc(
-                                                    context = context,
-                                                    repository = repository,
-                                                    vaultRootUri = vaultRootUri,
-                                                    docUri = task.docUri,
-                                                    force = false,
-                                                )
+                                        if (selectionMode) {
+                                            onToggleTaskSelection(key)
+                                        } else {
+                                            scope.launch {
+                                                repository.toggleTask(task.docUri, task.lineIndex)
+                                                runCatching {
+                                                    VaultAutoSync.maybeUploadDoc(
+                                                        context = context,
+                                                        repository = repository,
+                                                        vaultRootUri = vaultRootUri,
+                                                        docUri = task.docUri,
+                                                        force = false,
+                                                    )
+                                                }
+                                                refresh(force = true, showUpdatedBanner = false)
                                             }
-                                            refresh(force = true, showUpdatedBanner = false)
                                         }
                                     },
-                                    onOpen = { onOpenDoc(task.docUri.toString(), null, task.lineIndex) },
+                                    selectionMode = selectionMode,
+                                    selected = selected,
+                                    onOpen = {
+                                        if (selectionMode) onToggleTaskSelection(key) else onOpenDoc(task.docUri.toString(), null, task.lineIndex)
+                                    },
+                                    onLongPress = { onToggleTaskSelection(key) },
                                     dimmed = true,
                                 )
                                 HorizontalDivider(thickness = 0.5.dp)
@@ -888,8 +922,11 @@ private fun buildDueChipLabel(date: LocalDate?, range: TimeRange?): String {
 private fun TaskRow(
     task: UiTask,
     dueLabel: String?,
+    selectionMode: Boolean,
+    selected: Boolean,
     onToggle: () -> Unit,
     onOpen: () -> Unit,
+    onLongPress: () -> Unit,
     dimmed: Boolean,
 ) {
     val titleColor = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
@@ -899,7 +936,11 @@ private fun TaskRow(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 40.dp)
-                .clickable(onClick = onOpen)
+                .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent)
+                .combinedClickable(
+                    onClick = onOpen,
+                    onLongClick = onLongPress,
+                )
                 .padding(start = 0.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -908,10 +949,23 @@ private fun TaskRow(
             modifier = Modifier.size(40.dp),
         ) {
             Icon(
-                painter = painterResource(if (task.checked) Ionicons.CheckboxOutline else Ionicons.SquareOutline),
+                painter =
+                    painterResource(
+                        if (selectionMode) {
+                            if (selected) Ionicons.CheckmarkCircle else Ionicons.SquareOutline
+                        } else {
+                            if (task.checked) Ionicons.CheckboxOutline else Ionicons.SquareOutline
+                        },
+                    ),
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
-                tint = if (task.checked) metaColor else MaterialTheme.colorScheme.onSurface,
+                tint =
+                    when {
+                        selectionMode && selected -> MaterialTheme.colorScheme.primary
+                        selectionMode -> metaColor
+                        task.checked -> metaColor
+                        else -> MaterialTheme.colorScheme.onSurface
+                    },
             )
         }
         Spacer(modifier = Modifier.width(6.dp))
