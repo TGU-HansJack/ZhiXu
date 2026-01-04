@@ -1,6 +1,5 @@
 package app.zhixu.ui.components.calendar
 
-import androidx.compose.ui.graphics.Color
 import java.time.LocalDate
 import java.time.MonthDay
 
@@ -73,6 +72,8 @@ object HolidayProvider {
             lunarDate.month == 8 && lunarDate.day == 15 -> "中秋"
             lunarDate.month == 9 && lunarDate.day == 9 -> "重阳"
             lunarDate.month == 12 && lunarDate.day == 8 -> "腊八"
+            lunarDate.month == 12 && lunarDate.day == 23 -> "北小年"
+            lunarDate.month == 12 && lunarDate.day == 24 -> "南小年"
             // 除夕需要特殊处理（农历年最后一天）
             else -> null
         }
@@ -96,11 +97,10 @@ object HolidayProvider {
                 // 元旦：1月1-3日休息
                 date.monthValue == 1 && date.dayOfMonth in 1..3 -> WorkDayStatus.REST
 
-                // 春节：1月28日-2月3日休息，1月24日(六)、2月4日(三)上班
-                date.monthValue == 1 && date.dayOfMonth == 24 -> WorkDayStatus.WORK
-                date.monthValue == 1 && date.dayOfMonth in 28..31 -> WorkDayStatus.REST
-                date.monthValue == 2 && date.dayOfMonth in 1..3 -> WorkDayStatus.REST
-                date.monthValue == 2 && date.dayOfMonth == 4 -> WorkDayStatus.WORK
+                // 春节：2月15日-23日休息，2月14日(六)、2月28日(六)上班
+                date.monthValue == 2 && date.dayOfMonth == 14 -> WorkDayStatus.WORK
+                date.monthValue == 2 && date.dayOfMonth in 15..23 -> WorkDayStatus.REST
+                date.monthValue == 2 && date.dayOfMonth == 28 -> WorkDayStatus.WORK
 
                 // 清明节：4月4-6日休息
                 date.monthValue == 4 && date.dayOfMonth in 4..6 -> WorkDayStatus.REST
@@ -157,6 +157,19 @@ data class DayModel(
             lunarDate.day == 1 -> lunarDate.getMonthText()
             else -> ""
         }
+
+    /**
+     * 获取农历显示文本（始终显示）
+     * 优先级：节气 > 公历节日 > 农历节日 > 农历日期
+     */
+    fun getLunarDisplayText(): String {
+        return when {
+            solarTerm != null -> solarTerm.displayName
+            holiday != null -> holiday.name
+            lunarHoliday != null -> lunarHoliday
+            else -> lunarDate.getDayText().ifBlank { lunarDate.getMonthText() }
+        }
+    }
 
     /**
      * 文本颜色（节日使用特殊颜色）

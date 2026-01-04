@@ -228,73 +228,55 @@ object LunarCalendarCalculator {
     }
 
     /**
-     * 获取节气（简化版本，仅返回主要节气）
+     * 获取节气（单日命中）
      */
     fun getSolarTerm(date: LocalDate): SolarTerm? {
-        // 简化的节气计算，实际应用中应使用更精确的天文算法
-        // 这里仅作示例，返回固定日期的节气
-        return when (date.monthValue) {
-            1 -> when {
-                date.dayOfMonth in 5..6 -> SolarTerm.XIAOHAN
-                date.dayOfMonth in 20..21 -> SolarTerm.DAHAN
-                else -> null
-            }
-            2 -> when {
-                date.dayOfMonth in 3..5 -> SolarTerm.LICHUN
-                date.dayOfMonth in 18..20 -> SolarTerm.YUSHUI
-                else -> null
-            }
-            3 -> when {
-                date.dayOfMonth in 5..7 -> SolarTerm.JINGZHE
-                date.dayOfMonth in 20..22 -> SolarTerm.CHUNFEN
-                else -> null
-            }
-            4 -> when {
-                date.dayOfMonth in 4..6 -> SolarTerm.QINGMING
-                date.dayOfMonth in 19..21 -> SolarTerm.GUYU
-                else -> null
-            }
-            5 -> when {
-                date.dayOfMonth in 5..7 -> SolarTerm.LIXIA
-                date.dayOfMonth in 20..22 -> SolarTerm.XIAOMAN
-                else -> null
-            }
-            6 -> when {
-                date.dayOfMonth in 5..7 -> SolarTerm.MANGZHONG
-                date.dayOfMonth in 21..22 -> SolarTerm.XIAZHI
-                else -> null
-            }
-            7 -> when {
-                date.dayOfMonth in 6..8 -> SolarTerm.XIAOSHU
-                date.dayOfMonth in 22..24 -> SolarTerm.DASHU
-                else -> null
-            }
-            8 -> when {
-                date.dayOfMonth in 7..9 -> SolarTerm.LIQIU
-                date.dayOfMonth in 22..24 -> SolarTerm.CHUSHU
-                else -> null
-            }
-            9 -> when {
-                date.dayOfMonth in 7..9 -> SolarTerm.BAILU
-                date.dayOfMonth in 22..24 -> SolarTerm.QIUFEN
-                else -> null
-            }
-            10 -> when {
-                date.dayOfMonth in 8..9 -> SolarTerm.HANLU
-                date.dayOfMonth in 23..24 -> SolarTerm.SHUANGJIANG
-                else -> null
-            }
-            11 -> when {
-                date.dayOfMonth in 7..8 -> SolarTerm.LIDONG
-                date.dayOfMonth in 22..23 -> SolarTerm.XIAOXUE
-                else -> null
-            }
-            12 -> when {
-                date.dayOfMonth in 6..8 -> SolarTerm.DAXUE
-                date.dayOfMonth in 21..23 -> SolarTerm.DONGZHI
-                else -> null
-            }
-            else -> null
+        val year = date.year
+        val rules =
+            listOf(
+                TermRule(SolarTerm.XIAOHAN, 1, 6.11, 5.4055),
+                TermRule(SolarTerm.DAHAN, 1, 20.84, 20.12),
+                TermRule(SolarTerm.LICHUN, 2, 4.6295, 3.87),
+                TermRule(SolarTerm.YUSHUI, 2, 19.4599, 18.73),
+                TermRule(SolarTerm.JINGZHE, 3, 6.3826, 5.63),
+                TermRule(SolarTerm.CHUNFEN, 3, 21.4155, 20.646),
+                TermRule(SolarTerm.QINGMING, 4, 5.59, 4.81),
+                TermRule(SolarTerm.GUYU, 4, 20.888, 20.1),
+                TermRule(SolarTerm.LIXIA, 5, 6.318, 5.52),
+                TermRule(SolarTerm.XIAOMAN, 5, 21.86, 21.04),
+                TermRule(SolarTerm.MANGZHONG, 6, 6.5, 5.678),
+                TermRule(SolarTerm.XIAZHI, 6, 22.20, 21.37),
+                TermRule(SolarTerm.XIAOSHU, 7, 7.928, 7.108),
+                TermRule(SolarTerm.DASHU, 7, 23.65, 22.83),
+                TermRule(SolarTerm.LIQIU, 8, 8.35, 7.5),
+                TermRule(SolarTerm.CHUSHU, 8, 23.95, 23.13),
+                TermRule(SolarTerm.BAILU, 9, 8.44, 7.646),
+                TermRule(SolarTerm.QIUFEN, 9, 23.822, 23.042),
+                TermRule(SolarTerm.HANLU, 10, 9.098, 8.318),
+                TermRule(SolarTerm.SHUANGJIANG, 10, 24.218, 23.438),
+                TermRule(SolarTerm.LIDONG, 11, 8.218, 7.438),
+                TermRule(SolarTerm.XIAOXUE, 11, 23.08, 22.36),
+                TermRule(SolarTerm.DAXUE, 12, 7.9, 7.18),
+                TermRule(SolarTerm.DONGZHI, 12, 22.60, 21.94),
+            )
+
+        for (r in rules) {
+            if (r.month != date.monthValue) continue
+            if (date.dayOfMonth == r.dayOfMonth(year)) return r.term
+        }
+        return null
+    }
+
+    private data class TermRule(
+        val term: SolarTerm,
+        val month: Int,
+        val c20: Double,
+        val c21: Double,
+    ) {
+        fun dayOfMonth(year: Int): Int {
+            val y = year % 100
+            val c = if (year <= 2000) c20 else c21
+            return (y * 0.2422 + c).toInt() - ((y - 1) / 4)
         }
     }
 }
