@@ -28,6 +28,8 @@ object Ionicons {
     @DrawableRes val HourglassOutline: Int = R.drawable.ic_ion_hourglass_outline
     @DrawableRes val TimeOutline: Int = R.drawable.ic_ion_time_outline
     @DrawableRes val CalendarOutline: Int = R.drawable.ic_ion_calendar_outline
+    @DrawableRes val TodayOutline: Int = R.drawable.ic_ion_today_outline
+    @DrawableRes val SunnyOutline: Int = R.drawable.ic_ion_sunny_outline
     @DrawableRes val FlagOutline: Int = R.drawable.ic_ion_flag_outline
     @DrawableRes val PricetagsOutline: Int = R.drawable.ic_ion_pricetags_outline
     @DrawableRes val CopyOutline: Int = R.drawable.ic_ion_copy_outline

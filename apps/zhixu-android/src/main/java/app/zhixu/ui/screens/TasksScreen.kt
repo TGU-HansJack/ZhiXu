@@ -74,6 +74,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.style.TextAlign
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTextField
@@ -859,10 +860,10 @@ private fun TaskDateTab(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        TaskQuickPick(label = "今天", icon = Icons.Outlined.CalendarMonth, onClick = onPickToday)
-        TaskQuickPick(label = "明天", icon = Icons.Outlined.WbSunny, onClick = onPickTomorrow)
-        TaskQuickPick(label = "下周一", icon = Icons.Outlined.DateRange, onClick = onPickNextMonday)
-        TaskQuickPick(label = "今天晚上", icon = Icons.Outlined.NightsStay, onClick = onPickTonight)
+        TaskQuickPick(label = "今天", icon = painterResource(Ionicons.TodayOutline), onClick = onPickToday)
+        TaskQuickPick(label = "明天", icon = painterResource(Ionicons.SunnyOutline), onClick = onPickTomorrow)
+        TaskQuickPick(label = "下周一", icon = painterResource(R.drawable.ic_lucide_calendar_1), onClick = onPickNextMonday)
+        TaskQuickPick(label = "今天晚上", icon = painterResource(R.drawable.ic_lucide_moon_star), onClick = onPickTonight)
     }
 
     CalendarGrid(
@@ -883,7 +884,7 @@ private fun TaskDateTab(
             else -> range.label
         }
     Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
     ) {
@@ -925,13 +926,13 @@ private fun TaskDateTab(
 @Composable
 private fun TaskQuickPick(
     label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: androidx.compose.ui.graphics.painter.Painter,
     onClick: () -> Unit,
 ) {
     Column(
         modifier =
             Modifier
-                .width(76.dp)
+                .width(78.dp)
                 .clickable(onClick = onClick)
                 .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -940,18 +941,23 @@ private fun TaskQuickPick(
         Surface(
             shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-            modifier = Modifier.size(44.dp),
+            modifier = Modifier.size(50.dp),
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
-                    imageVector = icon,
+                    painter = icon,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier.size(26.dp),
                 )
             }
         }
-        Text(text = label, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
@@ -1094,12 +1100,13 @@ private fun TaskSheetRow(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .heightIn(min = 56.dp)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onClick,
                 )
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text = title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
@@ -1126,12 +1133,12 @@ private fun UnderlineTabLabel(
     val isHovered by interactionSource.collectIsHoveredAsStateCompat()
     val showUnderline = selected || isPressed || isHovered
     val underlineColor = MaterialTheme.colorScheme.primary
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
 
-    Text(
-        text = text,
+    Box(
         modifier =
             modifier
-                .height(32.dp)
+                .height(44.dp)
                 .hoverable(interactionSource)
                 .clickable(
                     interactionSource = interactionSource,
@@ -1142,20 +1149,32 @@ private fun UnderlineTabLabel(
                 .drawBehind {
                     if (!showUnderline) return@drawBehind
                     val strokeWidth = 3.dp.toPx()
-                    val y = size.height - strokeWidth / 2f
+                    val lineY =
+                        layout?.let {
+                            val textOffsetY = (size.height - it.size.height.toFloat()) / 2f
+                            textOffsetY + it.getLineBottom(0) + 2.dp.toPx()
+                        }
+                            ?.coerceAtMost(size.height - strokeWidth / 2f)
+                            ?: (size.height - strokeWidth / 2f)
                     drawLine(
                         color = underlineColor,
-                        start = Offset(0f, y),
-                        end = Offset(size.width, y),
+                        start = Offset(0f, lineY),
+                        end = Offset(size.width, lineY),
                         strokeWidth = strokeWidth,
                         cap = StrokeCap.Round,
                     )
                 },
-        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        style = MaterialTheme.typography.bodyMedium,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { layout = it },
+        )
+    }
 }
 
 @Composable

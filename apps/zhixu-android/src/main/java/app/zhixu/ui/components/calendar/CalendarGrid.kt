@@ -111,10 +111,20 @@ fun CalendarGrid(
         ) { page ->
             val month = currentMonth.plusMonths((page - 1).toLong())
             val dayModels = monthCache[month] ?: placeholderGrid
+            val visibleWeeks = remember(dayModels) { trimEmptyWeeks(dayModels) }
+            val baseAspectRatio = 1.4f
+            val targetWeeks = 5
+            val cellAspectRatio =
+                if (visibleWeeks.size > targetWeeks) {
+                    baseAspectRatio * (visibleWeeks.size.toFloat() / targetWeeks.toFloat())
+                } else {
+                    baseAspectRatio
+                }
             DayGrid(
-                dayModels = dayModels,
+                dayModels = visibleWeeks,
                 selectedDate = selectedDate,
                 onDateSelect = onDateSelect,
+                cellAspectRatio = cellAspectRatio,
             )
         }
     }
@@ -212,6 +222,7 @@ private fun DayGrid(
     dayModels: List<List<DayModel?>>,
     selectedDate: LocalDate?,
     onDateSelect: (LocalDate) -> Unit,
+    cellAspectRatio: Float,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -227,7 +238,7 @@ private fun DayGrid(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .aspectRatio(1.4f)
+                            .aspectRatio(cellAspectRatio)
                     ) {
                         CalendarDayCell(
                             day = dayModel,
@@ -241,6 +252,12 @@ private fun DayGrid(
             }
         }
     }
+}
+
+private fun trimEmptyWeeks(weeks: List<List<DayModel?>>): List<List<DayModel?>> {
+    val trimmedStart = weeks.dropWhile { week -> week.all { it == null } }
+    val trimmed = trimmedStart.dropLastWhile { week -> week.all { it == null } }
+    return if (trimmed.isEmpty()) weeks else trimmed
 }
 
 /**
