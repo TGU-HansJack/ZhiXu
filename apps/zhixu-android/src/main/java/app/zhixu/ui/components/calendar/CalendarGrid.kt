@@ -114,8 +114,7 @@ private fun MonthNavigationBar(
         // 月份标题
         Text(
             text = "${currentMonth.monthValue}月",
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Medium,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface
         )
 
@@ -201,7 +200,7 @@ private fun DayGrid(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .aspectRatio(1.2f)
+                            .aspectRatio(1.4f)
                     ) {
                         CalendarDayCell(
                             day = dayModel,

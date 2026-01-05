@@ -85,7 +85,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import app.zhixu.R
@@ -805,6 +804,7 @@ private fun TaskDateSheet(
                             onRepeatClick = {
                                 android.widget.Toast.makeText(context, "重复：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
                             },
+                            onClear = onClear,
                         )
                     }
                 } else {
@@ -825,32 +825,13 @@ private fun TaskDateSheet(
                             onRepeatClick = {
                                 android.widget.Toast.makeText(context, "重复：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
                             },
+                            onClear = onClear,
                         )
                     }
                 }
             }
 
-            if (selectedDate != null) {
-                OutlinedButton(
-                    onClick = onClear,
-                    shape = RoundedCornerShape(0.dp),
-                    colors =
-                        ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error,
-                        ),
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp)
-                            .padding(top = 6.dp, bottom = 18.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.task_input_clear),
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center,
-                    )
-                }
-            }
+            // Clear button is rendered inside tab content (under repeat) to avoid overlay/layer issues.
         }
     }
 }
@@ -869,6 +850,7 @@ private fun TaskDateTab(
     onTimeClick: () -> Unit,
     onReminderClick: () -> Unit,
     onRepeatClick: () -> Unit,
+    onClear: () -> Unit,
 ) {
     Row(
         modifier =
@@ -920,6 +902,23 @@ private fun TaskDateTab(
         }
     }
 
+    if (selectedDate != null) {
+        OutlinedButton(
+            onClick = onClear,
+            shape = RoundedCornerShape(12.dp),
+            colors =
+                ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+        ) {
+            Text(text = stringResource(R.string.task_input_clear), style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+
     Spacer(modifier = Modifier.height(12.dp))
 }
 
@@ -952,7 +951,7 @@ private fun TaskQuickPick(
                 )
             }
         }
-        Text(text = label, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center)
+        Text(text = label, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
     }
 }
 
@@ -964,6 +963,7 @@ private fun TaskTimeRangeTab(
     onGoToDate: () -> Unit,
     onReminderClick: () -> Unit,
     onRepeatClick: () -> Unit,
+    onClear: () -> Unit,
 ) {
     val date = selectedDate
     val dateText =
@@ -995,8 +995,8 @@ private fun TaskTimeRangeTab(
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
         ) {
             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(text = stringResource(R.string.task_input_date), fontWeight = FontWeight.SemiBold)
-                Text(text = dateText, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
+                Text(text = stringResource(R.string.task_input_date), style = MaterialTheme.typography.bodyMedium)
+                Text(text = dateText, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
             }
         }
         Surface(
@@ -1005,10 +1005,14 @@ private fun TaskTimeRangeTab(
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
         ) {
             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(text = stringResource(R.string.task_input_time_range), fontWeight = FontWeight.SemiBold)
-                Text(text = rangeText, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
+                Text(text = stringResource(R.string.task_input_time_range), style = MaterialTheme.typography.bodyMedium)
+                Text(text = rangeText, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
                 if (range != null && range != TimeRange.AllDay) {
-                    Text(text = "持续时间：1小时", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = "持续时间：1小时",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
+                    )
                 }
             }
         }
@@ -1023,7 +1027,7 @@ private fun TaskTimeRangeTab(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = "全天", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text(text = "全天", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Switch(
                 checked = range == TimeRange.AllDay,
                 onCheckedChange = { checked ->
@@ -1042,7 +1046,7 @@ private fun TaskTimeRangeTab(
             FilterChip(
                 selected = range == r,
                 onClick = { onChangeRange(if (range == r) null else r) },
-                label = { Text(r.label) },
+                label = { Text(r.label, style = MaterialTheme.typography.bodyMedium) },
             )
         }
     }
@@ -1057,6 +1061,24 @@ private fun TaskTimeRangeTab(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), modifier = Modifier.padding(horizontal = 16.dp))
             TaskSheetRow(title = "重复", value = "无", onClick = onRepeatClick)
         }
+    }
+
+    if (selectedDate != null) {
+        OutlinedButton(
+            onClick = onClear,
+            shape = RoundedCornerShape(12.dp),
+            colors =
+                ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+        ) {
+            Text(text = stringResource(R.string.task_input_clear), style = MaterialTheme.typography.bodyMedium)
+        }
+        Spacer(modifier = Modifier.height(12.dp))
     }
 
     Spacer(modifier = Modifier.height(12.dp))
@@ -1080,8 +1102,8 @@ private fun TaskSheetRow(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text = title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-        Text(text = value, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text = title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(text = value, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
         Spacer(modifier = Modifier.width(6.dp))
         Icon(
             imageVector = Icons.Outlined.ArrowForward,
@@ -1130,8 +1152,7 @@ private fun UnderlineTabLabel(
                     )
                 },
         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-        fontSize = 15.sp,
+        style = MaterialTheme.typography.bodyMedium,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )

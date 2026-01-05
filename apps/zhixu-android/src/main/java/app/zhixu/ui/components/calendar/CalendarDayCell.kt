@@ -93,7 +93,7 @@ fun CalendarDayCell(
 
                 Box(
                     modifier = Modifier
-                        .size(34.dp)
+                        .size(30.dp)
                         .shadow(circleElevation, CircleShape, clip = false)
                         .clip(CircleShape)
                         .background(
