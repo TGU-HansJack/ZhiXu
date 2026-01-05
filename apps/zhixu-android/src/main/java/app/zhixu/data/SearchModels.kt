@@ -28,5 +28,7 @@ data class UiTask(
     val checked: Boolean,
     val taskId: String?,
     val dueEpochMillis: Long?,
+    val remindEpochMillis: Long?,
+    val remindPersistent: Boolean,
     val priority: Int?,
 )

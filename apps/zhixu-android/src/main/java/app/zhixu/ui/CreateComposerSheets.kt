@@ -102,6 +102,8 @@ internal fun TodoComposerSheet(
                             title = draft.title.trim(),
                             dueDate = draft.dueDate,
                             dueTime = draft.dueTime,
+                            remindAt = draft.remindAt,
+                            remindPersistent = draft.remindPersistent,
                             tags = draft.tags,
                             priority = draft.priority,
                         )

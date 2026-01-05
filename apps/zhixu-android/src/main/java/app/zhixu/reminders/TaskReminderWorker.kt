@@ -30,11 +30,14 @@ class TaskReminderWorker(
         val now = System.currentTimeMillis()
         val tasks = runCatching { index.getDueTasksForReminder(nowEpochMillis = now) }.getOrElse { return Result.success() }
         for (task in tasks) {
-            val due = task.dueEpochMillis ?: continue
+            val due = task.dueEpochMillis
+            val trigger = task.remindEpochMillis ?: due ?: continue
             val key = task.taskId ?: "${task.docUri}#${task.lineIndex}"
-            if (runCatching { index.wasReminderNotified(key, due) }.getOrDefault(false)) continue
+            if (!task.remindPersistent) {
+                if (runCatching { index.wasReminderNotified(key, trigger) }.getOrDefault(false)) continue
+            }
 
-            val dueText = dueFormatter.format(Instant.ofEpochMilli(due).atZone(ZoneId.systemDefault()))
+            val dueText = due?.let { dueFormatter.format(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault())) }
             val intent = Intent(applicationContext, MainActivity::class.java)
                 .putExtra(EXTRA_DOC_URI, task.docUri.toString())
                 .putExtra(EXTRA_LINE_INDEX, task.lineIndex)
@@ -46,17 +49,29 @@ class TaskReminderWorker(
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                 )
 
+            val contentText =
+                if (dueText != null) {
+                    "${task.docName} · $dueText"
+                } else {
+                    task.docName
+                }
             val notification =
                 NotificationCompat.Builder(applicationContext, CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_launcher_foreground)
                     .setContentTitle(task.title)
-                    .setContentText("${task.docName} · $dueText")
+                    .setContentText(contentText)
                     .setContentIntent(pendingIntent)
                     .setAutoCancel(true)
+                    .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setDefaults(NotificationCompat.DEFAULT_ALL)
+                    .setVibrate(longArrayOf(0, 250, 150, 250))
                     .build()
 
             runCatching { NotificationManagerCompat.from(applicationContext).notify(key.hashCode(), notification) }
-            runCatching { index.markReminderNotified(key, due) }
+            if (!task.remindPersistent) {
+                runCatching { index.markReminderNotified(key, trigger) }
+            }
         }
 
         return Result.success()
@@ -65,14 +80,16 @@ class TaskReminderWorker(
     private fun ensureChannel() {
         if (Build.VERSION.SDK_INT < 26) return
         val mgr = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (mgr.getNotificationChannel(CHANNEL_ID) != null) return
-        mgr.createNotificationChannel(
+        val channel =
             NotificationChannel(
                 CHANNEL_ID,
                 applicationContext.getString(R.string.reminder_channel_name),
-                NotificationManager.IMPORTANCE_DEFAULT,
-            ),
-        )
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 250, 150, 250)
+            }
+        mgr.createNotificationChannel(channel)
     }
 
     companion object {

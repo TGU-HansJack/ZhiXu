@@ -69,6 +69,8 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedButton
@@ -127,6 +129,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneId
@@ -234,6 +237,8 @@ fun TasksScreen(
                         title = title,
                         dueDate = draft.dueDate,
                         dueTime = draft.dueTime,
+                        remindAt = draft.remindAt,
+                        remindPersistent = draft.remindPersistent,
                         tags = draft.tags,
                         priority = draft.priority,
                     )
@@ -466,6 +471,7 @@ fun TasksScreen(
             }
         }
     }
+
 }
 
 private object TasksScreenCache {
@@ -500,6 +506,8 @@ internal data class TaskDraft(
     val title: String,
     val dueDate: LocalDate?,
     val dueTime: LocalTime?,
+    val remindAt: LocalDateTime?,
+    val remindPersistent: Boolean,
     val tags: List<String>,
     val priority: Int?,
 )
@@ -522,6 +530,9 @@ internal fun TaskComposer(
     var dueDate by remember { mutableStateOf<LocalDate?>(null) }
     var timeRange by remember { mutableStateOf<TimeRange?>(null) }
     var dueTime by remember { mutableStateOf<LocalTime?>(null) }
+    var reminderOffsetDays by remember { mutableStateOf<Int?>(null) }
+    var reminderTime by remember { mutableStateOf(LocalTime.of(9, 0)) }
+    var reminderPersistent by remember { mutableStateOf(false) }
     var tags by remember { mutableStateOf<List<String>>(emptyList()) }
     var priority by remember { mutableStateOf<Int?>(null) }
     var showDateSheet by remember { mutableStateOf(false) }
@@ -545,11 +556,24 @@ internal fun TaskComposer(
         val finalPriority = priority ?: detected.priority
         val finalTags = (tags + detected.tags).map { it.trim() }.filter { it.isNotBlank() }.distinct()
 
+        val remindAt =
+            if (reminderOffsetDays != null && finalDate != null) {
+                finalDate
+                    .atTime(reminderTime)
+                    .minusDays(reminderOffsetDays!!.toLong())
+                    .takeIf { it.isAfter(LocalDateTime.now()) }
+            } else {
+                null
+            }
+        val remindPersistentFinal = reminderPersistent && remindAt != null
+
         currentOnSubmit(
             TaskDraft(
                 title = finalTitle,
                 dueDate = finalDate,
                 dueTime = finalTime,
+                remindAt = remindAt,
+                remindPersistent = remindPersistentFinal,
                 tags = finalTags,
                 priority = finalPriority,
             ),
@@ -559,6 +583,9 @@ internal fun TaskComposer(
         dueDate = null
         timeRange = null
         dueTime = null
+        reminderOffsetDays = null
+        reminderTime = LocalTime.of(9, 0)
+        reminderPersistent = false
         tags = emptyList()
         priority = null
     }
@@ -661,16 +688,25 @@ internal fun TaskComposer(
             initialRange = timeRange,
             initialTime = dueTime,
             onDismiss = { showDateSheet = false },
-            onConfirm = { date, range, time ->
+            initialReminderOffsetDays = reminderOffsetDays,
+            initialReminderTime = reminderTime,
+            initialReminderPersistent = reminderPersistent,
+            onConfirm = { date, range, time, remindOffsetDays, remindTime, remindPersistentNext ->
                 dueDate = date
                 timeRange = range
                 dueTime = time
+                reminderOffsetDays = remindOffsetDays
+                reminderTime = remindTime
+                reminderPersistent = remindPersistentNext
                 showDateSheet = false
             },
             onClear = {
                 dueDate = null
                 timeRange = null
                 dueTime = null
+                reminderOffsetDays = null
+                reminderTime = LocalTime.of(9, 0)
+                reminderPersistent = false
                 showDateSheet = false
             },
         )
@@ -713,8 +749,11 @@ private fun TaskDateSheet(
     initialDate: LocalDate?,
     initialRange: TimeRange?,
     initialTime: LocalTime?,
+    initialReminderOffsetDays: Int?,
+    initialReminderTime: LocalTime,
+    initialReminderPersistent: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (LocalDate?, TimeRange?, LocalTime?) -> Unit,
+    onConfirm: (LocalDate?, TimeRange?, LocalTime?, Int?, LocalTime, Boolean) -> Unit,
     onClear: () -> Unit,
 ) {
     val state: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -724,6 +763,24 @@ private fun TaskDateSheet(
     var selectedDate by remember { mutableStateOf<LocalDate?>(initialDate) }
     var range by remember { mutableStateOf(initialRange) }
     var dueTime by remember { mutableStateOf(initialTime) }
+    var reminderOffsetDays by remember { mutableStateOf(initialReminderOffsetDays) }
+    var reminderTime by remember { mutableStateOf(initialReminderTime) }
+    var reminderPersistent by remember { mutableStateOf(initialReminderPersistent) }
+    var showReminderDialog by remember { mutableStateOf(false) }
+
+    fun formatTime(time: LocalTime): String =
+        "${time.hour.toString().padStart(2, '0')}:${time.minute.toString().padStart(2, '0')}"
+
+    val reminderValue =
+        remember(reminderOffsetDays, reminderTime) {
+            val offset = reminderOffsetDays ?: return@remember "无"
+            val time = formatTime(reminderTime)
+            when {
+                offset == 0 -> "当天 ($time)"
+                offset % 7 == 0 -> "提前 ${offset / 7} 周 ($time)"
+                else -> "提前 $offset 天 ($time)"
+            }
+        }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -734,7 +791,14 @@ private fun TaskDateSheet(
         val screenHeight = LocalConfiguration.current.screenHeightDp.dp
         val contentMinHeight = screenHeight * 0.7f + 24.dp
         fun confirmSelection() {
-            onConfirm(selectedDate, range, dueTime)
+            onConfirm(
+                selectedDate,
+                range,
+                dueTime,
+                reminderOffsetDays,
+                reminderTime,
+                reminderPersistent && reminderOffsetDays != null,
+            )
         }
 
         Column(
@@ -841,12 +905,13 @@ private fun TaskDateSheet(
                                 dueTime = time
                             },
                             onReminderClick = {
-                                android.widget.Toast.makeText(context, "提醒：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
+                                showReminderDialog = true
                             },
                             onRepeatClick = {
                                 android.widget.Toast.makeText(context, "重复：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
                             },
                             onClear = onClear,
+                            reminderValue = reminderValue,
                         )
                     }
                 } else {
@@ -865,12 +930,13 @@ private fun TaskDateSheet(
                             },
                             onGoToDate = { tab = 0 },
                             onReminderClick = {
-                                android.widget.Toast.makeText(context, "提醒：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
+                                showReminderDialog = true
                             },
                             onRepeatClick = {
                                 android.widget.Toast.makeText(context, "重复：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
                             },
                             onClear = onClear,
+                            reminderValue = reminderValue,
                         )
                     }
                 }
@@ -878,6 +944,22 @@ private fun TaskDateSheet(
 
             // Clear button is rendered inside tab content (under repeat) to avoid overlay/layer issues.
         }
+    }
+
+    if (showReminderDialog) {
+        TaskReminderDialog(
+            baseDate = selectedDate,
+            initialOffsetDays = reminderOffsetDays,
+            initialTime = reminderTime,
+            initialPersistent = reminderPersistent,
+            onDismiss = { showReminderDialog = false },
+            onConfirm = { offsetDays, time, persistent ->
+                reminderOffsetDays = offsetDays
+                reminderTime = time
+                reminderPersistent = persistent && offsetDays != null
+                showReminderDialog = false
+            },
+        )
     }
 }
 
@@ -897,6 +979,7 @@ private fun TaskDateTab(
     onReminderClick: () -> Unit,
     onRepeatClick: () -> Unit,
     onClear: () -> Unit,
+    reminderValue: String,
 ) {
     var showTimeDialog by remember { mutableStateOf(false) }
     Row(
@@ -948,7 +1031,7 @@ private fun TaskDateTab(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
-            TaskSheetRow(title = "提醒", value = "无", onClick = onReminderClick)
+            TaskSheetRow(title = "提醒", value = reminderValue, onClick = onReminderClick)
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -1039,6 +1122,7 @@ private fun TaskTimeRangeTab(
     onReminderClick: () -> Unit,
     onRepeatClick: () -> Unit,
     onClear: () -> Unit,
+    reminderValue: String,
 ) {
     val date = selectedDate
     val dateText =
@@ -1132,7 +1216,7 @@ private fun TaskTimeRangeTab(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
     ) {
         Column {
-            TaskSheetRow(title = "提醒", value = "无", onClick = onReminderClick)
+            TaskSheetRow(title = "提醒", value = reminderValue, onClick = onReminderClick)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), modifier = Modifier.padding(horizontal = 16.dp))
             TaskSheetRow(title = "重复", value = "无", onClick = onRepeatClick)
         }
@@ -1157,6 +1241,264 @@ private fun TaskTimeRangeTab(
     }
 
     Spacer(modifier = Modifier.height(12.dp))
+}
+
+private enum class ReminderUnit(val label: String, val daysPerUnit: Int) {
+    Day("按天提前", 1),
+    Week("按周提前", 7),
+}
+
+@Composable
+private fun TaskReminderDialog(
+    baseDate: LocalDate?,
+    initialOffsetDays: Int?,
+    initialTime: LocalTime,
+    initialPersistent: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (Int?, LocalTime, Boolean) -> Unit,
+) {
+    var offsetDays by remember { mutableStateOf(initialOffsetDays) }
+    var time by remember { mutableStateOf(initialTime) }
+    var persistent by remember { mutableStateOf(initialPersistent) }
+    var showTimeDialog by remember { mutableStateOf(false) }
+    var showCustomDialog by remember { mutableStateOf(false) }
+
+    fun formatTime(t: LocalTime): String = "${t.hour.toString().padStart(2, '0')}:${t.minute.toString().padStart(2, '0')}"
+
+    val remindAt =
+        remember(baseDate, offsetDays, time) {
+            if (baseDate == null || offsetDays == null) null
+            else baseDate.atTime(time).minusDays(offsetDays!!.toLong())
+        }
+    val errorText =
+        remember(baseDate, offsetDays, remindAt) {
+            when {
+                offsetDays != null && baseDate == null -> "请先选择日期"
+                remindAt != null && !remindAt.isAfter(LocalDateTime.now()) -> "提醒时间已过期"
+                else -> null
+            }
+        }
+
+    val previewText =
+        remember(remindAt) {
+            remindAt?.let { "于 ${it.year}年${it.monthValue}月${it.dayOfMonth}日，${formatTime(it.toLocalTime())} 提醒" }
+        }
+
+    Dialog(onDismissRequest = onDismiss, properties = ZhixuDialogDefaults.properties) {
+        Surface(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = ZhixuDialogDefaults.edgePadding, vertical = 24.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp)) {
+                Text(
+                    text = "提醒",
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                val presets =
+                    listOf(
+                        "无" to null,
+                        "当天" to 0,
+                        "提前 1 天" to 1,
+                        "提前 2 天" to 2,
+                        "提前 3 天" to 3,
+                        "提前 1 周" to 7,
+                    )
+                Column {
+                    for ((label, days) in presets) {
+                        TaskSheetRow(
+                            title = label,
+                            value = if (days == null) "" else "(${formatTime(time)})",
+                            onClick = {
+                                offsetDays = days
+                                if (days == null) persistent = false
+                            },
+                        )
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                    }
+                    TaskSheetRow(
+                        title = "自定义",
+                        value = "",
+                        onClick = { showCustomDialog = true },
+                    )
+                }
+
+                if (offsetDays != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
+                    ) {
+                        Column {
+                            TaskSheetRow(title = "时间", value = formatTime(time), onClick = { showTimeDialog = true })
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(text = "持续提醒", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                Switch(
+                                    checked = persistent,
+                                    onCheckedChange = { persistent = it },
+                                    enabled = offsetDays != null,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                if (previewText != null) {
+                    Text(text = previewText, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                }
+                if (errorText != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(text = errorText, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text(text = "取消", color = MaterialTheme.colorScheme.primary) }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TextButton(
+                        onClick = { onConfirm(offsetDays, time, persistent && offsetDays != null) },
+                        enabled = errorText == null,
+                    ) { Text(text = "确定", color = MaterialTheme.colorScheme.primary) }
+                }
+            }
+        }
+    }
+
+    if (showTimeDialog) {
+        TaskTimePickerDialog(
+            initial = time,
+            onDismiss = { showTimeDialog = false },
+            onConfirm = { next ->
+                time = next
+                showTimeDialog = false
+            },
+        )
+    }
+
+    if (showCustomDialog) {
+        TaskReminderCustomDialog(
+            initialOffsetDays = offsetDays ?: 0,
+            onDismiss = { showCustomDialog = false },
+            onConfirm = { nextDays ->
+                offsetDays = nextDays
+                showCustomDialog = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun TaskReminderCustomDialog(
+    initialOffsetDays: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    val initialUnit =
+        remember(initialOffsetDays) {
+            if (initialOffsetDays >= 7 && initialOffsetDays % 7 == 0) ReminderUnit.Week else ReminderUnit.Day
+        }
+    var unit by remember { mutableStateOf(initialUnit) }
+    var amount by remember { mutableIntStateOf((if (unit == ReminderUnit.Week) initialOffsetDays / 7 else initialOffsetDays).coerceAtLeast(0)) }
+
+    fun maxFor(u: ReminderUnit): Int = if (u == ReminderUnit.Week) 8 else 30
+
+    Dialog(onDismissRequest = onDismiss, properties = ZhixuDialogDefaults.properties) {
+        Surface(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = ZhixuDialogDefaults.edgePadding, vertical = 24.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp)) {
+                Text(text = "自定义", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                TabRow(selectedTabIndex = if (unit == ReminderUnit.Day) 0 else 1) {
+                    Tab(
+                        selected = unit == ReminderUnit.Day,
+                        onClick = {
+                            unit = ReminderUnit.Day
+                            amount = amount.coerceIn(0, maxFor(unit))
+                        },
+                        text = { Text(ReminderUnit.Day.label) },
+                    )
+                    Tab(
+                        selected = unit == ReminderUnit.Week,
+                        onClick = {
+                            unit = ReminderUnit.Week
+                            amount = amount.coerceIn(0, maxFor(unit))
+                        },
+                        text = { Text(ReminderUnit.Week.label) },
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AndroidView(
+                        factory = { context ->
+                            NumberPicker(context).apply {
+                                minValue = 0
+                                maxValue = maxFor(unit)
+                                wrapSelectorWheel = false
+                                setOnValueChangedListener { _, _, newVal -> amount = newVal }
+                                value = amount.coerceIn(minValue, maxValue)
+                            }
+                        },
+                        update = { picker ->
+                            picker.minValue = 0
+                            picker.maxValue = maxFor(unit)
+                            picker.wrapSelectorWheel = false
+                            picker.value = amount.coerceIn(picker.minValue, picker.maxValue)
+                        },
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = if (unit == ReminderUnit.Day) "天" else "周", style = MaterialTheme.typography.titleMedium)
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                val resolvedDays = amount * unit.daysPerUnit
+                Text(
+                    text = if (resolvedDays == 0) "当天提醒" else "提前 $resolvedDays 天提醒",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text(text = "取消", color = MaterialTheme.colorScheme.primary) }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TextButton(onClick = { onConfirm(resolvedDays) }) { Text(text = "完成", color = MaterialTheme.colorScheme.primary) }
+                }
+            }
+        }
+    }
 }
 
 private enum class TimePickerStyle { Dial, Wheel }

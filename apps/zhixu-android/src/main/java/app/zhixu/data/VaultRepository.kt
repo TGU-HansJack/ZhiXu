@@ -1224,6 +1224,8 @@ class VaultRepository(
             title = title,
             dueDate = null,
             dueTime = null,
+            remindAt = null,
+            remindPersistent = false,
             tags = emptyList(),
             priority = null,
         )
@@ -1234,6 +1236,8 @@ class VaultRepository(
         title: String,
         dueDate: LocalDate?,
         dueTime: LocalTime?,
+        remindAt: LocalDateTime? = null,
+        remindPersistent: Boolean = false,
         tags: List<String>,
         priority: Int?,
     ): Boolean = withContext(Dispatchers.IO) {
@@ -1260,6 +1264,15 @@ class VaultRepository(
                 append(" @due(")
                 append(dueFormat.format(date.atTime(time)))
                 append(")")
+            }
+            val remind = remindAt
+            if (remind != null) {
+                append(" @remind(")
+                append(dueFormat.format(remind))
+                append(")")
+                if (remindPersistent) {
+                    append(" @remind_persist(1)")
+                }
             }
             val p = priority
             if (p != null) {

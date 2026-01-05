@@ -9,6 +9,8 @@ data class TaskItem(
     val title: String,
     val id: String?,
     val due: String?,
+    val remind: String?,
+    val remindPersistent: Boolean,
     val done: String?,
     val tags: List<String>,
     val priority: Int?,
@@ -27,6 +29,8 @@ object TaskSyntax {
     private val idRegex = Regex("""@id\(([^)]*)\)""")
     private val doneRegex = Regex("""@done\(([^)]*)\)""")
     private val dueRegex = Regex("""@due\(([^)]*)\)""")
+    private val remindRegex = Regex("""@remind\(([^)]*)\)""", RegexOption.IGNORE_CASE)
+    private val remindPersistRegex = Regex("""@remind_persist\(([^)]*)\)""", RegexOption.IGNORE_CASE)
     private val tagRegex = Regex("""@tag\(([^)]*)\)""")
     private val priorityRegex = Regex("""@priority\(([^)]*)\)""", RegexOption.IGNORE_CASE)
     private val nowFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
@@ -40,6 +44,11 @@ object TaskSyntax {
             val rest = match.groupValues[4]
             val id = idRegex.find(rest)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
             val due = dueRegex.find(rest)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
+            val remind = remindRegex.find(rest)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
+            val remindPersistent =
+                remindPersistRegex.find(rest)?.groupValues?.get(1)?.trim()?.let { raw ->
+                    raw.equals("1") || raw.equals("true", ignoreCase = true) || raw.equals("yes", ignoreCase = true)
+                } ?: false
             val done = doneRegex.find(rest)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
             val tags = tagRegex.findAll(rest).mapNotNull { it.groupValues[1].takeIf(String::isNotBlank) }.toList()
             val priority =
@@ -52,6 +61,8 @@ object TaskSyntax {
                 title = title,
                 id = id,
                 due = due,
+                remind = remind,
+                remindPersistent = remindPersistent,
                 done = done,
                 tags = tags,
                 priority = priority,

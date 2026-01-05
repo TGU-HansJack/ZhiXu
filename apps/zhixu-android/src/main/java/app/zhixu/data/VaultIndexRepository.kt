@@ -166,13 +166,14 @@ class VaultIndexRepository(
                 val tasks = TaskSyntax.parseTasks(content)
                 for (task in tasks) {
                     val dueMs = task.due?.let(::parseEpochMillis)
+                    val remindMs = task.remind?.let(::parseEpochMillis)
                     val doneMs = task.done?.let(::parseDoneEpochMillis)
                     val tags = task.tags.joinToString(" ") { it.trim().lowercase() }.trim()
                     database.execSQL(
                         """
                         INSERT OR REPLACE INTO tasks(
-                          doc_uri, doc_name, line_index, checked, task_id, title, tags, priority, due_epoch_ms, done_epoch_ms, raw_line
-                        ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+                          doc_uri, doc_name, line_index, checked, task_id, title, tags, priority, due_epoch_ms, remind_epoch_ms, remind_persist, done_epoch_ms, raw_line
+                        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
                         """.trimIndent(),
                         arrayOf<Any?>(
                             doc.uri.toString(),
@@ -184,6 +185,8 @@ class VaultIndexRepository(
                             tags,
                             task.priority,
                             dueMs,
+                            remindMs,
+                            if (task.remindPersistent) 1 else 0,
                             doneMs,
                             task.rawLine,
                         ),
@@ -437,7 +440,7 @@ class VaultIndexRepository(
             val out = ArrayList<UiTask>()
             database.rawQuery(
                 """
-                SELECT t.doc_uri, t.doc_name, t.line_index, t.checked, t.task_id, t.title, t.due_epoch_ms, t.priority
+                SELECT t.doc_uri, t.doc_name, t.line_index, t.checked, t.task_id, t.title, t.due_epoch_ms, t.remind_epoch_ms, t.remind_persist, t.priority
                 FROM tasks_meta m
                 JOIN tasks t ON t.task_id = m.task_id
                 WHERE m.created_epoch_ms BETWEEN ? AND ?
@@ -453,6 +456,8 @@ class VaultIndexRepository(
                 val idIdx = cursor.getColumnIndexOrThrow("task_id")
                 val titleIdx = cursor.getColumnIndexOrThrow("title")
                 val dueIdx = cursor.getColumnIndexOrThrow("due_epoch_ms")
+                val remindIdx = cursor.getColumnIndexOrThrow("remind_epoch_ms")
+                val remindPersistIdx = cursor.getColumnIndexOrThrow("remind_persist")
                 val priorityIdx = cursor.getColumnIndexOrThrow("priority")
                 while (cursor.moveToNext()) {
                     out +=
@@ -464,6 +469,8 @@ class VaultIndexRepository(
                             checked = cursor.getInt(checkedIdx) != 0,
                             taskId = cursor.getString(idIdx),
                             dueEpochMillis = if (cursor.isNull(dueIdx)) null else cursor.getLong(dueIdx),
+                            remindEpochMillis = if (cursor.isNull(remindIdx)) null else cursor.getLong(remindIdx),
+                            remindPersistent = cursor.getInt(remindPersistIdx) != 0,
                             priority = if (cursor.isNull(priorityIdx)) null else cursor.getInt(priorityIdx),
                         )
                 }
@@ -582,15 +589,27 @@ class VaultIndexRepository(
             val out = ArrayList<UiTask>()
             database.rawQuery(
                 """
-                SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms, priority
+                SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms, remind_epoch_ms, remind_persist, priority
                 FROM tasks
                 WHERE checked = 0
-                  AND due_epoch_ms IS NOT NULL
-                  AND due_epoch_ms BETWEEN ? AND ?
-                ORDER BY (priority IS NULL) ASC, priority ASC, due_epoch_ms ASC
+                  AND (
+                    (remind_epoch_ms IS NOT NULL AND (
+                      remind_epoch_ms BETWEEN ? AND ?
+                      OR (remind_persist = 1 AND remind_epoch_ms <= ?)
+                    ))
+                    OR (remind_epoch_ms IS NULL AND due_epoch_ms IS NOT NULL AND due_epoch_ms BETWEEN ? AND ?)
+                  )
+                ORDER BY (priority IS NULL) ASC, priority ASC, COALESCE(remind_epoch_ms, due_epoch_ms) ASC
                 LIMIT ?
                 """.trimIndent(),
-                arrayOf(nowEpochMillis.toString(), end.toString(), limit.toString()),
+                arrayOf(
+                    nowEpochMillis.toString(),
+                    end.toString(),
+                    nowEpochMillis.toString(),
+                    nowEpochMillis.toString(),
+                    end.toString(),
+                    limit.toString(),
+                ),
             ).use { cursor ->
                 val docUriIdx = cursor.getColumnIndexOrThrow("doc_uri")
                 val docNameIdx = cursor.getColumnIndexOrThrow("doc_name")
@@ -599,6 +618,8 @@ class VaultIndexRepository(
                 val idIdx = cursor.getColumnIndexOrThrow("task_id")
                 val titleIdx = cursor.getColumnIndexOrThrow("title")
                 val dueIdx = cursor.getColumnIndexOrThrow("due_epoch_ms")
+                val remindIdx = cursor.getColumnIndexOrThrow("remind_epoch_ms")
+                val remindPersistIdx = cursor.getColumnIndexOrThrow("remind_persist")
                 val priorityIdx = cursor.getColumnIndexOrThrow("priority")
                 while (cursor.moveToNext()) {
                     out += UiTask(
@@ -609,6 +630,8 @@ class VaultIndexRepository(
                         checked = cursor.getInt(checkedIdx) != 0,
                         taskId = cursor.getString(idIdx),
                         dueEpochMillis = if (cursor.isNull(dueIdx)) null else cursor.getLong(dueIdx),
+                        remindEpochMillis = if (cursor.isNull(remindIdx)) null else cursor.getLong(remindIdx),
+                        remindPersistent = cursor.getInt(remindPersistIdx) != 0,
                         priority = if (cursor.isNull(priorityIdx)) null else cursor.getInt(priorityIdx),
                     )
                 }
@@ -617,7 +640,7 @@ class VaultIndexRepository(
         }
     }
 
-    suspend fun wasReminderNotified(key: String, dueEpochMillis: Long): Boolean = withContext(Dispatchers.IO) {
+    suspend fun wasReminderNotified(key: String, triggerEpochMillis: Long): Boolean = withContext(Dispatchers.IO) {
         mutex.withLock {
             val database = db.readableDatabase
             database.rawQuery(
@@ -625,17 +648,17 @@ class VaultIndexRepository(
                 arrayOf("notified:$key"),
             ).use { cursor ->
                 if (!cursor.moveToFirst()) return@withLock false
-                cursor.getString(0) == dueEpochMillis.toString()
+                cursor.getString(0) == triggerEpochMillis.toString()
             }
         }
     }
 
-    suspend fun markReminderNotified(key: String, dueEpochMillis: Long) = withContext(Dispatchers.IO) {
+    suspend fun markReminderNotified(key: String, triggerEpochMillis: Long) = withContext(Dispatchers.IO) {
         mutex.withLock {
             val database = db.writableDatabase
             database.execSQL(
                 "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)",
-                arrayOf<Any?>("notified:$key", dueEpochMillis.toString()),
+                arrayOf<Any?>("notified:$key", triggerEpochMillis.toString()),
             )
         }
     }
@@ -646,7 +669,7 @@ class VaultIndexRepository(
             val out = ArrayList<UiTask>()
             database.rawQuery(
                 """
-                SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms, priority
+                SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms, remind_epoch_ms, remind_persist, priority
                 FROM tasks
                 WHERE checked = 1
                 ORDER BY COALESCE(done_epoch_ms, due_epoch_ms, 0) DESC
@@ -661,6 +684,8 @@ class VaultIndexRepository(
                 val idIdx = cursor.getColumnIndexOrThrow("task_id")
                 val titleIdx = cursor.getColumnIndexOrThrow("title")
                 val dueIdx = cursor.getColumnIndexOrThrow("due_epoch_ms")
+                val remindIdx = cursor.getColumnIndexOrThrow("remind_epoch_ms")
+                val remindPersistIdx = cursor.getColumnIndexOrThrow("remind_persist")
                 val priorityIdx = cursor.getColumnIndexOrThrow("priority")
                 while (cursor.moveToNext()) {
                     out += UiTask(
@@ -671,6 +696,8 @@ class VaultIndexRepository(
                         checked = cursor.getInt(checkedIdx) != 0,
                         taskId = cursor.getString(idIdx),
                         dueEpochMillis = if (cursor.isNull(dueIdx)) null else cursor.getLong(dueIdx),
+                        remindEpochMillis = if (cursor.isNull(remindIdx)) null else cursor.getLong(remindIdx),
+                        remindPersistent = cursor.getInt(remindPersistIdx) != 0,
                         priority = if (cursor.isNull(priorityIdx)) null else cursor.getInt(priorityIdx),
                     )
                 }
@@ -703,7 +730,7 @@ class VaultIndexRepository(
         }.toTypedArray()
         database.rawQuery(
             """
-            SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms, priority
+            SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms, remind_epoch_ms, remind_persist, priority
             FROM tasks
             WHERE due_epoch_ms IS NOT NULL
               AND due_epoch_ms BETWEEN ? AND ?
@@ -721,6 +748,8 @@ class VaultIndexRepository(
             val idIdx = cursor.getColumnIndexOrThrow("task_id")
             val titleIdx = cursor.getColumnIndexOrThrow("title")
             val dueIdx = cursor.getColumnIndexOrThrow("due_epoch_ms")
+            val remindIdx = cursor.getColumnIndexOrThrow("remind_epoch_ms")
+            val remindPersistIdx = cursor.getColumnIndexOrThrow("remind_persist")
             val priorityIdx = cursor.getColumnIndexOrThrow("priority")
             while (cursor.moveToNext()) {
                 out += UiTask(
@@ -731,6 +760,8 @@ class VaultIndexRepository(
                     checked = cursor.getInt(checkedIdx) != 0,
                     taskId = cursor.getString(idIdx),
                     dueEpochMillis = if (cursor.isNull(dueIdx)) null else cursor.getLong(dueIdx),
+                    remindEpochMillis = if (cursor.isNull(remindIdx)) null else cursor.getLong(remindIdx),
+                    remindPersistent = cursor.getInt(remindPersistIdx) != 0,
                     priority = if (cursor.isNull(priorityIdx)) null else cursor.getInt(priorityIdx),
                 )
             }
@@ -758,7 +789,7 @@ class VaultIndexRepository(
         }.toTypedArray()
         database.rawQuery(
             """
-            SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms, priority
+            SELECT doc_uri, doc_name, line_index, checked, task_id, title, due_epoch_ms, remind_epoch_ms, remind_persist, priority
             FROM tasks
             WHERE 1 = 1
               $statusClause
@@ -775,6 +806,8 @@ class VaultIndexRepository(
             val idIdx = cursor.getColumnIndexOrThrow("task_id")
             val titleIdx = cursor.getColumnIndexOrThrow("title")
             val dueIdx = cursor.getColumnIndexOrThrow("due_epoch_ms")
+            val remindIdx = cursor.getColumnIndexOrThrow("remind_epoch_ms")
+            val remindPersistIdx = cursor.getColumnIndexOrThrow("remind_persist")
             val priorityIdx = cursor.getColumnIndexOrThrow("priority")
             while (cursor.moveToNext()) {
                 out += UiTask(
@@ -785,6 +818,8 @@ class VaultIndexRepository(
                     checked = cursor.getInt(checkedIdx) != 0,
                     taskId = cursor.getString(idIdx),
                     dueEpochMillis = if (cursor.isNull(dueIdx)) null else cursor.getLong(dueIdx),
+                    remindEpochMillis = if (cursor.isNull(remindIdx)) null else cursor.getLong(remindIdx),
+                    remindPersistent = cursor.getInt(remindPersistIdx) != 0,
                     priority = if (cursor.isNull(priorityIdx)) null else cursor.getInt(priorityIdx),
                 )
             }
