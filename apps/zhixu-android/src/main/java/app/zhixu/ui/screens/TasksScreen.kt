@@ -4,8 +4,6 @@ import android.net.Uri
 import android.widget.NumberPicker
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -112,6 +110,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import app.zhixu.R
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.components.ZhixuCompactDragHandle
+import app.zhixu.ui.components.ZhixuDialogDefaults
 import app.zhixu.ui.components.RefreshStatusBanner
 import app.zhixu.ui.components.calendar.CalendarGrid
 import app.zhixu.data.UiTask
@@ -136,6 +135,7 @@ import java.time.temporal.ChronoUnit
 import java.time.DayOfWeek
 import kotlin.math.max
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.toArgb
 
 data class TaskKey(
     val docUri: String,
@@ -979,9 +979,7 @@ private fun TaskDateTab(
     if (showTimeDialog) {
         val fallback =
             remember(dueTime, range) {
-                val base = dueTime ?: range?.defaultTime ?: LocalTime.now()
-                val snappedMinute = ((base.minute + 2) / 5) * 5 % 60
-                base.withMinute(snappedMinute)
+                dueTime ?: range?.defaultTime ?: LocalTime.now()
             }
         TaskTimePickerDialog(
             initial = fallback,
@@ -1174,15 +1172,21 @@ private fun TaskTimePickerDialog(
     var style by remember { mutableStateOf(TimePickerStyle.Dial) }
     var phase by remember { mutableStateOf(DialPhase.Hour) }
     var hour by remember { mutableIntStateOf(initial.hour) }
-    var minute by remember { mutableIntStateOf((initial.minute / 5) * 5) }
+    var minute by remember { mutableIntStateOf(initial.minute) }
 
     fun formattedHour(): String = hour.toString().padStart(2, '0')
     fun formattedMinute(): String = minute.toString().padStart(2, '0')
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = ZhixuDialogDefaults.properties,
+    ) {
         Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = ZhixuDialogDefaults.edgePadding, vertical = 24.dp),
+            shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surface,
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp)) {
@@ -1239,15 +1243,8 @@ private fun TaskTimePickerDialog(
                                 targetState = phase,
                                 label = "dial-phase",
                                 transitionSpec = {
-                                    val exit = fadeOut(tween(160)) + scaleOut(tween(160))
-                                    val enter =
-                                        fadeIn(tween(220, delayMillis = 40)) +
-                                            scaleIn(
-                                                spring(
-                                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                    stiffness = Spring.StiffnessLow,
-                                                ),
-                                            )
+                                    val exit = fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 1.02f)
+                                    val enter = fadeIn(tween(160)) + scaleIn(tween(160), initialScale = 0.98f)
                                     enter togetherWith exit
                                 },
                             ) { target ->
@@ -1264,7 +1261,7 @@ private fun TaskTimePickerDialog(
 
                                     DialPhase.Minute ->
                                         DialMinutePicker(
-                                            selected = minute,
+                                            selected = (minute / 5) * 5,
                                             onSelect = { next ->
                                                 minute = (next / 5).coerceIn(0, 11) * 5
                                             },
@@ -1279,7 +1276,7 @@ private fun TaskTimePickerDialog(
                                 hour = hour,
                                 minute = minute,
                                 onHourChange = { hour = it.coerceIn(0, 23) },
-                                onMinuteChange = { minute = (it / 5).coerceIn(0, 11) * 5 },
+                                onMinuteChange = { minute = it.coerceIn(0, 59) },
                             )
                         }
                     }
@@ -1293,8 +1290,13 @@ private fun TaskTimePickerDialog(
                 ) {
                     ZhixuIconButton(
                         onClick = {
-                            style = if (style == TimePickerStyle.Dial) TimePickerStyle.Wheel else TimePickerStyle.Dial
-                            if (style == TimePickerStyle.Dial) phase = DialPhase.Hour
+                            val next =
+                                if (style == TimePickerStyle.Dial) TimePickerStyle.Wheel else TimePickerStyle.Dial
+                            style = next
+                            if (next == TimePickerStyle.Dial) {
+                                minute = ((minute + 2) / 5) * 5 % 60
+                                phase = DialPhase.Hour
+                            }
                         },
                         modifier = Modifier.size(44.dp),
                     ) {
@@ -1493,7 +1495,7 @@ private fun WheelTimePicker(
     onHourChange: (Int) -> Unit,
     onMinuteChange: (Int) -> Unit,
 ) {
-    val minuteValues = remember { Array(12) { i -> (i * 5).toString().padStart(2, '0') } }
+    val textColorInt = MaterialTheme.colorScheme.onSurface.toArgb()
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
@@ -1507,10 +1509,12 @@ private fun WheelTimePicker(
                     wrapSelectorWheel = true
                     setFormatter { value -> value.toString().padStart(2, '0') }
                     setOnValueChangedListener { _, _, newVal -> onHourChange(newVal) }
+                    setNumberPickerTextColor(textColorInt)
                 }
             },
             update = { picker ->
                 if (picker.value != hour) picker.value = hour
+                picker.setNumberPickerTextColor(textColorInt)
             },
             modifier = Modifier.width(120.dp),
         )
@@ -1524,18 +1528,37 @@ private fun WheelTimePicker(
             factory = { context ->
                 NumberPicker(context).apply {
                     minValue = 0
-                    maxValue = 11
-                    displayedValues = minuteValues
+                    maxValue = 59
                     wrapSelectorWheel = true
-                    setOnValueChangedListener { _, _, newVal -> onMinuteChange(newVal * 5) }
+                    setFormatter { value -> value.toString().padStart(2, '0') }
+                    setOnValueChangedListener { _, _, newVal -> onMinuteChange(newVal) }
+                    setNumberPickerTextColor(textColorInt)
                 }
             },
             update = { picker ->
-                val idx = (minute / 5).coerceIn(0, 11)
-                if (picker.value != idx) picker.value = idx
+                val v = minute.coerceIn(0, 59)
+                if (picker.value != v) picker.value = v
+                picker.setNumberPickerTextColor(textColorInt)
             },
             modifier = Modifier.width(120.dp),
         )
+    }
+}
+
+private fun NumberPicker.setNumberPickerTextColor(color: Int) {
+    runCatching {
+        val selectorWheelPaintField = NumberPicker::class.java.getDeclaredField("mSelectorWheelPaint")
+        selectorWheelPaintField.isAccessible = true
+        val paint = selectorWheelPaintField.get(this) as? android.graphics.Paint
+        paint?.color = color
+        for (i in 0 until childCount) {
+            val child = getChildAt(i)
+            if (child is android.widget.EditText) {
+                child.setTextColor(color)
+                child.setHintTextColor(color)
+            }
+        }
+        invalidate()
     }
 }
 
