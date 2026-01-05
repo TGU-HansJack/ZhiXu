@@ -38,12 +38,10 @@ CMakeCache.txt
 !.vscode/tasks.json
 !.vscode/*.code-snippets
 
-# Keystore (this repo is private; keep signing files in `.key/`)
+# Keystore - 签名密钥永远不应提交到版本控制
 *.jks
 *.keystore
-!.key/
-!.key/*.jks
-!.key/*.keystore
+.key/
 
 # OS
 **/.DS_Store
