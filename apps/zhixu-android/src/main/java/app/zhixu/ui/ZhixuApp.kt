@@ -111,7 +111,11 @@ import app.zhixu.ui.screens.LongImageScreen
 import app.zhixu.ui.screens.NewDocScreen
 import app.zhixu.ui.screens.OpenSourceLicenseScreen
 import app.zhixu.ui.screens.PrivacyPolicyScreen
+import app.zhixu.ui.screens.DailyReminderSettingsScreen
 import app.zhixu.ui.screens.NotificationSettingsScreen
+import app.zhixu.ui.screens.ReminderPopupSettingsScreen
+import app.zhixu.ui.screens.ReminderSoundSettingsScreen
+import app.zhixu.ui.screens.ReminderVibrationSettingsScreen
 import app.zhixu.ui.screens.SettingsScreen
 import app.zhixu.ui.screens.SpaceScreen
 import app.zhixu.ui.screens.SyncScreen
@@ -795,6 +799,34 @@ fun ZhixuApp(
                 }
                 composable("notificationSettings") {
                     NotificationSettingsScreen(
+                        contentPadding = padding,
+                        onBack = { navController.popBackStack() },
+                        onOpenDailyReminder = { navController.navigate("dailyReminder") },
+                        onOpenReminderSound = { navController.navigate("reminderSound") },
+                        onOpenReminderVibration = { navController.navigate("reminderVibration") },
+                        onOpenReminderPopup = { navController.navigate("reminderPopup") },
+                    )
+                }
+                composable("dailyReminder") {
+                    DailyReminderSettingsScreen(
+                        contentPadding = padding,
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable("reminderSound") {
+                    ReminderSoundSettingsScreen(
+                        contentPadding = padding,
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable("reminderVibration") {
+                    ReminderVibrationSettingsScreen(
+                        contentPadding = padding,
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable("reminderPopup") {
+                    ReminderPopupSettingsScreen(
                         contentPadding = padding,
                         onBack = { navController.popBackStack() },
                     )

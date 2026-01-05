@@ -2,8 +2,11 @@ package app.zhixu.ui.screens
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -62,6 +65,10 @@ import app.zhixu.ui.components.ZhixuTopAppBar
 fun NotificationSettingsScreen(
     contentPadding: PaddingValues,
     onBack: () -> Unit,
+    onOpenDailyReminder: () -> Unit,
+    onOpenReminderSound: () -> Unit,
+    onOpenReminderVibration: () -> Unit,
+    onOpenReminderPopup: () -> Unit,
 ) {
     val context = LocalContext.current
     var refreshTick by remember { mutableIntStateOf(0) }
@@ -82,7 +89,20 @@ fun NotificationSettingsScreen(
     }
 
     fun openAppNotificationSettings() {
-        Toast.makeText(context, "请到系统设置开启通知", Toast.LENGTH_SHORT).show()
+        val appContext = context.applicationContext
+        val intent =
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, appContext.packageName)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(intent) }.onFailure {
+            val fallback =
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(Uri.fromParts("package", appContext.packageName, null))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(fallback) }.onFailure {
+                Toast.makeText(context, "无法打开系统设置", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     val appNotificationsEnabled = remember(refreshTick) { NotificationManagerCompat.from(context).areNotificationsEnabled() }
@@ -148,17 +168,60 @@ fun NotificationSettingsScreen(
                                 else -> stringResource(R.string.settings_notifications_state_need_permission)
                             },
                         onClick = {
-                            if (!appNotificationsEnabled) {
-                                Toast.makeText(context, "请到系统设置开启通知", Toast.LENGTH_SHORT).show()
-                                return@SettingsRow
-                            }
-                            if (Build.VERSION.SDK_INT >= 33 && !postNotificationsGranted) {
-                                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            if (!appNotificationsEnabled || !postNotificationsGranted) {
+                                openAppNotificationSettings()
                                 return@SettingsRow
                             }
                             Toast.makeText(context, "已具备通知权限", Toast.LENGTH_SHORT).show()
                             refreshTick++
                         },
+                    )
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(14.dp)) }
+
+            item {
+                Text(
+                    text = stringResource(R.string.settings_notifications_section_reminders),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
+                )
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    SettingsRow(
+                        iconRes = Ionicons.TodayOutline,
+                        title = stringResource(R.string.reminder_daily_title),
+                        subtitle = stringResource(R.string.reminder_daily_subtitle),
+                        onClick = onOpenDailyReminder,
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                    SettingsRow(
+                        iconRes = Ionicons.SettingsOutline,
+                        title = stringResource(R.string.reminder_sound_title),
+                        subtitle = stringResource(R.string.reminder_sound_subtitle),
+                        onClick = onOpenReminderSound,
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                    SettingsRow(
+                        iconRes = Ionicons.RefreshOutline,
+                        title = stringResource(R.string.reminder_vibration_title),
+                        subtitle = stringResource(R.string.reminder_vibration_subtitle),
+                        onClick = onOpenReminderVibration,
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                    SettingsRow(
+                        iconRes = Ionicons.NotificationsOutline,
+                        title = stringResource(R.string.reminder_popup_title),
+                        subtitle = stringResource(R.string.reminder_popup_subtitle),
+                        onClick = onOpenReminderPopup,
                     )
                 }
             }

@@ -357,10 +357,44 @@
     <!-- Notification settings -->
     <string name="settings_notifications_title">Notifications</string>
     <string name="settings_notifications_section_status">Status</string>
+    <string name="settings_notifications_section_reminders">Reminders</string>
     <string name="settings_notifications_row_permission">Notification permission</string>
     <string name="settings_notifications_state_on">On</string>
     <string name="settings_notifications_state_off">Off</string>
     <string name="settings_notifications_state_need_permission">Need permission</string>
+
+    <!-- Reminders -->
+    <string name="reminder_state_on">On</string>
+    <string name="reminder_state_off">Off</string>
+    <string name="reminder_daily_title">Daily reminder</string>
+    <string name="reminder_daily_subtitle">Remind today’s tasks at a fixed time</string>
+    <string name="reminder_daily_enabled">Enable</string>
+    <string name="reminder_daily_enabled_subtitle">Send a reminder notification</string>
+    <string name="reminder_daily_time">Time</string>
+    <string name="reminder_daily_days">Days</string>
+    <string name="reminder_daily_days_hint">Select weekdays (default all)</string>
+    <string name="reminder_sound_title">Reminder sound</string>
+    <string name="reminder_sound_subtitle">Enable/disable sound</string>
+    <string name="reminder_sound_enabled">Sound</string>
+    <string name="reminder_vibration_title">Reminder vibration</string>
+    <string name="reminder_vibration_subtitle">Enable/disable vibration</string>
+    <string name="reminder_vibration_enabled">Vibration</string>
+    <string name="reminder_popup_title">Reminder popup</string>
+    <string name="reminder_popup_subtitle">Show heads-up banner</string>
+    <string name="reminder_popup_enabled">Heads-up</string>
+
+    <string name="weekday_mon">Mon</string>
+    <string name="weekday_tue">Tue</string>
+    <string name="weekday_wed">Wed</string>
+    <string name="weekday_thu">Thu</string>
+    <string name="weekday_fri">Fri</string>
+    <string name="weekday_sat">Sat</string>
+    <string name="weekday_sun">Sun</string>
+
+    <string name="daily_reminder_channel_name">Daily reminder</string>
+    <string name="daily_reminder_notification_title">Daily reminder</string>
+    <string name="daily_reminder_notification_empty">No tasks due today</string>
+    <string name="daily_reminder_notification_count_fmt">You have %1$d tasks today</string>
 
     <!-- Updates -->
     <string name="settings_update_title">Check for updates</string>

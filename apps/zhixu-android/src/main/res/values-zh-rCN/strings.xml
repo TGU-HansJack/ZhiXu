@@ -305,10 +305,44 @@
     <!-- Notification settings -->
     <string name="settings_notifications_title">通知</string>
     <string name="settings_notifications_section_status">状态</string>
+    <string name="settings_notifications_section_reminders">提醒</string>
     <string name="settings_notifications_row_permission">通知权限</string>
     <string name="settings_notifications_state_on">已开启</string>
     <string name="settings_notifications_state_off">已关闭</string>
     <string name="settings_notifications_state_need_permission">需要权限</string>
+
+    <!-- Reminders -->
+    <string name="reminder_state_on">开启</string>
+    <string name="reminder_state_off">关闭</string>
+    <string name="reminder_daily_title">每日提醒</string>
+    <string name="reminder_daily_subtitle">每日固定时间提醒今天的全部任务</string>
+    <string name="reminder_daily_enabled">启用</string>
+    <string name="reminder_daily_enabled_subtitle">发送提醒通知</string>
+    <string name="reminder_daily_time">提醒时间</string>
+    <string name="reminder_daily_days">提醒日</string>
+    <string name="reminder_daily_days_hint">可多选，默认全选</string>
+    <string name="reminder_sound_title">提醒铃声</string>
+    <string name="reminder_sound_subtitle">开启/关闭铃声</string>
+    <string name="reminder_sound_enabled">铃声</string>
+    <string name="reminder_vibration_title">提醒振动</string>
+    <string name="reminder_vibration_subtitle">开启/关闭振动</string>
+    <string name="reminder_vibration_enabled">振动</string>
+    <string name="reminder_popup_title">提醒弹窗</string>
+    <string name="reminder_popup_subtitle">是否显示提示弹窗</string>
+    <string name="reminder_popup_enabled">弹窗</string>
+
+    <string name="weekday_mon">周一</string>
+    <string name="weekday_tue">周二</string>
+    <string name="weekday_wed">周三</string>
+    <string name="weekday_thu">周四</string>
+    <string name="weekday_fri">周五</string>
+    <string name="weekday_sat">周六</string>
+    <string name="weekday_sun">周日</string>
+
+    <string name="daily_reminder_channel_name">每日提醒</string>
+    <string name="daily_reminder_notification_title">每日提醒</string>
+    <string name="daily_reminder_notification_empty">今天没有待办任务</string>
+    <string name="daily_reminder_notification_count_fmt">你今天有 %1$d 个待办</string>
 
     <!-- Updates -->
     <string name="settings_update_title">检查更新</string>
