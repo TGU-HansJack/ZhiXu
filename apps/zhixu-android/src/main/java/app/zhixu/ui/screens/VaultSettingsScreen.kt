@@ -568,14 +568,14 @@ private fun StorageLocationCards(
         StorageLocationCard(
             selected = selected == VaultStorageLocation.OFFICIAL_SERVER,
             title = stringResource(R.string.vault_settings_location_official),
-            description = if (isProEnabled) stringResource(R.string.vault_settings_official_desc) else "需要启用知序 PRO",
+            description = if (isProEnabled) stringResource(R.string.vault_settings_official_desc) else "需要启用知序PRO",
             enabled = isProEnabled,
             onClick = { onSelected(VaultStorageLocation.OFFICIAL_SERVER) },
         )
         StorageLocationCard(
             selected = selected == VaultStorageLocation.THIRD_PARTY_SERVICE,
             title = stringResource(R.string.vault_settings_location_third_party),
-            description = if (isProEnabled) stringResource(R.string.vault_settings_third_party_desc) else "需要启用知序 PRO",
+            description = if (isProEnabled) stringResource(R.string.vault_settings_third_party_desc) else "需要启用知序PRO",
             enabled = isProEnabled,
             onClick = { onSelected(VaultStorageLocation.THIRD_PARTY_SERVICE) },
         )

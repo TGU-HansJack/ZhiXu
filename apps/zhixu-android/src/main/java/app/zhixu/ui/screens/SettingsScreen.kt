@@ -224,8 +224,6 @@ fun SettingsScreen(
                 onClick = { showProDialog = true },
             )
             HorizontalDivider(color = dividerColor)
-            Spacer(modifier = Modifier.height(12.dp))
-            HorizontalDivider(color = dividerColor)
         }
 
         item {
@@ -484,17 +482,10 @@ private fun ProSettingsRow(
         },
         headlineContent = {
             Text(
-                text = "知序 PRO",
+                text = "知序PRO",
                 color = MaterialTheme.colorScheme.primary,
-            )
-        },
-        supportingContent = {
-            Text(
-                text = if (isProEnabled) "已启用" else "未启用",
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = if (isProEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
             )
         },
         trailingContent = {
@@ -680,7 +671,7 @@ private fun ProPaymentDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
-                        text = "我已诚信付款，启用知序 PRO",
+                        text = "我已诚信付款，启用知序PRO",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f),
                     )
