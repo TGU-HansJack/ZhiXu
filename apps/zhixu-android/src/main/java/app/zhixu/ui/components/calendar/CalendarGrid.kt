@@ -5,8 +5,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
@@ -16,6 +18,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -25,7 +29,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.zhixu.ui.Ionicons
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -44,6 +50,19 @@ fun CalendarGrid(
     val today = remember { LocalDate.now() }
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
+    val monthCache = remember { mutableStateMapOf<YearMonth, List<List<DayModel?>>>() }
+
+    // Compute current month synchronously (avoids blank UI); precompute neighbors in background to reduce swipe jank.
+    val currentMonthDays = remember(currentMonth) { buildMonthDays(currentMonth, today) }
+    SideEffect { monthCache[currentMonth] = currentMonthDays }
+    LaunchedEffect(currentMonth) {
+        val targets = listOf(currentMonth.minusMonths(1), currentMonth.plusMonths(1))
+        for (m in targets) {
+            if (monthCache.containsKey(m)) continue
+            val models = withContext(Dispatchers.Default) { buildMonthDays(m, today) }
+            monthCache[m] = models
+        }
+    }
 
     LaunchedEffect(pagerState.settledPage) {
         when (pagerState.settledPage) {
@@ -75,6 +94,8 @@ fun CalendarGrid(
             }
         )
 
+        Spacer(modifier = Modifier.height(6.dp))
+
         // 星期标题行
         WeekdayHeader()
 
@@ -83,12 +104,14 @@ fun CalendarGrid(
             beyondViewportPageCount = 1,
         ) { page ->
             val month = currentMonth.plusMonths((page - 1).toLong())
-            val dayModels = remember(month) { buildMonthDays(month, today) }
-            DayGrid(
-                dayModels = dayModels,
-                selectedDate = selectedDate,
-                onDateSelect = onDateSelect,
-            )
+            val dayModels = monthCache[month]
+            if (dayModels != null) {
+                DayGrid(
+                    dayModels = dayModels,
+                    selectedDate = selectedDate,
+                    onDateSelect = onDateSelect,
+                )
+            }
         }
     }
 }
@@ -113,7 +136,7 @@ private fun MonthNavigationBar(
     ) {
         // 月份标题
         Text(
-            text = "${currentMonth.monthValue}月",
+            text = "${currentMonth.monthValue}月${currentMonth.year}年",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface
         )

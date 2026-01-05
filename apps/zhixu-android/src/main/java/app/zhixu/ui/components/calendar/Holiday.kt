@@ -167,7 +167,8 @@ data class DayModel(
             solarTerm != null -> solarTerm.displayName
             holiday != null -> holiday.name
             lunarHoliday != null -> lunarHoliday
-            else -> lunarDate.getDayText().ifBlank { lunarDate.getMonthText() }
+            lunarDate.day == 1 -> lunarDate.getMonthText()
+            else -> lunarDate.getDayText()
         }
     }
 

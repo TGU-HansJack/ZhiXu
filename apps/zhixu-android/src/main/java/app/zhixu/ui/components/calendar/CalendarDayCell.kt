@@ -93,7 +93,7 @@ fun CalendarDayCell(
 
                 Box(
                     modifier = Modifier
-                        .size(30.dp)
+                        .size(40.dp)
                         .shadow(circleElevation, CircleShape, clip = false)
                         .clip(CircleShape)
                         .background(
@@ -109,6 +109,7 @@ fun CalendarDayCell(
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.padding(vertical = 2.dp),
                     ) {
                         Text(
                             text = day.date.dayOfMonth.toString(),
@@ -116,24 +117,22 @@ fun CalendarDayCell(
                             lineHeight = 13.sp,
                             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                             color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center
+                            textAlign = TextAlign.Center,
                         )
-                        if (lunarText.isNotBlank()) {
-                            Text(
-                                text = lunarText,
-                                fontSize = 8.sp,
-                                lineHeight = 8.sp,
-                                fontWeight = FontWeight.Normal,
-                                maxLines = 1,
-                                overflow = TextOverflow.Clip,
-                                color = if (isSelected) {
-                                    Color.White.copy(alpha = 0.75f)
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
-                                },
-                                textAlign = TextAlign.Center,
-                            )
-                        }
+                        Text(
+                            text = lunarText.ifBlank { " " },
+                            fontSize = 6.sp,
+                            lineHeight = 6.sp,
+                            fontWeight = FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Clip,
+                            color = if (isSelected) {
+                                Color.White.copy(alpha = 0.75f)
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                            },
+                            textAlign = TextAlign.Center,
+                        )
                     }
                 }
             }
