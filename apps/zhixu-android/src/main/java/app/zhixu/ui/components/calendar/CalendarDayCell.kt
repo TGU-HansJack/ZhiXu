@@ -82,7 +82,7 @@ fun CalendarDayCell(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 2.dp, vertical = 1.dp),
+                    .padding(0.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
@@ -93,7 +93,7 @@ fun CalendarDayCell(
 
                 Box(
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(34.dp)
                         .shadow(circleElevation, CircleShape, clip = false)
                         .clip(CircleShape)
                         .background(

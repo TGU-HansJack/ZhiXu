@@ -4,7 +4,11 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.HoverInteraction
+import androidx.compose.foundation.interaction.Interaction
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +34,8 @@ import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.outlined.NightsStay
 import androidx.compose.material.icons.outlined.WbSunny
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -44,8 +50,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedButton
@@ -56,6 +60,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -65,7 +70,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.style.TextAlign
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTextField
@@ -77,6 +85,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import app.zhixu.R
@@ -92,6 +101,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -689,7 +699,7 @@ private fun TaskDateSheet(
     ) {
         val context = LocalContext.current
         val screenHeight = LocalConfiguration.current.screenHeightDp.dp
-        val contentMinHeight = screenHeight * 0.7f
+        val contentMinHeight = screenHeight * 0.7f + 24.dp
         fun confirmSelection() {
             onConfirm(selectedDate, range)
         }
@@ -704,43 +714,41 @@ private fun TaskDateSheet(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ZhixuIconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+                ZhixuIconButton(onClick = onDismiss, modifier = Modifier.size(44.dp)) {
                     Icon(
-                        painter = painterResource(Ionicons.Close),
+                        imageVector = Icons.Rounded.Close,
                         contentDescription = stringResource(R.string.task_input_clear),
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(26.dp),
                     )
                 }
 
-                TabRow(
-                    selectedTabIndex = tab,
-                    modifier = Modifier.weight(1f),
-                    containerColor = Color.Transparent,
-                    indicator = {},
-                    divider = {},
+                Row(
+                    modifier = Modifier.padding(start = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    Tab(
+                    UnderlineTabLabel(
+                        text = stringResource(R.string.task_input_date),
                         selected = tab == 0,
                         onClick = { tab = 0 },
-                        modifier = Modifier.height(32.dp),
-                        text = { Text(stringResource(R.string.task_input_date), fontWeight = FontWeight.SemiBold) },
                     )
-                    Tab(
+                    UnderlineTabLabel(
+                        text = stringResource(R.string.task_input_time_range),
                         selected = tab == 1,
                         onClick = { tab = 1 },
-                        modifier = Modifier.height(32.dp),
-                        text = { Text(stringResource(R.string.task_input_time_range), fontWeight = FontWeight.SemiBold) },
                     )
                 }
 
-                ZhixuIconButton(onClick = { confirmSelection() }, modifier = Modifier.size(36.dp)) {
+                Spacer(modifier = Modifier.weight(1f))
+
+                ZhixuIconButton(onClick = { confirmSelection() }, modifier = Modifier.size(44.dp)) {
                     Icon(
-                        painter = painterResource(Ionicons.Checkmark),
+                        imageVector = Icons.Rounded.Check,
                         contentDescription = stringResource(R.string.task_input_confirm),
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(26.dp),
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }
@@ -757,6 +765,7 @@ private fun TaskDateSheet(
                         TaskDateTab(
                             currentMonth = currentMonth,
                             selectedDate = selectedDate,
+                            range = range,
                             onMonthChange = { currentMonth = it },
                             onDateSelect = {
                                 selectedDate = it
@@ -788,6 +797,13 @@ private fun TaskDateSheet(
                                 val date = LocalDate.now()
                                 selectedDate = date
                                 currentMonth = YearMonth.from(date)
+                            },
+                            onTimeClick = { tab = 1 },
+                            onReminderClick = {
+                                android.widget.Toast.makeText(context, "提醒：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            onRepeatClick = {
+                                android.widget.Toast.makeText(context, "重复：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
                             },
                         )
                     }
@@ -843,12 +859,16 @@ private fun TaskDateSheet(
 private fun TaskDateTab(
     currentMonth: YearMonth,
     selectedDate: LocalDate?,
+    range: TimeRange?,
     onMonthChange: (YearMonth) -> Unit,
     onDateSelect: (LocalDate) -> Unit,
     onPickToday: () -> Unit,
     onPickTomorrow: () -> Unit,
     onPickNextMonday: () -> Unit,
     onPickTonight: () -> Unit,
+    onTimeClick: () -> Unit,
+    onReminderClick: () -> Unit,
+    onRepeatClick: () -> Unit,
 ) {
     Row(
         modifier =
@@ -873,6 +893,34 @@ private fun TaskDateTab(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
     )
+
+    val rangeText =
+        when (range) {
+            null -> "无"
+            TimeRange.AllDay -> "全天"
+            else -> range.label
+        }
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
+    ) {
+        Column {
+            TaskSheetRow(title = "时间", value = rangeText, onClick = onTimeClick)
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            TaskSheetRow(title = "提醒", value = "无", onClick = onReminderClick)
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            TaskSheetRow(title = "重复", value = "无", onClick = onRepeatClick)
+        }
+    }
+
+    Spacer(modifier = Modifier.height(12.dp))
 }
 
 @Composable
@@ -1029,7 +1077,7 @@ private fun TaskSheetRow(
                     indication = null,
                     onClick = onClick,
                 )
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text = title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -1042,6 +1090,79 @@ private fun TaskSheetRow(
             modifier = Modifier.size(18.dp),
         )
     }
+}
+
+@Composable
+private fun UnderlineTabLabel(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsStateCompat()
+    val isHovered by interactionSource.collectIsHoveredAsStateCompat()
+    val showUnderline = selected || isPressed || isHovered
+    val underlineColor = MaterialTheme.colorScheme.primary
+
+    Text(
+        text = text,
+        modifier =
+            modifier
+                .height(32.dp)
+                .hoverable(interactionSource)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick,
+                )
+                .padding(horizontal = 2.dp)
+                .drawBehind {
+                    if (!showUnderline) return@drawBehind
+                    val strokeWidth = 3.dp.toPx()
+                    val y = size.height - strokeWidth / 2f
+                    drawLine(
+                        color = underlineColor,
+                        start = Offset(0f, y),
+                        end = Offset(size.width, y),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Round,
+                    )
+                },
+        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+        fontSize = 15.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+@Composable
+private fun MutableInteractionSource.collectIsPressedAsStateCompat(): State<Boolean> {
+    val isPressed = remember { mutableStateOf(false) }
+    LaunchedEffect(this) {
+        interactions.collect { interaction ->
+            when (interaction) {
+                is PressInteraction.Press -> isPressed.value = true
+                is PressInteraction.Release, is PressInteraction.Cancel -> isPressed.value = false
+            }
+        }
+    }
+    return isPressed
+}
+
+@Composable
+private fun MutableInteractionSource.collectIsHoveredAsStateCompat(): State<Boolean> {
+    val isHovered = remember { mutableStateOf(false) }
+    LaunchedEffect(this) {
+        interactions.collect { interaction: Interaction ->
+            when (interaction) {
+                is HoverInteraction.Enter -> isHovered.value = true
+                is HoverInteraction.Exit -> isHovered.value = false
+            }
+        }
+    }
+    return isHovered
 }
 
 private fun weekdayLabel(day: DayOfWeek): String =

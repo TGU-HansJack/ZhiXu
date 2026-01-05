@@ -60,7 +60,7 @@ fun CalendarGrid(
 
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         // 月份导航栏
         MonthNavigationBar(
@@ -107,28 +107,28 @@ private fun MonthNavigationBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 4.dp),
+            .padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         // 月份标题
         Text(
             text = "${currentMonth.monthValue}月",
-            fontSize = 22.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurface
         )
 
         // 导航箭头
         Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 painter = painterResource(Ionicons.ChevronBack),
                 contentDescription = "上个月",
                 modifier = Modifier
-                    .size(22.dp)
+                    .size(20.dp)
                     .clickable { onPreviousMonth() },
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -136,7 +136,7 @@ private fun MonthNavigationBar(
                 painter = painterResource(Ionicons.ChevronForward),
                 contentDescription = "下个月",
                 modifier = Modifier
-                    .size(22.dp)
+                    .size(20.dp)
                     .clickable { onNextMonth() },
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -154,7 +154,7 @@ private fun WeekdayHeader(modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp),
+            .padding(vertical = 0.dp),
         horizontalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         weekdays.forEachIndexed { index, weekday ->
@@ -201,7 +201,7 @@ private fun DayGrid(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .aspectRatio(1f)
+                            .aspectRatio(1.2f)
                     ) {
                         CalendarDayCell(
                             day = dayModel,
