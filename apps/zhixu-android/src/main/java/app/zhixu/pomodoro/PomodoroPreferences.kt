@@ -13,8 +13,14 @@ data class PomodoroSettings(
     val shortBreakMinutes: Int = 5,
     val longBreakMinutes: Int = 15,
     val longBreakEvery: Int = 4,
-    val soundEnabled: Boolean = true,
-    val vibrationEnabled: Boolean = true,
+    val alarmEnabled: Boolean = true,
+    val vibrateEnabled: Boolean = true,
+    val dndEnabled: Boolean = false,
+    val mediaVolumeForAlarm: Boolean = false,
+    val singleProgressBar: Boolean = false,
+    val autostartNextSession: Boolean = false,
+    val aodEnabled: Boolean = false,
+    val secureAod: Boolean = true,
     val ringtoneUri: String = "",
 )
 
@@ -27,8 +33,14 @@ class PomodoroPreferences(
     private val shortBreakMinutesKey = intPreferencesKey("shortBreakMinutes")
     private val longBreakMinutesKey = intPreferencesKey("longBreakMinutes")
     private val longBreakEveryKey = intPreferencesKey("longBreakEvery")
-    private val soundEnabledKey = booleanPreferencesKey("soundEnabled")
-    private val vibrationEnabledKey = booleanPreferencesKey("vibrationEnabled")
+    private val alarmEnabledKey = booleanPreferencesKey("alarmEnabled")
+    private val vibrateEnabledKey = booleanPreferencesKey("vibrateEnabled")
+    private val dndEnabledKey = booleanPreferencesKey("dndEnabled")
+    private val mediaVolumeForAlarmKey = booleanPreferencesKey("mediaVolumeForAlarm")
+    private val singleProgressBarKey = booleanPreferencesKey("singleProgressBar")
+    private val autostartNextSessionKey = booleanPreferencesKey("autostartNextSession")
+    private val aodEnabledKey = booleanPreferencesKey("aodEnabled")
+    private val secureAodKey = booleanPreferencesKey("secureAod")
     private val ringtoneUriKey = stringPreferencesKey("ringtoneUri")
 
     val settings: Flow<PomodoroSettings> =
@@ -38,8 +50,14 @@ class PomodoroPreferences(
                 shortBreakMinutes = (prefs[shortBreakMinutesKey] ?: 5).coerceIn(1, 60),
                 longBreakMinutes = (prefs[longBreakMinutesKey] ?: 15).coerceIn(1, 180),
                 longBreakEvery = (prefs[longBreakEveryKey] ?: 4).coerceIn(1, 12),
-                soundEnabled = prefs[soundEnabledKey] ?: true,
-                vibrationEnabled = prefs[vibrationEnabledKey] ?: true,
+                alarmEnabled = prefs[alarmEnabledKey] ?: true,
+                vibrateEnabled = prefs[vibrateEnabledKey] ?: true,
+                dndEnabled = prefs[dndEnabledKey] ?: false,
+                mediaVolumeForAlarm = prefs[mediaVolumeForAlarmKey] ?: false,
+                singleProgressBar = prefs[singleProgressBarKey] ?: false,
+                autostartNextSession = prefs[autostartNextSessionKey] ?: false,
+                aodEnabled = prefs[aodEnabledKey] ?: false,
+                secureAod = prefs[secureAodKey] ?: true,
                 ringtoneUri = prefs[ringtoneUriKey].orEmpty(),
             )
         }
@@ -60,12 +78,36 @@ class PomodoroPreferences(
         dataStore.edit { it[longBreakEveryKey] = count.coerceIn(1, 12) }
     }
 
-    suspend fun updateSoundEnabled(enabled: Boolean) {
-        dataStore.edit { it[soundEnabledKey] = enabled }
+    suspend fun updateAlarmEnabled(enabled: Boolean) {
+        dataStore.edit { it[alarmEnabledKey] = enabled }
     }
 
-    suspend fun updateVibrationEnabled(enabled: Boolean) {
-        dataStore.edit { it[vibrationEnabledKey] = enabled }
+    suspend fun updateVibrateEnabled(enabled: Boolean) {
+        dataStore.edit { it[vibrateEnabledKey] = enabled }
+    }
+
+    suspend fun updateDndEnabled(enabled: Boolean) {
+        dataStore.edit { it[dndEnabledKey] = enabled }
+    }
+
+    suspend fun updateMediaVolumeForAlarm(enabled: Boolean) {
+        dataStore.edit { it[mediaVolumeForAlarmKey] = enabled }
+    }
+
+    suspend fun updateSingleProgressBar(enabled: Boolean) {
+        dataStore.edit { it[singleProgressBarKey] = enabled }
+    }
+
+    suspend fun updateAutostartNextSession(enabled: Boolean) {
+        dataStore.edit { it[autostartNextSessionKey] = enabled }
+    }
+
+    suspend fun updateAodEnabled(enabled: Boolean) {
+        dataStore.edit { it[aodEnabledKey] = enabled }
+    }
+
+    suspend fun updateSecureAod(enabled: Boolean) {
+        dataStore.edit { it[secureAodKey] = enabled }
     }
 
     suspend fun updateRingtoneUri(uri: String) {

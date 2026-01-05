@@ -1,50 +1,74 @@
 package app.zhixu.ui.screens
 
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
+import android.provider.Settings
 import android.widget.NumberPicker
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.zhixu.pomodoro.PomodoroPreferences
+import app.zhixu.pomodoro.PomodoroService
+import app.zhixu.pomodoro.PomodoroSettings
+import app.zhixu.pomodoro.PomodoroStatsRepository
+import app.zhixu.pomodoro.PomodoroTimerStateStore
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTopAppBar
 import kotlinx.coroutines.launch
 
-private enum class PomodoroNumberTarget {
+private enum class PomodoroSettingsPage {
+    Main,
+    Timer,
+    Alarm,
+    About,
+}
+
+private enum class NumberTarget {
     FocusMinutes,
     ShortBreakMinutes,
     LongBreakMinutes,
@@ -60,28 +84,39 @@ fun PomodoroSettingsScreen(
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val prefs = remember(context) { PomodoroPreferences(context.applicationContext) }
-    val settings by prefs.settings.collectAsState(initial = app.zhixu.pomodoro.PomodoroSettings())
+    val settings by prefs.settings.collectAsState(initial = PomodoroSettings())
+    val statsRepo = remember(context) { PomodoroStatsRepository(context.applicationContext) }
+    val timerStore = remember(context) { PomodoroTimerStateStore(context.applicationContext) }
+    val timerSnapshot by timerStore.snapshot.collectAsState(initial = app.zhixu.pomodoro.PomodoroTimerSnapshot())
+
+    var page by remember { mutableStateOf(PomodoroSettingsPage.Main) }
+    var numberTarget by remember { mutableStateOf<NumberTarget?>(null) }
+    var numberValue by remember { mutableIntStateOf(0) }
+    var showResetStatsDialog by remember { mutableStateOf(false) }
+    var showResetTimerDialog by remember { mutableStateOf(false) }
+
     val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
 
-    var numberTarget by remember { mutableStateOf<PomodoroNumberTarget?>(null) }
-    var numberValue by remember { mutableIntStateOf(0) }
+    BackHandler(enabled = page != PomodoroSettingsPage.Main) {
+        page = PomodoroSettingsPage.Main
+    }
+
+    fun back() {
+        if (page == PomodoroSettingsPage.Main) onBack() else page = PomodoroSettingsPage.Main
+    }
 
     val ringtonePicker =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            @Suppress("DEPRECATION")
             val uri: Uri? = result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
             scope.launch { prefs.updateRingtoneUri(uri?.toString().orEmpty()) }
         }
-
-    fun openNumberPicker(target: PomodoroNumberTarget, initial: Int) {
-        numberTarget = target
-        numberValue = initial
-    }
 
     fun openRingtonePicker() {
         val existing = runCatching { settings.ringtoneUri.takeIf { it.isNotBlank() }?.let(Uri::parse) }.getOrNull()
         val intent =
             Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
-                putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
+                putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
                 putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
                 putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
                 putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, existing)
@@ -89,11 +124,9 @@ fun PomodoroSettingsScreen(
         ringtonePicker.launch(intent)
     }
 
-    fun openTomatoProjectPage() {
-        val url = "https://github.com/nsh07/Tomato"
-        runCatching {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
+    fun openNumberPicker(target: NumberTarget, initial: Int) {
+        numberTarget = target
+        numberValue = initial
     }
 
     Scaffold(
@@ -102,9 +135,20 @@ fun PomodoroSettingsScreen(
             Column {
                 ZhixuTopAppBar(
                     containerColor = MaterialTheme.colorScheme.surface,
-                    title = { Text(text = "番茄设置", style = MaterialTheme.typography.titleMedium) },
+                    title = {
+                        Text(
+                            text =
+                                when (page) {
+                                    PomodoroSettingsPage.Main -> "番茄设置"
+                                    PomodoroSettingsPage.Timer -> "计时设置"
+                                    PomodoroSettingsPage.Alarm -> "响铃设置"
+                                    PomodoroSettingsPage.About -> "关于"
+                                },
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    },
                     navigationIcon = {
-                        ZhixuIconButton(onClick = onBack) {
+                        ZhixuIconButton(onClick = ::back) {
                             Icon(
                                 painter = painterResource(Ionicons.ArrowBack),
                                 contentDescription = null,
@@ -117,170 +161,467 @@ fun PomodoroSettingsScreen(
             }
         },
     ) { inner ->
-        Column(
-            modifier =
-                Modifier
-                    .padding(inner)
-                    .padding(contentPadding)
-                    .background(MaterialTheme.colorScheme.background)
-                    .fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(0.dp),
-        ) {
-            Text(
-                text = "计时设置",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-            )
-            ListItem(
-                headlineContent = { Text("专注时长") },
-                supportingContent = { Text("${settings.focusMinutes} 分钟") },
-                modifier =
-                    Modifier.fillMaxWidth().clickable { openNumberPicker(PomodoroNumberTarget.FocusMinutes, settings.focusMinutes) },
-            )
-            HorizontalDivider(color = dividerColor, modifier = Modifier.padding(horizontal = 16.dp))
-            ListItem(
-                headlineContent = { Text("短休息") },
-                supportingContent = { Text("${settings.shortBreakMinutes} 分钟") },
-                modifier =
-                    Modifier.fillMaxWidth().clickable { openNumberPicker(PomodoroNumberTarget.ShortBreakMinutes, settings.shortBreakMinutes) },
-            )
-            HorizontalDivider(color = dividerColor, modifier = Modifier.padding(horizontal = 16.dp))
-            ListItem(
-                headlineContent = { Text("长休息") },
-                supportingContent = { Text("${settings.longBreakMinutes} 分钟") },
-                modifier = Modifier.fillMaxWidth().clickable { openNumberPicker(PomodoroNumberTarget.LongBreakMinutes, settings.longBreakMinutes) },
-            )
-            HorizontalDivider(color = dividerColor, modifier = Modifier.padding(horizontal = 16.dp))
-            ListItem(
-                headlineContent = { Text("每隔几个番茄长休息") },
-                supportingContent = { Text("${settings.longBreakEvery} 次") },
-                modifier = Modifier.fillMaxWidth().clickable { openNumberPicker(PomodoroNumberTarget.LongBreakEvery, settings.longBreakEvery) },
-            )
-
-            HorizontalDivider(color = dividerColor, modifier = Modifier.padding(horizontal = 16.dp))
-
-            Text(
-                text = "响铃设置",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-            )
-            ListItem(
-                headlineContent = { Text("响铃") },
-                supportingContent = { Text(if (settings.soundEnabled) "开启" else "关闭") },
-                trailingContent = {
-                    Switch(
-                        checked = settings.soundEnabled,
-                        onCheckedChange = { checked -> scope.launch { prefs.updateSoundEnabled(checked) } },
+        AnimatedContent(
+            targetState = page,
+            transitionSpec = {
+                slideInHorizontally(initialOffsetX = { it })
+                    .togetherWith(slideOutHorizontally(targetOffsetX = { -it / 4 }))
+            },
+        ) { current ->
+            when (current) {
+                PomodoroSettingsPage.Main ->
+                    PomodoroSettingsMainPage(
+                        contentPadding = contentPadding,
+                        innerPadding = inner,
+                        dividerColor = dividerColor,
+                        onOpenTimer = { page = PomodoroSettingsPage.Timer },
+                        onOpenAlarm = { page = PomodoroSettingsPage.Alarm },
+                        onOpenAbout = { page = PomodoroSettingsPage.About },
+                        onResetStats = { showResetStatsDialog = true },
+                        onResetTimer = { showResetTimerDialog = true },
                     )
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            ListItem(
-                headlineContent = { Text("震动") },
-                supportingContent = { Text(if (settings.vibrationEnabled) "开启" else "关闭") },
-                trailingContent = {
-                    Switch(
-                        checked = settings.vibrationEnabled,
-                        onCheckedChange = { checked -> scope.launch { prefs.updateVibrationEnabled(checked) } },
+
+                PomodoroSettingsPage.Timer ->
+                    PomodoroTimerSettingsPage(
+                        contentPadding = contentPadding,
+                        innerPadding = inner,
+                        dividerColor = dividerColor,
+                        settings = settings,
+                        timerRunning = timerSnapshot.isRunning,
+                        onPickNumber = ::openNumberPicker,
+                        onToggleAutostart = { scope.launch { prefs.updateAutostartNextSession(it) } },
+                        onToggleDnd = { checked ->
+                            if (checked) requestDndPermissionIfNeeded(context)
+                            scope.launch { prefs.updateDndEnabled(checked) }
+                        },
+                        onToggleSingleProgress = { scope.launch { prefs.updateSingleProgressBar(it) } },
+                        onToggleAod = { scope.launch { prefs.updateAodEnabled(it) } },
+                        onToggleSecureAod = { scope.launch { prefs.updateSecureAod(it) } },
                     )
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            ListItem(
-                headlineContent = { Text("铃声") },
-                supportingContent = {
-                    val name =
-                        if (settings.ringtoneUri.isBlank()) {
-                            "系统默认"
-                        } else {
-                            runCatching {
-                                val uri = Uri.parse(settings.ringtoneUri)
-                                RingtoneManager.getRingtone(context, uri)?.getTitle(context)
-                            }.getOrNull().orEmpty().ifBlank { "已选择" }
-                        }
-                    Text(name)
-                },
-                trailingContent = {
-                    Icon(painter = painterResource(Ionicons.ChevronForward), contentDescription = null)
-                },
-                modifier =
-                    Modifier.fillMaxWidth().clickable(onClick = ::openRingtonePicker),
-            )
 
-            HorizontalDivider(color = dividerColor, modifier = Modifier.padding(horizontal = 16.dp))
+                PomodoroSettingsPage.Alarm ->
+                    PomodoroAlarmSettingsPage(
+                        contentPadding = contentPadding,
+                        innerPadding = inner,
+                        dividerColor = dividerColor,
+                        settings = settings,
+                        onPickRingtone = ::openRingtonePicker,
+                        onToggleAlarm = { scope.launch { prefs.updateAlarmEnabled(it) } },
+                        onToggleVibrate = { scope.launch { prefs.updateVibrateEnabled(it) } },
+                        onToggleMediaVolume = { scope.launch { prefs.updateMediaVolumeForAlarm(it) } },
+                    )
 
-            Text(
-                text = "项目作者",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-            )
-            ListItem(
-                headlineContent = { Text("Tomato") },
-                supportingContent = { Text("作者：nsh07（GitHub）") },
-                trailingContent = { Icon(painter = painterResource(Ionicons.ChevronForward), contentDescription = null) },
-                modifier =
-                    Modifier.fillMaxWidth().clickable(onClick = ::openTomatoProjectPage),
-            )
+                PomodoroSettingsPage.About ->
+                    PomodoroAboutPage(
+                        contentPadding = contentPadding,
+                        innerPadding = inner,
+                        dividerColor = dividerColor,
+                    )
+            }
         }
     }
 
-    when (numberTarget) {
-        null -> Unit
-        else -> {
-            val target = numberTarget ?: return@PomodoroSettingsScreen
-            val (title, min, max) =
-                when (target) {
-                    PomodoroNumberTarget.FocusMinutes -> Quad("专注时长", 1, 180)
-                    PomodoroNumberTarget.ShortBreakMinutes -> Quad("短休息", 1, 60)
-                    PomodoroNumberTarget.LongBreakMinutes -> Quad("长休息", 1, 180)
-                    PomodoroNumberTarget.LongBreakEvery -> Quad("长休息间隔", 1, 12)
-                }
-            AlertDialog(
-                onDismissRequest = { numberTarget = null },
-                title = { Text(title) },
-                text = {
-                    AndroidView(
-                        factory = { ctx ->
-                            NumberPicker(ctx).apply {
-                                minValue = min
-                                maxValue = max
-                                wrapSelectorWheel = true
-                                value = numberValue.coerceIn(min, max)
-                                setOnValueChangedListener { _, _, new -> numberValue = new }
-                            }
-                        },
-                        update = { picker ->
-                            picker.value = numberValue.coerceIn(min, max)
-                        },
+    val target = numberTarget
+    if (target != null) {
+        val (title, min, max, apply) =
+            when (target) {
+                NumberTarget.FocusMinutes -> Quad("专注时长", 1, 180) { v -> prefs.updateFocusMinutes(v) }
+                NumberTarget.ShortBreakMinutes -> Quad("短休息", 1, 60) { v -> prefs.updateShortBreakMinutes(v) }
+                NumberTarget.LongBreakMinutes -> Quad("长休息", 1, 180) { v -> prefs.updateLongBreakMinutes(v) }
+                NumberTarget.LongBreakEvery -> Quad("每隔几个番茄长休息", 1, 12) { v -> prefs.updateLongBreakEvery(v) }
+            }
+        AlertDialog(
+            onDismissRequest = { numberTarget = null },
+            title = { Text(title) },
+            text = {
+                AndroidView(
+                    factory = { ctx ->
+                        NumberPicker(ctx).apply {
+                            minValue = min
+                            maxValue = max
+                            wrapSelectorWheel = true
+                            value = numberValue.coerceIn(min, max)
+                            setOnValueChangedListener { _, _, new -> numberValue = new }
+                        }
+                    },
+                    update = { it.value = numberValue.coerceIn(min, max) },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val v = numberValue.coerceIn(min, max)
+                        scope.launch { apply(v) }
+                        numberTarget = null
+                    },
+                ) { Text("确定") }
+            },
+            dismissButton = { TextButton(onClick = { numberTarget = null }) { Text("取消") } },
+        )
+    }
+
+    if (showResetStatsDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetStatsDialog = false },
+            title = { Text("清除统计数据？") },
+            text = { Text("此操作会清除番茄统计历史（无法恢复）。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showResetStatsDialog = false
+                        scope.launch { statsRepo.deleteAllStats() }
+                    },
+                ) { Text("清除") }
+            },
+            dismissButton = { TextButton(onClick = { showResetStatsDialog = false }) { Text("取消") } },
+        )
+    }
+
+    if (showResetTimerDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetTimerDialog = false },
+            title = { Text("重置计时状态？") },
+            text = { Text("会停止当前计时，并清除“撤销重置”的记录。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showResetTimerDialog = false
+                        PomodoroService.startAction(context, PomodoroService.Actions.CLEAR_STATE)
+                    },
+                ) { Text("重置") }
+            },
+            dismissButton = { TextButton(onClick = { showResetTimerDialog = false }) { Text("取消") } },
+        )
+    }
+}
+
+@Composable
+private fun PomodoroSettingsMainPage(
+    contentPadding: PaddingValues,
+    innerPadding: PaddingValues,
+    dividerColor: androidx.compose.ui.graphics.Color,
+    onOpenTimer: () -> Unit,
+    onOpenAlarm: () -> Unit,
+    onOpenAbout: () -> Unit,
+    onResetStats: () -> Unit,
+    onResetTimer: () -> Unit,
+) {
+    LazyColumn(
+        modifier =
+            Modifier
+                .padding(innerPadding)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .background(MaterialTheme.colorScheme.background)
+                .fillMaxSize(),
+        contentPadding =
+            PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 4.dp,
+                bottom = 16.dp + contentPadding.calculateBottomPadding(),
+            ),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    ListItem(
+                        leadingContent = { Icon(painter = painterResource(Ionicons.TimeOutline), contentDescription = null) },
+                        headlineContent = { Text("计时") },
+                        supportingContent = { Text("时长、自动开始、勿扰、常亮等") },
+                        trailingContent = { Icon(painter = painterResource(Ionicons.ChevronForward), contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenTimer),
                     )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            val v = numberValue.coerceIn(min, max)
-                            scope.launch {
-                                when (target) {
-                                    PomodoroNumberTarget.FocusMinutes -> prefs.updateFocusMinutes(v)
-                                    PomodoroNumberTarget.ShortBreakMinutes -> prefs.updateShortBreakMinutes(v)
-                                    PomodoroNumberTarget.LongBreakMinutes -> prefs.updateLongBreakMinutes(v)
-                                    PomodoroNumberTarget.LongBreakEvery -> prefs.updateLongBreakEvery(v)
-                                }
-                            }
-                            numberTarget = null
+                    HorizontalDivider(color = dividerColor)
+                    ListItem(
+                        leadingContent = { Icon(painter = painterResource(Ionicons.NotificationsOutline), contentDescription = null) },
+                        headlineContent = { Text("响铃") },
+                        supportingContent = { Text("铃声、震动、媒体音量") },
+                        trailingContent = { Icon(painter = painterResource(Ionicons.ChevronForward), contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenAlarm),
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    ListItem(
+                        leadingContent = { Icon(painter = painterResource(Ionicons.HelpCircleOutline), contentDescription = null) },
+                        headlineContent = { Text("关于") },
+                        supportingContent = { Text("Tomato 项目来源与作者") },
+                        trailingContent = { Icon(painter = painterResource(Ionicons.ChevronForward), contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenAbout),
+                    )
+                }
+            }
+        }
+
+        item {
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    ListItem(
+                        leadingContent = { Icon(painter = painterResource(Ionicons.TrashOutline), contentDescription = null) },
+                        headlineContent = { Text("清除统计数据") },
+                        supportingContent = { Text("删除历史专注/休息统计") },
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = onResetStats),
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    ListItem(
+                        leadingContent = { Icon(painter = painterResource(Ionicons.RefreshOutline), contentDescription = null) },
+                        headlineContent = { Text("重置计时状态") },
+                        supportingContent = { Text("停止计时并清除撤销记录") },
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = onResetTimer),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PomodoroTimerSettingsPage(
+    contentPadding: PaddingValues,
+    innerPadding: PaddingValues,
+    dividerColor: androidx.compose.ui.graphics.Color,
+    settings: PomodoroSettings,
+    timerRunning: Boolean,
+    onPickNumber: (NumberTarget, Int) -> Unit,
+    onToggleAutostart: (Boolean) -> Unit,
+    onToggleDnd: (Boolean) -> Unit,
+    onToggleSingleProgress: (Boolean) -> Unit,
+    onToggleAod: (Boolean) -> Unit,
+    onToggleSecureAod: (Boolean) -> Unit,
+) {
+    LazyColumn(
+        modifier =
+            Modifier
+                .padding(innerPadding)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .background(MaterialTheme.colorScheme.background)
+                .fillMaxSize(),
+        contentPadding =
+            PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 4.dp,
+                bottom = 16.dp + contentPadding.calculateBottomPadding(),
+            ),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    ListItem(
+                        headlineContent = { Text("专注") },
+                        supportingContent = { Text("${settings.focusMinutes} 分钟") },
+                        trailingContent = { Icon(painter = painterResource(Ionicons.ChevronForward), contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth().clickable { onPickNumber(NumberTarget.FocusMinutes, settings.focusMinutes) },
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    ListItem(
+                        headlineContent = { Text("短休息") },
+                        supportingContent = { Text("${settings.shortBreakMinutes} 分钟") },
+                        trailingContent = { Icon(painter = painterResource(Ionicons.ChevronForward), contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth().clickable { onPickNumber(NumberTarget.ShortBreakMinutes, settings.shortBreakMinutes) },
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    ListItem(
+                        headlineContent = { Text("长休息") },
+                        supportingContent = { Text("${settings.longBreakMinutes} 分钟") },
+                        trailingContent = { Icon(painter = painterResource(Ionicons.ChevronForward), contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth().clickable { onPickNumber(NumberTarget.LongBreakMinutes, settings.longBreakMinutes) },
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    ListItem(
+                        headlineContent = { Text("每隔几个番茄长休息") },
+                        supportingContent = { Text("${settings.longBreakEvery} 次") },
+                        trailingContent = { Icon(painter = painterResource(Ionicons.ChevronForward), contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth().clickable { onPickNumber(NumberTarget.LongBreakEvery, settings.longBreakEvery) },
+                    )
+                }
+            }
+        }
+
+        item {
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    ListItem(
+                        headlineContent = { Text("自动开始下一阶段") },
+                        trailingContent = { Switch(checked = settings.autostartNextSession, onCheckedChange = onToggleAutostart) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    ListItem(
+                        headlineContent = { Text("勿扰模式（仅专注时）") },
+                        supportingContent = {
+                            val nm = LocalContext.current.getSystemService(NotificationManager::class.java)
+                            val granted = nm?.isNotificationPolicyAccessGranted == true
+                            val msg =
+                                if (!settings.dndEnabled) "关闭"
+                                else if (granted) "开启"
+                                else "需要授权"
+                            Text(msg)
                         },
-                    ) {
-                        Text("确定")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { numberTarget = null }) { Text("取消") }
-                },
+                        trailingContent = { Switch(checked = settings.dndEnabled, enabled = !timerRunning, onCheckedChange = onToggleDnd) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    ListItem(
+                        headlineContent = { Text("单一进度条") },
+                        supportingContent = { Text(if (settings.singleProgressBar) "显示单段进度" else "显示本轮进度") },
+                        trailingContent = { Switch(checked = settings.singleProgressBar, onCheckedChange = onToggleSingleProgress) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    ListItem(
+                        headlineContent = { Text("计时时保持屏幕常亮") },
+                        trailingContent = { Switch(checked = settings.aodEnabled, onCheckedChange = onToggleAod) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    ListItem(
+                        headlineContent = { Text("常亮界面防截图（Secure）") },
+                        supportingContent = { Text("开启后会禁止系统截图/录屏") },
+                        trailingContent = { Switch(checked = settings.secureAod, enabled = settings.aodEnabled, onCheckedChange = onToggleSecureAod) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PomodoroAlarmSettingsPage(
+    contentPadding: PaddingValues,
+    innerPadding: PaddingValues,
+    dividerColor: androidx.compose.ui.graphics.Color,
+    settings: PomodoroSettings,
+    onPickRingtone: () -> Unit,
+    onToggleAlarm: (Boolean) -> Unit,
+    onToggleVibrate: (Boolean) -> Unit,
+    onToggleMediaVolume: (Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    LazyColumn(
+        modifier =
+            Modifier
+                .padding(innerPadding)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .background(MaterialTheme.colorScheme.background)
+                .fillMaxSize(),
+        contentPadding =
+            PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 4.dp,
+                bottom = 16.dp + contentPadding.calculateBottomPadding(),
+            ),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    ListItem(
+                        headlineContent = { Text("响铃") },
+                        trailingContent = { Switch(checked = settings.alarmEnabled, onCheckedChange = onToggleAlarm) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    ListItem(
+                        headlineContent = { Text("震动") },
+                        trailingContent = { Switch(checked = settings.vibrateEnabled, onCheckedChange = onToggleVibrate) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    ListItem(
+                        headlineContent = { Text("使用媒体音量播放") },
+                        supportingContent = { Text("可选") },
+                        trailingContent = { Switch(checked = settings.mediaVolumeForAlarm, onCheckedChange = onToggleMediaVolume) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+
+        item {
+            val name =
+                if (settings.ringtoneUri.isBlank()) {
+                    "系统默认"
+                } else {
+                    runCatching {
+                        val uri = Uri.parse(settings.ringtoneUri)
+                        RingtoneManager.getRingtone(context, uri)?.getTitle(context)
+                    }.getOrNull().orEmpty().ifBlank { "已选择" }
+                }
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                ListItem(
+                    headlineContent = { Text("铃声") },
+                    supportingContent = { Text(name) },
+                    trailingContent = { Icon(painter = painterResource(Ionicons.ChevronForward), contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth().clickable(onClick = onPickRingtone),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PomodoroAboutPage(
+    contentPadding: PaddingValues,
+    innerPadding: PaddingValues,
+    dividerColor: androidx.compose.ui.graphics.Color,
+) {
+    val context = LocalContext.current
+    LazyColumn(
+        modifier =
+            Modifier
+                .padding(innerPadding)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .background(MaterialTheme.colorScheme.background)
+                .fillMaxSize(),
+        contentPadding =
+            PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 4.dp,
+                bottom = 16.dp + contentPadding.calculateBottomPadding(),
+            ),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                ListItem(
+                    headlineContent = { Text("Tomato") },
+                    supportingContent = { Text("作者：nsh07（GitHub）") },
+                    trailingContent = { Icon(painter = painterResource(Ionicons.ChevronForward), contentDescription = null) },
+                    modifier =
+                        Modifier.fillMaxWidth().clickable {
+                            val url = "https://github.com/nsh07/Tomato"
+                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                        },
+                )
+            }
+        }
+        item {
+            Text(
+                text = "说明：番茄功能为独立实现（clean-room），用于对齐交互与布局风格，未直接拷贝 Tomato 的 GPL 源码。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp),
             )
         }
     }
 }
 
-private data class Quad(val title: String, val min: Int, val max: Int)
+private data class Quad(
+    val title: String,
+    val min: Int,
+    val max: Int,
+    val apply: suspend (Int) -> Unit,
+)
+
+private fun requestDndPermissionIfNeeded(context: Context) {
+    val nm = context.getSystemService(NotificationManager::class.java) ?: return
+    if (nm.isNotificationPolicyAccessGranted) return
+    runCatching {
+        context.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+}
+
