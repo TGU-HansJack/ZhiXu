@@ -1,6 +1,26 @@
 ﻿package app.zhixu.ui.screens
 
 import android.net.Uri
+import android.widget.NumberPicker
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.outlined.AccessTime
+import androidx.compose.material.icons.outlined.Keyboard
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -19,6 +39,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -500,6 +521,7 @@ internal fun TaskComposer(
     var text by remember { mutableStateOf("") }
     var dueDate by remember { mutableStateOf<LocalDate?>(null) }
     var timeRange by remember { mutableStateOf<TimeRange?>(null) }
+    var dueTime by remember { mutableStateOf<LocalTime?>(null) }
     var tags by remember { mutableStateOf<List<String>>(emptyList()) }
     var priority by remember { mutableStateOf<Int?>(null) }
     var showDateSheet by remember { mutableStateOf(false) }
@@ -514,7 +536,12 @@ internal fun TaskComposer(
 
         val finalDate = dueDate ?: detected.dueDate
         val finalRange = timeRange ?: detected.timeRange
-        val finalTime = finalRange?.defaultTime
+        val finalTime =
+            when (finalRange) {
+                TimeRange.AllDay -> null
+                null -> dueTime
+                else -> dueTime ?: finalRange.defaultTime
+            }
         val finalPriority = priority ?: detected.priority
         val finalTags = (tags + detected.tags).map { it.trim() }.filter { it.isNotBlank() }.distinct()
 
@@ -531,6 +558,7 @@ internal fun TaskComposer(
         text = ""
         dueDate = null
         timeRange = null
+        dueTime = null
         tags = emptyList()
         priority = null
     }
@@ -631,15 +659,18 @@ internal fun TaskComposer(
         TaskDateSheet(
             initialDate = dueDate,
             initialRange = timeRange,
+            initialTime = dueTime,
             onDismiss = { showDateSheet = false },
-            onConfirm = { date, range ->
+            onConfirm = { date, range, time ->
                 dueDate = date
                 timeRange = range
+                dueTime = time
                 showDateSheet = false
             },
             onClear = {
                 dueDate = null
                 timeRange = null
+                dueTime = null
                 showDateSheet = false
             },
         )
@@ -681,8 +712,9 @@ internal fun TaskComposer(
 private fun TaskDateSheet(
     initialDate: LocalDate?,
     initialRange: TimeRange?,
+    initialTime: LocalTime?,
     onDismiss: () -> Unit,
-    onConfirm: (LocalDate?, TimeRange?) -> Unit,
+    onConfirm: (LocalDate?, TimeRange?, LocalTime?) -> Unit,
     onClear: () -> Unit,
 ) {
     val state: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -691,6 +723,7 @@ private fun TaskDateSheet(
     var currentMonth by remember { mutableStateOf(YearMonth.from(fallbackDate)) }
     var selectedDate by remember { mutableStateOf<LocalDate?>(initialDate) }
     var range by remember { mutableStateOf(initialRange) }
+    var dueTime by remember { mutableStateOf(initialTime) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -701,7 +734,7 @@ private fun TaskDateSheet(
         val screenHeight = LocalConfiguration.current.screenHeightDp.dp
         val contentMinHeight = screenHeight * 0.7f + 24.dp
         fun confirmSelection() {
-            onConfirm(selectedDate, range)
+            onConfirm(selectedDate, range, dueTime)
         }
 
         Column(
@@ -766,6 +799,7 @@ private fun TaskDateSheet(
                             currentMonth = currentMonth,
                             selectedDate = selectedDate,
                             range = range,
+                            dueTime = dueTime,
                             onMonthChange = { currentMonth = it },
                             onDateSelect = {
                                 selectedDate = it
@@ -773,18 +807,21 @@ private fun TaskDateSheet(
                             },
                             onPickToday = {
                                 range = null
+                                dueTime = null
                                 val date = LocalDate.now()
                                 selectedDate = date
                                 currentMonth = YearMonth.from(date)
                             },
                             onPickTomorrow = {
                                 range = null
+                                dueTime = null
                                 val date = LocalDate.now().plusDays(1)
                                 selectedDate = date
                                 currentMonth = YearMonth.from(date)
                             },
                             onPickNextMonday = {
                                 range = null
+                                dueTime = null
                                 val today = LocalDate.now()
                                 val delta =
                                     ((DayOfWeek.MONDAY.value - today.dayOfWeek.value + 7) % 7).let { if (it == 0) 7 else it }
@@ -794,11 +831,15 @@ private fun TaskDateSheet(
                             },
                             onPickTonight = {
                                 range = TimeRange.Evening
+                                dueTime = TimeRange.Evening.defaultTime
                                 val date = LocalDate.now()
                                 selectedDate = date
                                 currentMonth = YearMonth.from(date)
                             },
-                            onTimeClick = { tab = 1 },
+                            onTimeClick = { time ->
+                                range = null
+                                dueTime = time
+                            },
                             onReminderClick = {
                                 android.widget.Toast.makeText(context, "提醒：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
                             },
@@ -818,7 +859,10 @@ private fun TaskDateSheet(
                         TaskTimeRangeTab(
                             selectedDate = selectedDate,
                             range = range,
-                            onChangeRange = { range = it },
+                            onChangeRange = { next ->
+                                range = next
+                                dueTime = next?.defaultTime
+                            },
                             onGoToDate = { tab = 0 },
                             onReminderClick = {
                                 android.widget.Toast.makeText(context, "提醒：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
@@ -842,17 +886,19 @@ private fun TaskDateTab(
     currentMonth: YearMonth,
     selectedDate: LocalDate?,
     range: TimeRange?,
+    dueTime: LocalTime?,
     onMonthChange: (YearMonth) -> Unit,
     onDateSelect: (LocalDate) -> Unit,
     onPickToday: () -> Unit,
     onPickTomorrow: () -> Unit,
     onPickNextMonday: () -> Unit,
     onPickTonight: () -> Unit,
-    onTimeClick: () -> Unit,
+    onTimeClick: (LocalTime) -> Unit,
     onReminderClick: () -> Unit,
     onRepeatClick: () -> Unit,
     onClear: () -> Unit,
 ) {
+    var showTimeDialog by remember { mutableStateOf(false) }
     Row(
         modifier =
             Modifier
@@ -877,10 +923,14 @@ private fun TaskDateTab(
                 .padding(horizontal = 16.dp),
     )
 
+    fun formatTime(time: LocalTime): String =
+        "${time.hour.toString().padStart(2, '0')}:${time.minute.toString().padStart(2, '0')}"
+
     val rangeText =
-        when (range) {
-            null -> "无"
-            TimeRange.AllDay -> "全天"
+        when {
+            dueTime != null -> formatTime(dueTime)
+            range == null -> "无"
+            range == TimeRange.AllDay -> "全天"
             else -> range.label
         }
     Surface(
@@ -889,7 +939,11 @@ private fun TaskDateTab(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
     ) {
         Column {
-            TaskSheetRow(title = "时间", value = rangeText, onClick = onTimeClick)
+            TaskSheetRow(
+                title = "时间",
+                value = rangeText,
+                onClick = { showTimeDialog = true },
+            )
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -921,6 +975,23 @@ private fun TaskDateTab(
     }
 
     Spacer(modifier = Modifier.height(12.dp))
+
+    if (showTimeDialog) {
+        val fallback =
+            remember(dueTime, range) {
+                val base = dueTime ?: range?.defaultTime ?: LocalTime.now()
+                val snappedMinute = ((base.minute + 2) / 5) * 5 % 60
+                base.withMinute(snappedMinute)
+            }
+        TaskTimePickerDialog(
+            initial = fallback,
+            onDismiss = { showTimeDialog = false },
+            onConfirm = { time ->
+                onTimeClick(time)
+                showTimeDialog = false
+            },
+        )
+    }
 }
 
 @Composable
@@ -1088,6 +1159,384 @@ private fun TaskTimeRangeTab(
     }
 
     Spacer(modifier = Modifier.height(12.dp))
+}
+
+private enum class TimePickerStyle { Dial, Wheel }
+
+private enum class DialPhase { Hour, Minute }
+
+@Composable
+private fun TaskTimePickerDialog(
+    initial: LocalTime,
+    onDismiss: () -> Unit,
+    onConfirm: (LocalTime) -> Unit,
+) {
+    var style by remember { mutableStateOf(TimePickerStyle.Dial) }
+    var phase by remember { mutableStateOf(DialPhase.Hour) }
+    var hour by remember { mutableIntStateOf(initial.hour) }
+    var minute by remember { mutableIntStateOf((initial.minute / 5) * 5) }
+
+    fun formattedHour(): String = hour.toString().padStart(2, '0')
+    fun formattedMinute(): String = minute.toString().padStart(2, '0')
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp)) {
+                Text(
+                    text = "时间",
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val activeColor = MaterialTheme.colorScheme.primary
+                    val inactiveColor = activeColor.copy(alpha = 0.55f)
+
+                    Text(
+                        text = formattedHour(),
+                        modifier =
+                            Modifier.clickable(enabled = style == TimePickerStyle.Dial) {
+                                phase = DialPhase.Hour
+                            },
+                        color = if (phase == DialPhase.Hour && style == TimePickerStyle.Dial) activeColor else inactiveColor,
+                        style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold),
+                    )
+                    Text(
+                        text = " : ",
+                        color = inactiveColor,
+                        style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold),
+                    )
+                    Text(
+                        text = formattedMinute(),
+                        modifier =
+                            Modifier.clickable(enabled = style == TimePickerStyle.Dial) {
+                                phase = DialPhase.Minute
+                            },
+                        color = if (phase == DialPhase.Minute && style == TimePickerStyle.Dial) activeColor else inactiveColor,
+                        style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold),
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    when (style) {
+                        TimePickerStyle.Dial -> {
+                            AnimatedContent(
+                                targetState = phase,
+                                label = "dial-phase",
+                                transitionSpec = {
+                                    val exit = fadeOut(tween(160)) + scaleOut(tween(160))
+                                    val enter =
+                                        fadeIn(tween(220, delayMillis = 40)) +
+                                            scaleIn(
+                                                spring(
+                                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                    stiffness = Spring.StiffnessLow,
+                                                ),
+                                            )
+                                    enter togetherWith exit
+                                },
+                            ) { target ->
+                                when (target) {
+                                    DialPhase.Hour ->
+                                        DialHourPicker(
+                                            selected = hour,
+                                            onSelect = { next ->
+                                                hour = next.coerceIn(0, 23)
+                                                phase = DialPhase.Minute
+                                            },
+                                            size = 300.dp,
+                                        )
+
+                                    DialPhase.Minute ->
+                                        DialMinutePicker(
+                                            selected = minute,
+                                            onSelect = { next ->
+                                                minute = (next / 5).coerceIn(0, 11) * 5
+                                            },
+                                            size = 300.dp,
+                                        )
+                                }
+                            }
+                        }
+
+                        TimePickerStyle.Wheel -> {
+                            WheelTimePicker(
+                                hour = hour,
+                                minute = minute,
+                                onHourChange = { hour = it.coerceIn(0, 23) },
+                                onMinuteChange = { minute = (it / 5).coerceIn(0, 11) * 5 },
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ZhixuIconButton(
+                        onClick = {
+                            style = if (style == TimePickerStyle.Dial) TimePickerStyle.Wheel else TimePickerStyle.Dial
+                            if (style == TimePickerStyle.Dial) phase = DialPhase.Hour
+                        },
+                        modifier = Modifier.size(44.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (style == TimePickerStyle.Dial) Icons.Outlined.Keyboard else Icons.Outlined.AccessTime,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    TextButton(onClick = onDismiss) {
+                        Text(text = "取消", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TextButton(
+                        onClick = { onConfirm(LocalTime.of(hour, minute)) },
+                    ) {
+                        Text(text = "确定", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialHourPicker(
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    size: Dp,
+) {
+    val density = LocalDensity.current
+    BoxWithConstraints(modifier = Modifier.size(size)) {
+        val pxSize = with(density) { size.toPx() }
+        val center = Offset(pxSize / 2f, pxSize / 2f)
+        val outerRadius = pxSize * 0.40f
+        val innerRadius = pxSize * 0.27f
+        val itemSizePx = with(density) { 48.dp.toPx() }
+
+        val bgColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.20f)
+        val primary = MaterialTheme.colorScheme.primary
+
+        fun angleFor(index: Int): Double = (Math.PI / 6.0) * index - Math.PI / 2.0
+
+        val innerRing = remember(pxSize) {
+            (0 until 12).map { i ->
+                val value = if (i == 0) 12 else i
+                val angle = angleFor(i)
+                val x = center.x + (innerRadius * kotlin.math.cos(angle)).toFloat()
+                val y = center.y + (innerRadius * kotlin.math.sin(angle)).toFloat()
+                value to Offset(x, y)
+            }
+        }
+        val outerRing = remember(pxSize) {
+            (0 until 12).map { i ->
+                val value = if (i == 0) 0 else 12 + i
+                val angle = angleFor(i)
+                val x = center.x + (outerRadius * kotlin.math.cos(angle)).toFloat()
+                val y = center.y + (outerRadius * kotlin.math.sin(angle)).toFloat()
+                value to Offset(x, y)
+            }
+        }
+
+        val selectedOffset =
+            (innerRing + outerRing)
+                .firstOrNull { it.first == selected }
+                ?.second
+
+        Canvas(modifier = Modifier.matchParentSize()) {
+            drawCircle(color = bgColor, radius = minOf(this.size.width, this.size.height) / 2f)
+            if (selectedOffset != null) {
+                drawLine(
+                    color = primary,
+                    start = center,
+                    end = selectedOffset,
+                    strokeWidth = 2.dp.toPx(),
+                    cap = StrokeCap.Round,
+                )
+            }
+            drawCircle(color = primary, radius = 4.dp.toPx(), center = center)
+        }
+
+        fun hourLabel(value: Int): String = if (value == 0) "00" else value.toString()
+
+        (innerRing + outerRing).forEach { (value, position) ->
+            val isSelected = value == selected
+            Box(
+                modifier =
+                    Modifier
+                        .offset {
+                            val x = (position.x - itemSizePx / 2f).toInt()
+                            val y = (position.y - itemSizePx / 2f).toInt()
+                            IntOffset(x, y)
+                        }
+                        .size(with(density) { itemSizePx.toDp() })
+                        .clickable { onSelect(value) },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isSelected) {
+                    Box(modifier = Modifier.size(52.dp).background(primary, CircleShape))
+                }
+                Text(
+                    text = hourLabel(value),
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                    style =
+                        MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                        ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialMinutePicker(
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    size: Dp,
+) {
+    val density = LocalDensity.current
+    BoxWithConstraints(modifier = Modifier.size(size)) {
+        val pxSize = with(density) { size.toPx() }
+        val center = Offset(pxSize / 2f, pxSize / 2f)
+        val radius = pxSize * 0.40f
+        val itemSizePx = with(density) { 48.dp.toPx() }
+
+        val bgColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.20f)
+        val primary = MaterialTheme.colorScheme.primary
+
+        fun angleFor(index: Int): Double = (Math.PI / 6.0) * index - Math.PI / 2.0
+
+        val ring = remember(pxSize) {
+            (0 until 12).map { i ->
+                val value = i * 5
+                val angle = angleFor(i)
+                val x = center.x + (radius * kotlin.math.cos(angle)).toFloat()
+                val y = center.y + (radius * kotlin.math.sin(angle)).toFloat()
+                value to Offset(x, y)
+            }
+        }
+
+        val selectedOffset = ring.firstOrNull { it.first == selected }?.second
+
+        Canvas(modifier = Modifier.matchParentSize()) {
+            drawCircle(color = bgColor, radius = minOf(this.size.width, this.size.height) / 2f)
+            if (selectedOffset != null) {
+                drawLine(
+                    color = primary,
+                    start = center,
+                    end = selectedOffset,
+                    strokeWidth = 2.dp.toPx(),
+                    cap = StrokeCap.Round,
+                )
+            }
+            drawCircle(color = primary, radius = 4.dp.toPx(), center = center)
+        }
+
+        ring.forEach { (value, position) ->
+            val isSelected = value == selected
+            Box(
+                modifier =
+                    Modifier
+                        .offset {
+                            val x = (position.x - itemSizePx / 2f).toInt()
+                            val y = (position.y - itemSizePx / 2f).toInt()
+                            IntOffset(x, y)
+                        }
+                        .size(with(density) { itemSizePx.toDp() })
+                        .clickable { onSelect(value) },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isSelected) {
+                    Box(modifier = Modifier.size(52.dp).background(primary, CircleShape))
+                }
+                Text(
+                    text = value.toString().padStart(2, '0'),
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                    style =
+                        MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                        ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WheelTimePicker(
+    hour: Int,
+    minute: Int,
+    onHourChange: (Int) -> Unit,
+    onMinuteChange: (Int) -> Unit,
+) {
+    val minuteValues = remember { Array(12) { i -> (i * 5).toString().padStart(2, '0') } }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AndroidView(
+            factory = { context ->
+                NumberPicker(context).apply {
+                    minValue = 0
+                    maxValue = 23
+                    wrapSelectorWheel = true
+                    setFormatter { value -> value.toString().padStart(2, '0') }
+                    setOnValueChangedListener { _, _, newVal -> onHourChange(newVal) }
+                }
+            },
+            update = { picker ->
+                if (picker.value != hour) picker.value = hour
+            },
+            modifier = Modifier.width(120.dp),
+        )
+        Text(
+            text = ":",
+            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 6.dp),
+        )
+        AndroidView(
+            factory = { context ->
+                NumberPicker(context).apply {
+                    minValue = 0
+                    maxValue = 11
+                    displayedValues = minuteValues
+                    wrapSelectorWheel = true
+                    setOnValueChangedListener { _, _, newVal -> onMinuteChange(newVal * 5) }
+                }
+            },
+            update = { picker ->
+                val idx = (minute / 5).coerceIn(0, 11)
+                if (picker.value != idx) picker.value = idx
+            },
+            modifier = Modifier.width(120.dp),
+        )
+    }
 }
 
 @Composable
