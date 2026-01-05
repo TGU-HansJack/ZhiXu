@@ -54,9 +54,12 @@ fun CalendarGrid(
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
     val monthCache = remember { mutableStateMapOf<YearMonth, List<List<DayModel?>>>() }
+    val placeholderGrid = remember { List(6) { List<DayModel?>(7) { null } } }
 
-    // Compute current month synchronously (avoids blank UI); precompute neighbors in background to reduce swipe jank.
-    val currentMonthDays = remember(currentMonth) { buildMonthDays(currentMonth, today) }
+    // Prefer cached data to avoid recomputation on the main thread when swiping between months.
+    val currentMonthDays = remember(currentMonth) {
+        monthCache[currentMonth] ?: buildMonthDays(currentMonth, today)
+    }
     SideEffect { monthCache[currentMonth] = currentMonthDays }
     LaunchedEffect(currentMonth) {
         val targets = listOf(currentMonth.minusMonths(1), currentMonth.plusMonths(1))
@@ -107,7 +110,7 @@ fun CalendarGrid(
             beyondViewportPageCount = 1,
         ) { page ->
             val month = currentMonth.plusMonths((page - 1).toLong())
-            val dayModels = monthCache[month] ?: buildMonthDays(month, today).also { monthCache[month] = it }
+            val dayModels = monthCache[month] ?: placeholderGrid
             DayGrid(
                 dayModels = dayModels,
                 selectedDate = selectedDate,
