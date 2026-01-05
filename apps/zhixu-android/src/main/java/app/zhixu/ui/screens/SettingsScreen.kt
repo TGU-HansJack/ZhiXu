@@ -99,6 +99,7 @@ fun SettingsScreen(
     onOpenSync: () -> Unit,
     onOpenAiSettings: () -> Unit,
     onOpenUiSettings: () -> Unit,
+    onOpenPomodoroSettings: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenAbout: () -> Unit,
 ) {
@@ -270,6 +271,13 @@ fun SettingsScreen(
                 iconRes = Ionicons.LayersOutline,
                 title = stringResource(R.string.settings_placeholder_ui),
                 onClick = onOpenUiSettings,
+            )
+            HorizontalDivider(color = dividerColor)
+
+            SettingsNavRow(
+                iconRes = Ionicons.TimeOutline,
+                title = "番茄设置",
+                onClick = onOpenPomodoroSettings,
             )
             HorizontalDivider(color = dividerColor)
 

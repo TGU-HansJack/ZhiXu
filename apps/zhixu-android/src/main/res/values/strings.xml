@@ -5,6 +5,9 @@
     <string name="nav_space">Space</string>
     <string name="nav_docs">Docs</string>
     <string name="nav_tasks">Tasks</string>
+    <string name="nav_calendar">日历</string>
+    <string name="nav_quadrants">四象限</string>
+    <string name="nav_pomodoro">番茄</string>
     <string name="nav_settings">Settings</string>
     <string name="nav_me">Me</string>
 

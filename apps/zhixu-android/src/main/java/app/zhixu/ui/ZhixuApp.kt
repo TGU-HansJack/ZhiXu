@@ -14,6 +14,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
@@ -103,6 +105,7 @@ import app.zhixu.ui.screens.AccountScreen
 import app.zhixu.ui.screens.AboutScreen
 import app.zhixu.ui.screens.AiSettingsScreen
 import app.zhixu.ui.screens.AuthScreen
+import app.zhixu.ui.screens.CalendarTasksScreen
 import app.zhixu.ui.screens.DeviceManagementScreen
 import app.zhixu.ui.screens.DocumentListScreen
 import app.zhixu.ui.screens.EditorScreen
@@ -113,6 +116,9 @@ import app.zhixu.ui.screens.OpenSourceLicenseScreen
 import app.zhixu.ui.screens.PrivacyPolicyScreen
 import app.zhixu.ui.screens.DailyReminderSettingsScreen
 import app.zhixu.ui.screens.NotificationSettingsScreen
+import app.zhixu.ui.screens.PomodoroScreen
+import app.zhixu.ui.screens.PomodoroSettingsScreen
+import app.zhixu.ui.screens.QuadrantsScreen
 import app.zhixu.ui.screens.ReminderPopupSettingsScreen
 import app.zhixu.ui.screens.ReminderSoundSettingsScreen
 import app.zhixu.ui.screens.ReminderVibrationSettingsScreen
@@ -330,7 +336,7 @@ fun ZhixuApp(
 
     val showTopBar = currentRoute == "home"
     val showBottomBar = currentRoute in setOf("home", "me")
-    val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 1, pageCount = { 3 })
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 1, pageCount = { 6 })
     val settledPage by remember { derivedStateOf { pagerState.settledPage } }
     var lastSettledHomePage by remember { mutableStateOf(settledPage) }
 
@@ -363,7 +369,7 @@ fun ZhixuApp(
     }
 
     fun navigateHome(pageIndex: Int) {
-        val targetPage = pageIndex.coerceIn(0, 2)
+        val targetPage = pageIndex.coerceIn(0, 5)
         navController.navigate("home") {
             launchSingleTop = true
             restoreState = true
@@ -442,9 +448,15 @@ fun ZhixuApp(
                                          title = {
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp),
                                                 verticalAlignment = Alignment.CenterVertically,
                                             ) {
+                                                val scroll = rememberScrollState()
+                                                Row(
+                                                    modifier = Modifier.weight(1f).horizontalScroll(scroll),
+                                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
                                                 TabText(
                                                     text = stringResource(R.string.nav_space),
                                                     selected = settledPage == 0,
@@ -484,6 +496,46 @@ fun ZhixuApp(
                                                         }
                                                     },
                                                 )
+                                                TabText(
+                                                    text = stringResource(R.string.nav_calendar),
+                                                    selected = settledPage == 3,
+                                                    onClick = {
+                                                        if (pagerState.currentPage == 3) return@TabText
+                                                        scope.launch {
+                                                            pagerState.animateScrollToPage(
+                                                                page = 3,
+                                                                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
+                                                            )
+                                                        }
+                                                    },
+                                                )
+                                                TabText(
+                                                    text = stringResource(R.string.nav_quadrants),
+                                                    selected = settledPage == 4,
+                                                    onClick = {
+                                                        if (pagerState.currentPage == 4) return@TabText
+                                                        scope.launch {
+                                                            pagerState.animateScrollToPage(
+                                                                page = 4,
+                                                                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
+                                                            )
+                                                        }
+                                                    },
+                                                )
+                                                TabText(
+                                                    text = stringResource(R.string.nav_pomodoro),
+                                                    selected = settledPage == 5,
+                                                    onClick = {
+                                                        if (pagerState.currentPage == 5) return@TabText
+                                                        scope.launch {
+                                                            pagerState.animateScrollToPage(
+                                                                page = 5,
+                                                                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
+                                                            )
+                                                        }
+                                                    },
+                                                )
+                                                }
                                             }
                                         },
                                         actions = {
@@ -793,8 +845,15 @@ fun ZhixuApp(
                         onOpenSync = { navController.navigate("sync") },
                         onOpenAiSettings = { navController.navigate("aiSettings") },
                         onOpenUiSettings = { navController.navigate("uiSettings") },
+                        onOpenPomodoroSettings = { navController.navigate("pomodoroSettings") },
                         onOpenNotifications = { navController.navigate("notificationSettings") },
                         onOpenAbout = { navController.navigate("about") },
+                    )
+                }
+                composable("pomodoroSettings") {
+                    PomodoroSettingsScreen(
+                        contentPadding = padding,
+                        onBack = { navController.popBackStack() },
                     )
                 }
                 composable("notificationSettings") {
@@ -1258,6 +1317,29 @@ private fun HomePager(
                     selectedTasks = selectedTasks,
                     onToggleTaskSelection = onToggleTaskSelection,
                     onClearTaskSelection = onClearTaskSelection,
+                )
+
+            3 ->
+                CalendarTasksScreen(
+                    contentPadding = contentPadding,
+                    vaultRootUri = vaultRootUri,
+                    repository = repository,
+                    isActive = isActive,
+                    onOpenDoc = onOpenDoc,
+                )
+
+            4 ->
+                QuadrantsScreen(
+                    contentPadding = contentPadding,
+                    vaultRootUri = vaultRootUri,
+                    repository = repository,
+                    isActive = isActive,
+                    onOpenDoc = onOpenDoc,
+                )
+
+            5 ->
+                PomodoroScreen(
+                    contentPadding = contentPadding,
                 )
         }
     }

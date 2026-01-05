@@ -557,6 +557,19 @@ class VaultIndexRepository(
             mutex.withLock { queryDueTasks(start, end, limit, status = status, tag = tag) }
         }
 
+    suspend fun getTasksDueOn(
+        day: LocalDate,
+        limit: Int = 200,
+        status: TaskStatusFilter = TaskStatusFilter.Undone,
+        tag: String? = null,
+    ): List<UiTask> =
+        withContext(Dispatchers.IO) {
+            val zone = ZoneId.systemDefault()
+            val start = day.atStartOfDay(zone).toInstant().toEpochMilli()
+            val end = day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+            mutex.withLock { queryDueTasks(start, end, limit, status = status, tag = tag) }
+        }
+
     suspend fun getUpcomingTasks(
         nowEpochMillis: Long = System.currentTimeMillis(),
         limit: Int = 200,

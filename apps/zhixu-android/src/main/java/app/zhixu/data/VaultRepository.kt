@@ -1807,6 +1807,18 @@ class VaultRepository(
     suspend fun getTasksCreatedOn(day: LocalDate): List<UiTask> =
         runCatching { indexRepository.getTasksCreatedOn(day = day) }.getOrElse { emptyList() }
 
+    suspend fun getTasksDueOn(
+        day: LocalDate,
+        limit: Int = 200,
+        status: VaultIndexRepository.TaskStatusFilter = VaultIndexRepository.TaskStatusFilter.Undone,
+        tag: String? = null,
+    ): List<UiTask> =
+        runCatching { indexRepository.getTasksDueOn(day = day, limit = limit, status = status, tag = tag) }
+            .getOrElse {
+                Log.e("Zhixu", "getTasksDueOn failed", it)
+                emptyList()
+            }
+
     suspend fun writeBytes(uri: Uri, bytes: ByteArray) = withContext(Dispatchers.IO) {
         if (uri.scheme.equals("file", ignoreCase = true)) {
             val path = uri.path ?: error("Invalid file uri: $uri")
