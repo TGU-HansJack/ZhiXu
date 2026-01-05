@@ -354,6 +354,14 @@
     <string name="settings_placeholder_update">Update software</string>
     <string name="settings_placeholder_about">About</string>
 
+    <!-- Notification settings -->
+    <string name="settings_notifications_title">Notifications</string>
+    <string name="settings_notifications_section_status">Status</string>
+    <string name="settings_notifications_row_permission">Notification permission</string>
+    <string name="settings_notifications_state_on">On</string>
+    <string name="settings_notifications_state_off">Off</string>
+    <string name="settings_notifications_state_need_permission">Need permission</string>
+
     <!-- Updates -->
     <string name="settings_update_title">Check for updates</string>
     <string name="settings_update_subtitle_fmt">Current: %1$s</string>

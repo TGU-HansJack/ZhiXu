@@ -302,6 +302,14 @@
     <string name="settings_placeholder_update">检查更新</string>
     <string name="settings_placeholder_about">关于</string>
 
+    <!-- Notification settings -->
+    <string name="settings_notifications_title">通知</string>
+    <string name="settings_notifications_section_status">状态</string>
+    <string name="settings_notifications_row_permission">通知权限</string>
+    <string name="settings_notifications_state_on">已开启</string>
+    <string name="settings_notifications_state_off">已关闭</string>
+    <string name="settings_notifications_state_need_permission">需要权限</string>
+
     <!-- Updates -->
     <string name="settings_update_title">检查更新</string>
     <string name="settings_update_subtitle_fmt">当前版本：%1$s</string>

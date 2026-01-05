@@ -111,6 +111,7 @@ import app.zhixu.ui.screens.LongImageScreen
 import app.zhixu.ui.screens.NewDocScreen
 import app.zhixu.ui.screens.OpenSourceLicenseScreen
 import app.zhixu.ui.screens.PrivacyPolicyScreen
+import app.zhixu.ui.screens.NotificationSettingsScreen
 import app.zhixu.ui.screens.SettingsScreen
 import app.zhixu.ui.screens.SpaceScreen
 import app.zhixu.ui.screens.SyncScreen
@@ -788,7 +789,14 @@ fun ZhixuApp(
                         onOpenSync = { navController.navigate("sync") },
                         onOpenAiSettings = { navController.navigate("aiSettings") },
                         onOpenUiSettings = { navController.navigate("uiSettings") },
+                        onOpenNotifications = { navController.navigate("notificationSettings") },
                         onOpenAbout = { navController.navigate("about") },
+                    )
+                }
+                composable("notificationSettings") {
+                    NotificationSettingsScreen(
+                        contentPadding = padding,
+                        onBack = { navController.popBackStack() },
                     )
                 }
                 composable("aiSettings") {

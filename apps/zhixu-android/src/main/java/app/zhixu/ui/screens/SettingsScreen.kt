@@ -99,6 +99,7 @@ fun SettingsScreen(
     onOpenSync: () -> Unit,
     onOpenAiSettings: () -> Unit,
     onOpenUiSettings: () -> Unit,
+    onOpenNotifications: () -> Unit,
     onOpenAbout: () -> Unit,
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -282,7 +283,7 @@ fun SettingsScreen(
             SettingsNavRow(
                 iconRes = Ionicons.NotificationsOutline,
                 title = stringResource(R.string.settings_placeholder_notifications),
-                onClick = ::comingSoon,
+                onClick = onOpenNotifications,
             )
             HorizontalDivider(color = dividerColor)
 
