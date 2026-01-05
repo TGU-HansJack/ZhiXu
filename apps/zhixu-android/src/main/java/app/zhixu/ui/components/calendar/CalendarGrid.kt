@@ -29,11 +29,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.zhixu.ui.Ionicons
+import com.nlf.calendar.Solar
+import com.nlf.calendar.util.HolidayUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
+import kotlin.math.abs
 
 /**
  * 日历网格组件
@@ -104,14 +107,12 @@ fun CalendarGrid(
             beyondViewportPageCount = 1,
         ) { page ->
             val month = currentMonth.plusMonths((page - 1).toLong())
-            val dayModels = monthCache[month]
-            if (dayModels != null) {
-                DayGrid(
-                    dayModels = dayModels,
-                    selectedDate = selectedDate,
-                    onDateSelect = onDateSelect,
-                )
-            }
+            val dayModels = monthCache[month] ?: buildMonthDays(month, today).also { monthCache[month] = it }
+            DayGrid(
+                dayModels = dayModels,
+                selectedDate = selectedDate,
+                onDateSelect = onDateSelect,
+            )
         }
     }
 }
@@ -279,11 +280,48 @@ private fun createDayModel(
     isCurrentMonth: Boolean,
     today: LocalDate
 ): DayModel {
-    val lunarDate = LunarCalendarCalculator.solarToLunar(date)
-    val solarTerm = LunarCalendarCalculator.getSolarTerm(date)
-    val holiday = HolidayProvider.getHoliday(date)
-    val lunarHoliday = HolidayProvider.getLunarHoliday(lunarDate)
-    val workDayStatus = HolidayProvider.getWorkDayStatus(date, date.year)
+    val solar = Solar.fromYmd(date.year, date.monthValue, date.dayOfMonth)
+    val lunar = solar.lunar
+    val lunarMonthRaw = lunar.month
+    val isLeapMonth = lunarMonthRaw < 0
+    val lunarDate =
+        LunarDate(
+            year = lunar.year,
+            month = abs(lunarMonthRaw),
+            day = lunar.day,
+            isLeapMonth = isLeapMonth,
+        )
+
+    val solarTerm = lunar.jieQi.takeIf { it.isNotBlank() }
+    val festival =
+        listOf(
+            solar.festivals.firstOrNull(),
+            lunar.festivals.firstOrNull(),
+        ).firstOrNull { !it.isNullOrBlank() }
+
+    val legalHoliday = HolidayUtil.getHoliday(date.year, date.monthValue, date.dayOfMonth)
+    val workDayStatus =
+        when {
+            legalHoliday == null -> WorkDayStatus.NONE
+            legalHoliday.isWork -> WorkDayStatus.WORK
+            else -> WorkDayStatus.REST
+        }
+
+    // Avoid repeating the same "国庆节/春节/..." label across a multi-day holiday period:
+    // only show a label when the day is an actual festival day (from festivals), while still using HolidayUtil for 休/班.
+    val holidayName = festival
+    val holiday =
+        holidayName?.let {
+            Holiday(
+                name = it,
+                type =
+                    if (workDayStatus == WorkDayStatus.REST) HolidayType.LEGAL_HOLIDAY else HolidayType.TRADITIONAL,
+                monthDay = java.time.MonthDay.of(date.monthValue, date.dayOfMonth),
+                workDayStatus = workDayStatus,
+            )
+        }
+
+    val lunarHoliday = null
 
     return DayModel(
         date = date,

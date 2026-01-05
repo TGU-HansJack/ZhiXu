@@ -110,6 +110,7 @@ dependencies {
     implementation("io.noties.markwon:ext-tasklist:4.6.2")
     implementation("io.noties.markwon:ext-strikethrough:4.6.2")
     implementation("io.noties.markwon:ext-latex:4.6.2")
+    implementation("cn.6tail:lunar:1.7.7")
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

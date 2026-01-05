@@ -139,7 +139,7 @@ object HolidayProvider {
 data class DayModel(
     val date: LocalDate,
     val lunarDate: LunarDate,
-    val solarTerm: SolarTerm? = null,
+    val solarTerm: String? = null,
     val holiday: Holiday? = null,
     val lunarHoliday: String? = null,
     val workDayStatus: WorkDayStatus = WorkDayStatus.NONE,
@@ -151,7 +151,7 @@ data class DayModel(
      */
     val displayText: String
         get() = when {
-            solarTerm != null -> solarTerm.displayName
+            !solarTerm.isNullOrBlank() -> solarTerm
             holiday != null -> holiday.name
             lunarHoliday != null -> lunarHoliday
             lunarDate.day == 1 -> lunarDate.getMonthText()
@@ -164,7 +164,7 @@ data class DayModel(
      */
     fun getLunarDisplayText(): String {
         return when {
-            solarTerm != null -> solarTerm.displayName
+            !solarTerm.isNullOrBlank() -> solarTerm
             holiday != null -> holiday.name
             lunarHoliday != null -> lunarHoliday
             lunarDate.day == 1 -> lunarDate.getMonthText()
@@ -177,7 +177,7 @@ data class DayModel(
      */
     val textColorType: DayTextColorType
         get() = when {
-            solarTerm != null -> DayTextColorType.SOLAR_TERM
+            !solarTerm.isNullOrBlank() -> DayTextColorType.SOLAR_TERM
             holiday != null && holiday.type == HolidayType.LEGAL_HOLIDAY -> DayTextColorType.LEGAL_HOLIDAY
             lunarHoliday != null -> DayTextColorType.LUNAR_HOLIDAY
             else -> DayTextColorType.NORMAL
