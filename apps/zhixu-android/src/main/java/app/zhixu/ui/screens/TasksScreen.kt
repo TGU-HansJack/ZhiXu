@@ -771,6 +771,17 @@ private fun TaskDateSheet(
     fun formatTime(time: LocalTime): String =
         "${time.hour.toString().padStart(2, '0')}:${time.minute.toString().padStart(2, '0')}"
 
+    fun clearReminderSelection() {
+        reminderOffsetDays = null
+        reminderPersistent = false
+    }
+
+    fun clearTimeSelection() {
+        range = null
+        dueTime = null
+        clearReminderSelection()
+    }
+
     val reminderValue =
         remember(reminderOffsetDays, reminderTime) {
             val offset = reminderOffsetDays ?: return@remember "无"
@@ -907,6 +918,9 @@ private fun TaskDateSheet(
                             onReminderClick = {
                                 showReminderDialog = true
                             },
+                            hasReminder = reminderOffsetDays != null,
+                            onClearTimeClick = { clearTimeSelection() },
+                            onClearReminderClick = { clearReminderSelection() },
                             onRepeatClick = {
                                 android.widget.Toast.makeText(context, "重复：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
                             },
@@ -932,6 +946,8 @@ private fun TaskDateSheet(
                             onReminderClick = {
                                 showReminderDialog = true
                             },
+                            hasReminder = reminderOffsetDays != null,
+                            onClearReminderClick = { clearReminderSelection() },
                             onRepeatClick = {
                                 android.widget.Toast.makeText(context, "重复：敬请期待", android.widget.Toast.LENGTH_SHORT).show()
                             },
@@ -977,6 +993,9 @@ private fun TaskDateTab(
     onPickTonight: () -> Unit,
     onTimeClick: (LocalTime) -> Unit,
     onReminderClick: () -> Unit,
+    hasReminder: Boolean,
+    onClearTimeClick: () -> Unit,
+    onClearReminderClick: () -> Unit,
     onRepeatClick: () -> Unit,
     onClear: () -> Unit,
     reminderValue: String,
@@ -1016,6 +1035,7 @@ private fun TaskDateTab(
             range == TimeRange.AllDay -> "全天"
             else -> range.label
         }
+    val hasTimeSelection = dueTime != null || range != null
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         shape = RoundedCornerShape(16.dp),
@@ -1026,12 +1046,20 @@ private fun TaskDateTab(
                 title = "时间",
                 value = rangeText,
                 onClick = { showTimeDialog = true },
+                showClear = hasTimeSelection,
+                onClear = onClearTimeClick,
             )
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
-            TaskSheetRow(title = "提醒", value = reminderValue, onClick = onReminderClick)
+            TaskSheetRow(
+                title = "提醒",
+                value = reminderValue,
+                onClick = onReminderClick,
+                showClear = hasReminder,
+                onClear = onClearReminderClick,
+            )
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -1120,6 +1148,8 @@ private fun TaskTimeRangeTab(
     onChangeRange: (TimeRange?) -> Unit,
     onGoToDate: () -> Unit,
     onReminderClick: () -> Unit,
+    hasReminder: Boolean,
+    onClearReminderClick: () -> Unit,
     onRepeatClick: () -> Unit,
     onClear: () -> Unit,
     reminderValue: String,
@@ -1216,7 +1246,13 @@ private fun TaskTimeRangeTab(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
     ) {
         Column {
-            TaskSheetRow(title = "提醒", value = reminderValue, onClick = onReminderClick)
+            TaskSheetRow(
+                title = "提醒",
+                value = reminderValue,
+                onClick = onReminderClick,
+                showClear = hasReminder,
+                onClear = onClearReminderClick,
+            )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), modifier = Modifier.padding(horizontal = 16.dp))
             TaskSheetRow(title = "重复", value = "无", onClick = onRepeatClick)
         }
@@ -1909,6 +1945,8 @@ private fun TaskSheetRow(
     title: String,
     value: String,
     onClick: () -> Unit,
+    showClear: Boolean = false,
+    onClear: (() -> Unit)? = null,
 ) {
     Row(
         modifier =
@@ -1926,12 +1964,34 @@ private fun TaskSheetRow(
         Text(text = title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         Text(text = value, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
         Spacer(modifier = Modifier.width(6.dp))
-        Icon(
-            imageVector = Icons.Outlined.ArrowForward,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-            modifier = Modifier.size(18.dp),
-        )
+        val tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+        if (showClear && onClear != null) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(18.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onClear,
+                        ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_hero_x_mark),
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        } else {
+            Icon(
+                painter = painterResource(R.drawable.ic_hero_chevron_right),
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }
 
