@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Zhixu Preview</title>
+
+    <link rel="stylesheet" href="vendor/highlight.js/github-dark.min.css" />
+
+    <style>
+      * { box-sizing: border-box; }
+      :root {
+        color-scheme: dark;
+        --bg: #1e1e1e;
+        --fg: #d4d4d4;
+        --muted: #9da3ad;
+        --border: rgba(255, 255, 255, 0.12);
+        --link: #4ea1ff;
+        --codeBg: rgba(255, 255, 255, 0.06);
+      }
+      html, body { height: 100%; margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue",
+          Arial, "Noto Sans", "Liberation Sans", sans-serif;
+        line-height: 1.65;
+      }
+      a { color: var(--link); }
+      #content { padding: 14px 16px 18px; max-width: 980px; margin: 0 auto; }
+      h1, h2, h3 { line-height: 1.25; margin: 18px 0 10px; }
+      h1 { font-size: 1.55em; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+      h2 { font-size: 1.28em; }
+      h3 { font-size: 1.12em; }
+      pre { overflow: auto; padding: 12px; border-radius: 10px; background: var(--codeBg); border: 1px solid var(--border); }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      :not(pre) > code { background: var(--codeBg); border: 1px solid var(--border); padding: 0.15em 0.35em; border-radius: 6px; }
+      blockquote { margin: 12px 0; padding: 2px 0 2px 12px; border-left: 2px solid var(--border); color: var(--muted); }
+      hr { border: 0; border-top: 1px solid var(--border); margin: 18px auto; width: 60%; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { padding: 8px; border-bottom: 1px solid var(--border); }
+      input[type="checkbox"] { transform: translateY(1px); margin-right: 0.5em; }
+      img { max-width: 100%; height: auto; }
+    </style>
+
+    <script defer src="vendor/markdown-it/markdown-it.min.js"></script>
+    <script defer src="vendor/markdown-it/plugins/markdown-it-task-lists.min.js"></script>
+    <script defer src="vendor/markdown-it/plugins/markdown-it-footnote.min.js"></script>
+    <script defer src="vendor/markdown-it/plugins/markdownItAnchor.umd.js"></script>
+    <script defer src="vendor/highlight.js/highlight.min.js"></script>
+  </head>
+  <body>
+    <div id="content">
+      <div style="opacity: 0.7">Loading preview…</div>
+    </div>
+
+    <script>
+      window.__payload = { markdown: "" };
+      window.__setMarkdown = (md) => {
+        window.__payload.markdown = md || "";
+        render();
+      };
+      window.__setVaultRoot = () => {};
+
+      function render() {
+        const md = window.__payload.markdown || "";
+        const el = document.getElementById("content");
+        if (!el) return;
+        const MarkdownIt = window.markdownit;
+        if (!MarkdownIt) {
+          el.innerHTML = '<div style="opacity:0.7">Loading preview…</div>';
+          return;
+        }
+
+        const mdIt = MarkdownIt({
+          html: false,
+          linkify: true,
+          breaks: true,
+          highlight: (str, lang) => {
+            try {
+              if (window.hljs && lang && window.hljs.getLanguage(lang)) {
+                return window.hljs.highlight(str, { language: lang }).value;
+              }
+            } catch (_) {}
+            return "";
+          },
+        });
+
+        try { mdIt.use(window.markdownitTaskLists, { enabled: true, label: true, labelAfter: true }); } catch (_) {}
+        try { mdIt.use(window.markdownitFootnote); } catch (_) {}
+        try {
+          const anchor = window.markdownItAnchor;
+          if (anchor) mdIt.use(anchor, { permalink: anchor.permalink.ariaHidden({ placement: "before" }) });
+        } catch (_) {}
+
+        el.innerHTML = mdIt.render(md);
+        try {
+          if (window.hljs) {
+            el.querySelectorAll("pre code").forEach((block) => window.hljs.highlightElement(block));
+          }
+        } catch (_) {}
+      }
+
+      render();
+    </script>
+  </body>
+</html>
+
