@@ -120,7 +120,6 @@ import app.zhixu.data.VaultIndexRepository
 import app.zhixu.data.VaultRepository
 import app.zhixu.sync.VaultAutoSync
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
@@ -169,7 +168,6 @@ fun TasksScreen(
             mutableStateOf(initialCacheEntry?.completed ?: emptyList())
         }
     var showCompleted by remember { mutableStateOf(false) }
-    var addJob by remember { mutableStateOf<Job?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val dueFormatter = remember { DateTimeFormatter.ofPattern("MM-dd HH:mm") }
     var lastRefreshAtMs by remember { mutableStateOf(0L) }
@@ -222,41 +220,6 @@ fun TasksScreen(
             indexBuilding = false
             refresh(force = true, showUpdatedBanner = false)
         }
-    }
-
-    fun submitTaskDraft(draft: TaskDraft) {
-        val root = vaultRootUri ?: return
-        val title = draft.title.trim()
-        if (title.isBlank()) return
-        addJob?.cancel()
-        addJob =
-            scope.launch {
-                val ok =
-                    repository.addTaskToInbox(
-                        rootUri = root,
-                        title = title,
-                        dueDate = draft.dueDate,
-                        dueTime = draft.dueTime,
-                        remindAt = draft.remindAt,
-                        remindPersistent = draft.remindPersistent,
-                        tags = draft.tags,
-                        priority = draft.priority,
-                    )
-                if (!ok) {
-                    snackbarHostState.showSnackbar("添加失败")
-                    return@launch
-                }
-
-                runCatching {
-                    VaultAutoSync.maybeUploadInbox(
-                        context = context,
-                        repository = repository,
-                        vaultRootUri = root,
-                        force = true,
-                    )
-                }
-                refresh(force = true, showUpdatedBanner = false)
-            }
     }
 
     LaunchedEffect(vaultRootUri, isActive) {
@@ -347,15 +310,6 @@ fun TasksScreen(
                                  }
                              }
                         }
-
-                        item {
-                            TaskComposer(
-                                onSubmit = { draft -> submitTaskDraft(draft) },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-
-                        item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp) }
 
                         if (tasks.isEmpty()) {
                             item { Text(stringResource(R.string.tasks_empty), modifier = Modifier.padding(16.dp)) }
