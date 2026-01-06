@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
@@ -139,7 +138,6 @@ import androidx.compose.ui.text.font.FontSynthesis
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.painterResource
@@ -279,18 +277,15 @@ fun EditorScreen(
     var lastEditorFocusAtMs by remember { mutableStateOf(0L) }
     var lastImeChangeAtMs by remember { mutableStateOf(0L) }
     var imeBottomPx by remember { mutableIntStateOf(0) }
-    val navBarsBottomPx = WindowInsets.navigationBars.getBottom(density)
-    val effectiveImeBottomPx = (imeBottomPx - navBarsBottomPx).coerceAtLeast(0)
-    var showEditorToolbar by remember { mutableStateOf(true) }
-    var toolbarImeOffsetPx by remember { mutableIntStateOf(0) }
-    val toolbarHideThresholdPx = with(density) { 12.dp.roundToPx() }
+    val isImeVisible = imeBottomPx > 0
+    val showEditorToolbar = !isPreview && !isPdfDoc
     val fallbackToolbarHeightPx = with(density) { 56.dp.roundToPx() }
     var toolbarHeightPx by remember { mutableIntStateOf(fallbackToolbarHeightPx) }
     val toolbarGapPx = with(density) { 10.dp.roundToPx() }
-    val anticipatedToolbarPx = if (showEditorToolbar && !isPreview && !isPdfDoc) (toolbarHeightPx + toolbarGapPx) else 0
+    val anticipatedToolbarPx = if (showEditorToolbar) (toolbarHeightPx + toolbarGapPx) else 0
     val navBarsBottomDp = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
     val drawerGestureExcludeBottomDp =
-        if (showEditorToolbar && effectiveImeBottomPx == 0) {
+        if (showEditorToolbar && !isImeVisible) {
             navBarsBottomDp + with(density) { (toolbarHeightPx + toolbarGapPx).toDp() }
         } else {
             0.dp
@@ -298,7 +293,7 @@ fun EditorScreen(
     val extraScrollSpaceDp =
         maxOf(
             376.dp,
-            with(density) { (effectiveImeBottomPx + anticipatedToolbarPx).toDp() } + 96.dp,
+            with(density) { anticipatedToolbarPx.toDp() } + 96.dp,
         )
 
     LaunchedEffect(isRenamingDoc) {
@@ -679,55 +674,6 @@ fun EditorScreen(
                 imeBottomPx = bottom
                 lastImeChangeAtMs = SystemClock.uptimeMillis()
             }
-    }
-
-    LaunchedEffect(isPreview, isPdfDoc) {
-        showEditorToolbar = !isPreview && !isPdfDoc
-        if (!showEditorToolbar) {
-            toolbarImeOffsetPx = 0
-        }
-    }
-
-    LaunchedEffect(showEditorToolbar, effectiveImeBottomPx) {
-        if (!showEditorToolbar) {
-            toolbarImeOffsetPx = 0
-            return@LaunchedEffect
-        }
-        if (effectiveImeBottomPx <= 0) {
-            toolbarImeOffsetPx = 0
-            return@LaunchedEffect
-        }
-
-        // Don't animate with IME. Wait until the IME height settles, then show the toolbar.
-        delay(180)
-        if (showEditorToolbar && effectiveImeBottomPx > 0) {
-            toolbarImeOffsetPx = effectiveImeBottomPx
-        }
-    }
-
-    LaunchedEffect(showEditorToolbar, toolbarImeOffsetPx, effectiveImeBottomPx) {
-        if (!showEditorToolbar) {
-            toolbarImeOffsetPx = 0
-            return@LaunchedEffect
-        }
-        if (effectiveImeBottomPx <= 0) {
-            toolbarImeOffsetPx = 0
-            return@LaunchedEffect
-        }
-
-        // IME is hiding: snap toolbar to bottom instead of following the animation down.
-        if (effectiveImeBottomPx + toolbarHideThresholdPx < toolbarImeOffsetPx) {
-            toolbarImeOffsetPx = 0
-            return@LaunchedEffect
-        }
-
-        // IME height increases (e.g. suggestion bar): re-anchor after it settles to avoid overlap.
-        if (effectiveImeBottomPx > toolbarImeOffsetPx + toolbarHideThresholdPx) {
-            delay(180)
-            if (showEditorToolbar && effectiveImeBottomPx > toolbarImeOffsetPx) {
-                toolbarImeOffsetPx = effectiveImeBottomPx
-            }
-        }
     }
 
     LaunchedEffect(docUri) {
@@ -1147,7 +1093,6 @@ fun EditorScreen(
             listOf(
                 content.selection.end,
                 stableEditorViewportHeightPx,
-                effectiveImeBottomPx,
                 anticipatedToolbarPx,
             )
         }.distinctUntilChanged()
@@ -1156,7 +1101,7 @@ fun EditorScreen(
                 if (stableEditorViewportHeightPx <= 0) return@collectLatest
 
                 val viewport =
-                    (stableEditorViewportHeightPx - effectiveImeBottomPx - anticipatedToolbarPx)
+                    (stableEditorViewportHeightPx - anticipatedToolbarPx)
                         .coerceAtLeast(0)
                 if (viewport <= 0) return@collectLatest
 
@@ -1256,7 +1201,7 @@ fun EditorScreen(
 
     ZhixuSwipeDualDrawer(
         enabled = !isPdfDoc,
-        openGestureEnabled = effectiveImeBottomPx == 0,
+        openGestureEnabled = !isImeVisible,
         gestureExcludeBottomHeight = drawerGestureExcludeBottomDp,
         resetKey = "${currentDocUri}|${vaultRootUri}",
         openRightToken = openOutlineToken,
@@ -1366,7 +1311,7 @@ fun EditorScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.navigationBars),
+                    .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime)),
         ) {
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
@@ -1862,7 +1807,6 @@ fun EditorScreen(
                         modifier =
                             Modifier
                                 .align(Alignment.BottomCenter)
-                                .offset { IntOffset(x = 0, y = -toolbarImeOffsetPx) }
                     )
                 }
 
