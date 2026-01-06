@@ -279,7 +279,8 @@ fun EditorScreen(
     var lastEditorFocusAtMs by remember { mutableStateOf(0L) }
     var lastImeChangeAtMs by remember { mutableStateOf(0L) }
     var imeBottomPx by remember { mutableIntStateOf(0) }
-    val effectiveImeBottomPx = imeBottomPx
+    val navBarsBottomPx = WindowInsets.navigationBars.getBottom(density)
+    val effectiveImeBottomPx = (imeBottomPx - navBarsBottomPx).coerceAtLeast(0)
     var showEditorToolbar by remember { mutableStateOf(true) }
     var toolbarImeOffsetPx by remember { mutableIntStateOf(0) }
     val toolbarHideThresholdPx = with(density) { 12.dp.roundToPx() }
@@ -297,7 +298,7 @@ fun EditorScreen(
     val extraScrollSpaceDp =
         maxOf(
             376.dp,
-            with(density) { (imeBottomPx + anticipatedToolbarPx).toDp() } + 96.dp,
+            with(density) { (effectiveImeBottomPx + anticipatedToolbarPx).toDp() } + 96.dp,
         )
 
     LaunchedEffect(isRenamingDoc) {
@@ -687,44 +688,44 @@ fun EditorScreen(
         }
     }
 
-    LaunchedEffect(showEditorToolbar, imeBottomPx) {
+    LaunchedEffect(showEditorToolbar, effectiveImeBottomPx) {
         if (!showEditorToolbar) {
             toolbarImeOffsetPx = 0
             return@LaunchedEffect
         }
-        if (imeBottomPx <= 0) {
+        if (effectiveImeBottomPx <= 0) {
             toolbarImeOffsetPx = 0
             return@LaunchedEffect
         }
 
         // Don't animate with IME. Wait until the IME height settles, then show the toolbar.
         delay(180)
-        if (showEditorToolbar && imeBottomPx > 0) {
-            toolbarImeOffsetPx = imeBottomPx
+        if (showEditorToolbar && effectiveImeBottomPx > 0) {
+            toolbarImeOffsetPx = effectiveImeBottomPx
         }
     }
 
-    LaunchedEffect(showEditorToolbar, toolbarImeOffsetPx, imeBottomPx) {
+    LaunchedEffect(showEditorToolbar, toolbarImeOffsetPx, effectiveImeBottomPx) {
         if (!showEditorToolbar) {
             toolbarImeOffsetPx = 0
             return@LaunchedEffect
         }
-        if (imeBottomPx <= 0) {
+        if (effectiveImeBottomPx <= 0) {
             toolbarImeOffsetPx = 0
             return@LaunchedEffect
         }
 
         // IME is hiding: snap toolbar to bottom instead of following the animation down.
-        if (imeBottomPx + toolbarHideThresholdPx < toolbarImeOffsetPx) {
+        if (effectiveImeBottomPx + toolbarHideThresholdPx < toolbarImeOffsetPx) {
             toolbarImeOffsetPx = 0
             return@LaunchedEffect
         }
 
         // IME height increases (e.g. suggestion bar): re-anchor after it settles to avoid overlap.
-        if (imeBottomPx > toolbarImeOffsetPx + toolbarHideThresholdPx) {
+        if (effectiveImeBottomPx > toolbarImeOffsetPx + toolbarHideThresholdPx) {
             delay(180)
-            if (showEditorToolbar && imeBottomPx > toolbarImeOffsetPx) {
-                toolbarImeOffsetPx = imeBottomPx
+            if (showEditorToolbar && effectiveImeBottomPx > toolbarImeOffsetPx) {
+                toolbarImeOffsetPx = effectiveImeBottomPx
             }
         }
     }
@@ -1146,7 +1147,7 @@ fun EditorScreen(
             listOf(
                 content.selection.end,
                 stableEditorViewportHeightPx,
-                imeBottomPx,
+                effectiveImeBottomPx,
                 anticipatedToolbarPx,
             )
         }.distinctUntilChanged()
@@ -1155,7 +1156,7 @@ fun EditorScreen(
                 if (stableEditorViewportHeightPx <= 0) return@collectLatest
 
                 val viewport =
-                    (stableEditorViewportHeightPx - imeBottomPx - anticipatedToolbarPx)
+                    (stableEditorViewportHeightPx - effectiveImeBottomPx - anticipatedToolbarPx)
                         .coerceAtLeast(0)
                 if (viewport <= 0) return@collectLatest
 
