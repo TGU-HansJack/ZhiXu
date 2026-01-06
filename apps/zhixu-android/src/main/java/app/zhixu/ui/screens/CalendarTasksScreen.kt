@@ -2,7 +2,8 @@ package app.zhixu.ui.screens
 
 import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,11 +12,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,8 +50,9 @@ fun CalendarTasksScreen(
     isActive: Boolean,
     onOpenDoc: (String, String?, Int?) -> Unit,
 ) {
-    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
     val timeFormatter = remember { DateTimeFormatter.ofPattern("HH:mm") }
+    val listBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
+    val itemShape = RoundedCornerShape(8.dp)
 
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
     var currentMonth by remember(selectedDate) { mutableStateOf(YearMonth.from(selectedDate)) }
@@ -81,23 +85,31 @@ fun CalendarTasksScreen(
         modifier =
             Modifier
                 .padding(contentPadding)
-                .background(MaterialTheme.colorScheme.background)
+                .background(listBg)
                 .fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(0.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
-                CalendarGrid(
-                    currentMonth = currentMonth,
-                    selectedDate = selectedDate,
-                    onMonthChange = { currentMonth = it },
-                    onDateSelect = { next ->
-                        selectedDate = next
-                        currentMonth = YearMonth.from(next)
-                    },
-                )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
+                shape = itemShape,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp,
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    CalendarGrid(
+                        currentMonth = currentMonth,
+                        selectedDate = selectedDate,
+                        onMonthChange = { currentMonth = it },
+                        onDateSelect = { next ->
+                            selectedDate = next
+                            currentMonth = YearMonth.from(next)
+                        },
+                    )
+                }
             }
-            HorizontalDivider(color = dividerColor)
         }
 
         item {
@@ -162,10 +174,10 @@ fun CalendarTasksScreen(
                 }
             TaskSimpleRow(
                 task = task,
+                itemShape = itemShape,
                 trailingLabel = dueLabel,
                 onOpen = { onOpenDoc(task.docUri.toString(), null, task.lineIndex) },
             )
-            HorizontalDivider(color = dividerColor)
         }
     }
 }
@@ -173,38 +185,57 @@ fun CalendarTasksScreen(
 @Composable
 private fun TaskSimpleRow(
     task: UiTask,
+    itemShape: RoundedCornerShape,
     trailingLabel: String?,
     onOpen: () -> Unit,
 ) {
-    Column(
+    Surface(
         modifier =
             Modifier
-                .clickable(onClick = onOpen)
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .heightIn(min = 40.dp)
+                .combinedClickable(onClick = onOpen),
+        color = MaterialTheme.colorScheme.surface,
+        shape = itemShape,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
     ) {
-        Text(
-            text = task.title.orEmpty(),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(2.dp))
-        Column(modifier = Modifier.fillMaxWidth()) {
-            val metaParts = buildList {
-                add(task.docName.orEmpty())
-                task.priority?.let { add("P$it") }
-                if (!trailingLabel.isNullOrBlank()) add(trailingLabel)
-            }.filter { it.isNotBlank() }
-            Text(
-                text = metaParts.joinToString(" · "),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth(),
-            )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = task.title.orEmpty(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(2.dp))
+                val metaParts = buildList {
+                    add(task.docName.orEmpty())
+                    task.priority?.let { add("P$it") }
+                }.filter { it.isNotBlank() }
+                if (metaParts.isNotEmpty()) {
+                    Text(
+                        text = metaParts.joinToString(" · "),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+            if (!trailingLabel.isNullOrBlank()) {
+                Text(
+                    text = trailingLabel,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
         }
     }
 }

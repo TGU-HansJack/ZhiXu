@@ -12,6 +12,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.ui.platform.LocalDensity
@@ -136,7 +137,6 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.time.DayOfWeek
 import kotlin.math.max
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.toArgb
 
 data class TaskKey(
@@ -278,10 +278,11 @@ fun TasksScreen(
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     val selectionMode = selectedTasks.isNotEmpty()
+                    val listBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(0.dp),
+                        modifier = Modifier.fillMaxSize().background(listBg),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         if (vaultRootUri == null) {
                             item { Text(stringResource(R.string.settings_vault_not_selected), modifier = Modifier.padding(16.dp)) }
@@ -290,25 +291,37 @@ fun TasksScreen(
 
                         if (indexReady == false) {
                             item {
-                                androidx.compose.foundation.layout.Column(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    shape = RoundedCornerShape(8.dp),
+                                    tonalElevation = 0.dp,
+                                    shadowElevation = 0.dp,
                                 ) {
-                                     Text(
-                                         text = if (indexBuilding || repository.isIndexBuildInProgress()) "索引构建中…" else "任务索引未就绪（将在后台空闲时自动构建）",
-                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                         style = MaterialTheme.typography.bodySmall,
-                                     )
-                                     TextButton(
-                                         onClick = { requestIndexBuild() },
-                                         enabled = !(indexBuilding || repository.isIndexBuildInProgress()),
-                                         contentPadding = PaddingValues(0.dp),
-                                     ) {
-                                         Text("立即构建索引")
-                                     }
-                                     HorizontalDivider(thickness = 0.5.dp)
-                                 }
-                             }
+                                    androidx.compose.foundation.layout.Column(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Text(
+                                            text =
+                                                if (indexBuilding || repository.isIndexBuildInProgress()) {
+                                                    "索引构建中…"
+                                                } else {
+                                                    "任务索引未就绪（将在后台空闲时自动构建）"
+                                                },
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                        TextButton(
+                                            onClick = { requestIndexBuild() },
+                                            enabled = !(indexBuilding || repository.isIndexBuildInProgress()),
+                                            contentPadding = PaddingValues(0.dp),
+                                        ) {
+                                            Text("立即构建索引")
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         if (tasks.isEmpty()) {
@@ -349,29 +362,31 @@ fun TasksScreen(
                                 onLongPress = { onToggleTaskSelection(key) },
                                 dimmed = false,
                             )
-                            HorizontalDivider(thickness = 0.5.dp)
                         }
 
                         item {
                             val count = completed.size
-                            Row(
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .clickable { showCompleted = !showCompleted }
-                                        .heightIn(min = 40.dp)
-                                        .padding(start = 0.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().clickable { showCompleted = !showCompleted },
+                                color = MaterialTheme.colorScheme.surface,
+                                shape = RoundedCornerShape(8.dp),
+                                tonalElevation = 0.dp,
+                                shadowElevation = 0.dp,
                             ) {
-                                Icon(
-                                    painter = painterResource(if (showCompleted) Ionicons.ChevronDown else Ionicons.ChevronForward),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(stringResource(R.string.tasks_completed))
-                                Text(text = count.toString(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp).padding(horizontal = 12.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        painter = painterResource(if (showCompleted) Ionicons.ChevronDown else Ionicons.ChevronForward),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(stringResource(R.string.tasks_completed))
+                                    Text(text = count.toString(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
 
@@ -411,7 +426,6 @@ fun TasksScreen(
                                     onLongPress = { onToggleTaskSelection(key) },
                                     dimmed = true,
                                 )
-                                HorizontalDivider(thickness = 0.5.dp)
                             }
                         }
                     }
@@ -2265,68 +2279,80 @@ private fun TaskRow(
 ) {
     val titleColor = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
     val metaColor = MaterialTheme.colorScheme.onSurfaceVariant
-    Row(
+    val containerColor =
+        when {
+            selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+            else -> MaterialTheme.colorScheme.surface
+        }
+
+    Surface(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 40.dp)
-                .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent)
                 .combinedClickable(
                     onClick = onOpen,
                     onLongClick = onLongPress,
-                )
-                .padding(start = 0.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+                ),
+        color = containerColor,
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
     ) {
-        ZhixuIconButton(
-            onClick = onToggle,
-            modifier = Modifier.size(40.dp),
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                painter =
-                    painterResource(
-                        if (selectionMode) {
-                            if (selected) Ionicons.CheckmarkCircle else Ionicons.SquareOutline
-                        } else {
-                            if (task.checked) Ionicons.CheckboxOutline else Ionicons.SquareOutline
+            ZhixuIconButton(
+                onClick = onToggle,
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    painter =
+                        painterResource(
+                            if (selectionMode) {
+                                if (selected) Ionicons.CheckmarkCircle else Ionicons.SquareOutline
+                            } else {
+                                if (task.checked) Ionicons.CheckboxOutline else Ionicons.SquareOutline
+                            },
+                        ),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint =
+                        when {
+                            selectionMode && selected -> MaterialTheme.colorScheme.primary
+                            selectionMode -> metaColor
+                            task.checked -> metaColor
+                            else -> MaterialTheme.colorScheme.onSurface
                         },
-                    ),
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint =
-                    when {
-                        selectionMode && selected -> MaterialTheme.colorScheme.primary
-                        selectionMode -> metaColor
-                        task.checked -> metaColor
-                        else -> MaterialTheme.colorScheme.onSurface
-                    },
-            )
-        }
-        Spacer(modifier = Modifier.width(6.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = task.title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = titleColor,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text(
-                text = task.docName,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = metaColor.copy(alpha = 0.7f),
-                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
-            )
-        }
-        if (!dueLabel.isNullOrBlank()) {
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = dueLabel,
-                color = if (dimmed) metaColor else MaterialTheme.colorScheme.primary,
-                maxLines = 1,
-                style = MaterialTheme.typography.labelMedium,
-            )
+                )
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = task.title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = titleColor,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = task.docName,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = metaColor.copy(alpha = 0.7f),
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
+                )
+            }
+            if (!dueLabel.isNullOrBlank()) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = dueLabel,
+                    color = if (dimmed) metaColor else MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
         }
     }
 }
