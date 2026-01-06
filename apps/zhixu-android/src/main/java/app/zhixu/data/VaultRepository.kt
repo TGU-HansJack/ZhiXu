@@ -602,10 +602,24 @@ class VaultRepository(
                     if (!file.exists()) file.createNewFile()
                     Uri.fromFile(file)
                 } else {
-                    val dirUri = if (targetDir.isBlank()) rootUri else ensureVaultDirectory(rootUri, targetDir.trimEnd('/'))
-                    val dirDoc = DocumentFile.fromSingleUri(context, dirUri) ?: DocumentFile.fromTreeUri(context, dirUri)
-                    requireNotNull(dirDoc) { "Invalid target directory uri: $dirUri" }
-                    require(dirDoc.isDirectory) { "Target is not a directory: $dirUri" }
+                    val rootDoc = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
+                    require(rootDoc.isDirectory) { "Target is not a directory: $rootUri" }
+
+                    val relDir = targetDir.trim().trimStart('/').trimEnd('/')
+                    val dirDoc =
+                        if (relDir.isBlank()) {
+                            rootDoc
+                        } else {
+                            var current: DocumentFile = rootDoc
+                            for (part in relDir.split('/').filter { it.isNotBlank() }) {
+                                val next = findChild(current, part) ?: current.createDirectory(part)
+                                requireNotNull(next) { "Failed to create directory: $part" }
+                                require(next.isDirectory) { "Expected directory but got file: $part" }
+                                current = next
+                            }
+                            current
+                        }
+
                     val existingNames = dirDoc.listFiles().mapNotNull { it.name }.toSet()
                     val uniqueName = createUniqueName(existingNames, displayName)
                     val created =

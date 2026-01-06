@@ -11,7 +11,7 @@ fun vaultRootToDocumentFile(context: Context, rootUri: Uri): DocumentFile? {
         val path = rootUri.path ?: return null
         return DocumentFile.fromFile(File(path))
     }
-    return DocumentFile.fromTreeUri(context, rootUri)
+    return DocumentFile.fromTreeUri(context, rootUri) ?: DocumentFile.fromSingleUri(context, rootUri)
 }
 
 fun appManagedVaultRootUri(context: Context): Uri {
@@ -22,4 +22,3 @@ fun appManagedVaultRootUri(context: Context): Uri {
     }
     return Uri.fromFile(dir)
 }
-
