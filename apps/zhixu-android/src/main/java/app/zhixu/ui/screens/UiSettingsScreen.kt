@@ -1,6 +1,7 @@
 package app.zhixu.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +28,8 @@ import androidx.compose.material.icons.outlined.Android
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -100,8 +103,10 @@ fun UiSettingsScreen(
         LazyColumn(
             modifier =
                 Modifier
+                    .padding(contentPadding)
                     .padding(innerPadding)
                     .windowInsetsPadding(WindowInsets.navigationBars)
+                    .background(MaterialTheme.colorScheme.background)
                     .fillMaxSize()
                     .imePadding(),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
@@ -119,52 +124,59 @@ fun UiSettingsScreen(
             }
 
             item {
-                @Composable
-                fun ModeCard(
-                    mode: UiThemeMode,
-                    label: String,
-                    icon: androidx.compose.ui.graphics.vector.ImageVector,
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.extraLarge,
                 ) {
-                    val selected = uiSettings.themeMode == mode
-                    val borderColor =
-                        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                    val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    Surface(
-                        modifier =
-                            Modifier
-                                .size(width = 96.dp, height = 76.dp)
-                                .clickable { scope.launch { uiPrefs.setThemeMode(mode) } },
-                        shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(2.dp, borderColor),
-                        color = MaterialTheme.colorScheme.surface,
+                    @Composable
+                    fun ModeCard(
+                        mode: UiThemeMode,
+                        label: String,
+                        icon: androidx.compose.ui.graphics.vector.ImageVector,
                     ) {
-                        Column(
-                            modifier = Modifier.fillMaxSize().padding(10.dp),
-                            verticalArrangement = Arrangement.Center,
-                            horizontalAlignment = Alignment.CenterHorizontally,
+                        val selected = uiSettings.themeMode == mode
+                        val borderColor =
+                            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                        val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        Surface(
+                            modifier =
+                                Modifier
+                                    .size(width = 96.dp, height = 76.dp)
+                                    .clickable { scope.launch { uiPrefs.setThemeMode(mode) } },
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(2.dp, borderColor),
+                            color = MaterialTheme.colorScheme.surface,
                         ) {
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = null,
-                                tint = tint,
-                                modifier = Modifier.size(28.dp),
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text(text = label, color = tint, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Column(
+                                modifier = Modifier.fillMaxSize().padding(10.dp),
+                                verticalArrangement = Arrangement.Center,
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = tint,
+                                    modifier = Modifier.size(28.dp),
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(text = label, color = tint, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                     }
-                }
 
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    ModeCard(UiThemeMode.SYSTEM, stringResource(R.string.settings_ui_theme_system), Icons.Outlined.Android)
-                    ModeCard(UiThemeMode.LIGHT, stringResource(R.string.settings_ui_theme_light), Icons.Outlined.LightMode)
-                    ModeCard(UiThemeMode.DARK, stringResource(R.string.settings_ui_theme_dark), Icons.Outlined.DarkMode)
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        ModeCard(UiThemeMode.SYSTEM, stringResource(R.string.settings_ui_theme_system), Icons.Outlined.Android)
+                        ModeCard(UiThemeMode.LIGHT, stringResource(R.string.settings_ui_theme_light), Icons.Outlined.LightMode)
+                        ModeCard(UiThemeMode.DARK, stringResource(R.string.settings_ui_theme_dark), Icons.Outlined.DarkMode)
+                    }
                 }
             }
 
@@ -188,33 +200,41 @@ fun UiSettingsScreen(
                         LanguageOption("en", context.getString(R.string.settings_language_en)),
                     )
                 val selectedTag = uiSettings.languageTag.trim()
-                options.forEach { opt ->
-                    val isSelected = selectedTag == opt.tag || (opt.tag.isBlank() && selectedTag.isBlank())
-                    ListItem(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable { scope.launch { uiPrefs.setLanguageTag(opt.tag) } },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(Ionicons.LanguageOutline),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        },
-                        headlineContent = { Text(opt.label) },
-                        trailingContent = {
-                            if (isSelected) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    options.forEachIndexed { index, opt ->
+                        val isSelected = selectedTag == opt.tag || (opt.tag.isBlank() && selectedTag.isBlank())
+                        ListItem(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { scope.launch { uiPrefs.setLanguageTag(opt.tag) } },
+                            leadingContent = {
                                 Icon(
-                                    painter = painterResource(Ionicons.CheckmarkCircle),
+                                    painter = painterResource(Ionicons.LanguageOutline),
                                     contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
                                 )
-                            }
-                        },
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
+                            },
+                            headlineContent = { Text(opt.label) },
+                            trailingContent = {
+                                if (isSelected) {
+                                    Icon(
+                                        painter = painterResource(Ionicons.CheckmarkCircle),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                            },
+                        )
+                        if (index != options.lastIndex) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                        }
+                    }
                 }
             }
 

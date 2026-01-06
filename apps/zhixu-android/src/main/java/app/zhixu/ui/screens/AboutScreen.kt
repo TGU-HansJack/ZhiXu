@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -50,6 +52,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.zhixu.BuildConfig
 import app.zhixu.R
 import app.zhixu.data.UpdateCheckResult
@@ -126,9 +129,8 @@ fun AboutScreen(
         }
     }
 
-    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
-
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             ZhixuTopAppBar(
@@ -144,7 +146,7 @@ fun AboutScreen(
                     }
                 },
             )
-            HorizontalDivider(color = dividerColor)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         },
     ) { innerPadding ->
         LazyColumn(
@@ -156,61 +158,87 @@ fun AboutScreen(
                     .imePadding()
                     .background(MaterialTheme.colorScheme.background)
                     .fillMaxSize(),
-            contentPadding = PaddingValues(0.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             item {
-                AboutUpdateSection(
-                    expanded = updateExpanded,
-                    uiState = updateUiState,
-                    onToggleExpanded = {
-                        val nextExpanded = !updateExpanded
-                        updateExpanded = nextExpanded
-                        if (nextExpanded) startUpdateCheck()
-                    },
-                    onRetry = { startUpdateCheck() },
-                    onOpenUpdatePage = { url -> openUrl(url) },
-                    onDownloadAndInstall = ::startDownloadAndInstall,
-                )
-                HorizontalDivider(color = dividerColor)
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
             item {
-                AboutNavRow(
-                    iconRes = Ionicons.InformationCircleOutline,
-                    title = stringResource(R.string.about_visit_website),
-                    value = "zhixu.app",
-                    onClick = { openUrl(OFFICIAL_SITE_URL) },
+                Text(
+                    text = stringResource(R.string.settings_update_title),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
                 )
-                HorizontalDivider(color = dividerColor)
-                AboutNavRow(
-                    iconRes = Ionicons.User,
-                    title = stringResource(R.string.about_join_qq_group),
-                    value = QQ_GROUP_NUMBER,
-                    onClick = ::openQqGroup,
-                )
-                HorizontalDivider(color = dividerColor)
-                AboutNavRow(
-                    iconRes = Ionicons.DocumentText,
-                    title = stringResource(R.string.terms_of_use_title),
-                    value = OFFICIAL_TOS_URL.removePrefix("https://"),
-                    onClick = onOpenTermsOfUse,
-                )
-                HorizontalDivider(color = dividerColor)
-                AboutNavRow(
-                    iconRes = Ionicons.DocumentText,
-                    title = stringResource(R.string.privacy_policy_title),
-                    value = OFFICIAL_PRIVACY_URL.removePrefix("https://"),
-                    onClick = onOpenPrivacyPolicy,
-                )
-                HorizontalDivider(color = dividerColor)
-                AboutNavRow(
-                    iconRes = Ionicons.DocumentText,
-                    title = stringResource(R.string.open_source_license_title),
-                    value = OFFICIAL_LICENSE_URL.removePrefix("https://"),
-                    onClick = onOpenOpenSourceLicense,
-                )
-                HorizontalDivider(color = dividerColor)
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    AboutUpdateSection(
+                        expanded = updateExpanded,
+                        uiState = updateUiState,
+                        onToggleExpanded = {
+                            val nextExpanded = !updateExpanded
+                            updateExpanded = nextExpanded
+                            if (nextExpanded) startUpdateCheck()
+                        },
+                        onRetry = { startUpdateCheck() },
+                        onOpenUpdatePage = { url -> openUrl(url) },
+                        onDownloadAndInstall = ::startDownloadAndInstall,
+                    )
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(14.dp)) }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                    AboutNavRow(
+                        iconRes = Ionicons.InformationCircleOutline,
+                        title = stringResource(R.string.about_visit_website),
+                        value = "zhixu.app",
+                        onClick = { openUrl(OFFICIAL_SITE_URL) },
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    AboutNavRow(
+                        iconRes = Ionicons.User,
+                        title = stringResource(R.string.about_join_qq_group),
+                        value = QQ_GROUP_NUMBER,
+                        onClick = ::openQqGroup,
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    AboutNavRow(
+                        iconRes = Ionicons.DocumentText,
+                        title = stringResource(R.string.terms_of_use_title),
+                        value = OFFICIAL_TOS_URL.removePrefix("https://"),
+                        onClick = onOpenTermsOfUse,
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    AboutNavRow(
+                        iconRes = Ionicons.DocumentText,
+                        title = stringResource(R.string.privacy_policy_title),
+                        value = OFFICIAL_PRIVACY_URL.removePrefix("https://"),
+                        onClick = onOpenPrivacyPolicy,
+                    )
+                    HorizontalDivider(color = dividerColor)
+                    AboutNavRow(
+                        iconRes = Ionicons.DocumentText,
+                        title = stringResource(R.string.open_source_license_title),
+                        value = OFFICIAL_LICENSE_URL.removePrefix("https://"),
+                        onClick = onOpenOpenSourceLicense,
+                    )
+                }
             }
         }
     }

@@ -28,12 +28,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -130,6 +131,7 @@ fun PomodoroSettingsScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Column {
@@ -323,7 +325,11 @@ private fun PomodoroSettingsMainPage(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = MaterialTheme.shapes.extraLarge,
+            ) {
                 Column {
                     ListItem(
                         leadingContent = { Icon(painter = painterResource(Ionicons.TimeOutline), contentDescription = null) },
@@ -353,7 +359,11 @@ private fun PomodoroSettingsMainPage(
         }
 
         item {
-            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = MaterialTheme.shapes.extraLarge,
+            ) {
                 Column {
                     ListItem(
                         leadingContent = { Icon(painter = painterResource(Ionicons.TrashOutline), contentDescription = null) },
@@ -405,7 +415,11 @@ private fun PomodoroTimerSettingsPage(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = MaterialTheme.shapes.extraLarge,
+            ) {
                 Column {
                     ListItem(
                         headlineContent = { Text("专注") },
@@ -439,7 +453,11 @@ private fun PomodoroTimerSettingsPage(
         }
 
         item {
-            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = MaterialTheme.shapes.extraLarge,
+            ) {
                 Column {
                     ListItem(
                         headlineContent = { Text("自动开始下一阶段") },
@@ -516,7 +534,11 @@ private fun PomodoroAlarmSettingsPage(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = MaterialTheme.shapes.extraLarge,
+            ) {
                 Column {
                     ListItem(
                         headlineContent = { Text("响铃") },
@@ -550,7 +572,11 @@ private fun PomodoroAlarmSettingsPage(
                         RingtoneManager.getRingtone(context, uri)?.getTitle(context)
                     }.getOrNull().orEmpty().ifBlank { "已选择" }
                 }
-            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = MaterialTheme.shapes.extraLarge,
+            ) {
                 ListItem(
                     headlineContent = { Text("铃声") },
                     supportingContent = { Text(name) },
@@ -586,7 +612,11 @@ private fun PomodoroAboutPage(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = MaterialTheme.shapes.extraLarge,
+            ) {
                 ListItem(
                     headlineContent = { Text("Tomato") },
                     supportingContent = { Text("作者：nsh07（GitHub）") },
@@ -624,4 +654,3 @@ private fun requestDndPermissionIfNeeded(context: Context) {
         context.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 }
-

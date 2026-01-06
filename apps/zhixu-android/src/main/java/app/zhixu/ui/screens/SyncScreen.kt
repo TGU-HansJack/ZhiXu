@@ -29,6 +29,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -60,6 +62,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.zhixu.R
 import app.zhixu.data.AccountPreferences
 import app.zhixu.data.AccountState
@@ -247,8 +250,8 @@ fun SyncScreen(
                     .background(MaterialTheme.colorScheme.background)
                     .fillMaxSize()
                     .imePadding(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             if (vaultRootUri == null) {
                 item { Text(stringResource(R.string.workshop_no_vault)) }
@@ -256,261 +259,313 @@ fun SyncScreen(
             }
 
             item {
-                ListItem(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { showSyncLog = true },
-                    headlineContent = { Text(stringResource(R.string.sync_logs_title)) },
-                    supportingContent = {
-                        val hint =
-                            if (syncLogLoading) stringResource(R.string.sync_logs_loading)
-                            else if (syncLogText.isBlank()) stringResource(R.string.sync_logs_empty)
-                            else stringResource(R.string.sync_logs_tap_to_view)
-                        Text(hint)
-                    },
-                    leadingContent = {
-                        Icon(
-                            painter = painterResource(app.zhixu.ui.Ionicons.DocumentText),
-                            contentDescription = null,
-                        )
-                    },
-                    trailingContent = {
-                        Icon(
-                            painter = painterResource(app.zhixu.ui.Ionicons.ChevronForward),
-                            contentDescription = null,
-                        )
-                    },
-                )
-                HorizontalDivider(color = dividerColor)
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    ListItem(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { showSyncLog = true },
+                        headlineContent = { Text(stringResource(R.string.sync_logs_title)) },
+                        supportingContent = {
+                            val hint =
+                                if (syncLogLoading) stringResource(R.string.sync_logs_loading)
+                                else if (syncLogText.isBlank()) stringResource(R.string.sync_logs_empty)
+                                else stringResource(R.string.sync_logs_tap_to_view)
+                            Text(hint)
+                        },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(app.zhixu.ui.Ionicons.DocumentText),
+                                contentDescription = null,
+                            )
+                        },
+                        trailingContent = {
+                            Icon(
+                                painter = painterResource(app.zhixu.ui.Ionicons.ChevronForward),
+                                contentDescription = null,
+                            )
+                        },
+                    )
+                }
             }
 
             if (loadedVaultSyncConfig.location == VaultStorageLocation.OFFICIAL_SERVER) {
-                item {
-                    ListItem(
-                        headlineContent = { Text(stringResource(R.string.official_sync_title)) },
-                        supportingContent = { Text(stringResource(R.string.vault_settings_official_desc_fmt, OfficialSync.BASE_URL)) },
-                    )
-                }
+                item { Spacer(modifier = Modifier.height(14.dp)) }
 
                 item {
-                    val msg =
-                        if (!accountState.isLoggedIn) stringResource(R.string.official_sync_not_logged_in)
-                        else stringResource(R.string.official_sync_logged_in_as_fmt, accountState.username.ifBlank { "-" })
                     Text(
-                        text = msg,
-                        color = if (accountState.isLoggedIn) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                        text = stringResource(R.string.official_sync_title),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
                     )
                 }
 
                 item {
-                    RowSwitch(
-                        title = stringResource(R.string.webdav_include_index_sqlite),
-                        checked = includeIndexSqlite,
-                        onCheckedChange = { checked ->
-                            includeIndexSqlite = checked
-                            scope.launch { syncPrefs.setIncludeIndexSqlite(checked) }
-                        },
-                    )
-                }
-
-                if (testStatus != null) {
-                    item { Text(testStatus!!, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                }
-
-                item {
-                    Button(
+                    Card(
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = accountState.isLoggedIn,
-                        shape = RoundedCornerShape(8.dp),
-                        onClick = {
-                            val root = vaultRootUri ?: return@Button
-                            val token = accountState.token
-                            scope.launch {
-                                testStatus = context.getString(R.string.official_sync_syncing)
-                                val engine = OfficialVaultSyncEngine(context, repository)
-                                val summary =
-                                    runCatching {
-                                        engine.syncVault(
-                                            rootUri = root,
-                                            baseUrl = OfficialSync.BASE_URL,
-                                            token = token,
-                                            includeIndexSqlite = includeIndexSqlite,
-                                        )
-                                    }.getOrElse { e ->
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = MaterialTheme.shapes.extraLarge,
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                            Text(
+                                text = stringResource(R.string.vault_settings_official_desc_fmt, OfficialSync.BASE_URL),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            val msg =
+                                if (!accountState.isLoggedIn) stringResource(R.string.official_sync_not_logged_in)
+                                else stringResource(R.string.official_sync_logged_in_as_fmt, accountState.username.ifBlank { "-" })
+                            Text(
+                                text = msg,
+                                color = if (accountState.isLoggedIn) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            RowSwitch(
+                                title = stringResource(R.string.webdav_include_index_sqlite),
+                                checked = includeIndexSqlite,
+                                onCheckedChange = { checked ->
+                                    includeIndexSqlite = checked
+                                    scope.launch { syncPrefs.setIncludeIndexSqlite(checked) }
+                                },
+                            )
+
+                            if (testStatus != null) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(testStatus!!, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = accountState.isLoggedIn,
+                                shape = RoundedCornerShape(8.dp),
+                                onClick = {
+                                    val root = vaultRootUri ?: return@Button
+                                    val token = accountState.token
+                                    scope.launch {
+                                        testStatus = context.getString(R.string.official_sync_syncing)
+                                        val engine = OfficialVaultSyncEngine(context, repository)
+                                        val summary =
+                                            runCatching {
+                                                engine.syncVault(
+                                                    rootUri = root,
+                                                    baseUrl = OfficialSync.BASE_URL,
+                                                    token = token,
+                                                    includeIndexSqlite = includeIndexSqlite,
+                                                )
+                                            }.getOrElse { e ->
+                                                testStatus =
+                                                    context.getString(
+                                                        R.string.official_sync_failed,
+                                                        e.message ?: e.javaClass.simpleName,
+                                                    )
+                                                return@launch
+                                            }
                                         testStatus =
                                             context.getString(
-                                                R.string.official_sync_failed,
-                                                e.message ?: e.javaClass.simpleName,
+                                                R.string.official_sync_ok,
+                                                summary.uploaded,
+                                                summary.downloaded,
+                                                summary.deletedRemote,
+                                                summary.deletedLocal,
+                                                summary.conflicts,
+                                                summary.failed,
                                             )
-                                        return@launch
                                     }
-                                testStatus =
-                                    context.getString(
-                                        R.string.official_sync_ok,
-                                        summary.uploaded,
-                                        summary.downloaded,
-                                        summary.deletedRemote,
-                                        summary.deletedLocal,
-                                        summary.conflicts,
-                                        summary.failed,
-                                    )
-                            }
-                        },
-                    ) { Text(stringResource(R.string.official_sync_now)) }
+                                },
+                            ) { Text(stringResource(R.string.official_sync_now)) }
+                        }
+                    }
                 }
 
                 return@LazyColumn
             }
 
+            item { Spacer(modifier = Modifier.height(14.dp)) }
+
             item {
-                RowSwitch(
-                    title = stringResource(R.string.webdav_enable),
-                    checked = enabled,
-                    onCheckedChange = { enabled = it },
+                Text(
+                    text = "WebDAV",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
                 )
             }
 
-            if (!enabled) return@LazyColumn
-
             item {
-                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                    ZhixuTextField(
-                        value = baseUrl,
-                        onValueChange = { baseUrl = it },
-                        label = { Text(stringResource(R.string.webdav_base_url)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    HorizontalDivider(color = dividerColor)
-                    ZhixuTextField(
-                        value = username,
-                        onValueChange = { username = it },
-                        label = { Text(stringResource(R.string.webdav_username)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    HorizontalDivider(color = dividerColor)
-                    ZhixuTextField(
-                        value = password,
-                        onValueChange = { password = it },
-                        label = { Text(stringResource(R.string.webdav_password)) },
-                        singleLine = true,
-                        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            ZhixuPasswordToggleIconButton(
-                                show = showPassword,
-                                onClick = { showPassword = !showPassword },
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    HorizontalDivider(color = dividerColor)
-                    ZhixuTextField(
-                        value = remoteRoot,
-                        onValueChange = { remoteRoot = it },
-                        label = { Text(stringResource(R.string.webdav_remote_root)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    HorizontalDivider(color = dividerColor)
-
-                    RowSwitch(
-                        title = stringResource(R.string.webdav_include_index_sqlite),
-                        checked = includeIndexSqlite,
-                        onCheckedChange = { includeIndexSqlite = it },
-                    )
-
-                    Spacer(Modifier.height(12.dp))
-                    if (testStatus != null) {
-                        Text(testStatus!!, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(12.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        RowSwitch(
+                            title = stringResource(R.string.webdav_enable),
+                            checked = enabled,
+                            onCheckedChange = { enabled = it },
+                        )
                     }
+                }
+            }
 
-                    Button(
+            if (enabled) {
+                item { Spacer(modifier = Modifier.height(12.dp)) }
+                item {
+                    Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        onClick = {
-                            val config =
-                                WebDavConfig(
-                                    enabled = enabled,
-                                    baseUrl = baseUrl.trim(),
-                                    username = username.trim(),
-                                    password = password,
-                                    remoteRoot = remoteRoot.trim().ifBlank { "/" },
-                                    includeIndexSqlite = includeIndexSqlite,
-                                )
-                            scope.launch {
-                                syncPrefs.saveWebDavConfig(config)
-                                testStatus = context.getString(R.string.webdav_saved)
-                            }
-                        },
-                    ) { Text(stringResource(R.string.action_save)) }
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = MaterialTheme.shapes.extraLarge,
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                            ZhixuTextField(
+                                value = baseUrl,
+                                onValueChange = { baseUrl = it },
+                                label = { Text(stringResource(R.string.webdav_base_url)) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            HorizontalDivider(color = dividerColor)
+                            ZhixuTextField(
+                                value = username,
+                                onValueChange = { username = it },
+                                label = { Text(stringResource(R.string.webdav_username)) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            HorizontalDivider(color = dividerColor)
+                            ZhixuTextField(
+                                value = password,
+                                onValueChange = { password = it },
+                                label = { Text(stringResource(R.string.webdav_password)) },
+                                singleLine = true,
+                                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    ZhixuPasswordToggleIconButton(
+                                        show = showPassword,
+                                        onClick = { showPassword = !showPassword },
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            HorizontalDivider(color = dividerColor)
+                            ZhixuTextField(
+                                value = remoteRoot,
+                                onValueChange = { remoteRoot = it },
+                                label = { Text(stringResource(R.string.webdav_remote_root)) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            HorizontalDivider(color = dividerColor)
 
-                    Button(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        onClick = {
-                            val config =
-                                WebDavConfig(
-                                    enabled = enabled,
-                                    baseUrl = baseUrl.trim(),
-                                    username = username.trim(),
-                                    password = password,
-                                    remoteRoot = remoteRoot.trim().ifBlank { "/" },
-                                    includeIndexSqlite = includeIndexSqlite,
+                            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                RowSwitch(
+                                    title = stringResource(R.string.webdav_include_index_sqlite),
+                                    checked = includeIndexSqlite,
+                                    onCheckedChange = { includeIndexSqlite = it },
                                 )
-                            scope.launch {
-                                testStatus = context.getString(R.string.webdav_testing)
-                                val result = WebDavClient.testConnection(config)
-                                testStatus =
-                                    if (result.success) {
-                                        context.getString(R.string.webdav_test_ok, result.statusCode)
-                                    } else {
-                                        context.getString(R.string.webdav_test_fail, result.statusCode, result.message)
-                                    }
-                            }
-                        },
-                    ) { Text(stringResource(R.string.webdav_test)) }
 
-                    Button(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        onClick = {
-                            val root = vaultRootUri
-                            val config =
-                                WebDavConfig(
-                                    enabled = enabled,
-                                    baseUrl = baseUrl.trim(),
-                                    username = username.trim(),
-                                    password = password,
-                                    remoteRoot = remoteRoot.trim().ifBlank { "/" },
-                                    includeIndexSqlite = includeIndexSqlite,
-                                )
-                            scope.launch {
-                                testStatus = context.getString(R.string.webdav_syncing)
-                                val engine = WebDavSyncEngine(context, repository)
-                                val summary =
-                                    runCatching { engine.syncVault(root, config) }
-                                        .getOrElse { e ->
+                                Spacer(Modifier.height(12.dp))
+                                if (testStatus != null) {
+                                    Text(testStatus!!, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(Modifier.height(12.dp))
+                                }
+
+                                Button(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    onClick = {
+                                        val config =
+                                            WebDavConfig(
+                                                enabled = enabled,
+                                                baseUrl = baseUrl.trim(),
+                                                username = username.trim(),
+                                                password = password,
+                                                remoteRoot = remoteRoot.trim().ifBlank { "/" },
+                                                includeIndexSqlite = includeIndexSqlite,
+                                            )
+                                        scope.launch {
+                                            syncPrefs.saveWebDavConfig(config)
+                                            testStatus = context.getString(R.string.webdav_saved)
+                                        }
+                                    },
+                                ) { Text(stringResource(R.string.action_save)) }
+
+                                Button(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    onClick = {
+                                        val config =
+                                            WebDavConfig(
+                                                enabled = enabled,
+                                                baseUrl = baseUrl.trim(),
+                                                username = username.trim(),
+                                                password = password,
+                                                remoteRoot = remoteRoot.trim().ifBlank { "/" },
+                                                includeIndexSqlite = includeIndexSqlite,
+                                            )
+                                        scope.launch {
+                                            testStatus = context.getString(R.string.webdav_testing)
+                                            val result = WebDavClient.testConnection(config)
+                                            testStatus =
+                                                if (result.success) {
+                                                    context.getString(R.string.webdav_test_ok, result.statusCode)
+                                                } else {
+                                                    context.getString(R.string.webdav_test_fail, result.statusCode, result.message)
+                                                }
+                                        }
+                                    },
+                                ) { Text(stringResource(R.string.webdav_test)) }
+
+                                Button(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    onClick = {
+                                        val root = vaultRootUri
+                                        val config =
+                                            WebDavConfig(
+                                                enabled = enabled,
+                                                baseUrl = baseUrl.trim(),
+                                                username = username.trim(),
+                                                password = password,
+                                                remoteRoot = remoteRoot.trim().ifBlank { "/" },
+                                                includeIndexSqlite = includeIndexSqlite,
+                                            )
+                                        scope.launch {
+                                            testStatus = context.getString(R.string.webdav_syncing)
+                                            val engine = WebDavSyncEngine(context, repository)
+                                            val summary =
+                                                runCatching { engine.syncVault(root, config) }
+                                                    .getOrElse { e ->
+                                                        testStatus =
+                                                            context.getString(
+                                                                R.string.webdav_sync_failed,
+                                                                e.message ?: e.javaClass.simpleName,
+                                                            )
+                                                        return@launch
+                                                    }
                                             testStatus =
                                                 context.getString(
-                                                    R.string.webdav_sync_failed,
-                                                    e.message ?: e.javaClass.simpleName,
+                                                    R.string.webdav_sync_ok,
+                                                    summary.uploaded,
+                                                    summary.downloaded,
+                                                    summary.conflicts,
+                                                    summary.failed,
                                                 )
-                                            return@launch
                                         }
-                                testStatus =
-                                    context.getString(
-                                        R.string.webdav_sync_ok,
-                                        summary.uploaded,
-                                        summary.downloaded,
-                                        summary.conflicts,
-                                        summary.failed,
-                                    )
+                                    },
+                                ) { Text(stringResource(R.string.webdav_sync_now)) }
                             }
-                        },
-                    ) { Text(stringResource(R.string.webdav_sync_now)) }
+                        }
+                    }
                 }
             }
         }
