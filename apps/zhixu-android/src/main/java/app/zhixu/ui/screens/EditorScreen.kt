@@ -287,9 +287,10 @@ fun EditorScreen(
     var toolbarHeightPx by remember { mutableIntStateOf(fallbackToolbarHeightPx) }
     val toolbarGapPx = with(density) { 10.dp.roundToPx() }
     val anticipatedToolbarPx = if (showEditorToolbar && !isPreview && !isPdfDoc) (toolbarHeightPx + toolbarGapPx) else 0
+    val navBarsBottomDp = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
     val drawerGestureExcludeBottomDp =
         if (showEditorToolbar && effectiveImeBottomPx == 0) {
-            with(density) { (toolbarHeightPx + toolbarGapPx).toDp() }
+            navBarsBottomDp + with(density) { (toolbarHeightPx + toolbarGapPx).toDp() }
         } else {
             0.dp
         }
@@ -2908,8 +2909,6 @@ private fun EditorBottomToolbar(
                 .then(modifier)
                 .onSizeChanged { onHeightPxChanged(it.height) }
                 .fillMaxWidth(),
-        color = Color(0xFFFFFFFF),
-        contentColor = Color(0xFF111111),
     ) {
         val toolbarIconSize = 18.dp
         Row(
@@ -2996,7 +2995,7 @@ private fun EditorToolDivider() {
         modifier = Modifier
             .width(1.dp)
             .height(16.dp)
-            .background(Color.Black.copy(alpha = 0.18f)),
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)),
     )
 }
 
