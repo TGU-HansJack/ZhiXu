@@ -22,6 +22,8 @@ import kotlinx.coroutines.yield
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.io.InputStreamReader
+import java.io.Reader
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.time.LocalDate
@@ -1467,6 +1469,43 @@ class VaultRepository(
         val resolver: ContentResolver = context.contentResolver
         resolver.openInputStream(uri)?.use { input ->
             input.readBytes().toString(StandardCharsets.UTF_8)
+        } ?: ""
+    }
+
+    suspend fun readTextPreview(
+        uri: Uri,
+        maxChars: Int = 2000,
+    ): String = withContext(Dispatchers.IO) {
+        if (maxChars <= 0) return@withContext ""
+
+        fun Reader.readUpTo(maxChars: Int): String {
+            val buffer = CharArray(minOf(maxChars, 8192))
+            val out = StringBuilder()
+            while (out.length < maxChars) {
+                val toRead = minOf(buffer.size, maxChars - out.length)
+                val read = read(buffer, 0, toRead)
+                if (read <= 0) break
+                out.append(buffer, 0, read)
+            }
+            return out.toString()
+        }
+
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            val path = uri.path ?: return@withContext ""
+            return@withContext runCatching {
+                File(path).inputStream().use { input ->
+                    InputStreamReader(input, StandardCharsets.UTF_8).use { reader ->
+                        reader.readUpTo(maxChars)
+                    }
+                }
+            }.getOrDefault("")
+        }
+
+        val resolver: ContentResolver = context.contentResolver
+        resolver.openInputStream(uri)?.use { input ->
+            InputStreamReader(input, StandardCharsets.UTF_8).use { reader ->
+                reader.readUpTo(maxChars)
+            }
         } ?: ""
     }
 

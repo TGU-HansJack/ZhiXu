@@ -1,9 +1,13 @@
 ﻿package app.zhixu.ui.screens
 
 import android.content.Intent
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.SystemClock
+import android.util.TypedValue
+import android.view.ViewGroup
 import android.widget.Toast
+import android.widget.TextView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
@@ -26,6 +30,9 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -51,6 +58,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -70,8 +78,12 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.Dialog
@@ -91,11 +103,15 @@ import app.zhixu.ui.components.SheetActionRow
 import app.zhixu.ui.components.SheetQuickAction
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.VaultSearchDialog
+import io.noties.markwon.AbstractMarkwonPlugin
+import io.noties.markwon.Markwon
+import io.noties.markwon.core.MarkwonTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -120,6 +136,19 @@ fun DocumentListScreen(
     val clipboard = LocalClipboardManager.current
     val highlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     val listState = rememberLazyListState()
+    val markwon =
+        remember(context) {
+            Markwon
+                .builder(context)
+                .usePlugin(
+                    object : AbstractMarkwonPlugin() {
+                        override fun configureTheme(builder: MarkwonTheme.Builder) {
+                            builder.headingTextSizeMultipliers(floatArrayOf(1f, 1f, 1f, 1f, 1f, 1f))
+                        }
+                    },
+                )
+                .build()
+        }
     var docs by remember(vaultRootUri) { mutableStateOf<List<UiDoc>>(emptyList()) }
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
@@ -137,6 +166,8 @@ fun DocumentListScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     val isIndexUpdating by indexUpdater.isUpdating.collectAsState()
+
+    val previewCache = remember(vaultRootUri) { mutableStateMapOf<String, String>() }
 
     LaunchedEffect(searchRequestToken) {
         if (searchRequestToken == lastSearchToken) return@LaunchedEffect
@@ -261,9 +292,21 @@ fun DocumentListScreen(
                                 val title = doc.baseName.ifBlank { defaultTitle }
                                 val editedAt = doc.createdAtText.ifBlank { editedAtDash }
                                 val docUriStr = doc.uri.toString()
+                                val previewKey = remember(docUriStr, doc.lastModified) { "$docUriStr@${doc.lastModified}" }
+                                val previewMarkdown = previewCache[previewKey]
+
+                                LaunchedEffect(previewKey) {
+                                    if (previewCache.containsKey(previewKey)) return@LaunchedEffect
+                                    previewCache[previewKey] = ""
+                                    val raw = repository.readTextPreview(doc.uri, maxChars = 2500)
+                                    previewCache[previewKey] = extractDocPreviewMarkdown(raw, maxChars = 300)
+                                }
+
                                 DocRow(
                                     title = title,
                                     editedAt = editedAt,
+                                    previewMarkdown = previewMarkdown?.takeIf { it.isNotBlank() },
+                                    markwon = markwon,
                                     selectionMode = selectionMode,
                                     selected = docUriStr in selectedDocUris,
                                     onClick = {
@@ -536,6 +579,8 @@ private fun DocumentRowActionsSheet(
 private fun DocRow(
     title: String,
     editedAt: String,
+    previewMarkdown: String?,
+    markwon: Markwon,
     selectionMode: Boolean,
     selected: Boolean,
     onClick: () -> Unit,
@@ -564,45 +609,145 @@ private fun DocRow(
                     onClick = onClick,
                     onLongClick = onLongClick,
                 )
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.Top,
     ) {
-        Icon(
-            painter = painterResource(Ionicons.DocumentText),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(modifier = Modifier.size(16.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text(
-                text = stringResource(R.string.edited_at_fmt, editedAt),
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
-            )
-        }
-        ZhixuIconButton(
-            onClick = if (selectionMode) onClick else onMoreClick,
-        ) {
-            Icon(
-                painter =
-                    painterResource(
-                        if (selectionMode) {
-                            if (selected) Ionicons.CheckmarkCircle else Ionicons.SquareOutline
-                        } else {
-                            Ionicons.EllipsisHorizontal
-                        },
-                    ),
-                contentDescription = null,
-                tint = if (selectionMode && selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.edited_at_fmt, editedAt),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.widthIn(max = 140.dp),
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+
+                ZhixuIconButton(
+                    onClick = if (selectionMode) onClick else onMoreClick,
+                    modifier = Modifier.size(24.dp),
+                ) {
+                    Icon(
+                        painter =
+                            painterResource(
+                                if (selectionMode) {
+                                    if (selected) Ionicons.CheckmarkCircle else Ionicons.SquareOutline
+                                } else {
+                                    Ionicons.EllipsisHorizontal
+                                },
+                            ),
+                        contentDescription = null,
+                        tint = if (selectionMode && selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+
+            if (!previewMarkdown.isNullOrBlank()) {
+                MarkwonPreviewText(
+                    markwon = markwon,
+                    markdown = previewMarkdown,
+                    textStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                    maxLines = Int.MAX_VALUE,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .wrapContentHeight()
+                            .padding(top = 8.dp)
+                            .pointerInteropFilter { false },
+                )
+            }
         }
     }
+}
+
+private fun extractDocPreviewMarkdown(
+    raw: String,
+    maxChars: Int,
+): String {
+    if (maxChars <= 0) return ""
+    if (raw.isBlank()) return ""
+
+    val normalized = raw.replace("\r\n", "\n").replace('\r', '\n')
+    val withoutFrontmatter =
+        if (normalized.startsWith("---\n")) {
+            val end = normalized.indexOf("\n---\n", startIndex = 4)
+            if (end in 4..2000) normalized.substring(end + "\n---\n".length) else normalized
+        } else {
+            normalized
+        }
+
+    val lines = withoutFrontmatter.lineSequence().dropWhile { it.isBlank() }.toList()
+    if (lines.isEmpty()) return ""
+    val candidate =
+        lines
+            .take(12)
+            .joinToString("\n")
+            .trim()
+            .replace(Regex("\n{3,}"), "\n\n")
+
+    return if (candidate.length <= maxChars) candidate else candidate.take(maxChars).trimEnd() + "…"
+}
+
+@Composable
+private fun MarkwonPreviewText(
+    markwon: Markwon,
+    markdown: String,
+    textStyle: androidx.compose.ui.text.TextStyle,
+    color: Color,
+    maxLines: Int,
+    modifier: Modifier = Modifier,
+) {
+    val fontSize = textStyle.fontSize
+    val fontSizeSp = if (fontSize == TextUnit.Unspecified) 14f else fontSize.value
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx ->
+            TextView(ctx).apply {
+                layoutParams =
+                    ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    )
+                isClickable = false
+                isLongClickable = false
+                setTextIsSelectable(false)
+                includeFontPadding = false
+                setHorizontallyScrolling(false)
+                setTextColor(color.toArgb())
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp)
+                typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+                ellipsize = null
+                this.maxLines = maxLines
+            }
+        },
+        update = { view ->
+            view.layoutParams =
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
+            view.setTextColor(color.toArgb())
+            view.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp)
+            view.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            view.setHorizontallyScrolling(false)
+            view.ellipsize = null
+            view.maxLines = maxLines
+            markwon.setMarkdown(view, markdown)
+        },
+    )
 }
