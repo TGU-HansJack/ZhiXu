@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -37,7 +36,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.zhixu.R
 import app.zhixu.data.VaultRepository
-import app.zhixu.data.VaultTreeEntry
 import app.zhixu.data.SearchResult
 import app.zhixu.ui.DocListMutation
 import app.zhixu.ui.Heroicons
@@ -46,14 +44,11 @@ import app.zhixu.ui.components.VaultSearchDialog
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTextField
 import app.zhixu.ui.components.VaultDrawer
-import app.zhixu.ui.components.calendar.SimpleDatePickerDialog
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.time.LocalDate
-import java.time.ZoneId
 
 @Composable
 fun SpaceScreen(
@@ -88,8 +83,6 @@ fun SpaceScreen(
     var activeDirectoryRelativePath by remember { mutableStateOf<String?>(null) }
     var showNewFolderDialog by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
-    var showFilterDialog by remember { mutableStateOf(false) }
-    var filter by remember { mutableStateOf(SpaceFilter()) }
     var showSearchSheet by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
@@ -156,9 +149,6 @@ fun SpaceScreen(
             onNewFolder = {
                 newFolderName = ""
                 showNewFolderDialog = true
-            },
-            onFilter = {
-                showFilterDialog = true
             },
             onToggleExpanded = {
                 isTreeExpanded = !isTreeExpanded
@@ -231,119 +221,6 @@ fun SpaceScreen(
             )
         }
 
-        if (showFilterDialog) {
-            var draftTypes by remember { mutableStateOf(filter.types) }
-            var draftStart by remember { mutableStateOf(filter.startDate) }
-            var draftEnd by remember { mutableStateOf(filter.endDate) }
-            var showStartPicker by remember { mutableStateOf(false) }
-            var showEndPicker by remember { mutableStateOf(false) }
-
-            fun toggleType(t: SpaceFileType) {
-                draftTypes = if (t in draftTypes) draftTypes - t else draftTypes + t
-                if (draftTypes.isEmpty()) draftTypes = SpaceFileType.entries.toSet()
-            }
-
-            if (showStartPicker) {
-                SimpleDatePickerDialog(
-                    initialDate = draftStart ?: LocalDate.now(),
-                    onDateSelected = { picked ->
-                        draftStart = picked
-                        if (draftEnd != null && picked.isAfter(draftEnd)) draftEnd = picked
-                    },
-                    onDismiss = { showStartPicker = false },
-                )
-            }
-            if (showEndPicker) {
-                SimpleDatePickerDialog(
-                    initialDate = draftEnd ?: draftStart ?: LocalDate.now(),
-                    onDateSelected = { picked ->
-                        draftEnd = picked
-                        if (draftStart != null && picked.isBefore(draftStart)) draftStart = picked
-                    },
-                    onDismiss = { showEndPicker = false },
-                )
-            }
-
-            AlertDialog(
-                onDismissRequest = { showFilterDialog = false },
-                title = { Text(stringResource(R.string.space_filter_title)) },
-                text = {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = stringResource(R.string.space_filter_type),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                        SpaceFilterCheckRow(
-                            checked = SpaceFileType.Markdown in draftTypes,
-                            label = stringResource(R.string.space_filter_type_markdown),
-                            onToggle = { toggleType(SpaceFileType.Markdown) },
-                        )
-                        SpaceFilterCheckRow(
-                            checked = SpaceFileType.Pdf in draftTypes,
-                            label = stringResource(R.string.space_filter_type_pdf),
-                            onToggle = { toggleType(SpaceFileType.Pdf) },
-                        )
-                        SpaceFilterCheckRow(
-                            checked = SpaceFileType.Image in draftTypes,
-                            label = stringResource(R.string.space_filter_type_image),
-                            onToggle = { toggleType(SpaceFileType.Image) },
-                        )
-                        SpaceFilterCheckRow(
-                            checked = SpaceFileType.Other in draftTypes,
-                            label = stringResource(R.string.space_filter_type_other),
-                            onToggle = { toggleType(SpaceFileType.Other) },
-                        )
-
-                        Spacer(modifier = Modifier.size(12.dp))
-                        Text(
-                            text = stringResource(R.string.space_filter_time),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            TextButton(onClick = { showStartPicker = true }) {
-                                Text(
-                                    text = draftStart?.toString() ?: stringResource(R.string.space_filter_start),
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                            }
-                            Spacer(modifier = Modifier.weight(1f))
-                            TextButton(onClick = { showEndPicker = true }) {
-                                Text(
-                                    text = draftEnd?.toString() ?: stringResource(R.string.space_filter_end),
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            filter = SpaceFilter(types = draftTypes, startDate = draftStart, endDate = draftEnd)
-                            showFilterDialog = false
-                        },
-                    ) { Text(stringResource(R.string.space_filter_apply)) }
-                },
-                dismissButton = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(
-                            onClick = {
-                                draftTypes = SpaceFileType.entries.toSet()
-                                draftStart = null
-                                draftEnd = null
-                            },
-                        ) { Text(stringResource(R.string.space_filter_clear)) }
-                        TextButton(onClick = { showFilterDialog = false }) { Text(stringResource(R.string.action_cancel)) }
-                    }
-                },
-            )
-        }
-
         VaultDrawer(
             vaultRootUri = root,
             repository = repository,
@@ -368,7 +245,6 @@ fun SpaceScreen(
             modifier = Modifier.fillMaxWidth().weight(1f),
             activeDirectoryRelativePath = activeDirectoryRelativePath,
             onActiveDirectoryChange = { activeDirectoryRelativePath = it },
-            entryFilter = { entry -> filter.matches(entry, ZoneId.systemDefault()) },
         )
     }
 }
@@ -378,7 +254,6 @@ private fun SpaceTopToolbar(
     isExpanded: Boolean,
     onUpload: () -> Unit,
     onNewFolder: () -> Unit,
-    onFilter: () -> Unit,
     onToggleExpanded: () -> Unit,
     onSearch: () -> Unit,
 ) {
@@ -412,14 +287,6 @@ private fun SpaceTopToolbar(
                         modifier = Modifier.size(iconSize),
                     )
                 }
-                ZhixuIconButton(onClick = onFilter, modifier = Modifier.size(buttonSize)) {
-                    Icon(
-                        painter = painterResource(Heroicons.Funnel),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(iconSize),
-                    )
-                }
                 ZhixuIconButton(onClick = onToggleExpanded, modifier = Modifier.size(buttonSize)) {
                     Icon(
                         painter =
@@ -446,73 +313,5 @@ private fun SpaceTopToolbar(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
         }
-    }
-}
-
-@Composable
-private fun SpaceFilterCheckRow(
-    checked: Boolean,
-    label: String,
-    onToggle: () -> Unit,
-) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onToggle)
-                .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(checked = checked, onCheckedChange = { onToggle() })
-        Spacer(modifier = Modifier.size(6.dp))
-        Text(text = label, style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
-private enum class SpaceFileType {
-    Markdown,
-    Pdf,
-    Image,
-    Other,
-}
-
-private data class SpaceFilter(
-    val types: Set<SpaceFileType> = SpaceFileType.entries.toSet(),
-    val startDate: LocalDate? = null,
-    val endDate: LocalDate? = null,
-) {
-    fun matches(entry: VaultTreeEntry, zoneId: ZoneId): Boolean {
-        if (entry.isDirectory) return true
-
-        val ext = entry.name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
-        val type =
-            when {
-                ext == "md" -> SpaceFileType.Markdown
-                ext == "pdf" -> SpaceFileType.Pdf
-                ext in setOf("png", "jpg", "jpeg", "webp", "gif", "bmp", "heic", "heif", "tif", "tiff", "svg", "avif") ->
-                    SpaceFileType.Image
-                else -> SpaceFileType.Other
-            }
-        if (type !in types) return false
-
-        if (startDate == null && endDate == null) return true
-        val last = entry.lastModified
-        if (last <= 0L) return true
-
-        val startMs =
-            startDate
-                ?.atStartOfDay(zoneId)
-                ?.toInstant()
-                ?.toEpochMilli()
-                ?: Long.MIN_VALUE
-        val endMsExclusive =
-            endDate
-                ?.plusDays(1)
-                ?.atStartOfDay(zoneId)
-                ?.toInstant()
-                ?.toEpochMilli()
-                ?: Long.MAX_VALUE
-
-        return last in startMs until endMsExclusive
     }
 }
