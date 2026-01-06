@@ -64,8 +64,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import app.zhixu.ui.components.ZhixuTextField
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
@@ -256,7 +254,7 @@ fun DocumentListScreen(
                 val selectionMode = selectedDocUris.isNotEmpty()
                 val defaultTitle = stringResource(R.string.new_doc_default_title)
                 val editedAtDash = "—"
-                val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                val listBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
                 val pullState = rememberPullToRefreshState()
             PullToRefreshBox(
                 isRefreshing = isActive && isIndexUpdating,
@@ -269,17 +267,18 @@ fun DocumentListScreen(
                 modifier = Modifier.fillMaxSize(),
                 indicator = {},
             ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.fillMaxSize().background(listBg)) {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             state = listState,
-                            contentPadding = PaddingValues(bottom = 12.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             if (docs.isEmpty()) {
                                 item {
                                     Text(
                                         text = stringResource(R.string.docs_empty),
-                                        modifier = Modifier.padding(16.dp),
+                                        modifier = Modifier.padding(8.dp),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
@@ -288,7 +287,7 @@ fun DocumentListScreen(
                                 items = docs,
                                 key = { _, doc -> doc.uri },
                                 contentType = { _, _ -> "doc" },
-                            ) { index, doc ->
+                            ) { _, doc ->
                                 val title = doc.baseName.ifBlank { defaultTitle }
                                 val editedAt = doc.createdAtText.ifBlank { editedAtDash }
                                 val docUriStr = doc.uri.toString()
@@ -317,8 +316,7 @@ fun DocumentListScreen(
                                         selectedDoc = doc
                                         showDocMenu = true
                                     },
-                                    showDivider = index != docs.lastIndex,
-                                    dividerColor = dividerColor,
+                                    listBg = listBg,
                                 )
                             }
                         }
@@ -586,33 +584,20 @@ private fun DocRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onMoreClick: () -> Unit,
-    showDivider: Boolean,
-    dividerColor: Color,
+    listBg: Color,
 ) {
-    Row(
+    Surface(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent)
-                .drawBehind {
-                    if (!showDivider) return@drawBehind
-                    val strokeWidth = 0.5.dp.toPx()
-                    val y = size.height - (strokeWidth / 2f)
-                    drawLine(
-                        color = dividerColor,
-                        start = Offset(0f, y),
-                        end = Offset(size.width, y),
-                        strokeWidth = strokeWidth,
-                    )
-                }
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = onLongClick,
-                )
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.Top,
+                ),
+        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(8.dp),
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -657,19 +642,25 @@ private fun DocRow(
             }
 
             if (!previewMarkdown.isNullOrBlank()) {
-                MarkwonPreviewText(
-                    markwon = markwon,
-                    markdown = previewMarkdown,
-                    textStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                    maxLines = Int.MAX_VALUE,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .wrapContentHeight()
-                            .padding(top = 8.dp)
-                            .pointerInteropFilter { false },
-                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                    color = listBg,
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    MarkwonPreviewText(
+                        markwon = markwon,
+                        markdown = previewMarkdown,
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                        maxLines = Int.MAX_VALUE,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .wrapContentHeight()
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                                .pointerInteropFilter { false },
+                    )
+                }
             }
         }
     }
