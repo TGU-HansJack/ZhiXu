@@ -12,8 +12,6 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -273,9 +271,6 @@ fun EditorScreen(
     val clipboard = LocalClipboardManager.current
     val density = LocalDensity.current
     val imeInsets = WindowInsets.ime
-    var isEditorFocused by remember { mutableStateOf(false) }
-    var lastEditorFocusAtMs by remember { mutableStateOf(0L) }
-    var lastImeChangeAtMs by remember { mutableStateOf(0L) }
     var imeBottomPx by remember { mutableIntStateOf(0) }
     val isImeVisible = imeBottomPx > 0
     val showEditorToolbar = !isPreview && !isPdfDoc
@@ -407,7 +402,6 @@ fun EditorScreen(
     var textLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
     var pendingInitialJump by remember { mutableStateOf<JumpTarget?>(null) }
     var editorViewportHeightPx by remember { mutableStateOf(0) }
-    var stableEditorViewportHeightPx by remember { mutableStateOf(0) }
     var currentDocUri by remember(docUri) { mutableStateOf(docUri) }
     var outline by remember { mutableStateOf<List<OutlineItem>>(emptyList()) }
     var wikiLinks by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -658,21 +652,11 @@ fun EditorScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        snapshotFlow { editorViewportHeightPx }
-            .distinctUntilChanged()
-            .collectLatest {
-                delay(80)
-                stableEditorViewportHeightPx = it
-            }
-    }
-
     LaunchedEffect(imeInsets, density) {
         snapshotFlow { imeInsets.getBottom(density) }
             .distinctUntilChanged()
             .collectLatest { bottom ->
                 imeBottomPx = bottom
-                lastImeChangeAtMs = SystemClock.uptimeMillis()
             }
     }
 
@@ -1073,7 +1057,7 @@ fun EditorScreen(
         runCatching {
             val line = layout.getLineForOffset(safeStart)
             val y = layout.getLineTop(line).toInt().coerceAtLeast(0)
-            scope.launch { scrollState.animateScrollTo(y) }
+            scope.launch { scrollState.scrollTo(y) }
         }
     }
 
@@ -1092,16 +1076,16 @@ fun EditorScreen(
         snapshotFlow {
             listOf(
                 content.selection.end,
-                stableEditorViewportHeightPx,
+                editorViewportHeightPx,
                 anticipatedToolbarPx,
             )
         }.distinctUntilChanged()
             .collectLatest {
                 if (!isLoaded || isPreview) return@collectLatest
-                if (stableEditorViewportHeightPx <= 0) return@collectLatest
+                if (editorViewportHeightPx <= 0) return@collectLatest
 
                 val viewport =
-                    (stableEditorViewportHeightPx - anticipatedToolbarPx)
+                    (editorViewportHeightPx - anticipatedToolbarPx)
                         .coerceAtLeast(0)
                 if (viewport <= 0) return@collectLatest
 
@@ -1124,19 +1108,7 @@ fun EditorScreen(
 
                 if (abs(targetY - scrollState.value) <= 4) return@collectLatest
 
-                val now = SystemClock.uptimeMillis()
-                val imeAnimating = now - lastImeChangeAtMs < 500
-                val justFocused = now - lastEditorFocusAtMs < 250
-
-                // During IME animation, keep the cursor in view continuously (no tween). Otherwise animate for better UX.
-                if (imeAnimating || justFocused) {
-                    scrollState.scrollTo(targetY)
-                } else {
-                    scrollState.animateScrollTo(
-                        targetY,
-                        animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
-                    )
-                }
+                scrollState.scrollTo(targetY)
             }
     }
 
@@ -1639,10 +1611,6 @@ fun EditorScreen(
                                         },
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .onFocusChanged {
-                                                isEditorFocused = it.isFocused
-                                                if (it.isFocused) lastEditorFocusAtMs = SystemClock.uptimeMillis()
-                                            }
                                             .onPreviewKeyEvent { event ->
                                                 if (event.type != KeyEventType.KeyDown || event.key != Key.Enter) return@onPreviewKeyEvent false
                                                 if (isPreview) return@onPreviewKeyEvent false
