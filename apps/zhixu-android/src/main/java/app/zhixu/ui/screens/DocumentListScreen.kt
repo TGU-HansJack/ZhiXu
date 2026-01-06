@@ -86,6 +86,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.platform.LocalDensity
 import app.zhixu.R
 import app.zhixu.data.DocSearchResult
 import app.zhixu.data.DocumentIndex
@@ -254,7 +255,7 @@ fun DocumentListScreen(
                 val selectionMode = selectedDocUris.isNotEmpty()
                 val defaultTitle = stringResource(R.string.new_doc_default_title)
                 val editedAtDash = "—"
-                val listBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                val listBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
                 val pullState = rememberPullToRefreshState()
             PullToRefreshBox(
                 isRefreshing = isActive && isIndexUpdating,
@@ -602,6 +603,14 @@ private fun DocRow(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                val barHeight = with(LocalDensity.current) { MaterialTheme.typography.bodyMedium.lineHeight.toDp() }
+                Box(
+                    modifier =
+                        Modifier
+                            .size(width = 3.dp, height = barHeight)
+                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)),
+                )
+                Spacer(modifier = Modifier.width(3.dp))
                 Text(
                     text = title,
                     maxLines = 1,
