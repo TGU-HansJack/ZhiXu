@@ -313,6 +313,10 @@ fun ZhixuApp(
     }
 
     var docSearchRequestToken by remember { mutableLongStateOf(0L) }
+    var spaceSearchRequestToken by remember { mutableLongStateOf(0L) }
+    var spaceUploadRequestToken by remember { mutableLongStateOf(0L) }
+    var spaceNewFolderRequestToken by remember { mutableLongStateOf(0L) }
+    var spaceAllDirsExpanded by remember { mutableStateOf(false) }
     var meRefreshToken by remember { mutableLongStateOf(0L) }
     var dirStructureMutationToken by remember { mutableLongStateOf(0L) }
     var dirStructureMutation by remember { mutableStateOf<DocListMutation?>(null) }
@@ -539,13 +543,53 @@ fun ZhixuApp(
                                             }
                                         },
                                         actions = {
-                                            if (settledPage == 1) {
-                                                ZhixuIconButton(onClick = { docSearchRequestToken += 1L }) {
-                                                    Icon(
-                                                        painter = painterResource(Ionicons.Search),
-                                                        contentDescription = stringResource(R.string.action_search),
-                                                        modifier = Modifier.size(ZhixuTopBarIconSize),
-                                                    )
+                                            when (settledPage) {
+                                                0 -> {
+                                                    ZhixuIconButton(onClick = { spaceUploadRequestToken += 1L }) {
+                                                        Icon(
+                                                            painter = painterResource(Heroicons.ArrowUpTray),
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(ZhixuTopBarIconSize),
+                                                        )
+                                                    }
+                                                    ZhixuIconButton(onClick = { spaceNewFolderRequestToken += 1L }) {
+                                                        Icon(
+                                                            painter = painterResource(Heroicons.FolderPlus),
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(ZhixuTopBarIconSize),
+                                                        )
+                                                    }
+                                                    ZhixuIconButton(onClick = { spaceAllDirsExpanded = !spaceAllDirsExpanded }) {
+                                                        Icon(
+                                                            painter =
+                                                                painterResource(
+                                                                    if (spaceAllDirsExpanded) {
+                                                                        Ionicons.ChevronCollapseOutline
+                                                                    } else {
+                                                                        Ionicons.ChevronExpandOutline
+                                                                    },
+                                                                ),
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(ZhixuTopBarIconSize),
+                                                        )
+                                                    }
+                                                    ZhixuIconButton(onClick = { spaceSearchRequestToken += 1L }) {
+                                                        Icon(
+                                                            painter = painterResource(Ionicons.Search),
+                                                            contentDescription = stringResource(R.string.action_search),
+                                                            modifier = Modifier.size(ZhixuTopBarIconSize),
+                                                        )
+                                                    }
+                                                }
+
+                                                1 -> {
+                                                    ZhixuIconButton(onClick = { docSearchRequestToken += 1L }) {
+                                                        Icon(
+                                                            painter = painterResource(Ionicons.Search),
+                                                            contentDescription = stringResource(R.string.action_search),
+                                                            modifier = Modifier.size(ZhixuTopBarIconSize),
+                                                        )
+                                                    }
                                                 }
                                             }
                                         },
@@ -810,6 +854,10 @@ fun ZhixuApp(
                         documentIndex = documentIndex,
                         pagerState = pagerState,
                         docSearchRequestToken = docSearchRequestToken,
+                        spaceSearchRequestToken = spaceSearchRequestToken,
+                        spaceUploadRequestToken = spaceUploadRequestToken,
+                        spaceNewFolderRequestToken = spaceNewFolderRequestToken,
+                        spaceAllDirsExpanded = spaceAllDirsExpanded,
                         dirStructureMutationToken = dirStructureMutationToken,
                         dirStructureMutation = dirStructureMutation,
                         onDocListMutated = ::onDocListMutated,
@@ -1250,6 +1298,10 @@ private fun HomePager(
     documentIndex: DocumentIndex,
     pagerState: androidx.compose.foundation.pager.PagerState,
     docSearchRequestToken: Long,
+    spaceSearchRequestToken: Long,
+    spaceUploadRequestToken: Long,
+    spaceNewFolderRequestToken: Long,
+    spaceAllDirsExpanded: Boolean,
     dirStructureMutationToken: Long,
     dirStructureMutation: DocListMutation?,
     onDocListMutated: (DocListMutation) -> Unit,
@@ -1279,6 +1331,10 @@ private fun HomePager(
                     vaultRootUri = vaultRootUri,
                     repository = repository,
                     isActive = isActive,
+                    searchRequestToken = spaceSearchRequestToken,
+                    uploadRequestToken = spaceUploadRequestToken,
+                    newFolderRequestToken = spaceNewFolderRequestToken,
+                    allDirsExpanded = spaceAllDirsExpanded,
                     refreshToken = dirStructureMutationToken,
                     mutation = dirStructureMutation,
                     onDocListMutated = onDocListMutated,

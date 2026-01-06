@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -111,6 +113,7 @@ fun VaultDrawer(
     activeDirectoryRelativePath: String? = null,
     onActiveDirectoryChange: (String?) -> Unit = {},
     sheetWidth: Dp = 320.dp,
+    drawerContainerColor: Color = MaterialTheme.colorScheme.background,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     useSystemInsets: Boolean = true,
     showHeader: Boolean = true,
@@ -119,6 +122,11 @@ fun VaultDrawer(
     itemTextStyle: TextStyle = MaterialTheme.typography.bodySmall,
     itemIconSize: Dp = 18.dp,
     itemChevronSize: Dp = 16.dp,
+    listContentPadding: PaddingValues = PaddingValues(vertical = 8.dp),
+    listItemSpacing: Dp = 0.dp,
+    useDocumentListStyle: Boolean = false,
+    documentItemPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+    itemShape: RoundedCornerShape = RoundedCornerShape(10.dp),
     allDirsExpanded: Boolean? = null,
     entryFilter: ((VaultTreeEntry) -> Boolean)? = null,
     modifier: Modifier = Modifier,
@@ -327,7 +335,7 @@ fun VaultDrawer(
     ModalDrawerSheet(
         modifier = sheetModifier,
         windowInsets = WindowInsets(0, 0, 0, 0),
-        drawerContainerColor = MaterialTheme.colorScheme.background,
+        drawerContainerColor = drawerContainerColor,
         drawerTonalElevation = 0.dp,
     ) {
         Column(
@@ -370,9 +378,16 @@ fun VaultDrawer(
                 return@ModalDrawerSheet
             }
 
+            val listArrangement =
+                if (listItemSpacing > 0.dp) {
+                    Arrangement.spacedBy(listItemSpacing)
+                } else {
+                    Arrangement.Top
+                }
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(vertical = 8.dp),
+                contentPadding = listContentPadding,
+                verticalArrangement = listArrangement,
             ) {
                 if (visibleEntries.isEmpty()) {
                     item {
@@ -442,63 +457,47 @@ fun VaultDrawer(
                             !activeDirectoryRelativePath.isNullOrBlank() &&
                             entry.relativePath == activeDirectoryRelativePath
 
-                    Row(
-                        modifier =
+                    val borderModifier =
+                        if (activeDirSelected) {
+                            Modifier.border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.85f),
+                                shape = itemShape,
+                            )
+                        } else {
                             Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = itemMinHeight)
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(
-                                    when {
-                                        selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                                        activeDirSelected -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
-                                        else -> androidx.compose.ui.graphics.Color.Transparent
-                                    },
-                                )
-                                .then(
-                                    if (activeDirSelected) {
-                                        Modifier.border(
-                                            width = 1.dp,
-                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.85f),
-                                            shape = RoundedCornerShape(10.dp),
-                                        )
-                                    } else {
-                                        Modifier
-                                    },
-                                )
-                                .combinedClickable(
-                                    onClick = {
-                                        if (selectionMode && uriStr != null) {
-                                            onToggleEntrySelection(uriStr)
-                                            return@combinedClickable
-                                        }
-                                        if (entry.isDirectory) {
-                                            val dirPath = entry.relativePath
-                                            onActiveDirectoryChange(if (activeDirSelected) null else dirPath)
-                                            if (isDirLoading) return@combinedClickable
-                                            if (!isExpanded && loadedDirs[dirPath] != true) {
-                                                expandedDirs[dirPath] = true
-                                                scope.launch { reloadDir(dirPath) }
-                                            } else {
-                                                expandedDirs[dirPath] = !isExpanded
-                                            }
-                                        } else {
-                                            entry.uri?.toString()?.let(onOpenDoc)
-                                            onCloseDrawer()
-                                        }
-                                    },
-                                    onLongClick =
-                                        if (enableMultiSelect && uriStr != null) {
-                                            { onToggleEntrySelection(uriStr) }
-                                        } else {
-                                            null
-                                    },
-                                )
-                                .padding(start = 0.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
+                        }
+
+                    val actionButtonSize = if (useDocumentListStyle) 30.dp else 34.dp
+
+                    val onEntryClick: () -> Unit = {
+                        if (selectionMode && uriStr != null) {
+                            onToggleEntrySelection(uriStr)
+                        } else if (entry.isDirectory) {
+                            val dirPath = entry.relativePath
+                            onActiveDirectoryChange(if (activeDirSelected) null else dirPath)
+                            if (!isDirLoading) {
+                                if (!isExpanded && loadedDirs[dirPath] != true) {
+                                    expandedDirs[dirPath] = true
+                                    scope.launch { reloadDir(dirPath) }
+                                } else {
+                                    expandedDirs[dirPath] = !isExpanded
+                                }
+                            }
+                        } else {
+                            entry.uri?.toString()?.let(onOpenDoc)
+                            onCloseDrawer()
+                        }
+                    }
+
+                    val onEntryLongClick =
+                        if (enableMultiSelect && uriStr != null) {
+                            { onToggleEntrySelection(uriStr) }
+                        } else {
+                            null
+                        }
+
+                    val entryRowContent: @Composable RowScope.() -> Unit = {
                         Spacer(modifier = Modifier.width(indent))
                         if (entry.isDirectory) {
                             Icon(
@@ -544,7 +543,7 @@ fun VaultDrawer(
                                     showNewDocDialog = true
                                 },
                                 enabled = !isDirLoading && !selectionMode,
-                                modifier = Modifier.size(34.dp),
+                                modifier = Modifier.size(actionButtonSize),
                             ) {
                                 Icon(
                                     imageVector = Icons.Outlined.Add,
@@ -563,7 +562,7 @@ fun VaultDrawer(
                                     showEntryMenu = true
                                 }
                             },
-                            modifier = Modifier.size(34.dp),
+                            modifier = Modifier.size(actionButtonSize),
                         ) {
                             if (selectionMode && uriStr != null) {
                                 Icon(
@@ -584,6 +583,65 @@ fun VaultDrawer(
                         if (entry.isDirectory && isDirLoading) {
                             CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                         }
+                    }
+
+                    if (useDocumentListStyle) {
+                        val containerColor =
+                            when {
+                                selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                                activeDirSelected -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+                                else -> MaterialTheme.colorScheme.surface
+                            }
+                        Surface(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = itemMinHeight)
+                                    .then(borderModifier)
+                                    .combinedClickable(
+                                        onClick = onEntryClick,
+                                        onLongClick = onEntryLongClick,
+                                    ),
+                            color = containerColor,
+                            shape = itemShape,
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
+                        ) {
+                            Row(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(documentItemPadding),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                content = entryRowContent,
+                            )
+                        }
+                    } else {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = itemMinHeight)
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    .clip(itemShape)
+                                    .background(
+                                        when {
+                                            selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                            activeDirSelected -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+                                            else -> Color.Transparent
+                                        },
+                                    )
+                                    .then(borderModifier)
+                                    .combinedClickable(
+                                        onClick = onEntryClick,
+                                        onLongClick = onEntryLongClick,
+                                    )
+                                    .padding(start = 0.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            content = entryRowContent,
+                        )
                     }
                 }
             }
