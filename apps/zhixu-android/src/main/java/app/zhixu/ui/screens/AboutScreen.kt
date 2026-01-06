@@ -3,8 +3,12 @@
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,40 +18,49 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.clickable
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.graphics.drawable.toBitmap
 import app.zhixu.BuildConfig
 import app.zhixu.R
+import app.zhixu.data.UpdateCheckResult
+import app.zhixu.data.UpdateClient
+import app.zhixu.data.UpdateDownloader
+import app.zhixu.data.UpdateInfo
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTopAppBar
+import kotlinx.coroutines.launch
 
 private const val OFFICIAL_SITE_URL = "https://zhixu.app"
 private const val OFFICIAL_TOS_URL = "https://zhixu.app/tos"
@@ -68,18 +81,9 @@ fun AboutScreen(
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
-    val density = LocalDensity.current
-    val headerIconSize = 92.dp
-    val appIcon =
-        androidx.compose.runtime.remember(context) {
-            runCatching { context.packageManager.getApplicationIcon(context.packageName) }.getOrNull()
-        }
-    val iconSizePx = with(density) { headerIconSize.roundToPx().coerceAtLeast(1) }
-    val appIconBitmap =
-        androidx.compose.runtime.remember(appIcon, iconSizePx) {
-            appIcon
-                ?.let { d -> runCatching { d.toBitmap(iconSizePx, iconSizePx).asImageBitmap() }.getOrNull() }
-        }
+    val scope = rememberCoroutineScope()
+    var updateExpanded by remember { mutableStateOf(false) }
+    var updateUiState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
 
     fun toast(text: String) {
         Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
@@ -97,6 +101,28 @@ fun AboutScreen(
         runCatching { context.startActivity(intent) }.onFailure {
             clipboard.setText(AnnotatedString(QQ_GROUP_NUMBER))
             toast(context.getString(R.string.about_qq_copied_fmt, QQ_GROUP_NUMBER))
+        }
+    }
+
+    fun startDownloadAndInstall(latestVersion: String) {
+        val url = UpdateClient.officialDownloadUrl(platform = "android", version = latestVersion)
+        val downloadId = UpdateDownloader.downloadApkAndInstall(context, url = url, version = latestVersion)
+        if (downloadId == null) {
+            toast(context.getString(R.string.common_failed))
+        } else {
+            toast("Downloading…")
+        }
+    }
+
+    fun startUpdateCheck() {
+        updateUiState = UpdateUiState.Loading
+        scope.launch {
+            updateUiState =
+                when (val res = runCatching { UpdateClient.check(currentVersion = BuildConfig.VERSION_NAME, platform = "android") }.getOrNull()) {
+                    is UpdateCheckResult.Success -> UpdateUiState.Success(res.info, res.hasUpdate)
+                    is UpdateCheckResult.Failure -> UpdateUiState.Error(res.message)
+                    null -> UpdateUiState.Error("Failed to check updates.")
+                }
         }
     }
 
@@ -134,31 +160,19 @@ fun AboutScreen(
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             item {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    if (appIconBitmap != null) {
-                        Image(
-                            bitmap = appIconBitmap,
-                            contentDescription = null,
-                            modifier = Modifier.size(headerIconSize),
-                            contentScale = ContentScale.Fit,
-                        )
-                    } else {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_launcher_foreground),
-                            contentDescription = null,
-                            tint = Color.Unspecified,
-                            modifier = Modifier.size(headerIconSize),
-                        )
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = stringResource(R.string.about_version_fmt, BuildConfig.VERSION_NAME),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                AboutUpdateSection(
+                    expanded = updateExpanded,
+                    uiState = updateUiState,
+                    onToggleExpanded = {
+                        val nextExpanded = !updateExpanded
+                        updateExpanded = nextExpanded
+                        if (nextExpanded) startUpdateCheck()
+                    },
+                    onRetry = { startUpdateCheck() },
+                    onOpenUpdatePage = { url -> openUrl(url) },
+                    onDownloadAndInstall = ::startDownloadAndInstall,
+                )
+                HorizontalDivider(color = dividerColor)
             }
 
             item {
@@ -197,6 +211,160 @@ fun AboutScreen(
                     onClick = onOpenOpenSourceLicense,
                 )
                 HorizontalDivider(color = dividerColor)
+            }
+        }
+    }
+}
+
+private sealed class UpdateUiState {
+    data object Idle : UpdateUiState()
+
+    data object Loading : UpdateUiState()
+
+    data class Success(val info: UpdateInfo, val hasUpdate: Boolean) : UpdateUiState()
+
+    data class Error(val message: String) : UpdateUiState()
+}
+
+@Composable
+private fun AboutUpdateSection(
+    expanded: Boolean,
+    uiState: UpdateUiState,
+    onToggleExpanded: () -> Unit,
+    onRetry: () -> Unit,
+    onOpenUpdatePage: (String) -> Unit,
+    onDownloadAndInstall: (String) -> Unit,
+) {
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 0f else -90f,
+        animationSpec = tween(durationMillis = 180),
+        label = "updateArrow",
+    )
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        ListItem(
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onToggleExpanded),
+            leadingContent = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_hi_arrow_path_outline),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+            },
+            headlineContent = { Text(stringResource(R.string.settings_update_title)) },
+            supportingContent = {
+                when (uiState) {
+                    UpdateUiState.Idle -> Unit
+                    UpdateUiState.Loading ->
+                        Text(
+                            text = stringResource(R.string.settings_update_checking),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    is UpdateUiState.Error ->
+                        Text(
+                            text = uiState.message,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    is UpdateUiState.Success -> {
+                        Text(
+                            text = "当前 ${BuildConfig.VERSION_NAME} · 最新 ${uiState.info.latestVersion}",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                        if (uiState.hasUpdate) {
+                            Text(
+                                text = stringResource(R.string.settings_update_available),
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        } else {
+                            Text(
+                                text = stringResource(R.string.settings_update_latest),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            },
+            trailingContent = {
+                Icon(
+                    painter = painterResource(Ionicons.ChevronDown),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp).rotate(arrowRotation),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+        )
+
+        if (!expanded) return@Column
+
+        when (uiState) {
+            UpdateUiState.Idle, UpdateUiState.Loading -> Unit
+            is UpdateUiState.Error -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = onRetry, contentPadding = PaddingValues(0.dp)) {
+                        Text(stringResource(R.string.action_retry))
+                    }
+                }
+            }
+            is UpdateUiState.Success -> {
+                val log = uiState.info.changelog.trim()
+                if (log.isNotBlank()) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.60f),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp,
+                    ) {
+                        Column(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 260.dp)
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(12.dp),
+                        ) {
+                            Text(
+                                text = log,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onRetry, contentPadding = PaddingValues(0.dp)) {
+                        Text(stringResource(R.string.action_retry))
+                    }
+                    Spacer(Modifier.size(16.dp))
+                    if (uiState.hasUpdate) {
+                        if (uiState.info.sourceUrl.endsWith(".apk", ignoreCase = true)) {
+                            TextButton(
+                                onClick = { onDownloadAndInstall(uiState.info.latestVersion) },
+                                contentPadding = PaddingValues(0.dp),
+                            ) {
+                                Text(stringResource(R.string.settings_update_open_download))
+                            }
+                        } else {
+                            TextButton(onClick = { onOpenUpdatePage(uiState.info.sourceUrl) }, contentPadding = PaddingValues(0.dp)) {
+                                Text(stringResource(R.string.settings_update_open_page))
+                            }
+                        }
+                    } else {
+                        TextButton(onClick = { onOpenUpdatePage(uiState.info.sourceUrl) }, contentPadding = PaddingValues(0.dp)) {
+                            Text(stringResource(R.string.settings_update_open_page))
+                        }
+                    }
+                }
             }
         }
     }

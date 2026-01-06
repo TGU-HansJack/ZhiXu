@@ -65,20 +65,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import app.zhixu.BuildConfig
 import app.zhixu.R
 import app.zhixu.data.AccountPreferences
 import app.zhixu.data.AccountState
 import app.zhixu.data.DailyContrib
 import app.zhixu.data.ProPreferences
-import app.zhixu.data.UpdateDownloader
-import app.zhixu.data.UpdateCheckResult
-import app.zhixu.data.UpdateClient
-import app.zhixu.data.UpdateInfo
 import app.zhixu.data.VaultRepository
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.components.ContribCalendarDialog
-import app.zhixu.ui.components.MarkdownPreview
 import app.zhixu.ui.components.ZhixuDialogDefaults
 import app.zhixu.ui.components.ZhixuSwitch
 import coil.compose.AsyncImage
@@ -114,9 +108,7 @@ fun SettingsScreen(
     val isProEnabled by proPrefs.isProEnabled.collectAsState(initial = false)
 
     var contribPerDay by remember { mutableStateOf<Map<LocalDate, DailyContrib>?>(null) }
-    var showUpdateDialog by remember { mutableStateOf(false) }
     var showProDialog by remember { mutableStateOf(false) }
-    var updateUiState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
 
     LaunchedEffect(refreshToken) {
         val year = LocalDate.now().year
@@ -132,28 +124,6 @@ fun SettingsScreen(
                 .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { context.startActivity(intent) }.onFailure {
             Toast.makeText(context, context.getString(R.string.about_open_failed), Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    fun startDownloadAndInstall(latestVersion: String) {
-        val url = UpdateClient.officialDownloadUrl(platform = "android", version = latestVersion)
-        val downloadId = UpdateDownloader.downloadApkAndInstall(context, url = url, version = latestVersion)
-        if (downloadId == null) {
-            Toast.makeText(context, "Failed to start download.", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(context, "Downloading…", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    fun startUpdateCheck() {
-        updateUiState = UpdateUiState.Loading
-        scope.launch {
-            updateUiState =
-                when (val res = runCatching { UpdateClient.check(currentVersion = BuildConfig.VERSION_NAME, platform = "android") }.getOrNull()) {
-                    is UpdateCheckResult.Success -> UpdateUiState.Success(res.info, res.hasUpdate)
-                    is UpdateCheckResult.Failure -> UpdateUiState.Error(res.message)
-                    null -> UpdateUiState.Error("Failed to check updates.")
-                }
         }
     }
 
@@ -296,79 +266,12 @@ fun SettingsScreen(
             HorizontalDivider(color = dividerColor)
 
             SettingsNavRow(
-                iconRes = R.drawable.ic_hi_arrow_path_outline,
-                title = stringResource(R.string.settings_update_title),
-                onClick = {
-                    showUpdateDialog = true
-                    startUpdateCheck()
-                },
-            )
-            HorizontalDivider(color = dividerColor)
-
-            SettingsNavRow(
                 iconRes = Ionicons.HelpCircleOutline,
                 title = stringResource(R.string.settings_placeholder_about),
                 onClick = onOpenAbout,
             )
             HorizontalDivider(color = dividerColor)
         }
-    }
-
-    if (showUpdateDialog) {
-        AlertDialog(
-            modifier = ZhixuDialogDefaults.modifier(),
-            onDismissRequest = { showUpdateDialog = false },
-            properties = ZhixuDialogDefaults.properties,
-            title = { Text(stringResource(R.string.settings_update_title)) },
-            text = {
-                when (val s = updateUiState) {
-                    UpdateUiState.Idle, UpdateUiState.Loading ->
-                        Text(stringResource(R.string.settings_update_checking))
-                    is UpdateUiState.Error ->
-                        Text(s.message)
-                    is UpdateUiState.Success ->
-                        UpdateResultBody(
-                            info = s.info,
-                            hasUpdate = s.hasUpdate,
-                            currentVersion = BuildConfig.VERSION_NAME,
-                        )
-                }
-            },
-            confirmButton = {
-                when (val s = updateUiState) {
-                    UpdateUiState.Idle, UpdateUiState.Loading ->
-                        TextButton(onClick = { showUpdateDialog = false }) { Text(stringResource(R.string.action_close)) }
-                    is UpdateUiState.Error -> {
-                        TextButton(onClick = { startUpdateCheck() }) { Text(stringResource(R.string.action_retry)) }
-                    }
-                    is UpdateUiState.Success -> {
-                        if (s.hasUpdate) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                TextButton(onClick = { openUrl(s.info.sourceUrl) }) {
-                                    Text(stringResource(R.string.settings_update_open_page))
-                                }
-                                TextButton(
-                                    onClick = {
-                                        startDownloadAndInstall(s.info.latestVersion)
-                                        showUpdateDialog = false
-                                    },
-                                ) { Text(stringResource(R.string.settings_update_open_download)) }
-                            }
-                        } else {
-                            TextButton(onClick = { openUrl(s.info.sourceUrl) }) { Text(stringResource(R.string.settings_update_open_page)) }
-                        }
-                    }
-                }
-            },
-            dismissButton = {
-                when (updateUiState) {
-                    UpdateUiState.Idle, UpdateUiState.Loading ->
-                        null
-                    else ->
-                        TextButton(onClick = { showUpdateDialog = false }) { Text(stringResource(R.string.action_close)) }
-                }
-            },
-        )
     }
 
     if (showProDialog) {
@@ -386,49 +289,6 @@ fun SettingsScreen(
                 }
             },
         )
-    }
-}
-
-private sealed class UpdateUiState {
-    data object Idle : UpdateUiState()
-
-    data object Loading : UpdateUiState()
-
-    data class Success(val info: UpdateInfo, val hasUpdate: Boolean) : UpdateUiState()
-
-    data class Error(val message: String) : UpdateUiState()
-}
-
-@Composable
-private fun UpdateResultBody(
-    info: UpdateInfo,
-    hasUpdate: Boolean,
-    currentVersion: String,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(stringResource(R.string.settings_update_current_fmt, currentVersion))
-        Text(stringResource(R.string.settings_update_latest_fmt, info.latestVersion))
-        Text(
-            text =
-                if (hasUpdate) {
-                    stringResource(R.string.settings_update_available)
-                } else {
-                    stringResource(R.string.settings_update_latest)
-                },
-            color = if (hasUpdate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        val log = info.changelog.trim()
-        if (log.isNotBlank()) {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-            Text(stringResource(R.string.settings_update_changelog))
-            MarkdownPreview(
-                markdown = log,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp),
-            )
-        }
     }
 }
 
