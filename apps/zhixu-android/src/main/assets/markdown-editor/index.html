@@ -437,34 +437,10 @@
     </style>
   </head>
   <body>
-    <div id="__plainBoot">HTML loaded...</div>
     <div id="editor"></div>
     <script
       src="./codemirror.bundle.js"
       onerror="window.__showFatal && window.__showFatal('script load failed', this.src)"
-      onload="try{var el=document.getElementById('__plainBoot'); if(el) el.textContent='Bundle loaded...';}catch(e){}"
     ></script>
-    <script>
-      (function () {
-        var tries = 0;
-        var timer = setInterval(function () {
-          tries++;
-          try {
-            var hasEditor = !!document.querySelector(".cm-editor");
-            if (hasEditor) {
-              var el = document.getElementById("__plainBoot");
-              if (el) el.style.display = "none";
-              clearInterval(timer);
-            } else if (tries >= 60) {
-              clearInterval(timer);
-              var el2 = document.getElementById("__plainBoot");
-              if (el2) el2.textContent = "Bundle loaded, but editor not created.";
-            }
-          } catch (e) {
-            clearInterval(timer);
-          }
-        }, 250);
-      })();
-    </script>
   </body>
 </html>

@@ -27,7 +27,6 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebViewAssetLoader
-import app.zhixu.BuildConfig
 import org.json.JSONObject
 import kotlin.math.max
 import kotlin.math.min
@@ -173,38 +172,12 @@ fun CodeMirrorMarkdownEditor(
                             (view.getTag(TAG_EDITOR_PENDING_STATE) as? PreparedEditorState)?.let { pending ->
                                 applyPreparedState(view, pending)
                             }
-                            if (BuildConfig.DEBUG) {
-                                view.post {
-                                    view.evaluateJavascript(
-                                        """
-                                        (function(){
-                                          try{
-                                            var id="__android_boot";
-                                            var el=document.getElementById(id);
-                                            if(!el){
-                                              el=document.createElement("div");
-                                              el.id=id;
-                                              el.style.cssText="position:fixed;left:8px;top:8px;z-index:2147483647;background:rgba(255,235,59,.95);color:#111;padding:6px 10px;border-radius:10px;border:1px solid rgba(0,0,0,.2);font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;";
-                                              document.body.appendChild(el);
-                                            }
-                                            el.textContent="Android onPageFinished: " + (location && location.href ? location.href : "");
-                                          }catch(e){}
-                                        })();
-                                        """.trimIndent(),
-                                        null,
-                                    )
-                                }
-                            }
                         }
                     }
 
                 webChromeClient =
                     object : WebChromeClient() {
                         override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
-                            val msg = consoleMessage.message()
-                            val src = consoleMessage.sourceId()
-                            val line = consoleMessage.lineNumber()
-                            Log.d("CodeMirrorMarkdownEditor", "console(${consoleMessage.messageLevel()}) $src:$line $msg")
                             return super.onConsoleMessage(consoleMessage)
                         }
                     }
