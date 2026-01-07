@@ -38,6 +38,7 @@ fun CodeMirrorMarkdownEditor(
     fontSizeSpValue: Float,
     isSourceMode: Boolean,
     placeholder: String = "",
+    bottomInsetPx: Int = 0,
     onValueChange: (TextFieldValue) -> Unit,
 ) {
     val context = LocalContext.current
@@ -66,9 +67,19 @@ fun CodeMirrorMarkdownEditor(
     val selectionEnd = max(selectionStartRaw, selectionEndRaw)
     val mode = if (isSourceMode) "source" else "live"
     val effectiveFontSize = fontSizeSpValue.coerceIn(12f, 28f)
+    val effectiveBottomInsetPx = max(0, bottomInsetPx)
 
     var prepared by remember { mutableStateOf<PreparedEditorState?>(null) }
-    LaunchedEffect(themeJsonQuoted, payloadTextQuoted, selectionStart, selectionEnd, mode, effectiveFontSize, placeholder) {
+    LaunchedEffect(
+        themeJsonQuoted,
+        payloadTextQuoted,
+        selectionStart,
+        selectionEnd,
+        mode,
+        effectiveFontSize,
+        placeholder,
+        effectiveBottomInsetPx,
+    ) {
         prepared =
             PreparedEditorState(
                 themeJsonQuoted = themeJsonQuoted,
@@ -78,6 +89,7 @@ fun CodeMirrorMarkdownEditor(
                 modeQuoted = JSONObject.quote(mode),
                 fontSizePx = effectiveFontSize,
                 placeholderQuoted = JSONObject.quote(placeholder),
+                bottomInsetPx = effectiveBottomInsetPx,
             )
     }
 
@@ -202,7 +214,8 @@ fun CodeMirrorMarkdownEditor(
                     it.themeJsonQuoted != nextPrepared.themeJsonQuoted ||
                         it.modeQuoted != nextPrepared.modeQuoted ||
                         it.fontSizePx != nextPrepared.fontSizePx ||
-                        it.placeholderQuoted != nextPrepared.placeholderQuoted
+                        it.placeholderQuoted != nextPrepared.placeholderQuoted ||
+                        it.bottomInsetPx != nextPrepared.bottomInsetPx
                 } ?: true
             if (isEchoFromJs && !settingsChanged) {
                 webView.setTag(TAG_EDITOR_LAST_FROM_JS, null)
@@ -231,6 +244,7 @@ private data class PreparedEditorState(
     val modeQuoted: String,
     val fontSizePx: Float,
     val placeholderQuoted: String,
+    val bottomInsetPx: Int,
 )
 
 private data class EditorTheme(
@@ -309,6 +323,7 @@ private fun applyPreparedState(
           window.__setFontSize(${pending.fontSizePx});
           window.__setMode(${pending.modeQuoted});
           window.__setPlaceholder(${pending.placeholderQuoted});
+          if (window.__setBottomInset) window.__setBottomInset(${pending.bottomInsetPx});
           window.__setDoc(${pending.textQuoted}, ${pending.selectionStart}, ${pending.selectionEnd});
         })();
         """.trimIndent()

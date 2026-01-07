@@ -14,6 +14,7 @@
         mode: "live",
         fontSizePx: 16,
         placeholder: "",
+        bottomInsetPx: 0,
       };
       window.__applyQueued = false;
       window.__scheduleApply = () => {
@@ -28,6 +29,11 @@
       window.__setFontSize = (px) => { window.__payload.fontSizePx = Number(px) || 16; window.__scheduleApply(); };
       window.__setMode = (mode) => { window.__payload.mode = mode === "source" ? "source" : "live"; window.__scheduleApply(); };
       window.__setPlaceholder = (s) => { window.__payload.placeholder = s || ""; window.__scheduleApply(); };
+      window.__setBottomInset = (px) => {
+        const v = Math.max(0, Number(px) || 0);
+        window.__payload.bottomInsetPx = v;
+        try { document.documentElement.style.setProperty("--editorBottomInset", v + "px"); } catch (e) {}
+      };
       window.__setDoc = (text, selStart, selEnd) => {
         window.__payload.text = text || "";
         window.__payload.selStart = Number(selStart) || 0;
@@ -222,6 +228,11 @@
       /* Hide scrollbars (still scrollable) */
       * { scrollbar-width: none; }
       *::-webkit-scrollbar { width: 0; height: 0; }
+
+      /* Bottom inset for native toolbar / system bars (set from Android via __setBottomInset). */
+      :root { --editorBottomInset: 0px; }
+      .cm-scroller { padding-bottom: calc(var(--editorBottomInset) + env(safe-area-inset-bottom, 0px)) !important; }
+      .cm-content { padding-bottom: calc(18px + var(--editorBottomInset) + env(safe-area-inset-bottom, 0px)) !important; }
 
       /* Live preview styles (keep font-family unchanged) */
       .cm-lp-mark-hidden { display: none !important; }

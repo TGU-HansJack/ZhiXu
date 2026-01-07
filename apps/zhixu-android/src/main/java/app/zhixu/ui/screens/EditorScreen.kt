@@ -1526,14 +1526,12 @@ fun EditorScreen(
                                     modifier =
                                         Modifier
                                             .fillMaxSize()
-                                            .padding(
-                                                top = 6.dp,
-                                                bottom = with(density) { (anticipatedToolbarPx + 24.dp.roundToPx()).toDp() },
-                                            ),
+                                            .padding(top = 6.dp),
                                     value = content,
                                     fontSizeSpValue = editorFontSizeSpValue,
                                     isSourceMode = isSourceMode,
                                     placeholder = if (isLoaded) "输入内容或使用 / 快速插入" else "",
+                                    bottomInsetPx = anticipatedToolbarPx + with(density) { 24.dp.roundToPx() },
                                     onValueChange = { next ->
                                         val normalized =
                                             if (next.composition == null) {
