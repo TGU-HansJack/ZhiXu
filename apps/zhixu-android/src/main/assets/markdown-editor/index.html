@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <script>
+      // Kotlin might call these before scripts finish loading; buffer and apply later.
+      window.__payload = {
+        themeJson: null,
+        text: "",
+        selStart: 0,
+        selEnd: 0,
+        mode: "live",
+        fontSizePx: 16,
+        placeholder: "",
+      };
+      window.__applyQueued = false;
+      window.__scheduleApply = () => {
+        if (window.__applyQueued) return;
+        window.__applyQueued = true;
+        setTimeout(() => {
+          window.__applyQueued = false;
+          if (window.__apply) window.__apply();
+        }, 0);
+      };
+      window.__setTheme = (json) => { window.__payload.themeJson = json; window.__scheduleApply(); };
+      window.__setFontSize = (px) => { window.__payload.fontSizePx = Number(px) || 16; window.__scheduleApply(); };
+      window.__setMode = (mode) => { window.__payload.mode = mode === "source" ? "source" : "live"; window.__scheduleApply(); };
+      window.__setPlaceholder = (s) => { window.__payload.placeholder = s || ""; window.__scheduleApply(); };
+      window.__setDoc = (text, selStart, selEnd) => {
+        window.__payload.text = text || "";
+        window.__payload.selStart = Number(selStart) || 0;
+        window.__payload.selEnd = Number(selEnd) || window.__payload.selStart;
+        window.__scheduleApply();
+      };
+    </script>
+
+    <script>
+      (() => {
+        if (customElements.get("ion-icon")) return;
+
+        const icons = {
+          "square-outline": `
+            <svg viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+              <rect x="64" y="64" width="384" height="384" rx="48" ry="48" fill="none" stroke="currentColor" stroke-width="32"></rect>
+            </svg>
+          `,
+          "checkbox-outline": `
+            <svg viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+              <rect x="64" y="64" width="384" height="384" rx="48" ry="48" fill="none" stroke="currentColor" stroke-width="32"></rect>
+              <polyline points="352 176 217.6 336 160 272" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"></polyline>
+            </svg>
+          `,
+        };
+
+        class IonIcon extends HTMLElement {
+          static get observedAttributes() {
+            return ["name"];
+          }
+
+          constructor() {
+            super();
+            this.attachShadow({ mode: "open" });
+          }
+
+          connectedCallback() {
+            this.#render();
+          }
+
+          attributeChangedCallback() {
+            this.#render();
+          }
+
+          #render() {
+            const name = this.getAttribute("name") || "";
+            const svg = icons[name] || "";
+            this.shadowRoot.innerHTML = `
+              <style>
+                :host { display: inline-flex; width: 1em; height: 1em; color: currentColor; }
+                svg { width: 100%; height: 100%; }
+              </style>
+              ${svg}
+            `;
+          }
+        }
+
+        customElements.define("ion-icon", IonIcon);
+      })();
+    </script>
+
+    <style>
+      * { box-sizing: border-box; }
+      :root {
+        --surface: #FFFFFF;
+        --onSurface: #111111;
+        --outline: rgba(0, 0, 0, 0.18);
+        --primary: #2F6FEB;
+        --editorFont: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, "PingFang SC",
+          "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        --editorFontSize: 16px;
+        --editorLineHeight: 1.55;
+        --editorSelection: rgba(47, 111, 235, 0.22);
+        --inlineCodeBg: rgba(27, 31, 36, 0.06);
+        --inlineCodeFg: var(--onSurface);
+      }
+      html, body { margin: 0; padding: 0; height: 100%; background: var(--surface); color: var(--onSurface); }
+      body { overflow: hidden; }
+      #editor { height: 100%; }
+
+      /* Hide scrollbars (still scrollable) */
+      * { scrollbar-width: none; }
+      *::-webkit-scrollbar { width: 0; height: 0; }
+
+      /* Live preview styles (keep font-family unchanged) */
+      .cm-lp-mark-hidden { display: none !important; }
+      .cm-lp-strong { font-weight: 750 !important; }
+      .cm-lp-em { font-style: italic !important; }
+      .cm-lp-strike { text-decoration: line-through !important; text-decoration-thickness: 2px; }
+      .cm-lp-inline-code {
+        background: var(--inlineCodeBg);
+        color: var(--inlineCodeFg);
+        border: 1px solid var(--outline);
+        padding: 0.08em 0.28em;
+        border-radius: 6px;
+      }
+      .cm-lp-h1 { font-size: 1.55em; font-weight: 750; }
+      .cm-lp-h2 { font-size: 1.28em; font-weight: 750; }
+      .cm-lp-h3 { font-size: 1.16em; font-weight: 750; }
+      .cm-lp-h4 { font-size: 1.06em; font-weight: 750; }
+      .cm-lp-h5 { font-size: 0.98em; font-weight: 750; }
+      .cm-lp-h6 { font-size: 0.92em; font-weight: 750; opacity: 0.92; }
+      .cm-lp-bullet {
+        opacity: 0.92;
+        color: rgba(127, 127, 127, 0.78);
+        display: inline-block;
+        width: 1em;
+      }
+      .cm-lp-bullet::before {
+        content: "";
+        display: inline-block;
+        width: 0.38em;
+        height: 0.38em;
+        margin-right: 0.25em;
+        border-radius: 999px;
+        background: currentColor;
+        vertical-align: middle;
+      }
+      .cm-lp-task { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-right: 6px; line-height: 1; vertical-align: middle; }
+      .cm-lp-task ion-icon { width: 24px; height: 24px; color: var(--primary); transform: translateY(-0.5px); }
+      .cm-lp-task input[type="checkbox"] {
+        width: 16px; height: 16px;
+        accent-color: var(--primary);
+      }
+
+      /* List indent (visual only) */
+      .cm-lp-li { padding-left: 1em !important; }
+
+      /* Links */
+      .cm-lp-link {
+        color: var(--primary);
+        text-decoration: underline;
+        text-decoration-thickness: 2px;
+        text-underline-offset: 0.18em;
+      }
+
+      /* Horizontal rule */
+      .cm-lp-hr {
+        position: relative;
+        padding: 10px 0 !important;
+      }
+      .cm-lp-hr::after {
+        content: "";
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        top: 50%;
+        height: 1px;
+        background: var(--outline);
+        transform: translateY(-50%);
+      }
+
+      /* Blockquote depth */
+      .cm-lp-quote { border-left: 0 !important; opacity: 1 !important; background: rgba(127, 127, 127, 0.06); }
+      .cm-lp-quote-d1, .cm-lp-quote-d2, .cm-lp-quote-d3, .cm-lp-quote-d4, .cm-lp-quote-d5, .cm-lp-quote-d6 {
+        background-repeat: no-repeat;
+        background-size: 1px 100%;
+      }
+      .cm-lp-quote-d1 { background-image: linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)); background-position: 0 0; padding-left: 12px !important; }
+      .cm-lp-quote-d2 { background-image: linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)); background-position: 0 0, 10px 0; padding-left: 22px !important; }
+      .cm-lp-quote-d3 { background-image: linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)); background-position: 0 0, 10px 0, 20px 0; padding-left: 32px !important; }
+      .cm-lp-quote-d4 { background-image: linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)); background-position: 0 0, 10px 0, 20px 0, 30px 0; padding-left: 42px !important; }
+      .cm-lp-quote-d5 { background-image: linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)); background-position: 0 0, 10px 0, 20px 0, 30px 0, 40px 0; padding-left: 52px !important; }
+      .cm-lp-quote-d6 { background-image: linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)); background-position: 0 0, 10px 0, 20px 0, 30px 0, 40px 0, 50px 0; padding-left: 62px !important; }
+
+      /* Ordered list marker */
+      .cm-lp-ol-mark { color: rgba(127, 127, 127, 0.78); font-weight: 400; }
+
+      /* Images */
+      .cm-lp-image-wrap { display: block; margin: 0; cursor: text; }
+      .cm-lp-image { display: block; max-width: 100%; height: auto; border-radius: 0; border: 0; }
+      .cm-lp-image-fallback { opacity: 0.72; }
+    </style>
+  </head>
+  <body>
+    <div id="editor"></div>
+    <script src="./codemirror.bundle.js"></script>
+  </body>
+</html>

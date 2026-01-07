@@ -431,6 +431,7 @@
     <string name="editor_overflow_generate_long_image">Generate long image</string>
     <string name="editor_overflow_share">Share</string>
     <string name="editor_overflow_font_size">Font size</string>
+    <string name="editor_overflow_source_mode">Source mode</string>
     <string name="editor_share_failed">Failed to open share panel</string>
 
     <!-- Editor history -->

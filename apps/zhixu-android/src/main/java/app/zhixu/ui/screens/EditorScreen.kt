@@ -42,7 +42,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.FindReplace
@@ -114,11 +113,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -147,7 +141,6 @@ import androidx.compose.ui.graphics.luminance
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import kotlin.math.abs
 import app.zhixu.R
 import app.zhixu.data.dataStore
 import app.zhixu.data.VaultRepository
@@ -163,7 +156,9 @@ import app.zhixu.plugins.PluginRepository
 import app.zhixu.plugins.runtime.EditorActionContext
 import app.zhixu.plugins.runtime.JsPluginRuntime
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
+import app.zhixu.ui.components.CodeMirrorMarkdownEditor
 import app.zhixu.ui.components.MarkdownPreview
 import app.zhixu.ui.components.PdfPreview
 import app.zhixu.ui.components.PdfPreviewController
@@ -178,6 +173,7 @@ import app.zhixu.ui.components.SheetQuickAction
 import app.zhixu.ui.components.ZhixuTextField
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuCenterAlignedTopAppBar
+import app.zhixu.ui.components.ZhixuSwitch
 import app.zhixu.ui.components.VaultDrawer
 import app.zhixu.ui.components.ZhixuSwipeDualDrawer
 import app.zhixu.core.tasks.TaskSyntax
@@ -253,7 +249,6 @@ fun EditorScreen(
     var showPdfMenu by remember { mutableStateOf(false) }
     var showPdfThumbnails by remember { mutableStateOf(false) }
     var pdfPageInput by remember { mutableStateOf("1") }
-    val scrollState = rememberScrollState()
     val docNameScrollState = rememberScrollState()
     var docNameFieldWidthPx by remember { mutableIntStateOf(0) }
     var docNameLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -285,11 +280,6 @@ fun EditorScreen(
         } else {
             0.dp
         }
-    val extraScrollSpaceDp =
-        maxOf(
-            376.dp,
-            with(density) { anticipatedToolbarPx.toDp() } + 96.dp,
-        )
 
     LaunchedEffect(isRenamingDoc) {
         docNameHadFocus = false
@@ -335,14 +325,14 @@ fun EditorScreen(
     var openOutlineToken by remember { mutableStateOf(0L) }
 
     val editorFontSizeKey = remember { floatPreferencesKey("editor_font_size_sp") }
+    val editorSourceModeKey = remember { booleanPreferencesKey("editor_source_mode") }
     var editorFontSizeSpValue by remember { mutableStateOf(16f) }
+    var isSourceMode by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        val loaded =
-            context.dataStore.data
-                .map { prefs -> prefs[editorFontSizeKey] ?: 16f }
-                .first()
-        editorFontSizeSpValue = loaded.coerceIn(12f, 28f)
+        val prefs = context.dataStore.data.first()
+        editorFontSizeSpValue = (prefs[editorFontSizeKey] ?: 16f).coerceIn(12f, 28f)
+        isSourceMode = prefs[editorSourceModeKey] ?: false
     }
 
     fun persistEditorFontSize(next: Float) {
@@ -353,21 +343,13 @@ fun EditorScreen(
         }
     }
 
-    val editorFontSize = editorFontSizeSpValue.sp
-    val editorLineHeight = editorFontSize * 1.5f
-    val editorLetterSpacing = 0.2.sp
-
-    val editorFontWeight = FontWeight.Light
-    val editorTextStyle =
-        MaterialTheme.typography.bodyLarge.copy(
-            fontFamily = FontFamily.Default,
-            fontWeight = editorFontWeight,
-            fontSynthesis = FontSynthesis.None,
-            fontSize = editorFontSize,
-            lineHeight = editorLineHeight,
-            letterSpacing = editorLetterSpacing,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+    fun persistEditorSourceMode(next: Boolean) {
+        scope.launch {
+            context.dataStore.edit { prefs ->
+                prefs[editorSourceModeKey] = next
+            }
+        }
+    }
 
     var showLinkDialog by remember { mutableStateOf(false) }
     var linkText by remember { mutableStateOf("") }
@@ -399,9 +381,7 @@ fun EditorScreen(
     var showFindReplace by remember { mutableStateOf(false) }
     var findText by remember { mutableStateOf("") }
     var replaceText by remember { mutableStateOf("") }
-    var textLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
     var pendingInitialJump by remember { mutableStateOf<JumpTarget?>(null) }
-    var editorViewportHeightPx by remember { mutableStateOf(0) }
     var currentDocUri by remember(docUri) { mutableStateOf(docUri) }
     var outline by remember { mutableStateOf<List<OutlineItem>>(emptyList()) }
     var wikiLinks by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -1053,63 +1033,13 @@ fun EditorScreen(
         val safeStart = startOffset.coerceIn(0, text.length)
         val safeEnd = endOffset.coerceIn(0, text.length).coerceAtLeast(safeStart)
         content = content.copy(selection = TextRange(safeStart, safeEnd))
-        val layout = textLayoutResult ?: return
-        runCatching {
-            val line = layout.getLineForOffset(safeStart)
-            val y = layout.getLineTop(line).toInt().coerceAtLeast(0)
-            scope.launch { scrollState.scrollTo(y) }
-        }
     }
 
-    LaunchedEffect(isLoaded, isPreview, textLayoutResult, pendingInitialJump) {
+    LaunchedEffect(isLoaded, isPreview, pendingInitialJump) {
         val jump = pendingInitialJump ?: return@LaunchedEffect
         if (!isLoaded || isPreview) return@LaunchedEffect
-        if (textLayoutResult == null) return@LaunchedEffect
         pendingInitialJump = null
         jumpToSelection(jump.start, jump.end)
-    }
-
-    LaunchedEffect(isLoaded, isPreview, textLayoutResult) {
-        if (!isLoaded || isPreview) return@LaunchedEffect
-        val layout = textLayoutResult ?: return@LaunchedEffect
-
-        snapshotFlow {
-            listOf(
-                content.selection.end,
-                editorViewportHeightPx,
-                anticipatedToolbarPx,
-            )
-        }.distinctUntilChanged()
-            .collectLatest {
-                if (!isLoaded || isPreview) return@collectLatest
-                if (editorViewportHeightPx <= 0) return@collectLatest
-
-                val viewport =
-                    (editorViewportHeightPx - anticipatedToolbarPx)
-                        .coerceAtLeast(0)
-                if (viewport <= 0) return@collectLatest
-
-                val offset = content.selection.end.coerceIn(0, content.text.length)
-                val line = runCatching { layout.getLineForOffset(offset) }.getOrNull() ?: return@collectLatest
-                val top = layout.getLineTop(line)
-                val bottom = layout.getLineBottom(line)
-
-                val marginTopPx = with(density) { 24.dp.roundToPx() }
-                val marginBottomPx = with(density) { 36.dp.roundToPx() }
-                val visibleTop = scrollState.value.toFloat()
-                val visibleBottom = (scrollState.value + viewport).toFloat()
-
-                val targetY =
-                    when {
-                        top < visibleTop + marginTopPx -> (top - marginTopPx).toInt()
-                        bottom > visibleBottom - marginBottomPx -> (bottom - viewport + marginBottomPx).toInt()
-                        else -> null
-                    }?.coerceAtLeast(0) ?: return@collectLatest
-
-                if (abs(targetY - scrollState.value) <= 4) return@collectLatest
-
-                scrollState.scrollTo(targetY)
-            }
     }
 
     LaunchedEffect(content.text, isLoaded, isPreview, currentDocUri, isDirty) {
@@ -1592,120 +1522,29 @@ fun EditorScreen(
                                     },
                                 )
                             } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .onSizeChanged { editorViewportHeightPx = it.height },
-                                ) {
-                                    BasicTextField(
-                                        value = content,
-                                        onValueChange = { next ->
-                                            val normalized =
-                                                if (next.composition == null) {
-                                                    next.copy(text = next.text.toHalfWidthEditorSymbols())
-                                                } else {
-                                                    next
-                                                }
-                                            if (normalized.text != content.text) pushHistoryIfNeeded(content)
-                                            content = normalized
-                                        },
-                                        modifier = Modifier
+                                CodeMirrorMarkdownEditor(
+                                    modifier =
+                                        Modifier
                                             .fillMaxSize()
-                                            .onPreviewKeyEvent { event ->
-                                                if (event.type != KeyEventType.KeyDown || event.key != Key.Enter) return@onPreviewKeyEvent false
-                                                if (isPreview) return@onPreviewKeyEvent false
-                                                if (content.selection.start != content.selection.end) return@onPreviewKeyEvent false
-
-                                                val t = content.text
-                                                val cursor = content.selection.start.coerceIn(0, t.length)
-                                                val lineStart = t.lastIndexOf('\n', startIndex = (cursor - 1).coerceAtLeast(0)).let { if (it < 0) 0 else it + 1 }
-                                                val lineEnd = t.indexOf('\n', startIndex = cursor).let { if (it < 0) t.length else it }
-                                                val line = t.substring(lineStart, lineEnd)
-
-                                                val taskMatch = Regex("""^(\s*)-\s+\[( |x|X)\]\s+""").find(line)
-                                                val unorderedMatch = Regex("""^(\s*)([-*+])\s+""").find(line)
-                                                val orderedMatch = Regex("""^(\s*)(\d+)\.\s+""").find(line)
-                                                val quoteMatch = Regex("""^(\s*(?:>\s*)+)""").find(line)
-
-                                                val currentPrefix: String?
-                                                val nextPrefix: String?
-
-                                                when {
-                                                    taskMatch != null -> {
-                                                        val indent = taskMatch.groupValues[1]
-                                                        currentPrefix = taskMatch.value
-                                                        nextPrefix = "$indent- [ ] "
-                                                    }
-
-                                                    orderedMatch != null -> {
-                                                        val indent = orderedMatch.groupValues[1]
-                                                        val n = orderedMatch.groupValues[2].toIntOrNull() ?: 1
-                                                        currentPrefix = "$indent$n. "
-                                                        nextPrefix = "$indent${n + 1}. "
-                                                    }
-
-                                                    unorderedMatch != null -> {
-                                                        val indent = unorderedMatch.groupValues[1]
-                                                        val bullet = unorderedMatch.groupValues[2]
-                                                        currentPrefix = "$indent$bullet "
-                                                        nextPrefix = currentPrefix
-                                                    }
-
-                                                    quoteMatch != null -> {
-                                                        currentPrefix = quoteMatch.value
-                                                        nextPrefix = currentPrefix
-                                                    }
-
-                                                    else -> return@onPreviewKeyEvent false
-                                                }
-
-                                                val remainder = line.drop(currentPrefix.length).trim()
-                                                if (cursor == lineEnd && remainder.isBlank()) {
-                                                    pushHistoryIfNeeded(content)
-                                                    val removed = t.removeRange(lineStart, (lineStart + currentPrefix.length).coerceAtMost(t.length))
-                                                    val newCursor = (cursor - currentPrefix.length).coerceIn(0, removed.length)
-                                                    content =
-                                                        content.copy(
-                                                            text = removed.substring(0, newCursor) + "\n" + removed.substring(newCursor),
-                                                            selection = TextRange(newCursor + 1),
-                                                        )
-                                                    return@onPreviewKeyEvent true
-                                                }
-
-                                                pushHistoryIfNeeded(content)
-                                                content =
-                                                    content.copy(
-                                                        text = t.substring(0, cursor) + "\n" + nextPrefix + t.substring(cursor),
-                                                        selection = TextRange(cursor + 1 + nextPrefix.length),
-                                                    )
-                                                true
+                                            .padding(
+                                                top = 6.dp,
+                                                bottom = with(density) { (anticipatedToolbarPx + 24.dp.roundToPx()).toDp() },
+                                            ),
+                                    value = content,
+                                    fontSizeSpValue = editorFontSizeSpValue,
+                                    isSourceMode = isSourceMode,
+                                    placeholder = if (isLoaded) "输入内容或使用 / 快速插入" else "",
+                                    onValueChange = { next ->
+                                        val normalized =
+                                            if (next.composition == null) {
+                                                next.copy(text = next.text.toHalfWidthEditorSymbols())
+                                            } else {
+                                                next
                                             }
-                                            .verticalScroll(scrollState),
-                                        textStyle =
-                                            editorTextStyle,
-                                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                        onTextLayout = { textLayoutResult = it },
-                                        decorationBox = { inner ->
-                                            Column {
-                                                Spacer(modifier = Modifier.height(6.dp))
-                                                Box(modifier = Modifier.fillMaxWidth()) {
-                                                    if (isLoaded && content.text.isEmpty()) {
-                                                        Text(
-                                                            text = "输入内容或使用 / 快速插入",
-                                                            color = Color.Gray,
-                                                            style =
-                                                                editorTextStyle.copy(
-                                                                    color = Color.Gray,
-                                                                ),
-                                                        )
-                                                    }
-                                                    inner()
-                                                }
-                                                Spacer(modifier = Modifier.height(extraScrollSpaceDp))
-                                            }
-                                        },
-                                    )
-                                }
+                                        if (normalized.text != content.text) pushHistoryIfNeeded(content)
+                                        content = normalized
+                                    },
+                                )
                             }
                         }
                     }
@@ -1858,6 +1697,26 @@ fun EditorScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column {
+                        if (!isPdfDoc) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.editor_overflow_source_mode),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                Spacer(modifier = Modifier.weight(1f))
+                                ZhixuSwitch(
+                                    checked = isSourceMode,
+                                    onCheckedChange = { next ->
+                                        isSourceMode = next
+                                        persistEditorSourceMode(next)
+                                    },
+                                )
+                            }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                        }
                         SheetActionRow(
                             title = stringResource(R.string.editor_overflow_font_size),
                             iconRes = Ionicons.TextOutline,

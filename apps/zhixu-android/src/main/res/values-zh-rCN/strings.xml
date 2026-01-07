@@ -408,6 +408,7 @@
     <string name="editor_overflow_generate_long_image">生成长图</string>
     <string name="editor_overflow_share">开启分享</string>
     <string name="editor_overflow_font_size">调整字号</string>
+    <string name="editor_overflow_source_mode">源码模式</string>
     <string name="editor_share_failed">无法打开分享面板</string>
 
     <!-- Editor history -->
