@@ -56,12 +56,15 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import app.zhixu.ui.components.ZhixuTextField
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.FocusRequester
@@ -106,6 +109,7 @@ import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.Markwon
 import io.noties.markwon.core.MarkwonTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -135,6 +139,10 @@ fun DocumentListScreen(
     val clipboard = LocalClipboardManager.current
     val highlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     val listState = rememberLazyListState()
+
+    var savedFirstVisibleKey by rememberSaveable(vaultRootUri) { mutableStateOf<String?>(null) }
+    var savedFirstVisibleIndex by rememberSaveable(vaultRootUri) { mutableIntStateOf(0) }
+    var savedFirstVisibleOffset by rememberSaveable(vaultRootUri) { mutableIntStateOf(0) }
     val markwon =
         remember(context) {
             Markwon
@@ -167,6 +175,45 @@ fun DocumentListScreen(
     val isIndexUpdating by indexUpdater.isUpdating.collectAsState()
 
     val previewCache = remember(vaultRootUri) { mutableStateMapOf<String, String>() }
+
+    LaunchedEffect(isActive, docs) {
+        if (!isActive) return@LaunchedEffect
+        if (docs.isEmpty()) return@LaunchedEffect
+
+        val needsRestore =
+            listState.firstVisibleItemIndex == 0 &&
+                listState.firstVisibleItemScrollOffset == 0 &&
+                (savedFirstVisibleIndex != 0 || savedFirstVisibleOffset != 0)
+
+        if (needsRestore) {
+            val targetIndexFromKey =
+                savedFirstVisibleKey?.let { key ->
+                    docs.indexOfFirst { it.uri.toString() == key }.takeIf { it >= 0 }
+                }
+
+            val targetIndex =
+                when {
+                    targetIndexFromKey != null -> targetIndexFromKey
+                    savedFirstVisibleIndex in docs.indices -> savedFirstVisibleIndex
+                    else -> 0
+                }
+
+            if (targetIndex != 0 || savedFirstVisibleOffset != 0) {
+                listState.scrollToItem(
+                    index = targetIndex,
+                    scrollOffset = savedFirstVisibleOffset.coerceAtLeast(0),
+                )
+            }
+        }
+
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .distinctUntilChanged()
+            .collect { (index, offset) ->
+                savedFirstVisibleIndex = index
+                savedFirstVisibleOffset = offset
+                savedFirstVisibleKey = docs.getOrNull(index)?.uri?.toString()
+            }
+    }
 
     LaunchedEffect(searchRequestToken) {
         if (searchRequestToken == lastSearchToken) return@LaunchedEffect
