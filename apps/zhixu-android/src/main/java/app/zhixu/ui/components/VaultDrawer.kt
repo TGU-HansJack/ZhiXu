@@ -66,6 +66,7 @@ import androidx.compose.material3.Surface
 import app.zhixu.R
 import app.zhixu.data.VaultRepository
 import app.zhixu.data.VaultTreeEntry
+import app.zhixu.draw.ZhixuDrawFormat
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.DocListMutation
 import kotlinx.coroutines.launch
@@ -406,7 +407,7 @@ fun VaultDrawer(
                     val isDirLoading = entry.isDirectory && (loadingDirs[entry.relativePath] == true)
                     val isMarkdownDoc = !entry.isDirectory && entry.name.endsWith(".md", ignoreCase = true)
                     val isPdf = !entry.isDirectory && entry.name.endsWith(".pdf", ignoreCase = true)
-                    val isDrawing = !entry.isDirectory && entry.name.endsWith(".zhixud", ignoreCase = true)
+                    val isDrawing = !entry.isDirectory && ZhixuDrawFormat.hasDrawingExtension(entry.name)
                     val isImage =
                         !entry.isDirectory &&
                             run {
@@ -664,7 +665,7 @@ fun VaultDrawer(
                     val entry = selectedEntry ?: return@VaultEntryActionsSheet
                     renameInput =
                         if (entry.isDirectory) entry.name
-                        else entry.name.removeSuffix(".md").removeSuffix(".pdf").removeSuffix(".zhixud").ifBlank { entry.name }
+                        else ZhixuDrawFormat.stripDrawingExtension(entry.name.removeSuffix(".md").removeSuffix(".pdf")).ifBlank { entry.name }
                     showEntryMenu = false
                     showRenameDialog = true
                 },

@@ -15,7 +15,23 @@ import org.xmlpull.v1.XmlPullParser
 
 object ZhixuDrawFormat {
     const val MIME_TYPE: String = "application/zhixu-drawing"
-    const val EXTENSION: String = ".zhixud"
+    const val EXTENSION: String = ".zhixu"
+    const val LEGACY_EXTENSION: String = ".zhixud"
+
+    fun hasDrawingExtension(name: String): Boolean {
+        val lower = name.lowercase(Locale.US)
+        return (lower.endsWith(EXTENSION) && lower.length > EXTENSION.length) ||
+            (lower.endsWith(LEGACY_EXTENSION) && lower.length > LEGACY_EXTENSION.length)
+    }
+
+    fun stripDrawingExtension(name: String): String {
+        val lower = name.lowercase(Locale.US)
+        return when {
+            lower.endsWith(EXTENSION) && lower.length > EXTENSION.length -> name.dropLast(EXTENSION.length)
+            lower.endsWith(LEGACY_EXTENSION) && lower.length > LEGACY_EXTENSION.length -> name.dropLast(LEGACY_EXTENSION.length)
+            else -> name
+        }
+    }
 
     fun encode(document: ZhixuDrawDocument): ByteArray {
         val out = ByteArrayOutputStream()
@@ -90,7 +106,7 @@ object ZhixuDrawFormat {
             return decodeLegacyContentXml(contentXml)
         }
 
-        error("Invalid zhixud: missing meta.json/content.xml")
+        error("Invalid drawing file: missing meta.json/content.xml")
     }
 
     fun pageFileName(index: Int): String = "pages/page_${(index + 1).toString().padStart(3, '0')}.json"
@@ -335,4 +351,3 @@ object ZhixuDrawFormat {
         return 0xFF000000.toInt()
     }
 }
-

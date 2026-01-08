@@ -1148,9 +1148,9 @@ private fun guessTitleFromUri(uri: Uri?): String? {
     if (uri == null) return null
     if (uri.scheme.equals("file", ignoreCase = true)) {
         val path = uri.path ?: return null
-        return File(path).name.removeSuffix(ZhixuDrawFormat.EXTENSION)
+        return ZhixuDrawFormat.stripDrawingExtension(File(path).name)
     }
     val last = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':').orEmpty()
     if (last.isBlank()) return null
-    return last.removeSuffix(ZhixuDrawFormat.EXTENSION)
+    return ZhixuDrawFormat.stripDrawingExtension(last)
 }

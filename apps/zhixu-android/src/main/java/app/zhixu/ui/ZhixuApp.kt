@@ -92,6 +92,7 @@ import app.zhixu.data.WebDavConfig
 import app.zhixu.data.AiPreferences
 import app.zhixu.data.appManagedVaultRootUri
 import app.zhixu.ai.AiOcrPostProcessor
+import app.zhixu.draw.ZhixuDrawFormat
 import app.zhixu.ocr.NoopOcrEngine
 import app.zhixu.ocr.OcrWorkflow
 import app.zhixu.ocr.ppocrv5.PpOcrV5OcrEngine
@@ -405,7 +406,7 @@ fun ZhixuApp(
             maybeUri != null &&
                 runCatching {
                     val name = androidx.documentfile.provider.DocumentFile.fromSingleUri(context, maybeUri)?.name.orEmpty()
-                    name.endsWith(".zhixud", ignoreCase = true) || rawUri.endsWith(".zhixud", ignoreCase = true)
+                    ZhixuDrawFormat.hasDrawingExtension(name) || ZhixuDrawFormat.hasDrawingExtension(rawUri)
                 }.getOrDefault(false)
         if (isDrawing) {
             val uriParam = Uri.encode(rawUri)
