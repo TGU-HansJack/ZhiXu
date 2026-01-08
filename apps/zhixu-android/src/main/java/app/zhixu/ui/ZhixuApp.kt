@@ -1121,6 +1121,7 @@ fun ZhixuApp(
                         vaultRootUri = root,
                         repository = repository,
                         docUri = docUri,
+                        onDocListMutated = ::onDocListMutated,
                         onBack = { navController.popBackStack() },
                     )
                 }

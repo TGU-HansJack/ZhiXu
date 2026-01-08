@@ -1008,7 +1008,12 @@ class VaultIndexRepository(
     }
 
     private fun computeDocBaseNameLocal(name: String): String =
-        if (name.endsWith(".md", ignoreCase = true)) name.dropLast(3) else name
+        when {
+            name.endsWith(".md", ignoreCase = true) -> name.dropLast(3)
+            name.endsWith(".zhixu", ignoreCase = true) && name.length > ".zhixu".length -> name.dropLast(".zhixu".length)
+            name.endsWith(".zhixud", ignoreCase = true) && name.length > ".zhixud".length -> name.dropLast(".zhixud".length)
+            else -> name
+        }
 
     private companion object {
         val mutex = Mutex()

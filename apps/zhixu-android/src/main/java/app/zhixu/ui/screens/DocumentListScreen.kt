@@ -72,6 +72,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
@@ -98,6 +99,9 @@ import app.zhixu.data.TaskSearchResult
 import app.zhixu.data.UiDoc
 import app.zhixu.data.VaultIndexUpdater
 import app.zhixu.data.VaultRepository
+import app.zhixu.draw.ZhixuDrawFormat
+import app.zhixu.draw.ZhixuDrawPage
+import app.zhixu.draw.ui.DrawDocumentPreviewRow
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.DocListMutation
 import app.zhixu.ui.components.RefreshStatusBanner
@@ -175,6 +179,7 @@ fun DocumentListScreen(
     val isIndexUpdating by indexUpdater.isUpdating.collectAsState()
 
     val previewCache = remember(vaultRootUri) { mutableStateMapOf<String, String>() }
+    val drawingPreviewCache = remember(vaultRootUri) { mutableStateMapOf<String, List<ZhixuDrawPage>>() }
 
     LaunchedEffect(isActive, docs) {
         if (!isActive) return@LaunchedEffect
@@ -339,21 +344,80 @@ fun DocumentListScreen(
                                 val title = doc.baseName.ifBlank { defaultTitle }
                                 val editedAt = doc.createdAtText.ifBlank { editedAtDash }
                                 val docUriStr = doc.uri.toString()
+                                val isDrawing = ZhixuDrawFormat.hasDrawingExtension(doc.name)
                                 val previewKey = remember(docUriStr, doc.lastModified) { "$docUriStr@${doc.lastModified}" }
-                                val previewMarkdown = previewCache[previewKey]
+                                val previewMarkdown = if (isDrawing) null else previewCache[previewKey]
+                                val previewPages = if (isDrawing) drawingPreviewCache[previewKey] else null
 
-                                LaunchedEffect(previewKey) {
-                                    if (previewCache.containsKey(previewKey)) return@LaunchedEffect
-                                    previewCache[previewKey] = ""
-                                    val raw = repository.readTextPreview(doc.uri, maxChars = 2500)
-                                    previewCache[previewKey] = extractDocPreviewMarkdown(raw, maxChars = 300)
+                                if (!isDrawing) {
+                                    LaunchedEffect(previewKey) {
+                                        if (previewCache.containsKey(previewKey)) return@LaunchedEffect
+                                        previewCache[previewKey] = ""
+                                        val raw = repository.readTextPreview(doc.uri, maxChars = 2500)
+                                        previewCache[previewKey] = extractDocPreviewMarkdown(raw, maxChars = 300)
+                                    }
+                                } else {
+                                    LaunchedEffect(previewKey) {
+                                        if (drawingPreviewCache.containsKey(previewKey)) return@LaunchedEffect
+                                        drawingPreviewCache[previewKey] = emptyList()
+                                        val pages =
+                                            withContext(Dispatchers.IO) {
+                                                val bytes = repository.readBytes(doc.uri) ?: return@withContext emptyList<ZhixuDrawPage>()
+                                                runCatching { ZhixuDrawFormat.decode(bytes).pages.take(4) }.getOrDefault(emptyList())
+                                            }
+                                        drawingPreviewCache[previewKey] = pages
+                                    }
                                 }
+
+                                val previewContent: (@Composable () -> Unit)? =
+                                    when {
+                                        isDrawing -> {
+                                            {
+                                                Surface(
+                                                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                                                    color = listBg,
+                                                    shape = RoundedCornerShape(8.dp),
+                                                ) {
+                                                    DrawDocumentPreviewRow(
+                                                        pages = previewPages,
+                                                        maxHeight = LocalConfiguration.current.screenHeightDp.dp / 3,
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        !previewMarkdown.isNullOrBlank() -> {
+                                            {
+                                                Surface(
+                                                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                                                    color = listBg,
+                                                    shape = RoundedCornerShape(8.dp),
+                                                ) {
+                                                    MarkwonPreviewText(
+                                                        markwon = markwon,
+                                                        markdown = previewMarkdown,
+                                                        textStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                                                        maxLines = Int.MAX_VALUE,
+                                                        modifier =
+                                                            Modifier
+                                                                .fillMaxWidth()
+                                                                .wrapContentHeight()
+                                                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                                                                .pointerInteropFilter { false },
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        else -> null
+                                    }
 
                                 DocRow(
                                     title = title,
                                     editedAt = editedAt,
-                                    previewMarkdown = previewMarkdown?.takeIf { it.isNotBlank() },
-                                    markwon = markwon,
+                                    previewContent = previewContent,
                                     selectionMode = selectionMode,
                                     selected = docUriStr in selectedDocUris,
                                     onClick = {
@@ -364,7 +428,6 @@ fun DocumentListScreen(
                                         selectedDoc = doc
                                         showDocMenu = true
                                     },
-                                    listBg = listBg,
                                 )
                             }
                         }
@@ -392,7 +455,7 @@ fun DocumentListScreen(
             DocumentRowActionsSheet(
                 onRename = {
                     val doc = selectedDoc ?: return@DocumentRowActionsSheet
-                    renameInput = doc.baseName.ifBlank { doc.name.removeSuffix(".md") }
+                    renameInput = doc.baseName.ifBlank { ZhixuDrawFormat.stripDrawingExtension(doc.name).removeSuffix(".md") }
                     showDocMenu = false
                     showRenameDialog = true
                 },
@@ -404,8 +467,12 @@ fun DocumentListScreen(
                     val doc = selectedDoc ?: return@DocumentRowActionsSheet
                     showDocMenu = false
                     scope.launch {
-                        val text = withContext(Dispatchers.IO) { repository.readText(doc.uri) }
-                        clipboard.setText(AnnotatedString(text))
+                        val isDrawing = ZhixuDrawFormat.hasDrawingExtension(doc.name)
+                        val payload =
+                            withContext(Dispatchers.IO) {
+                                if (isDrawing) doc.uri.toString() else repository.readText(doc.uri)
+                            }
+                        clipboard.setText(AnnotatedString(payload))
                         Toast.makeText(context, context.getString(R.string.common_copied), Toast.LENGTH_SHORT).show()
                     }
                 },
@@ -413,13 +480,23 @@ fun DocumentListScreen(
                     val doc = selectedDoc ?: return@DocumentRowActionsSheet
                     showDocMenu = false
                     scope.launch {
-                        val text = withContext(Dispatchers.IO) { repository.readText(doc.uri) }
-                        val subject = doc.baseName.ifBlank { doc.name.removeSuffix(".md").ifBlank { "Zhixu" } }
+                        val isDrawing = ZhixuDrawFormat.hasDrawingExtension(doc.name)
+                        val subject = doc.baseName.ifBlank { ZhixuDrawFormat.stripDrawingExtension(doc.name).ifBlank { "Zhixu" } }
                         val intent =
-                            Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_SUBJECT, subject)
-                                putExtra(Intent.EXTRA_TEXT, text)
+                            if (isDrawing) {
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type = ZhixuDrawFormat.MIME_TYPE
+                                    putExtra(Intent.EXTRA_SUBJECT, subject)
+                                    putExtra(Intent.EXTRA_STREAM, doc.uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                            } else {
+                                val text = withContext(Dispatchers.IO) { repository.readText(doc.uri) }
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, subject)
+                                    putExtra(Intent.EXTRA_TEXT, text)
+                                }
                             }
                         runCatching {
                             context.startActivity(Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -467,7 +544,11 @@ fun DocumentListScreen(
                         scope.launch {
                             val renamed =
                                 withContext(Dispatchers.IO) {
-                                    repository.renameDoc(doc.uri, desiredName)
+                                    if (ZhixuDrawFormat.hasDrawingExtension(doc.name)) {
+                                        repository.renameFile(doc.uri, desiredName)
+                                    } else {
+                                        repository.renameDoc(doc.uri, desiredName)
+                                    }
                                 }
                             if (renamed == null) {
                                 Toast.makeText(context, context.getString(R.string.editor_rename_failed_generic), Toast.LENGTH_SHORT).show()
@@ -625,14 +706,12 @@ private fun DocumentRowActionsSheet(
 private fun DocRow(
     title: String,
     editedAt: String,
-    previewMarkdown: String?,
-    markwon: Markwon,
+    previewContent: (@Composable () -> Unit)?,
     selectionMode: Boolean,
     selected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onMoreClick: () -> Unit,
-    listBg: Color,
 ) {
     Surface(
         modifier =
@@ -697,27 +776,7 @@ private fun DocRow(
                 }
             }
 
-            if (!previewMarkdown.isNullOrBlank()) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                    color = listBg,
-                    shape = RoundedCornerShape(8.dp),
-                ) {
-                    MarkwonPreviewText(
-                        markwon = markwon,
-                        markdown = previewMarkdown,
-                        textStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                        maxLines = Int.MAX_VALUE,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .wrapContentHeight()
-                                .padding(horizontal = 12.dp, vertical = 10.dp)
-                                .pointerInteropFilter { false },
-                    )
-                }
-            }
+            previewContent?.invoke()
         }
     }
 }

@@ -163,10 +163,12 @@ fun VaultDrawer(
     val expandedDirs = remember(vaultRootUri) { mutableStateMapOf<String, Boolean>() }
 
     fun parentPathOf(relativePath: String): String? {
-        val cleaned = relativePath.replace('\\', '/').trimStart('/')
-        val idx = cleaned.lastIndexOf('/')
+        val cleaned = relativePath.replace('\\', '/').trimStart('/').trim()
+        if (cleaned.isBlank()) return null
+        val withoutTrailing = cleaned.trimEnd('/')
+        val idx = withoutTrailing.lastIndexOf('/')
         if (idx < 0) return null
-        return cleaned.substring(0, idx + 1).takeIf { it.isNotBlank() }
+        return withoutTrailing.substring(0, idx + 1).takeIf { it.isNotBlank() }
     }
 
     fun persistCache(now: Long = System.currentTimeMillis()) {
@@ -258,7 +260,7 @@ fun VaultDrawer(
         handledRefreshToken = refreshToken
 
         val m = mutation ?: run { persistCache(); return@LaunchedEffect }
-        val dirsToRefresh =
+        val dirsToRefreshInitial =
             when (m) {
                 is DocListMutation.Created ->
                     listOfNotNull(repository.computeRelativePath(vaultRootUri, m.doc.uri))
@@ -278,6 +280,10 @@ fun VaultDrawer(
                     listOfNotNull(repository.computeRelativePath(vaultRootUri, m.entryUri))
                         .map { parentPathOf(it) ?: "" }
             }.distinct()
+
+        val dirsToRefresh =
+            (dirsToRefreshInitial + dirsToRefreshInitial.map { parentPathOf(it) ?: "" })
+                .distinct()
 
         var refreshedAny = false
         for (dir in dirsToRefresh) {

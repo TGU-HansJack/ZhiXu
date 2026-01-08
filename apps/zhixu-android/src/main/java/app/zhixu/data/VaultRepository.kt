@@ -709,6 +709,57 @@ class VaultRepository(
             )
     }
 
+    suspend fun listDrawingDocs(rootUri: Uri): List<UiDoc> = withContext(Dispatchers.IO) {
+        val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext emptyList()
+        val docs = ArrayList<UiDoc>()
+
+        fun isDrawing(file: DocumentFile): Boolean {
+            if (!file.isFile) return false
+            val name = file.name ?: return false
+            val lower = name.lowercase()
+            return (lower.endsWith(".zhixu") && lower.length > ".zhixu".length) || (lower.endsWith(".zhixud") && lower.length > ".zhixud".length)
+        }
+
+        fun shouldSkipDir(path: String): Boolean {
+            val p = path.trimStart('/').replace('\\', '/')
+            if (p.equals(appConfigDirName, ignoreCase = true)) return true
+            if (p.startsWith("$appConfigDirName/", ignoreCase = true)) return true
+            return false
+        }
+
+        fun walk(dir: DocumentFile, prefix: String) {
+            for (child in dir.listFiles()) {
+                val name = child.name ?: continue
+                val path = if (prefix.isBlank()) name else "$prefix/$name"
+                if (child.isDirectory) {
+                    if (shouldSkipDir(path)) continue
+                    walk(child, path)
+                } else if (child.isFile && isDrawing(child)) {
+                    val lastModified = child.lastModified()
+                    docs +=
+                        UiDoc(
+                            name = name,
+                            uri = child.uri,
+                            lastModified = lastModified,
+                            size = child.length(),
+                            baseName = computeDocBaseName(name),
+                            createdAt = 0L,
+                            createdAtText = "",
+                            editedAtText = formatEditedAt(lastModified),
+                        )
+                }
+            }
+        }
+
+        walk(root, "")
+
+        docs
+            .sortedWith(
+                compareByDescending<UiDoc> { it.lastModified }
+                    .thenBy { it.name.lowercase() },
+            )
+    }
+
     suspend fun listVaultTreeEntries(
         rootUri: Uri,
         includeNonMarkdownFiles: Boolean = false,
@@ -1137,9 +1188,10 @@ class VaultRepository(
         try {
             ensureVaultStructure(rootUri)
             // Reuse the most recent doc listing when available to avoid repeated full directory scans.
-            val docs = listMarkdownDocsCached(rootUri, force = forceScan, maxStaleMs = 3 * 60_000L)
+            val markdownDocs = listMarkdownDocsCached(rootUri, force = forceScan, maxStaleMs = 3 * 60_000L)
+            val drawingDocs = listDrawingDocs(rootUri)
 
-            val keepUris = docs.map { it.uri.toString() }.toHashSet()
+            val keepUris = (markdownDocs.asSequence() + drawingDocs.asSequence()).map { it.uri.toString() }.toHashSet()
             val stale =
                 runCatching { indexRepository.listAllDocUris() }
                     .getOrElse { emptyList() }
@@ -1150,7 +1202,7 @@ class VaultRepository(
             }
 
             val coroutineContext = currentCoroutineContext()
-            for (doc in docs) {
+            for (doc in markdownDocs) {
                 coroutineContext.ensureActive()
                 runCatching {
                     val content = readText(doc.uri)
@@ -1169,6 +1221,22 @@ class VaultRepository(
                             size = stat?.length() ?: finalContent.toByteArray(StandardCharsets.UTF_8).size.toLong(),
                         )
                     indexRepository.indexDocument(indexedDoc, finalContent)
+                }.onFailure {
+                    Log.e("Zhixu", "Index failed for ${doc.uri}", it)
+                }
+                yield()
+            }
+
+            for (doc in drawingDocs) {
+                coroutineContext.ensureActive()
+                runCatching {
+                    val stat = DocumentFile.fromSingleUri(context, doc.uri)
+                    val indexedDoc =
+                        doc.copy(
+                            lastModified = stat?.lastModified() ?: doc.lastModified,
+                            size = stat?.length() ?: doc.size,
+                        )
+                    indexRepository.indexDocument(indexedDoc, "")
                 }.onFailure {
                     Log.e("Zhixu", "Index failed for ${doc.uri}", it)
                 }
@@ -1784,6 +1852,39 @@ class VaultRepository(
         }
     }
 
+    suspend fun indexDrawingUri(rootUri: Uri, drawingUri: Uri) = withContext(Dispatchers.IO) {
+        runCatching {
+            val doc =
+                if (drawingUri.scheme.equals("file", ignoreCase = true)) {
+                    val path = drawingUri.path ?: return@runCatching
+                    val file = File(path)
+                    if (!file.exists() || !file.isFile) return@runCatching
+                    DocumentFile.fromFile(file)
+                } else {
+                    DocumentFile.fromSingleUri(context, drawingUri) ?: return@runCatching
+                }
+            if (!doc.isFile) return@runCatching
+
+            val name = doc.name?.takeIf { it.isNotBlank() } ?: "Drawing.zhixu"
+            val lastModified = doc.lastModified()
+            val size = doc.length()
+            val uiDoc =
+                UiDoc(
+                    name = name,
+                    uri = doc.uri,
+                    lastModified = lastModified,
+                    size = size,
+                    baseName = computeDocBaseName(name),
+                )
+            indexRepository.indexDocument(uiDoc, "")
+            signalIndexChanged()
+            recordDailyDocEdited(docUri = uiDoc.uri, day = LocalDate.now())
+            runCatching { upsertDirIndexEntryForFileIfPresent(rootUri, doc) }
+        }.onFailure {
+            Log.e("Zhixu", "indexDrawingUri failed for $drawingUri", it)
+        }
+    }
+
     suspend fun taskStats(
         rootUri: Uri,
         days: Int = 98,
@@ -2111,4 +2212,9 @@ private fun formatEditedAt(lastModifiedMs: Long): String {
 }
 
 private fun computeDocBaseName(name: String): String =
-    if (name.endsWith(".md", ignoreCase = true)) name.dropLast(3) else name
+    when {
+        name.endsWith(".md", ignoreCase = true) -> name.dropLast(3)
+        name.endsWith(".zhixu", ignoreCase = true) && name.length > ".zhixu".length -> name.dropLast(".zhixu".length)
+        name.endsWith(".zhixud", ignoreCase = true) && name.length > ".zhixud".length -> name.dropLast(".zhixud".length)
+        else -> name
+    }

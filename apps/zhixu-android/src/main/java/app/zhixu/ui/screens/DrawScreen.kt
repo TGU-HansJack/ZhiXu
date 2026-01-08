@@ -85,6 +85,7 @@ import app.zhixu.draw.tools.PenToolMachine
 import app.zhixu.draw.tools.ShapeToolMachine
 import app.zhixu.draw.tools.ToolPointerEvent
 import app.zhixu.ui.Ionicons
+import app.zhixu.ui.DocListMutation
 import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTextField
@@ -104,6 +105,7 @@ fun DrawScreen(
     vaultRootUri: Uri,
     repository: VaultRepository,
     docUri: Uri?,
+    onDocListMutated: (DocListMutation) -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -173,6 +175,8 @@ fun DrawScreen(
         markEdited()
         val bytes = ZhixuDrawFormat.encode(editor.toDocument())
         repository.writeBytes(uri, bytes)
+        repository.indexDrawingUri(vaultRootUri, uri)
+        onDocListMutated(DocListMutation.EntryChanged(uri))
     }
 
     var showSaveAsDialog by remember { mutableStateOf(false) }
