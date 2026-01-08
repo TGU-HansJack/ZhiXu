@@ -258,6 +258,49 @@
         padding: 0.08em 0.28em;
         border-radius: 6px;
       }
+
+      /* Fenced code block */
+      .cm-lp-codeblock-line {
+        background: rgba(127, 127, 127, 0.045) !important;
+        padding: 0 1em !important;
+      }
+      .cm-lp-codeblock-first {
+        border-top-left-radius: 4px;
+        border-top-right-radius: 4px;
+      }
+      .cm-lp-codeblock-last {
+        border-bottom-left-radius: 4px;
+        border-bottom-right-radius: 4px;
+      }
+      .cm-lp-codeblock-fence { position: relative; }
+      .cm-lp-codeblock-fence-hidden { color: transparent !important; }
+      .cm-lp-codeblock-header {
+        display: inline-flex;
+        justify-content: flex-end;
+        align-items: center;
+        width: 100%;
+      }
+      .cm-lp-codeblock-copy {
+        all: unset;
+        cursor: pointer;
+        user-select: none;
+        border-radius: 4px;
+        background: rgba(127, 127, 127, 0.10);
+        border: 1px solid var(--outline);
+        color: var(--onSurface);
+        padding: 0 6px;
+        height: 1.2em;
+        line-height: 1.2em;
+        font-size: 0.78em;
+        font-weight: 650;
+        font-family: var(--editorFont);
+      }
+      .cm-lp-codeblock-copy:active { background: rgba(127, 127, 127, 0.12); }
+
+      .cm-lp-codeblock-token-keyword { color: var(--primary); }
+      .cm-lp-codeblock-token-string { color: rgba(46, 160, 67, 0.95); }
+      .cm-lp-codeblock-token-comment { color: rgba(127, 127, 127, 0.80); }
+      .cm-lp-codeblock-token-number { color: rgba(191, 90, 0, 0.95); }
       .cm-lp-h1 { font-size: 1.55em; font-weight: 750; }
       .cm-lp-h2 { font-size: 1.28em; font-weight: 750; }
       .cm-lp-h3 { font-size: 1.16em; font-weight: 750; }

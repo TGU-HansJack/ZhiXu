@@ -650,8 +650,237 @@ if(__fmInfo){
       s.push(Y.line({class:"cm-lp-fm-hidden"}).range(line.from));
     }
   }catch(_){}
-  e=__fm.mask(e,__fmInfo.from,__fmInfo.to);
-}
-let p=/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;for(let P;P=p.exec(e);){let Z=P.index,v=P[0],L=Z+v.length,E=P[1]||"",I=P[2]||"";qe(Z,L,i,r)||s.push(Y.replace({widget:new lpImgW(I,E,Z,L)}).range(Z,L))}let w=/!\[\[([^\]]+?)\]\]/g;for(let P;P=w.exec(e);){let Z=P.index,v=P[0],L=Z+v.length,E=P[1]||"";qe(Z,L,i,r)||s.push(Y.replace({widget:new lpImgW(E,"",Z,L)}).range(Z,L))}let a=/^([ \t]*)-\s+\[( |x|X)\]\s+/gm;for(let P;P=a.exec(e);){let Z=(k=P[1])!=null?k:"",L=((z=P[2])!=null?z:" ").toLowerCase()==="x",E=P[0],_=P.index+Z.length,I=P.index+E.length,U=E.indexOf("["),le=P.index+U+1;qe(_,I,i,r)?s.push(lt.range(_,Math.min(_+2,I))):s.push(Y.replace({widget:new sa(L,le)}).range(_,I))}let olR=/^([ \t]*)(\d+)\.[ \t]+/gm;for(let P;P=olR.exec(e);){let Z=P[1]||"",v=P[0],L=P.index+Z.length,E=P.index+v.length;qe(L,E,i,r)||s.push(Y.mark({class:"cm-lp-ol-mark"}).range(L,E))}let h=/^([ \t]*)([-*+])[ \t]+/gm;for(let P;P=h.exec(e);){let Z=(C=P[1])!=null?C:"",v=P[0];let L=P.index+Z.length,E=P.index+v.length;if(e.slice(E,E+1)=="[")continue;s.push(Y.line({class:"cm-lp-li"}).range(n.state.doc.lineAt(P.index).from)),qe(L,E,i,r)||s.push(Y.replace({widget:new ra}).range(L,E))}let c=/\*\*([^\n]+?)\*\*/g;for(let P;P=c.exec(e);){let Z=P.index,v=(M=P[1])!=null?M:"",L=Z,E=Z+2,_=E,I=_+v.length,U=I,le=U+2;_<I&&s.push(Y.mark({class:"cm-lp-strong"}).range(_,I)),qe(L,E,i,r)||s.push(lt.range(L,E)),qe(U,le,i,r)||s.push(lt.range(U,le))}let f=/~~([^\n]+?)~~/g;for(let P;P=f.exec(e);){let Z=P.index,v=($=P[1])!=null?$:"",L=Z,E=Z+2,_=E,I=_+v.length,U=I,le=U+2;_<I&&s.push(Y.mark({class:"cm-lp-strike"}).range(_,I)),qe(L,E,i,r)||s.push(lt.range(L,E)),qe(U,le,i,r)||s.push(lt.range(U,le))}let u=/\*(?!\*)([^\n*]+?)\*(?!\*)/g;for(let P;P=u.exec(e);){let Z=P.index,v=(K=P[1])!=null?K:"",L=Z,E=Z+1,_=E,I=_+v.length,U=I,le=U+1;_<I&&s.push(Y.mark({class:"cm-lp-em"}).range(_,I)),qe(L,E,i,r)||s.push(lt.range(L,E)),qe(U,le,i,r)||s.push(lt.range(U,le))}let d=/`([^\n`]+?)`/g;for(let P;P=d.exec(e);){let Z=P.index,v=(W=P[1])!=null?W:"",L=Z,E=Z+1,_=E,I=_+v.length,U=I,le=U+1;_<I&&s.push(Y.mark({class:"cm-lp-inline-code"}).range(_,I)),qe(L,E,i,r)||s.push(lt.range(L,E)),qe(U,le,i,r)||s.push(lt.range(U,le))}return Y.set(s,!0)}catch(e){console.error(e);return Y.set([],!0)}}var Ld=it.fromClass(class{constructor(n){zn(this,"decorations");this.decorations=Xd(n)}update(n){(n.docChanged||n.selectionSet||n.viewportChanged)&&(this.decorations=Xd(n.view))}},{decorations:n=>n.decorations});function gS({state:n,dispatch:e}){let t=n.selection.main;if(!t.empty)return!1;let i=t.from,r=n.doc.lineAt(i),s=r.text,o=r.to,l=/^([ \t]*)-\s+\[( |x|X)\][ \t]+/.exec(s),a=/^([ \t]*)([-*+])[ \t]+/.exec(s),h=/^([ \t]*)(\d+)\.[ \t]+/.exec(s),c=/^([ \t]*(?:>[ \t]*)+)/.exec(s),f=null,u=null;if(l){let O=l[1]||"";f=l[0],u=`${O}- [ ] `}else if(h){let O=h[1]||"",m=Number(h[2])||1;f=`${O}${m}. `,u=`${O}${m+1}. `}else if(a){let O=a[1]||"",m=a[2]||"-";f=`${O}${m} `,u=f}else if(c)f=c[0],u=f;else return!1;let d=s.slice(f.length).trim();return i===o&&d.length===0?(e(n.update({changes:{from:r.from,to:r.from+f.length,insert:`
+	  e=__fm.mask(e,__fmInfo.from,__fmInfo.to);
+	}
+
+	let __cb=Xd.__cb;
+	if(!__cb){
+	  function cbMask(text, from, to){
+	    return text.slice(0,from)+text.slice(from,to).replace(/[^\r\n]/g," ")+text.slice(to);
+	  }
+	  function cbLabel(raw){
+	    let s=(raw==null?"":String(raw)).trim();
+	    if(!s) return "TXT";
+	    s=(s.split(/\s+/)[0]||"").trim();
+	    if(!s) return "TXT";
+	    let u=s.toUpperCase();
+	    if(u==="TEXT"||u==="PLAIN"||u==="PLAINTEXT") return "TXT";
+	    if(u==="JAVASCRIPT") return "JS";
+	    if(u==="TYPESCRIPT") return "TS";
+	    if(u.length>12) u=u.slice(0,12);
+	    return u;
+	  }
+	  async function cbCopy(text){
+	    try{
+	      if(navigator.clipboard && navigator.clipboard.writeText){
+	        await navigator.clipboard.writeText(text);
+	        return;
+	      }
+	    }catch(_){}
+	    try{
+	      let ta=document.createElement("textarea");
+	      ta.value=text;
+	      ta.setAttribute("readonly","true");
+	      ta.style.position="fixed";
+	      ta.style.opacity="0";
+	      ta.style.left="-9999px";
+	      ta.style.top="0";
+	      document.body.appendChild(ta);
+	      ta.select();
+	      document.execCommand("copy");
+	      document.body.removeChild(ta);
+	    }catch(_){}
+	  }
+	  class CodeBlockCopyWidget extends Qe{
+	    constructor(label, from, to){
+	      super();
+	      this.label=label;
+	      this.from=from|0;
+	      this.to=to|0;
+	    }
+	    eq(other){
+	      return other.label===this.label && other.from===this.from && other.to===this.to;
+	    }
+	    toDOM(view){
+	      let wrap=document.createElement("span");
+	      wrap.className="cm-lp-codeblock-header";
+	      let btn=document.createElement("button");
+	      btn.type="button";
+	      btn.className="cm-lp-codeblock-copy";
+	      btn.textContent=this.label;
+	      btn.addEventListener("click",(ev)=>{
+	        ev.preventDefault();
+	        ev.stopPropagation();
+	        let text=view.state.doc.sliceString(this.from,this.to);
+	        if(text.endsWith("\r\n")) text=text.slice(0,-2);
+	        else if(text.endsWith("\n")||text.endsWith("\r")) text=text.slice(0,-1);
+	        cbCopy(text);
+	      });
+	      wrap.appendChild(btn);
+	      return wrap;
+	    }
+	    ignoreEvent(){ return !1; }
+	  }
+	  function cbLangId(raw){
+	    let s=(raw==null?"":String(raw)).trim().toLowerCase();
+	    if(!s) return "plain";
+	    s=(s.split(/\s+/)[0]||"").trim();
+	    if(s==="py"||s==="python") return "python";
+	    if(s==="js"||s==="javascript"||s==="node") return "javascript";
+	    if(s==="ts"||s==="typescript") return "typescript";
+	    if(s==="php") return "php";
+	    return "plain";
+	  }
+	  function cbOverlaps(ranges, from, to){
+	    for(let r of ranges){
+	      if(from<r[1] && to>r[0]) return !0;
+	    }
+	    return !1;
+	  }
+	  const cbStrR=/'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"/g;
+	  const cbStrJsR=/'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|`(?:[^`\\]|\\.)*`/g;
+	  const cbBlockCommentR=/\/\*[\s\S]*?\*\//g;
+	  const cbNumR=/\b(?:0x[0-9a-fA-F]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b/g;
+	  const cbKwPyR=/\b(?:and|as|assert|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|match|case|nonlocal|not|or|pass|raise|return|try|while|with|yield|True|False|None)\b/g;
+	  const cbKwJsR=/\b(?:const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|new|class|extends|super|import|from|export|default|async|await|yield|this|typeof|instanceof|in|of|void|delete|true|false|null|undefined)\b/g;
+	  const cbKwTsR=/\b(?:const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|new|class|extends|super|import|from|export|default|async|await|yield|this|typeof|instanceof|in|of|void|delete|true|false|null|undefined|interface|type|enum|implements|private|protected|public|readonly|abstract|declare|namespace|any|unknown|never)\b/g;
+	  const cbKwPhpR=/\b(?:function|class|public|private|protected|static|return|if|else|elseif|for|foreach|while|do|switch|case|break|continue|try|catch|finally|throw|new|extends|implements|namespace|use|echo|print|true|false|null)\b/g;
+	  function cbFindLineComment(text, prefixes, protectedRanges){
+	    let pos=0;
+	    while(pos<text.length){
+	      let jumped=!1;
+	      for(let r of protectedRanges){
+	        if(pos>=r[0] && pos<r[1]){ pos=r[1]; jumped=!0; break; }
+	      }
+	      if(jumped) continue;
+	      for(let p of prefixes){
+	        if(p && text.startsWith(p,pos)) return pos;
+	      }
+	      pos++;
+	    }
+	    return -1;
+	  }
+	  function cbHighlightLine(langId, text, base, out){
+	    if(!text) return;
+	    let strRanges=[];
+	    let commentRanges=[];
+	    let strR=(langId==="javascript"||langId==="typescript")?cbStrJsR:cbStrR;
+	    strR.lastIndex=0;
+	    for(let m; (m=strR.exec(text)); ){
+	      strRanges.push([m.index,m.index+m[0].length]);
+	    }
+	    if(langId==="javascript"||langId==="typescript"||langId==="php"){
+	      cbBlockCommentR.lastIndex=0;
+	      for(let m; (m=cbBlockCommentR.exec(text)); ){
+	        let a=m.index,b=a+m[0].length;
+	        if(cbOverlaps(strRanges,a,b)) continue;
+	        commentRanges.push([a,b]);
+	      }
+	    }
+	    let prefixes=langId==="python"?["#"]:(langId==="javascript"||langId==="typescript")?["//"]:["//","#"];
+	    let protectedForLine=strRanges.concat(commentRanges);
+	    let lineCommentStart=cbFindLineComment(text,prefixes,protectedForLine);
+	    if(lineCommentStart>=0) commentRanges.push([lineCommentStart,text.length]);
+	    for(let r of strRanges){
+	      out.push(Y.mark({class:"cm-lp-codeblock-token-string"}).range(base+r[0],base+r[1]));
+	    }
+	    for(let r of commentRanges){
+	      out.push(Y.mark({class:"cm-lp-codeblock-token-comment"}).range(base+r[0],base+r[1]));
+	    }
+	    let protectedAll=strRanges.concat(commentRanges);
+	    cbNumR.lastIndex=0;
+	    for(let m; (m=cbNumR.exec(text)); ){
+	      let a=m.index,b=a+m[0].length;
+	      if(cbOverlaps(protectedAll,a,b)) continue;
+	      out.push(Y.mark({class:"cm-lp-codeblock-token-number"}).range(base+a,base+b));
+	    }
+	    let kwR=langId==="python"?cbKwPyR:langId==="typescript"?cbKwTsR:langId==="javascript"?cbKwJsR:langId==="php"?cbKwPhpR:null;
+	    if(kwR){
+	      kwR.lastIndex=0;
+	      for(let m; (m=kwR.exec(text)); ){
+	        let a=m.index,b=a+m[0].length;
+	        if(cbOverlaps(protectedAll,a,b)) continue;
+	        out.push(Y.mark({class:"cm-lp-codeblock-token-keyword"}).range(base+a,base+b));
+	      }
+	    }
+	  }
+	  __cb={mask:cbMask,label:cbLabel,copy:cbCopy,Widget:CodeBlockCopyWidget,langId:cbLangId,highlightLine:cbHighlightLine};
+	  Xd.__cb=__cb;
+	}
+
+	// Fenced code blocks (```lang ... ```)
+	{
+	  let doc=n.state.doc;
+	  let blocks=[];
+	  let open=null;
+	  for(let ln=1; ln<=doc.lines; ln++){
+	    let line=doc.line(ln);
+	    let m=/^([ \t]*)```([^\n\r]*)$/.exec(line.text);
+	    if(!m) continue;
+	    let info=(m[2]||"");
+	    if(!open){
+	      let lang=(info.trim().split(/\s+/)[0]||"");
+	      open={openLine:ln,openFrom:line.from,openTo:line.to,contentFrom:Math.min(doc.length,line.to+1),langRaw:lang};
+	    }else{
+	      blocks.push({openFrom:open.openFrom,openTo:open.openTo,contentFrom:open.contentFrom,contentTo:line.from,closeFrom:line.from,closeTo:line.to,langRaw:open.langRaw,openLine:open.openLine,closeLine:ln});
+	      open=null;
+	    }
+	  }
+	  if(open){
+	    blocks.push({openFrom:open.openFrom,openTo:open.openTo,contentFrom:open.contentFrom,contentTo:doc.length,closeFrom:-1,closeTo:-1,langRaw:open.langRaw,openLine:open.openLine,closeLine:-1});
+	  }
+	  if(blocks.length){
+	    try{
+	      // Remove any prior live-preview decorations inside code blocks (e.g. headings/quotes/links),
+	      // otherwise markdown parsing will still apply before we mask the text.
+	      for(let di=s.length-1;di>=0;di--){
+	        let dr=s[di];
+	        let from=dr && dr.from;
+	        if(from==null) continue;
+	        for(let cb of blocks){
+	          let end=cb.closeTo>=0?cb.closeTo:cb.contentTo;
+	          if(from>=cb.openFrom && from<end){
+	            s.splice(di,1);
+	            break;
+	          }
+	        }
+	      }
+	    }catch(_){}
+	    for(let b of blocks){
+	      let blockTo=b.closeTo>=0?b.closeTo:b.contentTo;
+	      let active=qe(b.openFrom,blockTo,i,r);
+	      let lastLineNum=b.closeLine>=0?b.closeLine:doc.lines;
+	      for(let ln=b.openLine; ln<=lastLineNum; ln++){
+	        let line=doc.line(ln);
+	        let cls="cm-lp-codeblock-line";
+	        if(ln===b.openLine) cls+=" cm-lp-codeblock-first cm-lp-codeblock-fence";
+	        if(ln===lastLineNum) cls+=" cm-lp-codeblock-last";
+	        if(b.closeLine>=0 && ln===b.closeLine) cls+=" cm-lp-codeblock-fence";
+	        s.push(Y.line({class:cls}).range(line.from));
+	      }
+	      if(b.contentFrom<b.contentTo){
+	        let langId=__cb.langId(b.langRaw);
+	        let pos=b.contentFrom;
+	        while(pos<b.contentTo){
+	          let line=doc.lineAt(pos);
+	          let from=Math.max(line.from,b.contentFrom);
+	          let to=Math.min(line.to,b.contentTo);
+	          if(from<to) __cb.highlightLine(langId,doc.sliceString(from,to),from,s);
+	          pos=line.to+1;
+	        }
+	      }
+	      if(!active){
+	        let label=__cb.label(b.langRaw);
+	        s.push(Y.replace({widget:new __cb.Widget(label,b.contentFrom,b.contentTo)}).range(b.openFrom,b.openTo));
+	        if(b.closeFrom>=0) s.push(lt.range(b.closeFrom,b.closeTo));
+	      }
+	    }
+	    for(let b of blocks){
+	      let maskEnd=b.closeTo>=0?b.closeTo:b.contentTo;
+	      e=__cb.mask(e,b.openFrom,maskEnd);
+	    }
+	  }
+	}
+	let p=/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;for(let P;P=p.exec(e);){let Z=P.index,v=P[0],L=Z+v.length,E=P[1]||"",I=P[2]||"";qe(Z,L,i,r)||s.push(Y.replace({widget:new lpImgW(I,E,Z,L)}).range(Z,L))}let w=/!\[\[([^\]]+?)\]\]/g;for(let P;P=w.exec(e);){let Z=P.index,v=P[0],L=Z+v.length,E=P[1]||"";qe(Z,L,i,r)||s.push(Y.replace({widget:new lpImgW(E,"",Z,L)}).range(Z,L))}let a=/^([ \t]*)-\s+\[( |x|X)\]\s+/gm;for(let P;P=a.exec(e);){let Z=(k=P[1])!=null?k:"",L=((z=P[2])!=null?z:" ").toLowerCase()==="x",E=P[0],_=P.index+Z.length,I=P.index+E.length,U=E.indexOf("["),le=P.index+U+1;qe(_,I,i,r)?s.push(lt.range(_,Math.min(_+2,I))):s.push(Y.replace({widget:new sa(L,le)}).range(_,I))}let olR=/^([ \t]*)(\d+)\.[ \t]+/gm;for(let P;P=olR.exec(e);){let Z=P[1]||"",v=P[0],L=P.index+Z.length,E=P.index+v.length;qe(L,E,i,r)||s.push(Y.mark({class:"cm-lp-ol-mark"}).range(L,E))}let h=/^([ \t]*)([-*+])[ \t]+/gm;for(let P;P=h.exec(e);){let Z=(C=P[1])!=null?C:"",v=P[0];let L=P.index+Z.length,E=P.index+v.length;if(e.slice(E,E+1)=="[")continue;s.push(Y.line({class:"cm-lp-li"}).range(n.state.doc.lineAt(P.index).from)),qe(L,E,i,r)||s.push(Y.replace({widget:new ra}).range(L,E))}let c=/\*\*([^\n]+?)\*\*/g;for(let P;P=c.exec(e);){let Z=P.index,v=(M=P[1])!=null?M:"",L=Z,E=Z+2,_=E,I=_+v.length,U=I,le=U+2;_<I&&s.push(Y.mark({class:"cm-lp-strong"}).range(_,I)),qe(L,E,i,r)||s.push(lt.range(L,E)),qe(U,le,i,r)||s.push(lt.range(U,le))}let f=/~~([^\n]+?)~~/g;for(let P;P=f.exec(e);){let Z=P.index,v=($=P[1])!=null?$:"",L=Z,E=Z+2,_=E,I=_+v.length,U=I,le=U+2;_<I&&s.push(Y.mark({class:"cm-lp-strike"}).range(_,I)),qe(L,E,i,r)||s.push(lt.range(L,E)),qe(U,le,i,r)||s.push(lt.range(U,le))}let u=/\*(?!\*)([^\n*]+?)\*(?!\*)/g;for(let P;P=u.exec(e);){let Z=P.index,v=(K=P[1])!=null?K:"",L=Z,E=Z+1,_=E,I=_+v.length,U=I,le=U+1;_<I&&s.push(Y.mark({class:"cm-lp-em"}).range(_,I)),qe(L,E,i,r)||s.push(lt.range(L,E)),qe(U,le,i,r)||s.push(lt.range(U,le))}let d=/`([^\n`]+?)`/g;for(let P;P=d.exec(e);){let Z=P.index,v=(W=P[1])!=null?W:"",L=Z,E=Z+1,_=E,I=_+v.length,U=I,le=U+1;_<I&&s.push(Y.mark({class:"cm-lp-inline-code"}).range(_,I)),qe(L,E,i,r)||s.push(lt.range(L,E)),qe(U,le,i,r)||s.push(lt.range(U,le))}return Y.set(s,!0)}catch(e){console.error(e);return Y.set([],!0)}}var Ld=it.fromClass(class{constructor(n){zn(this,"decorations");this.decorations=Xd(n)}update(n){(n.docChanged||n.selectionSet||n.viewportChanged)&&(this.decorations=Xd(n.view))}},{decorations:n=>n.decorations});function gS({state:n,dispatch:e}){let t=n.selection.main;if(!t.empty)return!1;let i=t.from,r=n.doc.lineAt(i),s=r.text,o=r.to,l=/^([ \t]*)-\s+\[( |x|X)\][ \t]+/.exec(s),a=/^([ \t]*)([-*+])[ \t]+/.exec(s),h=/^([ \t]*)(\d+)\.[ \t]+/.exec(s),c=/^([ \t]*(?:>[ \t]*)+)/.exec(s),f=null,u=null;if(l){let O=l[1]||"";f=l[0],u=`${O}- [ ] `}else if(h){let O=h[1]||"",m=Number(h[2])||1;f=`${O}${m}. `,u=`${O}${m+1}. `}else if(a){let O=a[1]||"",m=a[2]||"-";f=`${O}${m} `,u=f}else if(c)f=c[0],u=f;else return!1;let d=s.slice(f.length).trim();return i===o&&d.length===0?(e(n.update({changes:{from:r.from,to:r.from+f.length,insert:`
 `},selection:{anchor:r.from+1},scrollIntoView:!0,userEvent:"input"})),!0):(e(n.update({changes:{from:i,to:i,insert:`
 ${u}`},selection:{anchor:i+1+u.length},scrollIntoView:!0,userEvent:"input"})),!0)}var SS=A.theme({"&":{height:"100%",backgroundColor:"var(--surface)",color:"var(--onSurface)"},".cm-scroller":{fontFamily:"var(--editorFont)",fontSize:"var(--editorFontSize)",lineHeight:"var(--editorLineHeight)",padding:"8px 0"},".cm-content":{padding:"0 12px 18px"},"&.cm-focused .cm-cursor":{borderLeftColor:"var(--primary)"},"&.cm-focused .cm-selectionBackground, ::selection":{backgroundColor:"var(--editorSelection)"},".cm-line":{padding:"0"},".cm-gutters":{backgroundColor:"transparent",color:"rgba(127, 127, 127, 0.7)",border:"0"},".cm-lp-quote":{borderLeft:"2px solid var(--outline)",paddingLeft:"10px",opacity:"0.94"}},{dark:!1});function zd(n){if(!n)return null;try{return JSON.parse(n)}catch(e){return null}}function _d(n,e){let t=document.documentElement;if(n){t.style.setProperty("--surface",n.surface||"#FFFFFF"),t.style.setProperty("--onSurface",n.onSurface||"#111111"),t.style.setProperty("--outline",n.outline||"rgba(0,0,0,0.18)"),t.style.setProperty("--primary",n.primary||"#2F6FEB");let i=(n.primary||"#2F6FEB").replace("#","");if(i.length===6){let r=parseInt(i.slice(0,2),16),s=parseInt(i.slice(2,4),16),o=parseInt(i.slice(4,6),16);t.style.setProperty("--editorSelection",`rgba(${r}, ${s}, ${o}, 0.22)`)}}t.style.setProperty("--editorFontSize",`${Math.max(10,Number(e)||16)}px`)}var En=!1,xe=null,Rd=null;function QS(){var t,i;if(!xe||En)return;let n=xe.state.selection.main,e=`${n.from}:${n.to}`;Rd!==e&&(Rd=e,(i=(t=window.ZhixuEditor)==null?void 0:t.selectionChanged)==null||i.call(t,n.from,n.to))}function bS(){var t,i;if(!xe||En)return;let n=xe.state.selection.main,e=xe.state.doc.toString();(i=(t=window.ZhixuEditor)==null?void 0:t.docChanged)==null||i.call(t,e,n.from,n.to)}var yS=A.updateListener.of(n=>{En||(n.selectionSet&&QS(),n.docChanged&&bS())});function Yd(){if(xe)return;let n=document.getElementById("editor");if(!n)return;let e=window.__payload||{},t=zd(e.themeJson);_d(t,Number(e.fontSizePx)||16);let i=Number(e.selStart)||0,r=Number(e.selEnd)||i,s=N.create({doc:e.text||"",selection:{anchor:i,head:r},extensions:[SS,A.lineWrapping,_c(),Pc(),ii.of([{key:"Enter",run:gS},...pf,...qc]),Ad(),yS,Ed.of(e.placeholder?xo(e.placeholder):[]),Md.of(e.mode==="source"?[]:[Ld])]});xe=new A({state:s,parent:n})}window.__apply=()=>{if(Yd(),!xe)return;let n=window.__payload||{},e=zd(n.themeJson),t=Number(n.fontSizePx)||16,i=n.text||"",r=Math.max(0,Number(n.selStart)||0),s=Math.max(0,Number(n.selEnd)||r);En=!0;try{_d(e,t),xe.dispatch({effects:[Ed.reconfigure(n.placeholder?xo(n.placeholder):[]),Md.reconfigure(n.mode==="source"?[]:[Ld])]});let o=xe.state.doc.toString(),l=xe.state.selection.main;o!==i?xe.dispatch({changes:{from:0,to:xe.state.doc.length,insert:i},selection:{anchor:Math.min(r,i.length),head:Math.min(s,i.length)},scrollIntoView:!0}):(l.from!==r||l.to!==s)&&xe.dispatch({selection:{anchor:Math.min(r,i.length),head:Math.min(s,i.length)},scrollIntoView:!0})}finally{En=!1}};Yd();typeof window.__scheduleApply=="function"&&window.__scheduleApply()});xS();})();
