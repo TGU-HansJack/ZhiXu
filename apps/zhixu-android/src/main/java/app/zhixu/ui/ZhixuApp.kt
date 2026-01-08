@@ -108,6 +108,7 @@ import app.zhixu.ui.screens.AuthScreen
 import app.zhixu.ui.screens.CalendarTasksScreen
 import app.zhixu.ui.screens.DeviceManagementScreen
 import app.zhixu.ui.screens.DocumentListScreen
+import app.zhixu.ui.screens.DrawScreen
 import app.zhixu.ui.screens.EditorScreen
 import app.zhixu.ui.screens.ImagePreviewScreen
 import app.zhixu.ui.screens.LongImageScreen
@@ -731,7 +732,10 @@ fun ZhixuApp(
                                         onOcr = { createSheetPage = CreateSheetPage.Ocr },
                                         onRecord = { android.widget.Toast.makeText(context, "录音：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
                                         onCamera = { android.widget.Toast.makeText(context, "相机：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
-                                        onDraw = { android.widget.Toast.makeText(context, "绘画：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
+                                        onDraw = {
+                                            createSheetPage = null
+                                            navController.navigate("draw")
+                                        },
                                         onNewTodo = { createSheetPage = CreateSheetPage.Todo },
                                         onNewNote = { createSheetPage = CreateSheetPage.Note },
                                     )
@@ -1081,6 +1085,24 @@ fun ZhixuApp(
                             }
                         },
                         onBack = { navController.popBackStack() },
+                    )
+                }
+                composable("draw") {
+                    val root = vaultRootUri
+                    if (root == null) {
+                        navController.navigate("vault") {
+                            popUpTo("draw") { inclusive = true }
+                        }
+                        return@composable
+                    }
+                    DrawScreen(
+                        vaultRootUri = root,
+                        repository = repository,
+                        onBack = { navController.popBackStack() },
+                        onSaved = { docUri ->
+                            navController.popBackStack()
+                            openDoc(docUri, null, null)
+                        },
                     )
                 }
                 composable(

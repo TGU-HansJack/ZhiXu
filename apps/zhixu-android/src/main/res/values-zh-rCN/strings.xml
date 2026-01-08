@@ -92,6 +92,18 @@
     <string name="action_save">保存</string>
     <string name="action_undo">撤销</string>
     <string name="action_redo">重做</string>
+
+    <!-- Draw -->
+    <string name="draw_title">绘画</string>
+    <string name="draw_note_title">绘画</string>
+    <string name="draw_tool">工具</string>
+    <string name="draw_tool_pen">画笔</string>
+    <string name="draw_tool_eraser">橡皮</string>
+    <string name="draw_stroke_width">笔粗</string>
+    <string name="draw_action_clear">清空</string>
+    <string name="draw_clear_title">清空画布？</string>
+    <string name="draw_clear_message">将删除当前所有笔画。</string>
+    <string name="draw_save_failed">保存失败：%1$s</string>
     <string name="action_find_replace">查找/替换</string>
     <string name="dialog_find_replace_title">查找与替换</string>
     <string name="field_find">查找</string>

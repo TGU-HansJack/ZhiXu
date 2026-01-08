@@ -96,6 +96,18 @@
     <string name="action_save">Save</string>
     <string name="action_undo">Undo</string>
     <string name="action_redo">Redo</string>
+
+    <!-- Draw -->
+    <string name="draw_title">Draw</string>
+    <string name="draw_note_title">Drawing</string>
+    <string name="draw_tool">Tool</string>
+    <string name="draw_tool_pen">Pen</string>
+    <string name="draw_tool_eraser">Eraser</string>
+    <string name="draw_stroke_width">Width</string>
+    <string name="draw_action_clear">Clear</string>
+    <string name="draw_clear_title">Clear canvas?</string>
+    <string name="draw_clear_message">This will remove all strokes.</string>
+    <string name="draw_save_failed">Save failed: %1$s</string>
     <string name="action_find_replace">Find/Replace</string>
     <string name="dialog_find_replace_title">Find &amp; Replace</string>
     <string name="field_find">Find</string>
