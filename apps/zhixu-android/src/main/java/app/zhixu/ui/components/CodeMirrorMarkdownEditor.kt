@@ -7,6 +7,7 @@ import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
+import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -26,8 +27,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.documentfile.provider.DocumentFile
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONObject
+import java.net.URLConnection
 import kotlin.math.max
 import kotlin.math.min
 
@@ -39,6 +42,7 @@ fun CodeMirrorMarkdownEditor(
     isSourceMode: Boolean,
     placeholder: String = "",
     bottomInsetPx: Int = 0,
+    vaultRootUri: Uri? = null,
     onValueChange: (TextFieldValue) -> Unit,
 ) {
     val context = LocalContext.current
@@ -166,6 +170,15 @@ fun CodeMirrorMarkdownEditor(
                 webViewClient =
                     object : WebViewClient() {
                         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                            val url = request.url
+                            val path = url.path
+                            if (url.host == APPASSETS_HOST && path != null && path.startsWith("/vault/")) {
+                                val root = (view.getTag(TAG_EDITOR_VAULT_ROOT_URI) as? Uri)
+                                if (root != null) {
+                                    val rel = path.removePrefix("/vault/")
+                                    openVaultResource(view, root, rel)?.let { return it }
+                                }
+                            }
                             return assetLoader.shouldInterceptRequest(request.url)
                         }
 
@@ -200,6 +213,7 @@ fun CodeMirrorMarkdownEditor(
         },
         update = { webView ->
             webView.setBackgroundColor(colors.surface.toArgb())
+            webView.setTag(TAG_EDITOR_VAULT_ROOT_URI, vaultRootUri)
             val nextPrepared = prepared ?: return@AndroidView
             val lastSent = webView.getTag(TAG_EDITOR_LAST_SENT_STATE) as? PreparedEditorState
             val lastFromJs = webView.getTag(TAG_EDITOR_LAST_FROM_JS) as? JsReportedState
@@ -334,8 +348,40 @@ private const val TAG_EDITOR_PAGE_LOADED: Int = 0x5A48_4544
 private const val TAG_EDITOR_PENDING_STATE: Int = 0x5A48_4545
 private const val TAG_EDITOR_LAST_SENT_STATE: Int = 0x5A48_4546
 private const val TAG_EDITOR_LAST_FROM_JS: Int = 0x5A48_4547
+private const val TAG_EDITOR_VAULT_ROOT_URI: Int = 0x5A48_4548
 private const val APPASSETS_HOST: String = "appassets.androidplatform.net"
 private const val APPASSETS_ORIGIN: String = "https://$APPASSETS_HOST"
+
+private fun openVaultResource(
+    webView: WebView,
+    vaultRoot: Uri,
+    relativePath: String,
+): WebResourceResponse? {
+    val context = webView.context ?: return null
+    val root = DocumentFile.fromTreeUri(context, vaultRoot) ?: return null
+    val segments =
+        relativePath
+            .split('/')
+            .filter { it.isNotBlank() && it != "." && it != ".." }
+    if (segments.isEmpty()) return null
+
+    var current: DocumentFile = root
+    for (i in 0 until segments.size) {
+        val seg = segments[i]
+        val next = current.findFile(seg) ?: return null
+        if (i < segments.lastIndex && !next.isDirectory) return null
+        current = next
+    }
+    if (!current.isFile) return null
+
+    val resolver = context.contentResolver
+    val input = resolver.openInputStream(current.uri) ?: return null
+    val mime =
+        resolver.getType(current.uri)
+            ?: URLConnection.guessContentTypeFromName(current.name ?: "")
+            ?: "application/octet-stream"
+    return WebResourceResponse(mime, null, input)
+}
 
 private fun Int.toCssHex(): String {
     val rgb = this and 0x00FFFFFF

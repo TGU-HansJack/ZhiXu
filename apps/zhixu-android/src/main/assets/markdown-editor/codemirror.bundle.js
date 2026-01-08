@@ -310,6 +310,16 @@ if(!__fm){
       list.className="cm-lp-fm-list";
       wrap.appendChild(list);
 
+      function nextKey(existing){
+        let base="property",n=1,seen={};
+        for(let p of existing){ seen[String(p.key||"")]=!0; }
+        for(;;){
+          let k=base+n;
+          if(!seen[k]) return k;
+          n++;
+        }
+      }
+
       let menu=null;
       let closeMenu=()=>{ if(menu){ menu.remove(); menu=null; } };
       let showMenu=(prop, anchor)=>{
@@ -335,6 +345,30 @@ if(!__fm){
           });
           m.appendChild(btn);
         }
+        // Delete property
+        try{
+          let del=document.createElement("button");
+          del.type="button";
+          del.className="cm-lp-fm-menu-item cm-lp-fm-menu-item-delete";
+          let iconWrap=document.createElement("span");
+          iconWrap.className="cm-lp-fm-menu-icon";
+          iconWrap.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>';
+          let label=document.createElement("span");
+          label.textContent="删除";
+          del.appendChild(iconWrap);
+          del.appendChild(label);
+          del.addEventListener("click",ev=>{
+            ev.preventDefault();
+            ev.stopPropagation();
+            let idx=(prop && prop.__idx!=null)?(prop.__idx|0):-1;
+            if(idx>=0){
+              try{ window.__fmFocusKey=null; }catch(_){}
+              this.api.commit(view,(props)=>{ props.splice(idx,1); });
+            }
+            closeMenu();
+          });
+          m.appendChild(del);
+        }catch(_){}
         document.body.appendChild(m);
         let rect=anchor.getBoundingClientRect();
         let left=Math.max(8,Math.min(window.innerWidth-m.offsetWidth-8,rect.left));
@@ -393,6 +427,12 @@ if(!__fm){
         nameInput.type="text";
         nameInput.className="cm-lp-fm-input cm-lp-fm-row-name";
         nameInput.value=String(prop.key||"");
+        try{
+          if(window.__fmFocusKey && window.__fmFocusKey===nameInput.value){
+            setTimeout(()=>{ try{ nameInput.focus(); nameInput.select(); }catch(_){} },0);
+            window.__fmFocusKey=null;
+          }
+        }catch(_){}
         nameInput.addEventListener("click",ev=>{ ev.stopPropagation(); });
         stopKeyPropagation(nameInput);
         setEnterHint(nameInput,"done");
@@ -414,11 +454,12 @@ if(!__fm){
         valueCell.className="cm-lp-fm-row-value";
         valueCell.addEventListener("click",ev=>{ ev.stopPropagation(); });
 
-        if(prop.type==="list" && Array.isArray(prop.value)){
-          for(let itemIndex=0; itemIndex<prop.value.length; itemIndex++){
-            let item=prop.value[itemIndex];
-            let pill=document.createElement("span");
-            pill.className="cm-lp-fm-pill";
+         if(prop.type==="list" && Array.isArray(prop.value)){
+           try{ valueCell.classList.add("is-list"); }catch(_){}
+           for(let itemIndex=0; itemIndex<prop.value.length; itemIndex++){
+             let item=prop.value[itemIndex];
+             let pill=document.createElement("span");
+             pill.className="cm-lp-fm-pill";
             let textSpan=document.createElement("span");
             textSpan.textContent=item==null?"":String(item);
             let x=document.createElement("button");
@@ -522,7 +563,7 @@ if(!__fm){
             if(ev.key==="Enter" && !ev.shiftKey){ ev.preventDefault(); ta.blur(); }
           });
           let autosize=()=>{
-            try{ ta.style.height="auto"; ta.style.height=Math.max(24, ta.scrollHeight)+"px"; }catch(_){}
+            try{ ta.style.height="auto"; ta.style.height=Math.max(20, ta.scrollHeight)+"px"; }catch(_){}
           };
           ta.addEventListener("input",autosize);
           setTimeout(autosize,0);
@@ -542,6 +583,33 @@ if(!__fm){
         row.appendChild(valueCell);
         list.appendChild(row);
       }
+
+      // "+ 添加笔记属性"
+      try{
+        let addRow=document.createElement("span");
+        addRow.className="cm-lp-fm-row cm-lp-fm-add-row";
+        let btn=document.createElement("button");
+        btn.type="button";
+        btn.className="cm-lp-fm-add-btn";
+        let plus=document.createElement("span");
+        plus.className="cm-lp-fm-add-icon";
+        plus.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>';
+        let label=document.createElement("span");
+        label.textContent="添加笔记属性";
+        btn.appendChild(plus);
+        btn.appendChild(label);
+        btn.addEventListener("click",ev=>{
+          ev.preventDefault();
+          ev.stopPropagation();
+          let key=nextKey(this.info.props);
+          try{ window.__fmFocusKey=key; }catch(_){}
+          this.api.commit(view,(props)=>{
+            props.push({key:key,type:"text",kind:"scalar",value:""});
+          });
+        });
+        addRow.appendChild(btn);
+        list.appendChild(addRow);
+      }catch(_){}
 
       return wrap;
     }

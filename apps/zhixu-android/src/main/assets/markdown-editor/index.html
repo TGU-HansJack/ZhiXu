@@ -78,7 +78,12 @@
         window.addEventListener(
           "error",
           (e) => {
-            show("error", e.error || e.message || e);
+            // Ignore resource-load errors for inline images (these are common and not fatal).
+            try {
+              const t = e && e.target;
+              if (t && t.tagName === "IMG") return;
+            } catch (_) {}
+            show("error", (e && (e.error || e.message)) || e);
           },
           true
         );
@@ -334,26 +339,24 @@
       .cm-lp-image-fallback { opacity: 0.72; }
 
       /* Front matter (properties) */
-      .cm-lp-fm { display: inline-block; width: 100%; margin: 0 0 8px; border-top: 0; border-bottom: 0; overflow: hidden; color: var(--onSurface); }
+      .cm-lp-fm { display: inline-block; width: 100%; margin: 0 0 8px; border-top: 0; border-bottom: 0; overflow: hidden; color: var(--onSurface); font-size: calc(var(--editorFontSize) - 2px); }
       .cm-lp-fm-list { width: 100%; }
       .cm-lp-fm-row {
         display: grid;
-        grid-template-columns: 32px minmax(90px, 1fr) 2fr;
-        column-gap: 8px;
+        grid-template-columns: 28px minmax(90px, 1fr) 2fr;
+        column-gap: 6px;
         align-items: center;
-        padding: 6px 10px;
-        border-top: 1px solid var(--outline);
+        padding: 4px 8px;
+        border-bottom: 1px solid var(--outline);
         cursor: text;
       }
-      .cm-lp-fm-row:first-child { border-top: 0; }
-      .cm-lp-fm-row:hover { background: rgba(127, 127, 127, 0.06); }
+      .cm-lp-fm-row:hover { box-shadow: inset 0 0 0 1px var(--outline); }
       .cm-lp-fm-row.is-active {
         outline: 0;
-        border-radius: 10px;
+        border-radius: 8px;
         background: rgba(127, 127, 127, 0.10);
       }
-      .cm-lp-fm-row.is-active { border-top-color: transparent; }
-      .cm-lp-fm-row.is-active + .cm-lp-fm-row { border-top-color: transparent; }
+      .cm-lp-fm-row.is-active { box-shadow: none; }
       .cm-lp-fm-row-name {
         font-weight: 520;
         color: rgba(127, 127, 127, 0.92);
@@ -364,38 +367,80 @@
       .cm-lp-fm-row-value {
         opacity: 0.96;
         word-break: break-word;
-        white-space: pre-wrap;
+        white-space: normal;
+        line-height: 1.35;
+      }
+      .cm-lp-fm-row-value.is-list {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+      }
+      .cm-lp-fm-row-value.is-list .cm-lp-fm-pill { margin: 0; }
+      .cm-lp-fm-row-value.is-list .cm-lp-fm-input {
+        width: auto;
+        flex: 1 1 64px;
+        min-width: 48px;
+      }
+      .cm-lp-fm-add-row {
+        color: var(--primary);
+        user-select: none;
+        border-bottom: 0 !important;
+      }
+      .cm-lp-fm-add-row:hover { box-shadow: inset 0 0 0 1px var(--primary); }
+      .cm-lp-fm-add-btn {
+        all: unset;
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        padding: 2px 0;
+      }
+      .cm-lp-fm-add-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        color: var(--primary);
+      }
+      .cm-lp-fm-add-icon svg {
+        width: 18px;
+        height: 18px;
+        display: block;
       }
       .cm-lp-fm-type-btn {
         all: unset;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 28px;
-        height: 28px;
-        border-radius: 8px;
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
         border: 0;
         background: transparent;
         color: rgba(127, 127, 127, 0.92);
         cursor: pointer;
         flex: 0 0 auto;
       }
-      .cm-lp-fm-type-btn ion-icon { width: 18px; height: 18px; }
+      .cm-lp-fm-type-btn ion-icon { width: 16px; height: 16px; }
       .cm-lp-fm-pill {
         display: inline-flex;
         align-items: center;
-        margin: 0 6px 6px 0;
-        padding: 2px 8px;
+        margin: 0 4px 4px 0;
+        padding: 1px 6px;
         border: 1px solid var(--outline);
         border-radius: 999px;
         background: var(--editorSelection);
         color: var(--primary);
-        line-height: 1.4;
+        line-height: 1.25;
+        font-size: 0.92em;
       }
       .cm-lp-fm-pill button {
         all: unset;
         cursor: pointer;
-        margin-left: 6px;
+        margin-left: 4px;
         opacity: 0.7;
         font-weight: 700;
       }
@@ -404,11 +449,12 @@
         all: unset;
         width: 100%;
         font: inherit;
-        line-height: 1.55;
+        line-height: 1.35;
         color: var(--onSurface);
         background: transparent;
         box-shadow: none;
         outline: none;
+        min-height: 20px;
       }
       .cm-lp-fm-input::placeholder { opacity: 0.45; }
       .cm-lp-fm-check {
@@ -432,6 +478,8 @@
         border-radius: 12px;
         background: var(--surface);
         box-shadow: none;
+        box-sizing: border-box;
+        overflow: hidden;
       }
       .cm-lp-fm-menu-item {
         all: unset;
@@ -442,9 +490,12 @@
         padding: 8px 10px;
         border-radius: 10px;
         cursor: pointer;
+        box-sizing: border-box;
       }
       .cm-lp-fm-menu-item:hover { background: rgba(127, 127, 127, 0.08); }
       .cm-lp-fm-menu-item ion-icon { width: 18px; height: 18px; color: var(--primary); }
+      .cm-lp-fm-menu-icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; color: var(--primary); flex: 0 0 auto; }
+      .cm-lp-fm-menu-icon svg { width: 18px; height: 18px; display: block; }
     </style>
   </head>
   <body>
@@ -453,5 +504,46 @@
       src="./codemirror.bundle.js"
       onerror="window.__showFatal && window.__showFatal('script load failed', this.src)"
     ></script>
+    <script>
+      (function () {
+        function rewriteImg(img) {
+          try {
+            if (!img || img.tagName !== "IMG") return;
+            var raw = img.getAttribute("src") || "";
+            if (!raw) return;
+            if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw)) return;
+            if (raw.indexOf("/vault/") === 0) return;
+            if (raw.indexOf("./") === 0) raw = raw.slice(2);
+            if (raw.indexOf(".zhixu/") === 0) img.setAttribute("src", "/vault/" + raw);
+          } catch (_) {}
+        }
+
+        function scan(root) {
+          try {
+            if (!root) return;
+            if (root.tagName === "IMG") rewriteImg(root);
+            var imgs = root.querySelectorAll ? root.querySelectorAll("img.cm-lp-image") : [];
+            for (var i = 0; i < imgs.length; i++) rewriteImg(imgs[i]);
+          } catch (_) {}
+        }
+
+        var editor = document.getElementById("editor") || document.body;
+        if (!editor) return;
+        scan(editor);
+        try {
+          var obs = new MutationObserver(function (mutations) {
+            for (var i = 0; i < mutations.length; i++) {
+              var m = mutations[i];
+              if (m.type === "attributes" && m.attributeName === "src") {
+                rewriteImg(m.target);
+              } else if (m.addedNodes && m.addedNodes.length) {
+                for (var j = 0; j < m.addedNodes.length; j++) scan(m.addedNodes[j]);
+              }
+            }
+          });
+          obs.observe(editor, { subtree: true, childList: true, attributes: true, attributeFilter: ["src"] });
+        } catch (_) {}
+      })();
+    </script>
   </body>
 </html>
