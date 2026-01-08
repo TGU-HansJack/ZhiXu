@@ -217,6 +217,12 @@ if(!__fm){
       fmCommit(view,(props)=>{
         let p=props[idx];
         if(!p) return;
+        if(typeId==="tags"){
+          let items=p.kind==="list" ? (Array.isArray(p.value)?p.value:[]) : (p.value==null||String(p.value).trim()===""?[]:[String(p.value)]);
+          p.kind="list";
+          p.type="tags";
+          p.value=items;
+        }else
         if(typeId==="list"){
           let items=p.kind==="list" ? (Array.isArray(p.value)?p.value:[]) : [p.value];
           p.kind="list";
@@ -404,10 +410,6 @@ if(!__fm){
 
         let row=document.createElement("span");
         row.className="cm-lp-fm-row";
-        row.addEventListener("focusin",()=>{ try{ row.classList.add("is-active"); }catch(_){} },!0);
-        row.addEventListener("focusout",()=>{
-          setTimeout(()=>{ try{ row.contains(document.activeElement)||row.classList.remove("is-active"); }catch(_){} },0);
-        },!0);
 
         let typeBtn=document.createElement("button");
         typeBtn.type="button";
