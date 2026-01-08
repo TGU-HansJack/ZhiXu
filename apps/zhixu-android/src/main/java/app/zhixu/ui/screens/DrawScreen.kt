@@ -1,39 +1,32 @@
 package app.zhixu.ui.screens
 
 import android.net.Uri
-import android.util.Xml
-import android.content.Context
-import androidx.documentfile.provider.DocumentFile
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.Redo
-import androidx.compose.material.icons.automirrored.outlined.Undo
-import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -43,85 +36,69 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.zhixu.R
 import app.zhixu.data.VaultRepository
+import app.zhixu.draw.ZhixuDrawFormat
+import app.zhixu.draw.editor.DrawEditorState
+import app.zhixu.draw.editor.DrawElementState
+import app.zhixu.draw.editor.DrawShapeMode
+import app.zhixu.draw.editor.DrawShapeState
+import app.zhixu.draw.editor.DrawStrokeState
+import app.zhixu.draw.editor.DrawToolId
+import app.zhixu.draw.tools.DrawToolMachine
+import app.zhixu.draw.tools.EraserToolMachine
+import app.zhixu.draw.tools.HighlighterToolMachine
+import app.zhixu.draw.tools.LassoToolMachine
+import app.zhixu.draw.tools.PanToolMachine
+import app.zhixu.draw.tools.PenToolMachine
+import app.zhixu.draw.tools.ShapeToolMachine
+import app.zhixu.draw.tools.ToolPointerEvent
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
-import app.zhixu.ui.components.ZhixuTopAppBar
 import app.zhixu.ui.components.ZhixuTextField
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import java.io.StringReader
+import app.zhixu.ui.components.ZhixuTopAppBar
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
-import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
+import kotlin.math.hypot
 import kotlinx.coroutines.launch
-import org.xmlpull.v1.XmlPullParser
 
-private data class StrokeSnapshot(
-    val colorArgb: Int,
-    val widthPx: Float,
-    val points: List<Offset>,
-)
+private const val MinScale: Float = 0.3f
+private const val MaxScale: Float = 5.0f
 
-private data class StrokeState(
-    val colorArgb: Int,
-    val widthPx: Float,
-    val points: SnapshotStateList<Offset>,
-)
-
-private data class ZhixuDrawingDoc(
-    val width: Int,
-    val height: Int,
-    val strokes: List<StrokeSnapshot>,
-)
-
-private val xournalppPalette: List<Color> =
-    listOf(
-        Color(0xFFFFE16B), // Yellow
-        Color(0xFFFFA154), // Orange
-        Color(0xFFCD9EF7), // Purple
-        Color(0xFF9BDB4D), // Light Green
-        Color(0xFF64BAFF), // Light Blue
-        Color(0xFF808080), // Gray
-        Color(0xFF3A9104), // Dark Green
-        Color(0xFFED5353), // Red
-        Color(0xFF002E99), // Dark Blue
-        Color(0xFF000000), // Black
-        Color(0xFFFFFFFF), // White
-    )
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DrawScreen(
     vaultRootUri: Uri,
@@ -130,81 +107,118 @@ fun DrawScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
+    val marginPx = with(density) { 24.dp.toPx() }
+
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val canvasBg = Color.White
-    val palette = remember { xournalppPalette }
+    var currentDocUri by remember { mutableStateOf(docUri) }
+    var isLoading by remember { mutableStateOf(true) }
+    var loadFailed by remember { mutableStateOf(false) }
+    var editor by remember { mutableStateOf(DrawEditorState.newDocument()) }
 
-    var selectedColorArgb by rememberSaveable { mutableIntStateOf(Color.Black.toArgb()) }
-    var strokeWidthDp by rememberSaveable { mutableFloatStateOf(4f) }
-    var isEraser by rememberSaveable { mutableStateOf(false) }
+    val penTool = remember { PenToolMachine() }
+    val highlighterTool = remember { HighlighterToolMachine() }
+    val shapeTool = remember { ShapeToolMachine() }
+    val lassoTool = remember { LassoToolMachine() }
+    val eraserTool = remember { EraserToolMachine() }
+    val panTool = remember { PanToolMachine() }
 
-    var fileUri by remember { mutableStateOf<Uri?>(docUri) }
-    var fileName by rememberSaveable { mutableStateOf(buildDefaultDrawingFileName()) }
-    var showSaveAsDialog by remember { mutableStateOf(false) }
-    var cachedFileDisplayName by remember { mutableStateOf<String?>(null) }
+    fun toolMachineFor(id: DrawToolId): DrawToolMachine =
+        when (id) {
+            DrawToolId.Pen -> penTool
+            DrawToolId.Highlighter -> highlighterTool
+            DrawToolId.Shape -> shapeTool
+            DrawToolId.Lasso -> lassoTool
+            DrawToolId.Eraser -> eraserTool
+            DrawToolId.Pan -> panTool
+        }
 
-    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
-    val strokes = remember { mutableStateListOf<StrokeState>() }
-    val redoStrokes = remember { mutableStateListOf<StrokeState>() }
-
-    var pendingLoadDoc by remember { mutableStateOf<ZhixuDrawingDoc?>(null) }
-    var isLoading by remember { mutableStateOf(docUri != null) }
-    var isSaving by remember { mutableStateOf(false) }
-    var showClearConfirm by remember { mutableStateOf(false) }
-
-    val density = LocalDensity.current
-    val strokeWidthPx = remember(strokeWidthDp, density) { with(density) { strokeWidthDp.dp.toPx() } }
-    val drawColorArgb = remember(selectedColorArgb, isEraser, canvasBg) {
-        if (isEraser) canvasBg.toArgb() else selectedColorArgb
+    fun markEdited() {
+        editor.modifiedAtMs = System.currentTimeMillis()
     }
 
-    val canUndo = strokes.isNotEmpty() && !isSaving && !isLoading
-    val canRedo = redoStrokes.isNotEmpty() && !isSaving && !isLoading
-    val canSave = strokes.isNotEmpty() && canvasSize.width > 0 && canvasSize.height > 0 && !isSaving && !isLoading
-
-    androidx.compose.runtime.LaunchedEffect(docUri) {
-        if (docUri == null) return@LaunchedEffect
+    LaunchedEffect(docUri) {
+        currentDocUri = docUri
         isLoading = true
-        val bytes = runCatching { repository.readBytes(docUri) }.getOrNull() ?: byteArrayOf()
-        val parsed =
-            runCatching { decodeZhixud(bytes) }
-                .onFailure {
-                    snackbarHostState.showSnackbar(context.getString(R.string.draw_load_failed))
-                }
-                .getOrNull()
-        pendingLoadDoc = parsed
-        cachedFileDisplayName =
-            runCatching {
-                DocumentFile.fromSingleUri(context, docUri)?.name?.substringBeforeLast('.')?.ifBlank { null }
-            }.getOrNull()
+        loadFailed = false
+        editor = DrawEditorState.newDocument()
+
+        if (docUri == null) {
+            isLoading = false
+            return@LaunchedEffect
+        }
+
+        val bytes = runCatching { repository.readBytes(docUri) }.getOrNull()
+        if (bytes == null) {
+            loadFailed = true
+            isLoading = false
+            return@LaunchedEffect
+        }
+
+        val doc = runCatching { ZhixuDrawFormat.decode(bytes) }.getOrNull()
+        if (doc == null) {
+            loadFailed = true
+            isLoading = false
+            return@LaunchedEffect
+        }
+
+        editor = DrawEditorState.fromDocument(doc)
+        editor.ensureHasAtLeastOnePage()
         isLoading = false
     }
 
-    androidx.compose.runtime.LaunchedEffect(pendingLoadDoc, canvasSize) {
-        val doc = pendingLoadDoc ?: return@LaunchedEffect
-        if (canvasSize.width <= 0 || canvasSize.height <= 0) return@LaunchedEffect
-        val srcW = doc.width.coerceAtLeast(1)
-        val srcH = doc.height.coerceAtLeast(1)
-        val sx = canvasSize.width.toFloat() / srcW.toFloat()
-        val sy = canvasSize.height.toFloat() / srcH.toFloat()
-        val sw = (sx + sy) / 2f
+    suspend fun saveTo(uri: Uri) {
+        markEdited()
+        val bytes = ZhixuDrawFormat.encode(editor.toDocument())
+        repository.writeBytes(uri, bytes)
+    }
 
-        strokes.clear()
-        redoStrokes.clear()
-        for (stroke in doc.strokes) {
-            val pts = mutableStateListOf<Offset>()
-            pts.addAll(stroke.points.map { p -> Offset(p.x * sx, p.y * sy) })
-            strokes.add(
-                StrokeState(
-                    colorArgb = stroke.colorArgb,
-                    widthPx = stroke.widthPx * sw,
-                    points = pts,
-                ),
-            )
+    var showSaveAsDialog by remember { mutableStateOf(false) }
+    var saveAsName by remember {
+        mutableStateOf(
+            SimpleDateFormat("'Drawing'_yyyyMMdd_HHmm", Locale.US).format(Date()) + ZhixuDrawFormat.EXTENSION,
+        )
+    }
+
+    fun requestSave() {
+        val uri = currentDocUri
+        if (uri == null) {
+            showSaveAsDialog = true
+            return
         }
-        pendingLoadDoc = null
+        scope.launch {
+            runCatching { saveTo(uri) }
+                .onSuccess { snackbarHostState.showSnackbar(context.getString(R.string.snackbar_saved)) }
+                .onFailure { e ->
+                    snackbarHostState.showSnackbar(
+                        context.getString(R.string.draw_save_failed, e.message ?: e.javaClass.simpleName),
+                    )
+                }
+        }
+    }
+
+    fun requestSaveAs() {
+        showSaveAsDialog = true
+    }
+
+    var showClearDialog by remember { mutableStateOf(false) }
+
+    fun clearCurrentPage() {
+        val page = editor.currentPageOrNull() ?: return
+        page.elements.clear()
+        editor.clearOverlaysAndSelection()
+        markEdited()
+    }
+
+    fun deleteSelection() {
+        val page = editor.currentPageOrNull() ?: return
+        val selected = editor.selectedElementIds
+        if (selected.isEmpty()) return
+        page.elements.removeAll { it.id in selected }
+        editor.selectedElementIds = emptySet()
+        markEdited()
     }
 
     Scaffold(
@@ -216,9 +230,8 @@ fun DrawScreen(
                 ZhixuTopAppBar(
                     containerColor = MaterialTheme.colorScheme.surface,
                     title = {
-                        val titleText = cachedFileDisplayName ?: stringResource(R.string.draw_title)
                         Text(
-                            text = titleText,
+                            text = guessTitleFromUri(currentDocUri) ?: stringResource(R.string.draw_title),
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -226,75 +239,25 @@ fun DrawScreen(
                     },
                     navigationIcon = {
                         ZhixuIconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                            androidx.compose.material3.Icon(
+                                painter =
+                                    painterResource(
+                                        if (LocalLayoutDirection.current == LayoutDirection.Rtl) Ionicons.ArrowForward else Ionicons.ArrowBack,
+                                    ),
                                 contentDescription = stringResource(R.string.action_back),
                                 modifier = Modifier.size(ZhixuTopBarIconSize),
                             )
                         }
                     },
                     actions = {
-                        ZhixuIconButton(enabled = canUndo, onClick = {
-                            if (strokes.isEmpty()) return@ZhixuIconButton
-                            redoStrokes.add(strokes.removeAt(strokes.lastIndex))
-                        }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Outlined.Undo,
-                                contentDescription = stringResource(R.string.action_undo),
-                                modifier = Modifier.size(ZhixuTopBarIconSize),
-                            )
+                        if (editor.selectedElementIds.isNotEmpty()) {
+                            TextButton(onClick = ::deleteSelection) { Text(stringResource(R.string.action_delete)) }
                         }
-                        ZhixuIconButton(enabled = canRedo, onClick = {
-                            if (redoStrokes.isEmpty()) return@ZhixuIconButton
-                            strokes.add(redoStrokes.removeAt(redoStrokes.lastIndex))
-                        }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Outlined.Redo,
-                                contentDescription = stringResource(R.string.action_redo),
-                                modifier = Modifier.size(ZhixuTopBarIconSize),
-                            )
-                        }
-                        ZhixuIconButton(enabled = strokes.isNotEmpty() && !isSaving, onClick = { showClearConfirm = true }) {
-                            Icon(
-                                imageVector = Icons.Outlined.DeleteOutline,
-                                contentDescription = stringResource(R.string.draw_action_clear),
-                                modifier = Modifier.size(ZhixuTopBarIconSize),
-                            )
-                        }
-                        TextButton(enabled = canSave, onClick = {
-                            if (!canSave) return@TextButton
-                            if (fileUri == null) {
-                                showSaveAsDialog = true
-                            } else {
-                                scope.launch {
-                                    isSaving = true
-                                    saveDrawing(
-                                        context = context,
-                                        repository = repository,
-                                        vaultRootUri = vaultRootUri,
-                                        targetUri = fileUri,
-                                        canvasSize = canvasSize,
-                                        strokes = strokes,
-                                        snackbarHostState = snackbarHostState,
-                                    ) { uri, name ->
-                                        fileUri = uri
-                                        cachedFileDisplayName = name
-                                    }
-                                    isSaving = false
-                                }
-                            }
-                        }) {
-                            Icon(
-                                painter = painterResource(Ionicons.Checkmark),
-                                contentDescription = stringResource(R.string.action_save),
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.action_save))
-                        }
+                        TextButton(onClick = { showClearDialog = true }) { Text(stringResource(R.string.draw_action_clear)) }
+                        TextButton(onClick = ::requestSave) { Text(stringResource(R.string.action_save)) }
                     },
                 )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                HorizontalDivider()
             }
         },
     ) { padding ->
@@ -304,192 +267,44 @@ fun DrawScreen(
                     .fillMaxSize()
                     .padding(padding),
         ) {
-            val canvasModifierBase =
-                Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-            val canvasModifier =
-                if (isSaving) {
-                    canvasModifierBase
-                } else {
-                    canvasModifierBase.pointerInput(drawColorArgb, strokeWidthPx) {
-                        var currentStroke: StrokeState? = null
-                        detectDragGestures(
-                            onDragStart = { start ->
-                                val stroke =
-                                    StrokeState(
-                                        colorArgb = drawColorArgb,
-                                        widthPx = strokeWidthPx,
-                                        points = mutableStateListOf(start),
-                                    )
-                                strokes.add(stroke)
-                                redoStrokes.clear()
-                                currentStroke = stroke
-                            },
-                            onDrag = { change, _ ->
-                                currentStroke?.points?.add(change.position)
-                                change.consume()
-                            },
-                            onDragEnd = { currentStroke = null },
-                            onDragCancel = { currentStroke = null },
-                        )
+            when {
+                isLoading -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
                     }
                 }
 
-            Surface(
-                modifier =
-                    canvasModifier
-                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp)),
-                color = canvasBg,
-                shape = RoundedCornerShape(14.dp),
-                shadowElevation = 0.dp,
-                tonalElevation = 0.dp,
-            ) {
-                Canvas(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .onSizeChanged { canvasSize = it }
-                            .background(canvasBg)
-                            .padding(2.dp),
-                    onDraw = {
-                        for (stroke in strokes) {
-                            drawStroke(stroke)
-                        }
-                    },
-                )
-            }
-
-            Column(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = stringResource(R.string.draw_tool),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = stringResource(if (isEraser) R.string.draw_tool_eraser else R.string.draw_tool_pen),
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        TextButton(
-                            enabled = !isSaving,
-                            onClick = { isEraser = !isEraser },
-                        ) {
-                            Icon(
-                                painter = painterResource(if (isEraser) Ionicons.TrashOutline else R.drawable.ic_hero_paint_brush),
-                                contentDescription = stringResource(R.string.draw_tool),
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(if (isEraser) R.string.draw_tool_eraser else R.string.draw_tool_pen))
+                loadFailed -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(stringResource(R.string.draw_load_failed))
+                            Spacer(modifier = Modifier.height(12.dp))
+                            TextButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
                         }
                     }
                 }
 
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    itemsIndexed(palette) { _, c ->
-                        val selected = c.toArgb() == selectedColorArgb && !isEraser
-                        Box(
-                            modifier =
-                                Modifier
-                                    .size(44.dp)
-                                    .background(Color.Transparent, CircleShape)
-                                    .clickable(enabled = !isSaving) {
-                                        selectedColorArgb = c.toArgb()
-                                        isEraser = false
-                                    },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Surface(
-                                modifier = Modifier.size(40.dp),
-                                shape = CircleShape,
-                                color = c,
-                                shadowElevation = 0.dp,
-                                tonalElevation = 0.dp,
-                            ) {}
-                            if (selected) {
-                                Surface(
-                                    modifier = Modifier.size(18.dp),
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    tonalElevation = 0.dp,
-                                    shadowElevation = 0.dp,
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            painter = painterResource(Ionicons.Checkmark),
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onPrimary,
-                                            modifier = Modifier.size(12.dp),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = stringResource(R.string.draw_stroke_width),
-                        style = MaterialTheme.typography.labelLarge,
+                else -> {
+                    DrawEditorCanvas(
+                        editor = editor,
+                        marginPx = marginPx,
+                        toolMachineFor = ::toolMachineFor,
+                        onEdited = ::markEdited,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
                     )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Slider(
-                        enabled = !isSaving,
-                        value = strokeWidthDp,
-                        onValueChange = { strokeWidthDp = it },
-                        valueRange = 1f..18f,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = strokeWidthDp.toInt().toString(),
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.width(20.dp),
+                    DrawBottomBar(
+                        editor = editor,
+                        marginPx = marginPx,
+                        onEdited = ::markEdited,
+                        onSaveAs = ::requestSaveAs,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
         }
-    }
-
-    if (showClearConfirm) {
-        AlertDialog(
-            onDismissRequest = { showClearConfirm = false },
-            title = { Text(stringResource(R.string.draw_clear_title)) },
-            text = { Text(stringResource(R.string.draw_clear_message)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        strokes.clear()
-                        redoStrokes.clear()
-                        showClearConfirm = false
-                    },
-                ) { Text(stringResource(R.string.draw_action_clear)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) { Text(stringResource(R.string.action_cancel)) }
-            },
-        )
     }
 
     if (showSaveAsDialog) {
@@ -497,291 +312,845 @@ fun DrawScreen(
             onDismissRequest = { showSaveAsDialog = false },
             title = { Text(stringResource(R.string.draw_save_as_title)) },
             text = {
-                ZhixuTextField(
-                    value = fileName,
-                    onValueChange = { fileName = it },
-                    singleLine = true,
-                    placeholder = { Text("Drawing.zhixud") },
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ZhixuTextField(
+                        value = saveAsName,
+                        onValueChange = { saveAsName = it },
+                        label = { Text(stringResource(R.string.field_file_name)) },
+                    )
+                    Text(
+                        text = ZhixuDrawFormat.EXTENSION,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             },
             confirmButton = {
                 TextButton(
-                    enabled = fileName.trim().isNotBlank() && !isSaving,
                     onClick = {
-                        showSaveAsDialog = false
                         scope.launch {
-                            isSaving = true
-                            saveDrawing(
-                                context = context,
-                                repository = repository,
-                                vaultRootUri = vaultRootUri,
-                                targetUri = null,
-                                canvasSize = canvasSize,
-                                strokes = strokes,
-                                snackbarHostState = snackbarHostState,
-                                desiredName = fileName,
-                            ) { uri, name ->
-                                fileUri = uri
-                                cachedFileDisplayName = name
-                            }
-                            isSaving = false
+                            val cleaned = sanitizeFileName(saveAsName).ifBlank { "Drawing" }
+                            val finalName =
+                                if (cleaned.endsWith(ZhixuDrawFormat.EXTENSION, ignoreCase = true)) cleaned else cleaned + ZhixuDrawFormat.EXTENSION
+                            val relPath = "Drawings/$finalName"
+                            val uri =
+                                runCatching { repository.ensureVaultFile(vaultRootUri, relPath, ZhixuDrawFormat.MIME_TYPE) }
+                                    .getOrElse { e ->
+                                        snackbarHostState.showSnackbar(
+                                            context.getString(R.string.draw_save_failed, e.message ?: e.javaClass.simpleName),
+                                        )
+                                        return@launch
+                                    }
+
+                            runCatching { saveTo(uri) }
+                                .onSuccess {
+                                    currentDocUri = uri
+                                    showSaveAsDialog = false
+                                    snackbarHostState.showSnackbar(context.getString(R.string.snackbar_saved))
+                                }
+                                .onFailure { e ->
+                                    snackbarHostState.showSnackbar(
+                                        context.getString(R.string.draw_save_failed, e.message ?: e.javaClass.simpleName),
+                                    )
+                                }
                         }
                     },
                 ) { Text(stringResource(R.string.action_save)) }
             },
             dismissButton = {
+                TextButton(onClick = { showSaveAsDialog = false }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog = false },
+            title = { Text(stringResource(R.string.draw_clear_title)) },
+            text = { Text(stringResource(R.string.draw_clear_message)) },
+            confirmButton = {
                 TextButton(
-                    enabled = !isSaving,
-                    onClick = { showSaveAsDialog = false },
-                ) { Text(stringResource(R.string.action_cancel)) }
+                    onClick = {
+                        showClearDialog = false
+                        clearCurrentPage()
+                    },
+                ) { Text(stringResource(R.string.action_delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDialog = false }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }
 }
 
-private fun drawStroke(stroke: StrokeState, drawScope: androidx.compose.ui.graphics.drawscope.DrawScope) =
-    with(drawScope) {
-        if (stroke.points.isEmpty()) return
-        if (stroke.points.size == 1) {
-            drawCircle(
-                color = Color(stroke.colorArgb),
-                radius = stroke.widthPx / 2f,
-                center = stroke.points.first(),
-            )
-            return
-        }
-        val path = Path()
-        val first = stroke.points.first()
-        path.moveTo(first.x, first.y)
-        for (i in 1 until stroke.points.size) {
-            val p = stroke.points[i]
-            path.lineTo(p.x, p.y)
-        }
-        drawPath(
-            path = path,
-            color = Color(stroke.colorArgb),
-            style = Stroke(width = stroke.widthPx, cap = StrokeCap.Round, join = StrokeJoin.Round),
-        )
-    }
-
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStroke(stroke: StrokeState) {
-    drawStroke(stroke, this)
-}
-
-private suspend fun saveDrawing(
-    context: Context,
-    repository: VaultRepository,
-    vaultRootUri: Uri,
-    targetUri: Uri?,
-    canvasSize: IntSize,
-    strokes: List<StrokeState>,
-    snackbarHostState: SnackbarHostState,
-    desiredName: String? = null,
-    onSaved: (Uri, String?) -> Unit,
+@Composable
+private fun DrawBottomBar(
+    editor: DrawEditorState,
+    marginPx: Float,
+    onEdited: () -> Unit,
+    onSaveAs: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    if (canvasSize.width <= 0 || canvasSize.height <= 0) return
-    val strokeSnapshot =
-        strokes.map { s ->
-            StrokeSnapshot(
-                colorArgb = s.colorArgb,
-                widthPx = s.widthPx,
-                points = s.points.toList(),
-            )
-        }
-    val doc =
-        ZhixuDrawingDoc(
-            width = canvasSize.width,
-            height = canvasSize.height,
-            strokes = strokeSnapshot,
-        )
-
-    val bytes =
-        runCatching { encodeZhixud(doc) }.getOrNull()
-            ?: run {
-                snackbarHostState.showSnackbar(context.getString(R.string.draw_save_failed, "encode"))
-                return
+    Surface(color = MaterialTheme.colorScheme.surface, modifier = modifier) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            val scroll = rememberScrollState()
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(scroll),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ToolChip(
+                    selected = editor.toolId == DrawToolId.Pen,
+                    label = stringResource(R.string.draw_tool_pen),
+                    onClick = {
+                        editor.toolId = DrawToolId.Pen
+                        editor.clearOverlaysAndSelection()
+                    },
+                )
+                ToolChip(
+                    selected = editor.toolId == DrawToolId.Highlighter,
+                    label = stringResource(R.string.draw_tool_highlighter),
+                    onClick = {
+                        editor.toolId = DrawToolId.Highlighter
+                        editor.clearOverlaysAndSelection()
+                    },
+                )
+                ToolChip(
+                    selected = editor.toolId == DrawToolId.Shape,
+                    label = stringResource(R.string.draw_tool_shape),
+                    onClick = {
+                        editor.toolId = DrawToolId.Shape
+                        editor.clearOverlaysAndSelection()
+                    },
+                )
+                ToolChip(
+                    selected = editor.toolId == DrawToolId.Lasso,
+                    label = stringResource(R.string.draw_tool_lasso),
+                    onClick = {
+                        editor.toolId = DrawToolId.Lasso
+                        editor.clearOverlaysAndSelection()
+                    },
+                )
+                ToolChip(
+                    selected = editor.toolId == DrawToolId.Eraser,
+                    label = stringResource(R.string.draw_tool_eraser),
+                    onClick = {
+                        editor.toolId = DrawToolId.Eraser
+                        editor.clearOverlaysAndSelection()
+                    },
+                )
+                ToolChip(
+                    selected = editor.toolId == DrawToolId.Pan,
+                    label = stringResource(R.string.draw_tool_pan),
+                    onClick = {
+                        editor.toolId = DrawToolId.Pan
+                        editor.clearOverlaysAndSelection()
+                    },
+                )
             }
 
-    val finalUri =
-        if (targetUri != null) {
-            targetUri
-        } else {
-            val trimmed = desiredName.orEmpty().trim().ifBlank { buildDefaultDrawingFileName() }
-            val safe = sanitizeDrawingFileName(trimmed)
-            val fileName = if (safe.endsWith(".zhixud", ignoreCase = true)) safe else "$safe.zhixud"
-            val relPath = "Drawings/$fileName"
-            runCatching { repository.ensureVaultFile(vaultRootUri, relPath, "application/zhixu-drawing") }
-                .onFailure { e ->
-                    snackbarHostState.showSnackbar(
-                        context.getString(
-                            R.string.draw_save_failed,
-                            e.message ?: e.javaClass.simpleName,
-                        ),
+            if (editor.toolId == DrawToolId.Shape) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(scroll),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ToolChip(
+                        selected = editor.shapeMode == DrawShapeMode.Line,
+                        label = stringResource(R.string.draw_shape_line),
+                        onClick = { editor.shapeMode = DrawShapeMode.Line },
+                    )
+                    ToolChip(
+                        selected = editor.shapeMode == DrawShapeMode.Rectangle,
+                        label = stringResource(R.string.draw_shape_rect),
+                        onClick = { editor.shapeMode = DrawShapeMode.Rectangle },
+                    )
+                    ToolChip(
+                        selected = editor.shapeMode == DrawShapeMode.Ellipse,
+                        label = stringResource(R.string.draw_shape_ellipse),
+                        onClick = { editor.shapeMode = DrawShapeMode.Ellipse },
                     )
                 }
-                .getOrNull()
-                ?: return
-        }
+            }
 
-    runCatching { repository.writeBytes(finalUri, bytes) }
-        .onSuccess {
-            snackbarHostState.showSnackbar(context.getString(R.string.snackbar_saved))
-            val displayName =
-                runCatching { DocumentFile.fromSingleUri(context, finalUri)?.name?.substringBeforeLast('.') }
-                    .getOrNull()
-            onSaved(finalUri, displayName)
+            if (editor.toolId == DrawToolId.Pen || editor.toolId == DrawToolId.Highlighter || editor.toolId == DrawToolId.Shape) {
+                DrawColorRow(
+                    selectedArgb = editor.colorArgb,
+                    onPick = { editor.colorArgb = it },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            when (editor.toolId) {
+                DrawToolId.Pen, DrawToolId.Shape -> {
+                    LabeledSlider(
+                        label = stringResource(R.string.draw_stroke_width),
+                        value = editor.penWidth,
+                        range = 0.5f..18f,
+                        onValueChange = { editor.penWidth = it },
+                    )
+                }
+
+                DrawToolId.Highlighter -> {
+                    LabeledSlider(
+                        label = stringResource(R.string.draw_stroke_width),
+                        value = editor.highlighterWidth,
+                        range = 4f..42f,
+                        onValueChange = { editor.highlighterWidth = it },
+                    )
+                    LabeledSlider(
+                        label = stringResource(R.string.draw_highlighter_alpha),
+                        value = editor.highlighterAlpha,
+                        range = 0.05f..0.9f,
+                        onValueChange = { editor.highlighterAlpha = it },
+                    )
+                }
+
+                DrawToolId.Eraser -> {
+                    LabeledSlider(
+                        label = stringResource(R.string.draw_eraser_size),
+                        value = editor.eraserRadius,
+                        range = 4f..64f,
+                        onValueChange = { editor.eraserRadius = it },
+                    )
+                }
+
+                else -> Unit
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ZhixuIconButton(
+                        onClick = {
+                            editor.goToPreviousPage()
+                            centerPage(editor, marginPx)
+                        },
+                    ) {
+                        androidx.compose.material3.Icon(
+                            painter = painterResource(Ionicons.ChevronBack),
+                            contentDescription = null,
+                            modifier = Modifier.size(ZhixuTopBarIconSize),
+                        )
+                    }
+                    Text(
+                        text = "${editor.currentPageIndex + 1} / ${editor.pages.size}",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    ZhixuIconButton(
+                        onClick = {
+                            editor.goToNextPage()
+                            centerPage(editor, marginPx)
+                        },
+                    ) {
+                        androidx.compose.material3.Icon(
+                            painter = painterResource(Ionicons.ChevronForward),
+                            contentDescription = null,
+                            modifier = Modifier.size(ZhixuTopBarIconSize),
+                        )
+                    }
+                    ZhixuIconButton(
+                        onClick = {
+                            editor.addPageLikeCurrent()
+                            centerPage(editor, marginPx)
+                            onEdited()
+                        },
+                    ) {
+                        androidx.compose.material3.Icon(
+                            painter = painterResource(Ionicons.AddCircleOutline),
+                            contentDescription = null,
+                            modifier = Modifier.size(ZhixuTopBarIconSize),
+                        )
+                    }
+                }
+
+                TextButton(onClick = onSaveAs) { Text(stringResource(R.string.draw_save_as_title)) }
+            }
         }
-        .onFailure { e ->
-            snackbarHostState.showSnackbar(
-                context.getString(
-                    R.string.draw_save_failed,
-                    e.message ?: e.javaClass.simpleName,
-                ),
+    }
+}
+
+@Composable
+private fun ToolChip(
+    selected: Boolean,
+    label: String,
+    onClick: () -> Unit,
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label, maxLines = 1) },
+    )
+}
+
+@Composable
+private fun LabeledSlider(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onValueChange: (Float) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, style = MaterialTheme.typography.labelMedium)
+            Text(String.format(Locale.US, "%.1f", value), style = MaterialTheme.typography.labelMedium)
+        }
+        Slider(
+            value = value.coerceIn(range.start, range.endInclusive),
+            onValueChange = onValueChange,
+            valueRange = range,
+        )
+    }
+}
+
+@Composable
+private fun DrawColorRow(
+    selectedArgb: Int,
+    onPick: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors =
+        remember {
+            listOf(
+                0xFF000000.toInt(),
+                0xFF1E88E5.toInt(),
+                0xFF43A047.toInt(),
+                0xFFF4511E.toInt(),
+                0xFFE53935.toInt(),
+                0xFF8E24AA.toInt(),
+                0xFFFDD835.toInt(),
+                0xFFFFFFFF.toInt(),
             )
         }
-}
-
-private fun buildDefaultDrawingFileName(): String = "Drawing_${System.currentTimeMillis()}.zhixud"
-
-private fun sanitizeDrawingFileName(name: String): String =
-    name.trim()
-        .replace(Regex("""[\\/:*?"<>|]"""), "_")
-        .replace(Regex("""\s+"""), " ")
-        .trim()
-        .ifBlank { "Drawing_${System.currentTimeMillis()}" }
-
-private fun encodeZhixud(doc: ZhixuDrawingDoc): ByteArray {
-    val xml = buildContentXml(doc)
-    val out = ByteArrayOutputStream()
-    ZipOutputStream(out).use { zos ->
-        zos.putNextEntry(ZipEntry("mimetype"))
-        zos.write("application/zhixu-drawing".toByteArray(Charsets.US_ASCII))
-        zos.closeEntry()
-
-        zos.putNextEntry(ZipEntry("META-INF/version"))
-        zos.write("current=1\nmin=1\n".toByteArray(Charsets.UTF_8))
-        zos.closeEntry()
-
-        zos.putNextEntry(ZipEntry("content.xml"))
-        zos.write(xml.toByteArray(Charsets.UTF_8))
-        zos.closeEntry()
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        for (argb in colors) {
+            val isSelected = argb == selectedArgb
+            Box(
+                modifier =
+                    Modifier
+                        .size(28.dp)
+                        .background(Color(argb), CircleShape)
+                        .border(
+                            width = if (isSelected) 2.dp else 1.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                            shape = CircleShape,
+                        )
+                        .clickable { onPick(argb) },
+            )
+        }
+        Spacer(modifier = Modifier.width(1.dp))
     }
-    return out.toByteArray()
 }
 
-private fun decodeZhixud(bytes: ByteArray): ZhixuDrawingDoc {
-    if (bytes.isEmpty()) error("Empty file")
-    ZipInputStream(ByteArrayInputStream(bytes)).use { zis ->
+@Composable
+private fun DrawEditorCanvas(
+    editor: DrawEditorState,
+    marginPx: Float,
+    toolMachineFor: (DrawToolId) -> DrawToolMachine,
+    onEdited: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val canvasBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+    val selectionColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)
+    val lassoColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.9f)
+    val eraserColor = MaterialTheme.colorScheme.error.copy(alpha = 0.85f)
+    val pageBorderColor = Color(0xFFDDDDDD)
+
+    var didInitViewport by remember(editor) { mutableStateOf(false) }
+
+    Canvas(
+        modifier =
+            modifier
+                .background(canvasBackground)
+                .onSizeChanged { size ->
+                    editor.viewport.viewportSize = size
+                    if (!didInitViewport && size != IntSize.Zero) {
+                        didInitViewport = true
+                        centerPage(editor, marginPx)
+                    } else {
+                        snapViewport(editor, marginPx)
+                    }
+                }
+                .pointerInput(editor, marginPx) {
+                    handleDrawGestures(
+                        editor = editor,
+                        marginPx = marginPx,
+                        toolMachineFor = toolMachineFor,
+                        onEdited = onEdited,
+                    )
+                },
+    ) {
+        val page = editor.currentPageOrNull() ?: return@Canvas
+        val scale = editor.viewport.scale.coerceAtLeast(0.0001f)
+        val translation = editor.viewport.translation
+
+        withTransform(
+            transformBlock = {
+                translate(translation.x, translation.y)
+                scale(scale, scale)
+            },
+        ) {
+            drawPageBackground(
+                pageWidth = page.width,
+                pageHeight = page.height,
+                scale = scale,
+                borderColor = pageBorderColor,
+            )
+            drawElements(
+                elements = page.elements.toList(),
+                editor = editor,
+                scale = scale,
+                selectionColor = selectionColor,
+            )
+            drawOverlays(
+                editor = editor,
+                pageWidth = page.width,
+                pageHeight = page.height,
+                scale = scale,
+                lassoColor = lassoColor,
+                eraserColor = eraserColor,
+            )
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPageBackground(
+    pageWidth: Float,
+    pageHeight: Float,
+    scale: Float,
+    borderColor: Color,
+) {
+    drawRect(
+        color = Color.White,
+        topLeft = Offset.Zero,
+        size = Size(pageWidth, pageHeight),
+    )
+    drawRect(
+        color = borderColor,
+        topLeft = Offset.Zero,
+        size = Size(pageWidth, pageHeight),
+        style = Stroke(width = 1f / scale.coerceAtLeast(0.0001f)),
+    )
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawElements(
+    elements: List<DrawElementState>,
+    editor: DrawEditorState,
+    scale: Float,
+    selectionColor: Color,
+) {
+    for (el in elements) {
+        when (el) {
+            is DrawStrokeState -> {
+                val pts = el.points
+                if (pts.isEmpty()) continue
+                val path = buildPath(pts)
+                val color = Color(el.colorArgb).copy(alpha = el.alpha.coerceIn(0f, 1f))
+                drawPath(
+                    path = path,
+                    color = color,
+                    style =
+                        Stroke(
+                            width = el.width.coerceAtLeast(0.2f),
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round,
+                        ),
+                )
+            }
+
+            is DrawShapeState -> {
+                val color = Color(el.colorArgb).copy(alpha = el.alpha.coerceIn(0f, 1f))
+                val w = el.width.coerceAtLeast(0.2f)
+                val rect = rectFromPoints(el.start, el.end)
+                when (el.shape) {
+                    DrawShapeMode.Line ->
+                        drawLine(
+                            color = color,
+                            start = el.start,
+                            end = el.end,
+                            strokeWidth = w,
+                            cap = StrokeCap.Round,
+                        )
+                    DrawShapeMode.Rectangle ->
+                        drawRect(
+                            color = color,
+                            topLeft = rect.topLeft,
+                            size = rect.size,
+                            style = Stroke(width = w),
+                        )
+                    DrawShapeMode.Ellipse ->
+                        drawOval(
+                            color = color,
+                            topLeft = rect.topLeft,
+                            size = rect.size,
+                            style = Stroke(width = w),
+                        )
+                }
+            }
+        }
+
+        if (el.id in editor.selectedElementIds) {
+            val bounds = elementBounds(el)
+            if (bounds != null) {
+                val dash = PathEffect.dashPathEffect(floatArrayOf(8f / scale, 8f / scale))
+                drawRect(
+                    color = selectionColor,
+                    topLeft = bounds.topLeft,
+                    size = bounds.size,
+                    style = Stroke(width = 1.5f / scale, pathEffect = dash),
+                )
+            }
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawOverlays(
+    editor: DrawEditorState,
+    pageWidth: Float,
+    pageHeight: Float,
+    scale: Float,
+    lassoColor: Color,
+    eraserColor: Color,
+) {
+    editor.previewShape?.let { preview ->
+        val dash = PathEffect.dashPathEffect(floatArrayOf(10f / scale, 10f / scale))
+        val color = Color(editor.colorArgb).copy(alpha = 0.9f)
+        val w = editor.penWidth.coerceAtLeast(0.2f)
+        val rect = rectFromPoints(preview.start, preview.end)
+        when (preview.mode) {
+            DrawShapeMode.Line ->
+                drawLine(
+                    color = color,
+                    start = preview.start,
+                    end = preview.end,
+                    strokeWidth = w,
+                    cap = StrokeCap.Round,
+                    pathEffect = dash,
+                )
+            DrawShapeMode.Rectangle ->
+                drawRect(
+                    color = color,
+                    topLeft = rect.topLeft,
+                    size = rect.size,
+                    style = Stroke(width = w, pathEffect = dash),
+                )
+            DrawShapeMode.Ellipse ->
+                drawOval(
+                    color = color,
+                    topLeft = rect.topLeft,
+                    size = rect.size,
+                    style = Stroke(width = w, pathEffect = dash),
+                )
+        }
+    }
+
+    val lasso = editor.lassoPathPoints
+    if (lasso.size >= 2) {
+        val dash = PathEffect.dashPathEffect(floatArrayOf(10f / scale, 8f / scale))
+        val path = buildPath(lasso)
+        drawPath(
+            path = path,
+            color = lassoColor,
+            style = Stroke(width = 1.6f / scale, pathEffect = dash),
+        )
+    }
+
+    editor.eraserCursor?.let { c ->
+        drawCircle(
+            color = eraserColor,
+            center = c,
+            radius = editor.eraserRadius.coerceAtLeast(1f),
+            style = Stroke(width = 1.5f / scale),
+        )
+    }
+
+    drawRect(
+        color = Color.Transparent,
+        topLeft = Offset.Zero,
+        size = Size(pageWidth, pageHeight),
+        style = Stroke(width = 0.5f / scale),
+    )
+}
+
+private suspend fun PointerInputScope.handleDrawGestures(
+    editor: DrawEditorState,
+    marginPx: Float,
+    toolMachineFor: (DrawToolId) -> DrawToolMachine,
+    onEdited: () -> Unit,
+) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+
+        var activeTool: DrawToolMachine = toolMachineFor(editor.toolId)
+        val modifiesDocument =
+            activeTool.id == DrawToolId.Pen ||
+                activeTool.id == DrawToolId.Highlighter ||
+                activeTool.id == DrawToolId.Shape ||
+                activeTool.id == DrawToolId.Eraser
+
+        val activePointerId = down.id
+        var lastViewPos = down.position
+        var lastPagePos = clampToPage(editor, editor.viewport.viewToPage(lastViewPos))
+
+        activeTool.onDown(
+            editor,
+            ToolPointerEvent(
+                viewPosition = lastViewPos,
+                viewDelta = Offset.Zero,
+                pagePosition = lastPagePos,
+                pageDelta = Offset.Zero,
+            ),
+        )
+
+        var isTransform = false
+        var prevCentroid = down.position
+        var prevSpan = 0f
+
         while (true) {
-            val entry = zis.nextEntry ?: break
-            if (entry.name == "content.xml") {
-                val xml = zis.readBytes().toString(Charsets.UTF_8)
-                return parseContentXml(xml)
+            val event = awaitPointerEvent()
+            val pressed = event.changes.filter { it.pressed }
+
+            if (pressed.size >= 2) {
+                if (!isTransform) {
+                    isTransform = true
+                    activeTool.onCancel(editor)
+                    editor.previewShape = null
+                    editor.eraserCursor = null
+                    editor.lassoPathPoints.clear()
+                    prevCentroid = centroidOf(pressed)
+                    prevSpan = spanOf(pressed)
+                }
+
+                val currCentroid = centroidOf(pressed)
+                val currSpan = spanOf(pressed)
+                val zoomChange = if (prevSpan > 0f) currSpan / prevSpan else 1f
+
+                val oldScale = editor.viewport.scale.coerceAtLeast(0.0001f)
+                val oldTranslation = editor.viewport.translation
+                val newScale = (oldScale * zoomChange).coerceIn(MinScale, MaxScale)
+
+                val pageUnderPrevCentroid = (prevCentroid - oldTranslation) / oldScale
+                val newTranslation = currCentroid - pageUnderPrevCentroid * newScale
+
+                editor.viewport.scale = newScale
+                editor.viewport.translation = newTranslation
+                snapViewport(editor, marginPx)
+
+                prevCentroid = currCentroid
+                prevSpan = currSpan
+
+                pressed.forEach { it.consume() }
+            } else if (!isTransform) {
+                val change =
+                    event.changes.firstOrNull { it.id == activePointerId }
+                        ?: event.changes.firstOrNull()
+                        ?: break
+
+                val viewPos = change.position
+                val viewDelta = viewPos - lastViewPos
+                val pagePos = clampToPage(editor, editor.viewport.viewToPage(viewPos))
+                val pageDelta = pagePos - lastPagePos
+                val toolEvent =
+                    ToolPointerEvent(
+                        viewPosition = viewPos,
+                        viewDelta = viewDelta,
+                        pagePosition = pagePos,
+                        pageDelta = pageDelta,
+                    )
+
+                if (change.pressed) {
+                    activeTool.onMove(editor, toolEvent)
+                    lastViewPos = viewPos
+                    lastPagePos = pagePos
+                    if (activeTool.id == DrawToolId.Pan) snapViewport(editor, marginPx)
+                    change.consume()
+                } else {
+                    activeTool.onUp(editor, toolEvent)
+                    if (modifiesDocument) onEdited()
+                    if (activeTool.id == DrawToolId.Pan) snapViewport(editor, marginPx)
+                    change.consume()
+                    break
+                }
+            }
+
+            if (event.changes.none { it.pressed }) {
+                if (isTransform) snapViewport(editor, marginPx)
+                break
             }
         }
     }
-    error("Missing content.xml")
 }
 
-private fun buildContentXml(doc: ZhixuDrawingDoc): String {
-    val sb = StringBuilder(1024 + doc.strokes.size * 64)
-    sb.append("<?xml version=\"1.0\" standalone=\"no\"?>\n")
-    sb.append("<xournal creator=\"Zhixu\" fileversion=\"1\">\n")
-    sb.append("<title>Zhixu drawing</title>\n")
-    sb.append("<page width=\"")
-        .append(doc.width)
-        .append("\" height=\"")
-        .append(doc.height)
-        .append("\">\n")
-    sb.append("<background type=\"solid\" color=\"#ffffffff\" style=\"plain\"/>\n")
-    sb.append("<layer>\n")
-    for (stroke in doc.strokes) {
-        sb.append("<stroke tool=\"pen\" ts=\"0\" fn=\"\" color=\"")
-            .append(argbToRgbaHex(stroke.colorArgb))
-            .append("\" width=\"")
-            .append(formatFloat(stroke.widthPx))
-            .append("\">")
-        val pts = stroke.points
-        for (i in pts.indices) {
-            val p = pts[i]
-            sb.append(formatFloat(p.x)).append(' ').append(formatFloat(p.y))
-            if (i != pts.lastIndex) sb.append(' ')
-        }
-        sb.append("</stroke>\n")
+private fun centroidOf(changes: List<PointerInputChange>): Offset {
+    if (changes.isEmpty()) return Offset.Zero
+    var x = 0f
+    var y = 0f
+    for (c in changes) {
+        x += c.position.x
+        y += c.position.y
     }
-    sb.append("</layer>\n")
-    sb.append("</page>\n")
-    sb.append("</xournal>\n")
-    return sb.toString()
+    return Offset(x / changes.size.toFloat(), y / changes.size.toFloat())
 }
 
-private fun parseContentXml(xml: String): ZhixuDrawingDoc {
-    val parser = Xml.newPullParser()
-    parser.setInput(StringReader(xml))
-    var width = 0
-    var height = 0
-    val strokes = ArrayList<StrokeSnapshot>()
+private fun spanOf(changes: List<PointerInputChange>): Float {
+    if (changes.size < 2) return 0f
+    val a = changes[0].position
+    val b = changes[1].position
+    return hypot((a.x - b.x).toDouble(), (a.y - b.y).toDouble()).toFloat().coerceAtLeast(0f)
+}
 
-    while (parser.eventType != XmlPullParser.END_DOCUMENT) {
-        if (parser.eventType == XmlPullParser.START_TAG) {
-            when (parser.name) {
-                "page" -> {
-                    width = parser.getAttributeValue(null, "width")?.toFloatOrNull()?.toInt() ?: width
-                    height = parser.getAttributeValue(null, "height")?.toFloatOrNull()?.toInt() ?: height
-                }
+private fun snapViewport(editor: DrawEditorState, marginPx: Float) {
+    val page = editor.currentPageOrNull() ?: return
+    val size = editor.viewport.viewportSize
+    if (size == IntSize.Zero) return
+    editor.viewport.translation =
+        clampTranslation(
+            viewportSize = size,
+            pageWidth = page.width,
+            pageHeight = page.height,
+            scale = editor.viewport.scale,
+            translation = editor.viewport.translation,
+            marginPx = marginPx,
+        )
+}
 
-                "stroke" -> {
-                    val color = parser.getAttributeValue(null, "color")?.let(::rgbaHexToArgb) ?: Color.Black.toArgb()
-                    val w = parser.getAttributeValue(null, "width")?.toFloatOrNull() ?: 3f
-                    val body = parser.nextText().orEmpty()
-                    val pts = parsePoints(body)
-                    strokes.add(StrokeSnapshot(colorArgb = color, widthPx = w, points = pts))
+private fun centerPage(editor: DrawEditorState, marginPx: Float) {
+    val page = editor.currentPageOrNull() ?: return
+    val size = editor.viewport.viewportSize
+    if (size == IntSize.Zero) return
+    val scale = editor.viewport.scale.coerceAtLeast(0.0001f)
+    val vw = size.width.toFloat()
+    val vh = size.height.toFloat()
+    val contentW = page.width * scale
+    val contentH = page.height * scale
+    editor.viewport.translation = Offset((vw - contentW) / 2f, (vh - contentH) / 2f)
+    snapViewport(editor, marginPx)
+}
+
+private fun clampTranslation(
+    viewportSize: IntSize,
+    pageWidth: Float,
+    pageHeight: Float,
+    scale: Float,
+    translation: Offset,
+    marginPx: Float,
+): Offset {
+    if (viewportSize == IntSize.Zero) return translation
+    val vw = viewportSize.width.toFloat()
+    val vh = viewportSize.height.toFloat()
+    val s = scale.coerceAtLeast(0.0001f)
+    val contentW = pageWidth * s
+    val contentH = pageHeight * s
+
+    val minX = vw - contentW - marginPx
+    val maxX = marginPx
+    val minY = vh - contentH - marginPx
+    val maxY = marginPx
+
+    val x =
+        if (contentW + marginPx * 2f <= vw) {
+            (vw - contentW) / 2f
+        } else {
+            translation.x.coerceIn(minX, maxX)
+        }
+    val y =
+        if (contentH + marginPx * 2f <= vh) {
+            (vh - contentH) / 2f
+        } else {
+            translation.y.coerceIn(minY, maxY)
+        }
+    return Offset(x, y)
+}
+
+private fun clampToPage(editor: DrawEditorState, pagePoint: Offset): Offset {
+    val page = editor.currentPageOrNull() ?: return pagePoint
+    val x = pagePoint.x.coerceIn(0f, page.width)
+    val y = pagePoint.y.coerceIn(0f, page.height)
+    return Offset(x, y)
+}
+
+private fun buildPath(points: List<Offset>): Path {
+    val path = Path()
+    if (points.isEmpty()) return path
+    path.moveTo(points[0].x, points[0].y)
+    for (i in 1 until points.size) {
+        path.lineTo(points[i].x, points[i].y)
+    }
+    return path
+}
+
+private fun rectFromPoints(a: Offset, b: Offset): Rect {
+    val left = minOf(a.x, b.x)
+    val right = maxOf(a.x, b.x)
+    val top = minOf(a.y, b.y)
+    val bottom = maxOf(a.y, b.y)
+    return Rect(left, top, right, bottom)
+}
+
+private fun elementBounds(el: DrawElementState): Rect? {
+    return when (el) {
+        is DrawStrokeState -> {
+            val pts = el.points
+            if (pts.isEmpty()) {
+                null
+            } else {
+                var minX = Float.POSITIVE_INFINITY
+                var minY = Float.POSITIVE_INFINITY
+                var maxX = Float.NEGATIVE_INFINITY
+                var maxY = Float.NEGATIVE_INFINITY
+                for (p in pts) {
+                    minX = minOf(minX, p.x)
+                    minY = minOf(minY, p.y)
+                    maxX = maxOf(maxX, p.x)
+                    maxY = maxOf(maxY, p.y)
                 }
+                val pad = el.width.coerceAtLeast(1f) * 0.6f
+                Rect(minX - pad, minY - pad, maxX + pad, maxY + pad)
             }
         }
-        parser.next()
+
+        is DrawShapeState -> {
+            val rect = rectFromPoints(el.start, el.end)
+            val pad = el.width.coerceAtLeast(1f) * 0.6f
+            Rect(rect.left - pad, rect.top - pad, rect.right + pad, rect.bottom + pad)
+        }
+
+        else -> null
     }
-    if (width <= 0 || height <= 0) error("Invalid document size")
-    return ZhixuDrawingDoc(width = width, height = height, strokes = strokes)
 }
 
-private fun parsePoints(text: String): List<Offset> {
-    val items = text.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-    if (items.isEmpty()) return emptyList()
-    val floats = items.mapNotNull { it.toFloatOrNull() }
-    val out = ArrayList<Offset>(floats.size / 2)
-    var i = 0
-    while (i + 1 < floats.size) {
-        out.add(Offset(floats[i], floats[i + 1]))
-        i += 2
-    }
-    return out
+private fun sanitizeFileName(input: String): String {
+    val trimmed = input.trim().trim('.')
+    if (trimmed.isBlank()) return ""
+    return trimmed
+        .replace('/', '_')
+        .replace('\\', '_')
+        .replace(':', '_')
+        .replace('*', '_')
+        .replace('?', '_')
+        .replace('"', '_')
+        .replace('<', '_')
+        .replace('>', '_')
+        .replace('|', '_')
+        .take(80)
+        .trim()
+        .trim('.')
 }
 
-private fun formatFloat(value: Float): String = String.format(Locale.US, "%.2f", value)
-
-private fun argbToRgbaHex(argb: Int): String {
-    val a = (argb ushr 24) and 0xFF
-    val r = (argb ushr 16) and 0xFF
-    val g = (argb ushr 8) and 0xFF
-    val b = argb and 0xFF
-    return String.format(Locale.US, "#%02x%02x%02x%02x", r, g, b, a)
-}
-
-private fun rgbaHexToArgb(hex: String): Int {
-    val s = hex.trim().removePrefix("#")
-    if (s.length == 8) {
-        val r = s.substring(0, 2).toInt(16)
-        val g = s.substring(2, 4).toInt(16)
-        val b = s.substring(4, 6).toInt(16)
-        val a = s.substring(6, 8).toInt(16)
-        return (a shl 24) or (r shl 16) or (g shl 8) or b
+private fun guessTitleFromUri(uri: Uri?): String? {
+    if (uri == null) return null
+    if (uri.scheme.equals("file", ignoreCase = true)) {
+        val path = uri.path ?: return null
+        return File(path).name.removeSuffix(ZhixuDrawFormat.EXTENSION)
     }
-    if (s.length == 6) {
-        val r = s.substring(0, 2).toInt(16)
-        val g = s.substring(2, 4).toInt(16)
-        val b = s.substring(4, 6).toInt(16)
-        return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-    }
-    return Color.Black.toArgb()
+    val last = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':').orEmpty()
+    if (last.isBlank()) return null
+    return last.removeSuffix(ZhixuDrawFormat.EXTENSION)
 }
