@@ -401,6 +401,17 @@ fun ZhixuApp(
 
     fun openDoc(rawUri: String, query: String? = null, lineIndex: Int? = null) {
         val maybeUri = runCatching { Uri.parse(rawUri) }.getOrNull()
+        val isDrawing =
+            maybeUri != null &&
+                runCatching {
+                    val name = androidx.documentfile.provider.DocumentFile.fromSingleUri(context, maybeUri)?.name.orEmpty()
+                    name.endsWith(".zhixud", ignoreCase = true) || rawUri.endsWith(".zhixud", ignoreCase = true)
+                }.getOrDefault(false)
+        if (isDrawing) {
+            val uriParam = Uri.encode(rawUri)
+            navController.navigate("draw?uri=$uriParam")
+            return
+        }
         val isImage =
             maybeUri?.scheme != null &&
                 runCatching { context.contentResolver.getType(maybeUri)?.startsWith("image/") == true }.getOrDefault(false)
@@ -734,7 +745,7 @@ fun ZhixuApp(
                                         onCamera = { android.widget.Toast.makeText(context, "相机：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
                                         onDraw = {
                                             createSheetPage = null
-                                            navController.navigate("draw")
+                                            navController.navigate("draw?uri=")
                                         },
                                         onNewTodo = { createSheetPage = CreateSheetPage.Todo },
                                         onNewNote = { createSheetPage = CreateSheetPage.Note },
@@ -1087,22 +1098,29 @@ fun ZhixuApp(
                         onBack = { navController.popBackStack() },
                     )
                 }
-                composable("draw") {
+                composable(
+                    route = "draw?uri={uri}",
+                    arguments = listOf(
+                        navArgument("uri") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        },
+                    ),
+                ) { entry ->
                     val root = vaultRootUri
                     if (root == null) {
                         navController.navigate("vault") {
-                            popUpTo("draw") { inclusive = true }
+                            popUpTo("draw?uri=") { inclusive = true }
                         }
                         return@composable
                     }
+                    val uriParam = entry.arguments?.getString("uri") ?: ""
+                    val docUri = parseNavUri(uriParam).takeIf { it != Uri.EMPTY }
                     DrawScreen(
                         vaultRootUri = root,
                         repository = repository,
+                        docUri = docUri,
                         onBack = { navController.popBackStack() },
-                        onSaved = { docUri ->
-                            navController.popBackStack()
-                            openDoc(docUri, null, null)
-                        },
                     )
                 }
                 composable(

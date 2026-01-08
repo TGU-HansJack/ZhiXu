@@ -1,10 +1,9 @@
 package app.zhixu.ui.screens
 
-import android.graphics.Bitmap
-import android.graphics.Canvas as AndroidCanvas
-import android.graphics.Paint
-import android.graphics.Path as AndroidPath
 import android.net.Uri
+import android.util.Xml
+import android.content.Context
+import androidx.documentfile.provider.DocumentFile
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -78,10 +77,16 @@ import app.zhixu.ui.Ionicons
 import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTopAppBar
+import app.zhixu.ui.components.ZhixuTextField
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import kotlinx.coroutines.Dispatchers
+import java.io.StringReader
+import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import org.xmlpull.v1.XmlPullParser
 
 private data class StrokeSnapshot(
     val colorArgb: Int,
@@ -93,6 +98,12 @@ private data class StrokeState(
     val colorArgb: Int,
     val widthPx: Float,
     val points: SnapshotStateList<Offset>,
+)
+
+private data class ZhixuDrawingDoc(
+    val width: Int,
+    val height: Int,
+    val strokes: List<StrokeSnapshot>,
 )
 
 private val xournalppPalette: List<Color> =
@@ -115,8 +126,8 @@ private val xournalppPalette: List<Color> =
 fun DrawScreen(
     vaultRootUri: Uri,
     repository: VaultRepository,
+    docUri: Uri?,
     onBack: () -> Unit,
-    onSaved: (String) -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -129,10 +140,17 @@ fun DrawScreen(
     var strokeWidthDp by rememberSaveable { mutableFloatStateOf(4f) }
     var isEraser by rememberSaveable { mutableStateOf(false) }
 
+    var fileUri by remember { mutableStateOf<Uri?>(docUri) }
+    var fileName by rememberSaveable { mutableStateOf(buildDefaultDrawingFileName()) }
+    var showSaveAsDialog by remember { mutableStateOf(false) }
+    var cachedFileDisplayName by remember { mutableStateOf<String?>(null) }
+
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     val strokes = remember { mutableStateListOf<StrokeState>() }
     val redoStrokes = remember { mutableStateListOf<StrokeState>() }
 
+    var pendingLoadDoc by remember { mutableStateOf<ZhixuDrawingDoc?>(null) }
+    var isLoading by remember { mutableStateOf(docUri != null) }
     var isSaving by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
 
@@ -142,9 +160,52 @@ fun DrawScreen(
         if (isEraser) canvasBg.toArgb() else selectedColorArgb
     }
 
-    val canUndo = strokes.isNotEmpty() && !isSaving
-    val canRedo = redoStrokes.isNotEmpty() && !isSaving
-    val canSave = strokes.isNotEmpty() && canvasSize.width > 0 && canvasSize.height > 0 && !isSaving
+    val canUndo = strokes.isNotEmpty() && !isSaving && !isLoading
+    val canRedo = redoStrokes.isNotEmpty() && !isSaving && !isLoading
+    val canSave = strokes.isNotEmpty() && canvasSize.width > 0 && canvasSize.height > 0 && !isSaving && !isLoading
+
+    androidx.compose.runtime.LaunchedEffect(docUri) {
+        if (docUri == null) return@LaunchedEffect
+        isLoading = true
+        val bytes = runCatching { repository.readBytes(docUri) }.getOrNull() ?: byteArrayOf()
+        val parsed =
+            runCatching { decodeZhixud(bytes) }
+                .onFailure {
+                    snackbarHostState.showSnackbar(context.getString(R.string.draw_load_failed))
+                }
+                .getOrNull()
+        pendingLoadDoc = parsed
+        cachedFileDisplayName =
+            runCatching {
+                DocumentFile.fromSingleUri(context, docUri)?.name?.substringBeforeLast('.')?.ifBlank { null }
+            }.getOrNull()
+        isLoading = false
+    }
+
+    androidx.compose.runtime.LaunchedEffect(pendingLoadDoc, canvasSize) {
+        val doc = pendingLoadDoc ?: return@LaunchedEffect
+        if (canvasSize.width <= 0 || canvasSize.height <= 0) return@LaunchedEffect
+        val srcW = doc.width.coerceAtLeast(1)
+        val srcH = doc.height.coerceAtLeast(1)
+        val sx = canvasSize.width.toFloat() / srcW.toFloat()
+        val sy = canvasSize.height.toFloat() / srcH.toFloat()
+        val sw = (sx + sy) / 2f
+
+        strokes.clear()
+        redoStrokes.clear()
+        for (stroke in doc.strokes) {
+            val pts = mutableStateListOf<Offset>()
+            pts.addAll(stroke.points.map { p -> Offset(p.x * sx, p.y * sy) })
+            strokes.add(
+                StrokeState(
+                    colorArgb = stroke.colorArgb,
+                    widthPx = stroke.widthPx * sw,
+                    points = pts,
+                ),
+            )
+        }
+        pendingLoadDoc = null
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -155,8 +216,9 @@ fun DrawScreen(
                 ZhixuTopAppBar(
                     containerColor = MaterialTheme.colorScheme.surface,
                     title = {
+                        val titleText = cachedFileDisplayName ?: stringResource(R.string.draw_title)
                         Text(
-                            text = stringResource(R.string.draw_title),
+                            text = titleText,
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -201,62 +263,25 @@ fun DrawScreen(
                         }
                         TextButton(enabled = canSave, onClick = {
                             if (!canSave) return@TextButton
-                            val strokeSnapshot =
-                                strokes.map { s ->
-                                    StrokeSnapshot(
-                                        colorArgb = s.colorArgb,
-                                        widthPx = s.widthPx,
-                                        points = s.points.toList(),
-                                    )
-                                }
-                            val sizeSnapshot = canvasSize
-
-                            scope.launch {
-                                isSaving = true
-                                val result =
-                                    runCatching {
-                                        val pngBytes =
-                                            withContext(Dispatchers.Default) {
-                                                renderPng(
-                                                    backgroundArgb = canvasBg.toArgb(),
-                                                    size = sizeSnapshot,
-                                                    strokes = strokeSnapshot,
-                                                )
-                                            }
-
-                                        val ts = System.currentTimeMillis()
-                                        val imageFileName = "drawing_$ts.png"
-                                        val imageRelPath = ".zhixu/draw/images/$imageFileName"
-
-                                        repository.ensureVaultStructure(vaultRootUri)
-                                        val imageUri = repository.ensureVaultFile(vaultRootUri, imageRelPath, "image/png")
-                                        repository.writeBytes(imageUri, pngBytes)
-
-                                        val createdDoc = repository.createDoc(vaultRootUri, "Drawing_$ts")
-                                        val md =
-                                            buildString {
-                                                append("# ")
-                                                append(context.getString(R.string.draw_note_title))
-                                                append("\n\n![](")
-                                                append(imageRelPath)
-                                                append(")\n")
-                                            }
-                                        repository.writeText(createdDoc.uri, md)
-                                        repository.indexDocUri(createdDoc.uri)
-                                        createdDoc.uri.toString()
+                            if (fileUri == null) {
+                                showSaveAsDialog = true
+                            } else {
+                                scope.launch {
+                                    isSaving = true
+                                    saveDrawing(
+                                        context = context,
+                                        repository = repository,
+                                        vaultRootUri = vaultRootUri,
+                                        targetUri = fileUri,
+                                        canvasSize = canvasSize,
+                                        strokes = strokes,
+                                        snackbarHostState = snackbarHostState,
+                                    ) { uri, name ->
+                                        fileUri = uri
+                                        cachedFileDisplayName = name
                                     }
-
-                                result.onSuccess { docUri ->
-                                    onSaved(docUri)
-                                }.onFailure { e ->
-                                    snackbarHostState.showSnackbar(
-                                        context.getString(
-                                            R.string.draw_save_failed,
-                                            e.message ?: e.javaClass.simpleName,
-                                        ),
-                                    )
+                                    isSaving = false
                                 }
-                                isSaving = false
                             }
                         }) {
                             Icon(
@@ -466,6 +491,52 @@ fun DrawScreen(
             },
         )
     }
+
+    if (showSaveAsDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveAsDialog = false },
+            title = { Text(stringResource(R.string.draw_save_as_title)) },
+            text = {
+                ZhixuTextField(
+                    value = fileName,
+                    onValueChange = { fileName = it },
+                    singleLine = true,
+                    placeholder = { Text("Drawing.zhixud") },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = fileName.trim().isNotBlank() && !isSaving,
+                    onClick = {
+                        showSaveAsDialog = false
+                        scope.launch {
+                            isSaving = true
+                            saveDrawing(
+                                context = context,
+                                repository = repository,
+                                vaultRootUri = vaultRootUri,
+                                targetUri = null,
+                                canvasSize = canvasSize,
+                                strokes = strokes,
+                                snackbarHostState = snackbarHostState,
+                                desiredName = fileName,
+                            ) { uri, name ->
+                                fileUri = uri
+                                cachedFileDisplayName = name
+                            }
+                            isSaving = false
+                        }
+                    },
+                ) { Text(stringResource(R.string.action_save)) }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !isSaving,
+                    onClick = { showSaveAsDialog = false },
+                ) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
 }
 
 private fun drawStroke(stroke: StrokeState, drawScope: androidx.compose.ui.graphics.drawscope.DrawScope) =
@@ -497,41 +568,220 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStroke(stroke: 
     drawStroke(stroke, this)
 }
 
-private fun renderPng(
-    backgroundArgb: Int,
-    size: IntSize,
-    strokes: List<StrokeSnapshot>,
-): ByteArray {
-    val width = size.width.coerceAtLeast(1)
-    val height = size.height.coerceAtLeast(1)
-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    val canvas = AndroidCanvas(bitmap)
-    canvas.drawColor(backgroundArgb)
-
-    val paint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
+private suspend fun saveDrawing(
+    context: Context,
+    repository: VaultRepository,
+    vaultRootUri: Uri,
+    targetUri: Uri?,
+    canvasSize: IntSize,
+    strokes: List<StrokeState>,
+    snackbarHostState: SnackbarHostState,
+    desiredName: String? = null,
+    onSaved: (Uri, String?) -> Unit,
+) {
+    if (canvasSize.width <= 0 || canvasSize.height <= 0) return
+    val strokeSnapshot =
+        strokes.map { s ->
+            StrokeSnapshot(
+                colorArgb = s.colorArgb,
+                widthPx = s.widthPx,
+                points = s.points.toList(),
+            )
         }
-    val path = AndroidPath()
+    val doc =
+        ZhixuDrawingDoc(
+            width = canvasSize.width,
+            height = canvasSize.height,
+            strokes = strokeSnapshot,
+        )
 
-    for (stroke in strokes) {
-        val points = stroke.points
-        if (points.isEmpty()) continue
-        paint.color = stroke.colorArgb
-        paint.strokeWidth = stroke.widthPx
-        path.reset()
-        val first = points.first()
-        path.moveTo(first.x, first.y)
-        for (i in 1 until points.size) {
-            val p = points[i]
-            path.lineTo(p.x, p.y)
+    val bytes =
+        runCatching { encodeZhixud(doc) }.getOrNull()
+            ?: run {
+                snackbarHostState.showSnackbar(context.getString(R.string.draw_save_failed, "encode"))
+                return
+            }
+
+    val finalUri =
+        if (targetUri != null) {
+            targetUri
+        } else {
+            val trimmed = desiredName.orEmpty().trim().ifBlank { buildDefaultDrawingFileName() }
+            val safe = sanitizeDrawingFileName(trimmed)
+            val fileName = if (safe.endsWith(".zhixud", ignoreCase = true)) safe else "$safe.zhixud"
+            val relPath = "Drawings/$fileName"
+            runCatching { repository.ensureVaultFile(vaultRootUri, relPath, "application/zhixu-drawing") }
+                .onFailure { e ->
+                    snackbarHostState.showSnackbar(
+                        context.getString(
+                            R.string.draw_save_failed,
+                            e.message ?: e.javaClass.simpleName,
+                        ),
+                    )
+                }
+                .getOrNull()
+                ?: return
         }
-        canvas.drawPath(path, paint)
-    }
 
+    runCatching { repository.writeBytes(finalUri, bytes) }
+        .onSuccess {
+            snackbarHostState.showSnackbar(context.getString(R.string.snackbar_saved))
+            val displayName =
+                runCatching { DocumentFile.fromSingleUri(context, finalUri)?.name?.substringBeforeLast('.') }
+                    .getOrNull()
+            onSaved(finalUri, displayName)
+        }
+        .onFailure { e ->
+            snackbarHostState.showSnackbar(
+                context.getString(
+                    R.string.draw_save_failed,
+                    e.message ?: e.javaClass.simpleName,
+                ),
+            )
+        }
+}
+
+private fun buildDefaultDrawingFileName(): String = "Drawing_${System.currentTimeMillis()}.zhixud"
+
+private fun sanitizeDrawingFileName(name: String): String =
+    name.trim()
+        .replace(Regex("""[\\/:*?"<>|]"""), "_")
+        .replace(Regex("""\s+"""), " ")
+        .trim()
+        .ifBlank { "Drawing_${System.currentTimeMillis()}" }
+
+private fun encodeZhixud(doc: ZhixuDrawingDoc): ByteArray {
+    val xml = buildContentXml(doc)
     val out = ByteArrayOutputStream()
-    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+    ZipOutputStream(out).use { zos ->
+        zos.putNextEntry(ZipEntry("mimetype"))
+        zos.write("application/zhixu-drawing".toByteArray(Charsets.US_ASCII))
+        zos.closeEntry()
+
+        zos.putNextEntry(ZipEntry("META-INF/version"))
+        zos.write("current=1\nmin=1\n".toByteArray(Charsets.UTF_8))
+        zos.closeEntry()
+
+        zos.putNextEntry(ZipEntry("content.xml"))
+        zos.write(xml.toByteArray(Charsets.UTF_8))
+        zos.closeEntry()
+    }
     return out.toByteArray()
+}
+
+private fun decodeZhixud(bytes: ByteArray): ZhixuDrawingDoc {
+    if (bytes.isEmpty()) error("Empty file")
+    ZipInputStream(ByteArrayInputStream(bytes)).use { zis ->
+        while (true) {
+            val entry = zis.nextEntry ?: break
+            if (entry.name == "content.xml") {
+                val xml = zis.readBytes().toString(Charsets.UTF_8)
+                return parseContentXml(xml)
+            }
+        }
+    }
+    error("Missing content.xml")
+}
+
+private fun buildContentXml(doc: ZhixuDrawingDoc): String {
+    val sb = StringBuilder(1024 + doc.strokes.size * 64)
+    sb.append("<?xml version=\"1.0\" standalone=\"no\"?>\n")
+    sb.append("<xournal creator=\"Zhixu\" fileversion=\"1\">\n")
+    sb.append("<title>Zhixu drawing</title>\n")
+    sb.append("<page width=\"")
+        .append(doc.width)
+        .append("\" height=\"")
+        .append(doc.height)
+        .append("\">\n")
+    sb.append("<background type=\"solid\" color=\"#ffffffff\" style=\"plain\"/>\n")
+    sb.append("<layer>\n")
+    for (stroke in doc.strokes) {
+        sb.append("<stroke tool=\"pen\" ts=\"0\" fn=\"\" color=\"")
+            .append(argbToRgbaHex(stroke.colorArgb))
+            .append("\" width=\"")
+            .append(formatFloat(stroke.widthPx))
+            .append("\">")
+        val pts = stroke.points
+        for (i in pts.indices) {
+            val p = pts[i]
+            sb.append(formatFloat(p.x)).append(' ').append(formatFloat(p.y))
+            if (i != pts.lastIndex) sb.append(' ')
+        }
+        sb.append("</stroke>\n")
+    }
+    sb.append("</layer>\n")
+    sb.append("</page>\n")
+    sb.append("</xournal>\n")
+    return sb.toString()
+}
+
+private fun parseContentXml(xml: String): ZhixuDrawingDoc {
+    val parser = Xml.newPullParser()
+    parser.setInput(StringReader(xml))
+    var width = 0
+    var height = 0
+    val strokes = ArrayList<StrokeSnapshot>()
+
+    while (parser.eventType != XmlPullParser.END_DOCUMENT) {
+        if (parser.eventType == XmlPullParser.START_TAG) {
+            when (parser.name) {
+                "page" -> {
+                    width = parser.getAttributeValue(null, "width")?.toFloatOrNull()?.toInt() ?: width
+                    height = parser.getAttributeValue(null, "height")?.toFloatOrNull()?.toInt() ?: height
+                }
+
+                "stroke" -> {
+                    val color = parser.getAttributeValue(null, "color")?.let(::rgbaHexToArgb) ?: Color.Black.toArgb()
+                    val w = parser.getAttributeValue(null, "width")?.toFloatOrNull() ?: 3f
+                    val body = parser.nextText().orEmpty()
+                    val pts = parsePoints(body)
+                    strokes.add(StrokeSnapshot(colorArgb = color, widthPx = w, points = pts))
+                }
+            }
+        }
+        parser.next()
+    }
+    if (width <= 0 || height <= 0) error("Invalid document size")
+    return ZhixuDrawingDoc(width = width, height = height, strokes = strokes)
+}
+
+private fun parsePoints(text: String): List<Offset> {
+    val items = text.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    if (items.isEmpty()) return emptyList()
+    val floats = items.mapNotNull { it.toFloatOrNull() }
+    val out = ArrayList<Offset>(floats.size / 2)
+    var i = 0
+    while (i + 1 < floats.size) {
+        out.add(Offset(floats[i], floats[i + 1]))
+        i += 2
+    }
+    return out
+}
+
+private fun formatFloat(value: Float): String = String.format(Locale.US, "%.2f", value)
+
+private fun argbToRgbaHex(argb: Int): String {
+    val a = (argb ushr 24) and 0xFF
+    val r = (argb ushr 16) and 0xFF
+    val g = (argb ushr 8) and 0xFF
+    val b = argb and 0xFF
+    return String.format(Locale.US, "#%02x%02x%02x%02x", r, g, b, a)
+}
+
+private fun rgbaHexToArgb(hex: String): Int {
+    val s = hex.trim().removePrefix("#")
+    if (s.length == 8) {
+        val r = s.substring(0, 2).toInt(16)
+        val g = s.substring(2, 4).toInt(16)
+        val b = s.substring(4, 6).toInt(16)
+        val a = s.substring(6, 8).toInt(16)
+        return (a shl 24) or (r shl 16) or (g shl 8) or b
+    }
+    if (s.length == 6) {
+        val r = s.substring(0, 2).toInt(16)
+        val g = s.substring(2, 4).toInt(16)
+        val b = s.substring(4, 6).toInt(16)
+        return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+    }
+    return Color.Black.toArgb()
 }

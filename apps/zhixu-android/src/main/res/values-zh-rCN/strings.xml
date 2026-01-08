@@ -104,6 +104,8 @@
     <string name="draw_clear_title">清空画布？</string>
     <string name="draw_clear_message">将删除当前所有笔画。</string>
     <string name="draw_save_failed">保存失败：%1$s</string>
+    <string name="draw_save_as_title">保存绘画</string>
+    <string name="draw_load_failed">打开绘画失败。</string>
     <string name="action_find_replace">查找/替换</string>
     <string name="dialog_find_replace_title">查找与替换</string>
     <string name="field_find">查找</string>

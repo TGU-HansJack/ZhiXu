@@ -406,6 +406,7 @@ fun VaultDrawer(
                     val isDirLoading = entry.isDirectory && (loadingDirs[entry.relativePath] == true)
                     val isMarkdownDoc = !entry.isDirectory && entry.name.endsWith(".md", ignoreCase = true)
                     val isPdf = !entry.isDirectory && entry.name.endsWith(".pdf", ignoreCase = true)
+                    val isDrawing = !entry.isDirectory && entry.name.endsWith(".zhixud", ignoreCase = true)
                     val isImage =
                         !entry.isDirectory &&
                             run {
@@ -444,6 +445,7 @@ fun VaultDrawer(
                                 isMarkdownDoc -> entry.name.removeSuffix(".md")
                                 isPdf -> entry.name.removeSuffix(".pdf")
                                 isImage -> entry.name.substringBeforeLast('.', missingDelimiterValue = entry.name)
+                                isDrawing -> entry.name.substringBeforeLast('.', missingDelimiterValue = entry.name)
                                 else -> entry.name
                             }
                         }
@@ -520,6 +522,7 @@ fun VaultDrawer(
                                         when {
                                             isImage -> Ionicons.ImageOutline
                                             isPdf -> Ionicons.DocumentOutline
+                                            isDrawing -> R.drawable.ic_hero_paint_brush
                                             else -> Ionicons.DocumentText
                                         },
                                     ),
@@ -661,7 +664,7 @@ fun VaultDrawer(
                     val entry = selectedEntry ?: return@VaultEntryActionsSheet
                     renameInput =
                         if (entry.isDirectory) entry.name
-                        else entry.name.removeSuffix(".md").removeSuffix(".pdf").ifBlank { entry.name }
+                        else entry.name.removeSuffix(".md").removeSuffix(".pdf").removeSuffix(".zhixud").ifBlank { entry.name }
                     showEntryMenu = false
                     showRenameDialog = true
                 },

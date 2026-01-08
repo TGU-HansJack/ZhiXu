@@ -108,6 +108,8 @@
     <string name="draw_clear_title">Clear canvas?</string>
     <string name="draw_clear_message">This will remove all strokes.</string>
     <string name="draw_save_failed">Save failed: %1$s</string>
+    <string name="draw_save_as_title">Save drawing</string>
+    <string name="draw_load_failed">Failed to open drawing.</string>
     <string name="action_find_replace">Find/Replace</string>
     <string name="dialog_find_replace_title">Find &amp; Replace</string>
     <string name="field_find">Find</string>
