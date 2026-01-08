@@ -68,7 +68,7 @@ private fun DrawPageThumbnail(
 
         val scale = (size.width / w).coerceAtLeast(0.0001f)
         val naturalHeight = h * scale
-        val yOffset = if (naturalHeight < size.height) (size.height - naturalHeight) / 2f else 0f
+        val yOffset = (size.height - naturalHeight) / 2f
 
         withTransform(
             transformBlock = {

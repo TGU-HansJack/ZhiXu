@@ -377,15 +377,20 @@ fun DocumentListScreen(
                                                     modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
                                                     color = listBg,
                                                     shape = RoundedCornerShape(8.dp),
-                                                ) {
-                                                    DrawDocumentPreviewRow(
-                                                        pages = previewPages,
-                                                        maxHeight = LocalConfiguration.current.screenHeightDp.dp / 3,
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                    )
-                                                }
-                                            }
-                                        }
+                                                 ) {
+                                                    Box(
+                                                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                                        contentAlignment = Alignment.Center,
+                                                    ) {
+                                                        DrawDocumentPreviewRow(
+                                                            pages = previewPages,
+                                                            maxHeight = LocalConfiguration.current.screenHeightDp.dp / 3,
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                        )
+                                                    }
+                                                 }
+                                             }
+                                         }
 
                                         !previewMarkdown.isNullOrBlank() -> {
                                             {

@@ -940,15 +940,14 @@ private suspend fun PointerInputScope.handleDrawGestures(
                 val oldTranslation = editor.viewport.translation
                 val newScale = (oldScale * zoomChange).coerceIn(MinScale, MaxScale)
 
-                val pageUnderPrevCentroid = (prevCentroid - oldTranslation) / oldScale
-                val newTranslation = currCentroid - pageUnderPrevCentroid * newScale
+                 val pageUnderPrevCentroid = (prevCentroid - oldTranslation) / oldScale
+                 val newTranslation = currCentroid - pageUnderPrevCentroid * newScale
 
-                editor.viewport.scale = newScale
-                editor.viewport.translation = newTranslation
-                snapViewport(editor, marginPx)
+                 editor.viewport.scale = newScale
+                 editor.viewport.translation = newTranslation
 
-                prevCentroid = currCentroid
-                prevSpan = currSpan
+                 prevCentroid = currCentroid
+                 prevSpan = currSpan
 
                 pressed.forEach { it.consume() }
             } else if (!isTransform) {
