@@ -239,6 +239,45 @@
       .cm-scroller { padding-bottom: calc(var(--editorBottomInset) + env(safe-area-inset-bottom, 0px)) !important; }
       .cm-content { padding-bottom: calc(18px + var(--editorBottomInset) + env(safe-area-inset-bottom, 0px)) !important; }
 
+      /* Caret (cursor): make it blue and thicker in both live/source modes. */
+      #editor .cm-editor,
+      #editor .cm-editor .cm-content,
+      #editor .cm-lp-fm-input {
+        caret-color: var(--primary) !important;
+      }
+      /* Hide the native caret in the main editor; we draw our own thicker caret overlay. */
+      #editor .cm-editor .cm-content {
+        caret-color: transparent !important;
+      }
+      #editor .cm-editor .cm-cursor,
+      #editor .cm-editor .cm-dropCursor,
+      #editor .cm-editor.cm-focused .cm-cursor,
+      #editor .cm-editor.cm-focused .cm-dropCursor {
+        border-left: 0 !important;
+        width: 3px !important;
+        background: var(--primary) !important;
+        margin-left: -1px !important;
+        box-shadow: 0 0 0 0.5px var(--primary) !important;
+      }
+      #zhixuCaret {
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 2px;
+        height: 18px;
+        background: var(--primary);
+        border-radius: 2px;
+        pointer-events: none;
+        z-index: 2147483646;
+        display: none;
+        animation: zhixuCaretBlink 0.72s steps(1, end) infinite;
+        transform: translateZ(0);
+      }
+      @keyframes zhixuCaretBlink {
+        0%, 50% { opacity: 1; }
+        51%, 100% { opacity: 0; }
+      }
+
       /* Live preview styles (keep font-family unchanged) */
       .cm-lp-mark-hidden { display: none !important; }
       .cm-lp-fm-hidden { display: none !important; }
@@ -541,6 +580,145 @@
       src="./codemirror.bundle.js"
       onerror="window.__showFatal && window.__showFatal('script load failed', this.src)"
     ></script>
+    <script>
+      // Android WebView's native caret is often not width-stylable. Draw a custom caret overlay instead.
+      (function () {
+        var caretEl = null;
+        var raf = 0;
+
+        function ensureCaret() {
+          if (caretEl) return caretEl;
+          caretEl = document.createElement("div");
+          caretEl.id = "zhixuCaret";
+          (document.body || document.documentElement).appendChild(caretEl);
+          return caretEl;
+        }
+
+        function isInEditor(node) {
+          var editor = document.getElementById("editor");
+          if (!editor || !node) return false;
+          var el = node.nodeType === 1 ? node : node.parentNode;
+          return el && (el === editor || editor.contains(el));
+        }
+
+        function closestCmLine(node) {
+          var editor = document.getElementById("editor");
+          if (!editor || !node) return null;
+          var el = node.nodeType === 1 ? node : node.parentNode;
+          while (el && el !== editor) {
+            try {
+              if (el.classList && el.classList.contains("cm-line")) return el;
+            } catch (_) {}
+            el = el.parentNode;
+          }
+          return null;
+        }
+
+        function pickCaretRect(editor, sel, range) {
+          try {
+            var rects = range && range.getClientRects ? range.getClientRects() : null;
+            if (rects && rects.length) {
+              var r0 = rects[0];
+              if (r0 && isFinite(r0.left) && isFinite(r0.top) && r0.height > 0) {
+                return { left: r0.left, top: r0.top, height: r0.height, kind: "range" };
+              }
+            }
+          } catch (_) {}
+
+          try {
+            var rb = range && range.getBoundingClientRect ? range.getBoundingClientRect() : null;
+            if (rb && isFinite(rb.left) && isFinite(rb.top) && rb.height > 0) {
+              return { left: rb.left, top: rb.top, height: rb.height, kind: "bbox" };
+            }
+          } catch (_) {}
+
+          // Fallback: empty/blank line often yields no selection rects. Use the current line box.
+          try {
+            var line = closestCmLine(sel && sel.anchorNode);
+            if (line) {
+              var lr = line.getBoundingClientRect();
+              if (lr && isFinite(lr.left) && isFinite(lr.top) && lr.height > 0) {
+                return { left: lr.left, top: lr.top, height: lr.height, kind: "line" };
+              }
+            }
+          } catch (_) {}
+
+          // Last resort: use content box + its padding as the start position.
+          try {
+            var content = editor && editor.querySelector ? editor.querySelector(".cm-content") : null;
+            if (content) {
+              var cr = content.getBoundingClientRect();
+              var cs = window.getComputedStyle ? getComputedStyle(content) : null;
+              var pl = cs ? parseFloat(cs.paddingLeft || "0") : 0;
+              var lh = cs ? parseFloat(cs.lineHeight || "18") : 18;
+              if (cr && isFinite(cr.left) && isFinite(cr.top) && cr.height > 0) {
+                return {
+                  left: cr.left + (isFinite(pl) ? pl : 0),
+                  top: cr.top,
+                  height: isFinite(lh) && lh > 0 ? lh : 18,
+                  kind: "content",
+                };
+              }
+            }
+          } catch (_) {}
+
+          return null;
+        }
+
+        function hide() {
+          var el = ensureCaret();
+          el.style.display = "none";
+        }
+
+        function update() {
+          raf = 0;
+          try {
+            var editor = document.getElementById("editor");
+            if (!editor) return hide();
+            var active = document.activeElement;
+            if (!active || !(active === editor || editor.contains(active))) return hide();
+
+            var sel = document.getSelection ? document.getSelection() : null;
+            if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return hide();
+            if (!isInEditor(sel.anchorNode)) return hide();
+
+            var range = sel.getRangeAt(0);
+            var rect = pickCaretRect(editor, sel, range);
+            if (!rect || !isFinite(rect.left) || !isFinite(rect.top) || rect.height <= 0) return hide();
+
+            var el = ensureCaret();
+            el.style.display = "block";
+            el.style.left = rect.left + "px";
+            var h = Math.max(18, rect.height);
+            var top = rect.top;
+            if (rect.kind === "line" || rect.kind === "content") {
+              // For empty lines, the line box can be taller than the caret; shrink a bit and center.
+              h = Math.max(16, h - 4);
+              top = top + 2;
+            }
+            el.style.top = top + "px";
+            el.style.height = h + "px";
+          } catch (_) {
+            hide();
+          }
+        }
+
+        function schedule() {
+          if (raf) return;
+          raf = requestAnimationFrame(update);
+        }
+
+        document.addEventListener("selectionchange", schedule, true);
+        document.addEventListener("input", schedule, true);
+        document.addEventListener("keydown", schedule, true);
+        document.addEventListener("keyup", schedule, true);
+        document.addEventListener("focusin", schedule, true);
+        document.addEventListener("focusout", schedule, true);
+        window.addEventListener("scroll", schedule, true);
+        window.addEventListener("resize", schedule, true);
+        schedule();
+      })();
+    </script>
     <script>
       (function () {
         function rewriteImg(img) {
