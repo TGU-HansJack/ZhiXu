@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import app.zhixu.BuildConfig
+import app.zhixu.data.AppLogRepository
 import app.zhixu.plugins.PluginManifest
 import app.zhixu.plugins.PluginRepository
 import com.eclipsesource.v8.JavaCallback
@@ -43,6 +44,8 @@ class JsPluginRuntime(
     private val appContext: Context,
     private val pluginRepo: PluginRepository,
     private val http: OkHttpClient = OkHttpClient(),
+    private val appLogs: AppLogRepository? = null,
+    private val debugLogging: Boolean = false,
 ) {
     suspend fun runEditorAction(
         rootUri: Uri,
@@ -75,7 +78,7 @@ class JsPluginRuntime(
                     v8.add("exports", exports)
 
                     V8Object(v8).useV8 { api ->
-                        registerApi(v8, api, pluginId = pluginId, http = http)
+                        registerApi(v8, api, pluginId = pluginId, http = http, appLogs = appLogs, debugLogging = debugLogging)
                         v8.add("api", api)
 
                         v8.executeVoidScript(entryText, entryName, 1)
@@ -256,9 +259,15 @@ class JsPluginRuntime(
 private class PluginApi(
     private val pluginId: String,
     private val http: OkHttpClient,
+    private val appLogs: AppLogRepository?,
+    private val debugLogging: Boolean,
 ) {
     fun log(message: Any?) {
-        Log.d("ZhixuPlugin", "[$pluginId] ${message?.toString() ?: "null"}")
+        val text = message?.toString() ?: "null"
+        Log.d("ZhixuPlugin", "[$pluginId] $text")
+        if (debugLogging) {
+            appLogs?.appendBlocking(AppLogRepository.Kind.Plugin, "[$pluginId] $text")
+        }
     }
 
     fun http(
@@ -300,8 +309,10 @@ private fun registerApi(
     api: V8Object,
     pluginId: String,
     http: OkHttpClient,
+    appLogs: AppLogRepository?,
+    debugLogging: Boolean,
 ) {
-    val impl = PluginApi(pluginId = pluginId, http = http)
+    val impl = PluginApi(pluginId = pluginId, http = http, appLogs = appLogs, debugLogging = debugLogging)
 
     api.registerJavaMethod(
         JavaVoidCallback { _, parameters ->

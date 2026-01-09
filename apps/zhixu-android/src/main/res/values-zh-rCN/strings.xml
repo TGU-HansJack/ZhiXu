@@ -443,4 +443,50 @@
     <string name="editor_history_replace_failed">替换失败</string>
     <string name="editor_deleted">已删除</string>
     <string name="editor_delete_failed">删除失败</string>
+    <!-- Me / Settings -->
+    <string name="settings_section_options">选项</string>
+    <string name="settings_section_extensions">扩展</string>
+    <string name="settings_section_others">其他</string>
+    <string name="settings_vault_selected">已选择</string>
+    <string name="settings_permissions_title">权限</string>
+    <string name="settings_permissions_subtitle">通知、番茄、提醒</string>
+    <string name="settings_ai_title">AI</string>
+    <string name="settings_ai_subtitle">OCR 后处理与模型配置</string>
+    <string name="settings_requires_pro">需要 PRO</string>
+    <string name="settings_pro_title">知序PRO</string>
+    <string name="settings_pro_enabled">已启用</string>
+    <string name="settings_pro_disabled">未启用</string>
+    <string name="settings_pro_enable_title">启用知序PRO</string>
+    <string name="settings_pro_enable_subtitle">用于解锁 AI、创意工坊等功能</string>
+    <string name="pro_payment_section_title">付款码</string>
+    <string name="pro_payment_price">￥ 18.00</string>
+    <string name="pro_payment_line_1">若你喜欢知序，可以尝试为其付费哦~</string>
+    <string name="pro_payment_line_2">采取诚信授权模式，灵感来自 WakeUp 课程表</string>
+    <string name="pro_payment_line_3">理论上是可以直接使用的，付费后再使用是诚信的表现</string>
+    <string name="pro_payment_line_4">可通过扫描二维码以支付宝或微信的方式支付</string>
+    <string name="pro_payment_line_5">点击放大截图支付</string>
+    <string name="pro_payment_line_6">请仔细考虑后再付款</string>
+    <string name="pro_payment_line_7">我已诚信付款，启用知序PRO</string>
+    <string name="pro_payment_alipay">支付宝</string>
+    <string name="pro_payment_wechat">微信支付</string>
+    <string name="pro_payment_code_content_desc">付款码</string>
+    <string name="settings_about_subtitle">版本、更新与链接</string>
+    <string name="settings_workshop_subtitle">插件、脚本与配置</string>
+    <string name="settings_sync_subtitle">同步配置与日志</string>
+    <string name="settings_logs_title">日志</string>
+    <string name="settings_logs_subtitle">同步/插件/操作/AI…</string>
+    <string name="webdav_tap_to_config">点击进行配置</string>
+    <!-- Permissions -->
+    <string name="settings_permissions_pomodoro_subtitle">计时、响铃、勿扰…</string>
+    <string name="settings_permissions_notification_subtitle">打开完整通知设置</string>
+
+    <!-- Logs -->
+    <string name="logs_section_debug">调试</string>
+    <string name="logs_debug_title">调试日志</string>
+    <string name="logs_debug_subtitle">用于排查问题的更多日志（可能包含敏感信息）</string>
+    <string name="logs_section_all">全部日志</string>
+    <string name="logs_plugin_title">插件日志</string>
+    <string name="logs_operation_title">操作日志</string>
+    <string name="logs_ai_title">AI 日志</string>
+    <string name="logs_empty">暂无日志</string>
 </resources>

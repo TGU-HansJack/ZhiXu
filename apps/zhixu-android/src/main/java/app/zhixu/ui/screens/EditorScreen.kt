@@ -143,6 +143,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import app.zhixu.R
 import app.zhixu.data.dataStore
+import app.zhixu.data.AppLogRepository
+import app.zhixu.data.LogPreferences
 import app.zhixu.data.VaultRepository
 import app.zhixu.ui.Heroicons
 import app.zhixu.ui.Ionicons
@@ -236,6 +238,9 @@ fun EditorScreen(
         }
     }
     val pluginRepo = remember(context) { PluginRepository(context) }
+    val logPrefs = remember(context) { LogPreferences(context.applicationContext) }
+    val debugLogs by logPrefs.debugEnabled.collectAsState(initial = false)
+    val appLogs = remember(context) { AppLogRepository(context.applicationContext) }
     var title by remember { mutableStateOf("") }
     var titleFieldValue by remember { mutableStateOf(TextFieldValue(text = "")) }
     var originalFileName by remember { mutableStateOf("") }
@@ -593,21 +598,32 @@ fun EditorScreen(
                     try {
                         val result =
                             withContext(Dispatchers.IO) {
-                                JsPluginRuntime(
-                                    appContext = context.applicationContext,
-                                    pluginRepo = pluginRepo,
-                                ).runEditorAction(
-                                    rootUri = root,
-                                    pluginId = pluginId,
-                                    actionId = actionId,
-                                    ctx =
-                                        EditorActionContext(
+                                val runtime =
+                                    JsPluginRuntime(
+                                        appContext = context.applicationContext,
+                                        pluginRepo = pluginRepo,
+                                        appLogs = appLogs,
+                                        debugLogging = debugLogs,
+                                    )
+
+                                val res =
+                                    runtime.runEditorAction(
+                                        rootUri = root,
+                                        pluginId = pluginId,
+                                        actionId = actionId,
+                                        ctx =
+                                            EditorActionContext(
                                             docUri = currentDocUri,
                                             title = title,
                                             fileName = originalFileName,
-                                            text = content.text,
-                                        ),
+                                                text = content.text,
+                                            ),
+                                    )
+                                appLogs.appendBlocking(
+                                    AppLogRepository.Kind.Operation,
+                                    "[Plugin] $pluginId/$actionId ok=${res.ok} msg=${res.message}",
                                 )
+                                res
                             }
 
                         if (result.ok && result.setText != null) {
@@ -623,6 +639,12 @@ fun EditorScreen(
                     } catch (e: Throwable) {
                         if (e is CancellationException) throw e
                         val msg = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+                        withContext(Dispatchers.IO) {
+                            appLogs.appendBlocking(
+                                AppLogRepository.Kind.Operation,
+                                "[PluginError] $pluginId/$actionId $msg",
+                            )
+                        }
                         snackbarHostState.showSnackbar("插件执行异常：$msg")
                     }
                 }

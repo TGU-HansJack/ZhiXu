@@ -12,16 +12,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -66,7 +63,6 @@ fun AccountManagementDialog(
 
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
-    var currentPlanCode by remember { mutableStateOf<String?>(null) }
 
     val loginOkText = stringResource(R.string.account_login_ok)
     val registerOkText = stringResource(R.string.account_register_ok)
@@ -78,8 +74,6 @@ fun AccountManagementDialog(
     val syncTitle = stringResource(R.string.account_sync_title)
     val syncDesc = stringResource(R.string.account_sync_desc)
     val registerHintText = stringResource(R.string.account_register_hint)
-    val loginToChoosePlanText = stringResource(R.string.account_storage_login_to_choose)
-    val recommendedText = stringResource(R.string.account_storage_recommended)
 
     fun <T> SyncServerResult<T>.toUiMessage(fallback: String): String {
         return when {
@@ -96,25 +90,6 @@ fun AccountManagementDialog(
     fun setBusy(on: Boolean) {
         busy = on
         if (on) status = null
-    }
-
-    val plan512Title = stringResource(R.string.account_storage_512m_title)
-    val plan512Price = stringResource(R.string.account_storage_512m_price)
-    val plan512Desc = stringResource(R.string.account_storage_512m_desc)
-    val plan1Title = stringResource(R.string.account_storage_1g_title)
-    val plan1Price = stringResource(R.string.account_storage_1g_price)
-    val plan1Desc = stringResource(R.string.account_storage_1g_desc)
-    val plan2Title = stringResource(R.string.account_storage_2g_title)
-    val plan2Price = stringResource(R.string.account_storage_2g_price)
-    val plan2Desc = stringResource(R.string.account_storage_2g_desc)
-
-    LaunchedEffect(state.token) {
-        if (!state.isLoggedIn) {
-            currentPlanCode = null
-            return@LaunchedEffect
-        }
-        val me = SyncServerClient.me(OfficialSync.BASE_URL, state.token)
-        if (me.ok) currentPlanCode = me.value?.plan?.code
     }
 
     AlertDialog(
@@ -241,124 +216,9 @@ fun AccountManagementDialog(
                                     }
                                 },
                             ) { Text(stringResource(R.string.account_logout)) }
-                        }
-                    }
-                }
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-
-                Text(text = stringResource(R.string.account_storage_title), style = MaterialTheme.typography.titleSmall)
-
-                @Composable
-                fun PlanCard(code: String, title: String, price: String, desc: String, recommended: Boolean) {
-                    val selected = currentPlanCode == code
-                    val containerColor =
-                        if (selected) {
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                        } else {
-                            CardDefaults.outlinedCardColors().containerColor
-                        }
-
-                    suspend fun selectPlan() {
-                        if (!state.isLoggedIn || busy || selected) return
-                        setBusy(true)
-                        val r = SyncServerClient.setSubscriptionPlan(OfficialSync.BASE_URL, state.token, code)
-                        if (r.ok) currentPlanCode = code
-                        status = if (r.ok) null else r.toUiMessage("Failed")
-                        setBusy(false)
-                    }
-
-                    if (state.isLoggedIn) {
-                        OutlinedCard(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = { scope.launch { selectPlan() } },
-                            colors = CardDefaults.outlinedCardColors(containerColor = containerColor),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Row(
-                                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    ) {
-                                        Text(text = title, style = MaterialTheme.typography.titleSmall)
-                                        if (recommended) {
-                                            Text(
-                                                text = recommendedText,
-                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                                                style = MaterialTheme.typography.labelSmall,
-                                            )
-                                        }
-                                    }
-                                    Text(
-                                        text = desc,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                Text(text = price, style = MaterialTheme.typography.titleSmall)
-                                if (selected) {
-                                    androidx.compose.material3.Icon(
-                                        painter = androidx.compose.ui.res.painterResource(app.zhixu.ui.Ionicons.CheckmarkCircle),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        OutlinedCard(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.outlinedCardColors(containerColor = containerColor),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Row(
-                                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    ) {
-                                        Text(text = title, style = MaterialTheme.typography.titleSmall)
-                                        if (recommended) {
-                                            Text(
-                                                text = recommendedText,
-                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                                                style = MaterialTheme.typography.labelSmall,
-                                            )
-                                        }
-                                    }
-                                    Text(
-                                        text = desc,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                Column(
-                                    horizontalAlignment = androidx.compose.ui.Alignment.End,
-                                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                                ) {
-                                    Text(text = price, style = MaterialTheme.typography.titleSmall)
-                                    Text(
-                                        text = loginToChoosePlanText,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                PlanCard("storage_512m", plan512Title, plan512Price, plan512Desc, recommended = false)
-                PlanCard("storage_1g", plan1Title, plan1Price, plan1Desc, recommended = true)
-                PlanCard("storage_2g", plan2Title, plan2Price, plan2Desc, recommended = false)
+                         }
+                     }
+                 }
 
                 if (!status.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))

@@ -466,4 +466,52 @@
     <string name="editor_history_replace_failed">Replace failed</string>
     <string name="editor_deleted">Deleted</string>
     <string name="editor_delete_failed">Delete failed</string>
+
+    <!-- Me / Settings -->
+    <string name="settings_section_options">Options</string>
+    <string name="settings_section_extensions">Extensions</string>
+    <string name="settings_section_others">Others</string>
+    <string name="settings_vault_selected">Selected</string>
+    <string name="settings_permissions_title">Permissions</string>
+    <string name="settings_permissions_subtitle">Notifications, Pomodoro, reminders</string>
+    <string name="settings_ai_title">AI</string>
+    <string name="settings_ai_subtitle">OCR post-processing and model config</string>
+    <string name="settings_requires_pro">Requires PRO</string>
+    <string name="settings_pro_title">Zhixu PRO</string>
+    <string name="settings_pro_enabled">Enabled</string>
+    <string name="settings_pro_disabled">Disabled</string>
+    <string name="settings_pro_enable_title">Enable Zhixu PRO</string>
+    <string name="settings_pro_enable_subtitle">Unlock AI, Workshop, and more</string>
+    <string name="pro_payment_section_title">Payment Code</string>
+    <string name="pro_payment_price">¥ 18.00</string>
+    <string name="pro_payment_line_1">If you enjoy Zhixu, consider supporting it by paying.</string>
+    <string name="pro_payment_line_2">This follows an honesty-based license model inspired by WakeUp Schedule.</string>
+    <string name="pro_payment_line_3">You can use it without paying, but paying first is an honest gesture.</string>
+    <string name="pro_payment_line_4">Scan the QR code to pay via Alipay or WeChat Pay.</string>
+    <string name="pro_payment_line_5">Tap to enlarge and pay</string>
+    <string name="pro_payment_line_6">Please think carefully before paying.</string>
+    <string name="pro_payment_line_7">I have paid honestly, enable Zhixu PRO</string>
+    <string name="pro_payment_alipay">Alipay</string>
+    <string name="pro_payment_wechat">WeChat Pay</string>
+    <string name="pro_payment_code_content_desc">Payment code</string>
+    <string name="settings_about_subtitle">Version, updates and links</string>
+    <string name="settings_workshop_subtitle">Plugins, scripts and configs</string>
+    <string name="settings_sync_subtitle">Sync settings and logs</string>
+    <string name="settings_logs_title">Logs</string>
+    <string name="settings_logs_subtitle">Sync, plugins, operations, AI…</string>
+    <string name="webdav_tap_to_config">Tap to configure</string>
+
+    <!-- Permissions -->
+    <string name="settings_permissions_pomodoro_subtitle">Timer, sound, Do Not Disturb…</string>
+    <string name="settings_permissions_notification_subtitle">Open full notifications settings</string>
+
+    <!-- Logs -->
+    <string name="logs_section_debug">Debug</string>
+    <string name="logs_debug_title">Debug logging</string>
+    <string name="logs_debug_subtitle">Collect more logs for troubleshooting (may include sensitive info).</string>
+    <string name="logs_section_all">All logs</string>
+    <string name="logs_plugin_title">Plugin logs</string>
+    <string name="logs_operation_title">Operation logs</string>
+    <string name="logs_ai_title">AI logs</string>
+    <string name="logs_empty">Empty</string>
 </resources>

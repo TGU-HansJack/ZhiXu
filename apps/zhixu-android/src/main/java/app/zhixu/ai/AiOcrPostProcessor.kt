@@ -1,10 +1,14 @@
 package app.zhixu.ai
 
+import app.zhixu.data.AppLogRepository
 import app.zhixu.data.AiPreferences
+import app.zhixu.data.LogPreferences
 import kotlinx.coroutines.flow.first
 
 class AiOcrPostProcessor(
     private val prefs: AiPreferences,
+    private val logPrefs: LogPreferences? = null,
+    private val appLogs: AppLogRepository? = null,
     private val client: AiClient = AiClient(),
 ) {
     data class Result(
@@ -20,6 +24,14 @@ class AiOcrPostProcessor(
         val state = prefs.state.first()
         if (!state.aiEnabled) return null
         if (state.ocrMode != AiPreferences.OcrMode.OCR_PLUS_AI) return null
+
+        val debugLogs = logPrefs?.debugEnabled?.first() ?: false
+        if (debugLogs) {
+            appLogs?.appendBlocking(
+                AppLogRepository.Kind.Ai,
+                "[OCR+AI] start len=${text.length} model=${state.model.trim().ifBlank { "-" }}",
+            )
+        }
 
         val cfg =
             AiClient.Config(
@@ -49,7 +61,13 @@ OCR 文本如下（可能有错字、换行）：
 $text
 """.trimIndent()
 
-        val json = client.chatJson(config = cfg, systemPrompt = systemPrompt, userPrompt = userPrompt) ?: return null
+        val json = client.chatJson(config = cfg, systemPrompt = systemPrompt, userPrompt = userPrompt)
+        if (json == null) {
+            if (debugLogs) {
+                appLogs?.appendBlocking(AppLogRepository.Kind.Ai, "[OCR+AI] failed: empty response")
+            }
+            return null
+        }
         val title = json.optString("title").takeIf { it.isNotBlank() }
         val markdown = json.optString("markdown").takeIf { it.isNotBlank() }
         val todos =
@@ -60,7 +78,12 @@ $text
                     if (t.isNotBlank()) add(t)
                 }
             }
+        if (debugLogs) {
+            appLogs?.appendBlocking(
+                AppLogRepository.Kind.Ai,
+                "[OCR+AI] ok title=${title ?: "-"} todos=${todos.size} mdLen=${markdown?.length ?: 0}",
+            )
+        }
         return Result(title = title, markdown = markdown, todos = todos)
     }
 }
-

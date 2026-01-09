@@ -90,6 +90,8 @@ import app.zhixu.data.VaultSyncConfig
 import app.zhixu.data.VaultSyncPreferences
 import app.zhixu.data.WebDavConfig
 import app.zhixu.data.AiPreferences
+import app.zhixu.data.AppLogRepository
+import app.zhixu.data.LogPreferences
 import app.zhixu.data.appManagedVaultRootUri
 import app.zhixu.ai.AiOcrPostProcessor
 import app.zhixu.draw.ZhixuDrawFormat
@@ -118,6 +120,8 @@ import app.zhixu.ui.screens.OpenSourceLicenseScreen
 import app.zhixu.ui.screens.PrivacyPolicyScreen
 import app.zhixu.ui.screens.DailyReminderSettingsScreen
 import app.zhixu.ui.screens.NotificationSettingsScreen
+import app.zhixu.ui.screens.PermissionsSettingsScreen
+import app.zhixu.ui.screens.LogsScreen
 import app.zhixu.ui.screens.PomodoroScreen
 import app.zhixu.ui.screens.PomodoroSettingsScreen
 import app.zhixu.ui.screens.QuadrantsScreen
@@ -167,7 +171,16 @@ fun ZhixuApp(
     val vaultSyncPrefs = remember(appContext) { VaultSyncPreferences(appContext) }
     val repository = remember(appContext) { VaultRepository(appContext) }
     val aiPrefs = remember(appContext) { AiPreferences(appContext) }
-    val aiOcrPostProcessor = remember(appContext) { AiOcrPostProcessor(aiPrefs) }
+    val logPrefs = remember(appContext) { LogPreferences(appContext) }
+    val appLogs = remember(appContext) { AppLogRepository(appContext) }
+    val aiOcrPostProcessor =
+        remember(appContext) {
+            AiOcrPostProcessor(
+                prefs = aiPrefs,
+                logPrefs = logPrefs,
+                appLogs = appLogs,
+            )
+        }
     val ocrWorkflow =
         remember(appContext) {
             OcrWorkflow(
@@ -609,12 +622,6 @@ fun ZhixuApp(
                                     )
                                 }
 
-                                 "me" -> {
-                                     ZhixuTopAppBar(
-                                         containerColor = MaterialTheme.colorScheme.surface,
-                                         title = { Text(stringResource(R.string.nav_me), style = MaterialTheme.typography.titleMedium) },
-                                     )
-                                 }
                              }
                              HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
@@ -900,18 +907,20 @@ fun ZhixuApp(
                     SettingsScreen(
                         contentPadding = padding,
                         vaultRootUri = vaultRootUri,
-                        refreshToken = meRefreshToken,
-                        repository = repository,
-                        onOpenDoc = ::openDoc,
-                        onOpenAccount = { navController.navigate("account") },
-                        onOpenVaultSettings = { navController.navigate("vaultSettings") },
-                        onOpenWorkshop = { navController.navigate("workshop") },
-                        onOpenSync = { navController.navigate("sync") },
                         onOpenAiSettings = { navController.navigate("aiSettings") },
-                        onOpenUiSettings = { navController.navigate("uiSettings") },
+                        onOpenWorkshop = { navController.navigate("workshop") },
                         onOpenPomodoroSettings = { navController.navigate("pomodoroSettings") },
-                        onOpenNotifications = { navController.navigate("notificationSettings") },
-                        onOpenAbout = { navController.navigate("about") },
+                        onOpenNotificationSettings = { navController.navigate("notificationSettings") },
+                        onOpenDailyReminder = { navController.navigate("dailyReminder") },
+                        onOpenReminderSound = { navController.navigate("reminderSound") },
+                        onOpenReminderVibration = { navController.navigate("reminderVibration") },
+                        onOpenReminderPopup = { navController.navigate("reminderPopup") },
+                        vaultPrefs = prefs,
+                        vaultSyncPrefs = vaultSyncPrefs,
+                        repository = repository,
+                        onOpenTermsOfUse = { navController.navigate("termsOfUse") },
+                        onOpenPrivacyPolicy = { navController.navigate("privacyPolicy") },
+                        onOpenOpenSourceLicense = { navController.navigate("openSourceLicense") },
                     )
                 }
                 composable("pomodoroSettings") {
@@ -966,15 +975,6 @@ fun ZhixuApp(
                         onBack = { navController.popBackStack() },
                     )
                 }
-                composable("about") {
-                    AboutScreen(
-                        contentPadding = padding,
-                        onBack = { navController.popBackStack() },
-                        onOpenTermsOfUse = { navController.navigate("termsOfUse") },
-                        onOpenPrivacyPolicy = { navController.navigate("privacyPolicy") },
-                        onOpenOpenSourceLicense = { navController.navigate("openSourceLicense") },
-                    )
-                }
                 composable("termsOfUse") {
                     TermsOfUseScreen(
                         contentPadding = padding,
@@ -1024,14 +1024,6 @@ fun ZhixuApp(
                         vaultRootUri = vaultRootUri,
                         repository = repository,
                         vaultPrefs = prefs,
-                        onBack = { navController.popBackStack() },
-                    )
-                }
-                composable("sync") {
-                    SyncScreen(
-                        contentPadding = padding,
-                        vaultRootUri = vaultRootUri,
-                        repository = repository,
                         onBack = { navController.popBackStack() },
                     )
                 }
