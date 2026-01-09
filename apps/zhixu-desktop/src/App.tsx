@@ -1,5 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { CodeMirrorEditor, type CodeMirrorSelection } from "./components/CodeMirrorEditor";
 import { FileTree, type TreeNode } from "./components/FileTree";
+import {
+  IconCalendar,
+  IconClose,
+  IconFolderPlus,
+  IconMaximize,
+  IconMinimize,
+  IconPlus,
+  IconQuadrant,
+  IconRefresh,
+  IconRename,
+  IconSave,
+  IconSearch,
+  IconSidebar,
+  IconSpace,
+  IconTasks,
+  IconTrash,
+  IconWorkshop,
+} from "./components/icons";
 import { basename, dirname, join } from "./lib/path";
 import {
   createDir,
@@ -16,11 +36,14 @@ import {
   type VaultEntry,
 } from "./lib/vaultApi";
 
+type Activity = "space" | "tasks" | "calendar" | "quadrant" | "workshop" | "search";
+
 type Tab = {
   path: string;
   name: string;
   content: string;
   dirty: boolean;
+  selection: CodeMirrorSelection;
 };
 
 function sortEntries(entries: VaultEntry[]): VaultEntry[] {
@@ -30,7 +53,38 @@ function sortEntries(entries: VaultEntry[]): VaultEntry[] {
   });
 }
 
+function IconButton({
+  title,
+  active,
+  disabled,
+  className,
+  onClick,
+  children,
+}: React.PropsWithChildren<{
+  title: string;
+  active?: boolean;
+  disabled?: boolean;
+  className?: string;
+  onClick?: () => void;
+}>) {
+  return (
+    <button
+      className={`iconBtn${active ? " active" : ""}${className ? ` ${className}` : ""}`}
+      title={title}
+      aria-label={title}
+      data-no-drag="true"
+      onClick={onClick}
+      disabled={disabled}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
 export function App() {
+  const appWindow = useMemo(() => getCurrentWindow(), []);
+
   const [vaultRoot, setVaultRootState] = useState<string | null>(null);
   const [persisted, setPersisted] = useState<PersistedState>({ lastVault: null, recentVaults: [] });
 
@@ -39,13 +93,14 @@ export function App() {
   const [loadingDir, setLoadingDir] = useState<Record<string, boolean>>({});
   const [selectedDir, setSelectedDir] = useState<string>("");
 
+  const [activity, setActivity] = useState<Activity>("space");
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const activeTab = useMemo(() => tabs.find((t) => t.path === activePath) ?? null, [tabs, activePath]);
 
-  const [showPreview, setShowPreview] = useState<boolean>(true);
   const savingRef = useRef(false);
-  const previewRef = useRef<HTMLIFrameElement | null>(null);
 
   const resetForVault = useCallback(async (root: string) => {
     setVaultRootState(root);
@@ -113,30 +168,22 @@ export function App() {
   const openFile = useCallback(async (path: string) => {
     setActivePath(path);
     setSelectedDir(dirname(path));
+    setActivity("space");
+    setSidebarOpen(true);
     setTabs((prev) => {
       const existing = prev.find((t) => t.path === path);
       if (existing) return prev;
-      return [...prev, { path, name: basename(path), content: "", dirty: false }];
+      return [...prev, { path, name: basename(path), content: "", dirty: false, selection: { anchor: 0, head: 0 } }];
     });
     try {
       const content = await readTextFile(path);
-      setTabs((prev) => prev.map((t) => (t.path === path ? { ...t, content, dirty: false } : t)));
+      setTabs((prev) =>
+        prev.map((t) => (t.path === path ? { ...t, content, dirty: false, selection: { anchor: 0, head: 0 } } : t)),
+      );
     } catch (e) {
       console.error(e);
     }
   }, []);
-
-  const updateActiveContent = useCallback(
-    (next: string) => {
-      setTabs((prev) =>
-        prev.map((t) => {
-          if (t.path !== activePath) return t;
-          return { ...t, content: next, dirty: true };
-        }),
-      );
-    },
-    [activePath],
-  );
 
   const saveActive = useCallback(async () => {
     if (!activeTab || !activeTab.dirty) return;
@@ -214,6 +261,23 @@ export function App() {
     }
   }, [activePath, reloadDir]);
 
+  const closeTab = useCallback(
+    (path: string) => {
+      const tab = tabs.find((t) => t.path === path);
+      if (tab?.dirty) {
+        const ok = window.confirm(`Close tab with unsaved changes?\n\n${tab.path}`);
+        if (!ok) return;
+      }
+      setTabs((prev) => prev.filter((t) => t.path !== path));
+      setActivePath((prev) => {
+        if (prev !== path) return prev;
+        const remaining = tabs.filter((t) => t.path !== path);
+        return remaining.length ? remaining[remaining.length - 1]!.path : null;
+      });
+    },
+    [tabs],
+  );
+
   useEffect(() => {
     const onKeyDown = (ev: KeyboardEvent) => {
       const isSave = (ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "s";
@@ -254,157 +318,267 @@ export function App() {
     return out;
   }, [dirCache, expanded, loadingDir]);
 
-  const pushPreview = useCallback(() => {
-    if (!showPreview) return;
-    const win = previewRef.current?.contentWindow as any;
-    if (!win) return;
-    try {
-      if (typeof win.__setVaultRoot === "function") win.__setVaultRoot(vaultRoot ?? "");
-      if (typeof win.__setMarkdown === "function") win.__setMarkdown(activeTab?.content ?? "");
-    } catch {
-      // ignore iframe timing issues
-    }
-  }, [showPreview, vaultRoot, activeTab?.content]);
-
-  useEffect(() => {
-    pushPreview();
-  }, [pushPreview]);
-
   const rootLabel = useMemo(() => (vaultRoot ? basename(vaultRoot) : "No vault"), [vaultRoot]);
 
-  return (
-    <div className="app">
-      <div className="titlebar">
-        <div className="brand">Zhixu</div>
-        <button className="btn primary" onClick={openFolder}>
-          Open Folder
-        </button>
-        {!vaultRoot && persisted.lastVault ? (
-          <button className="btn" onClick={() => openRecent(persisted.lastVault!)}>
-            Reopen Last
-          </button>
-        ) : null}
-        {persisted.recentVaults.length > 0 ? (
-          <select
-            className="select"
-            value=""
-            onChange={(e) => {
-              const v = e.target.value;
-              if (!v) return;
-              void openRecent(v);
-              e.target.value = "";
-            }}
-            title="Recent vaults"
-          >
-            <option value="">Recent…</option>
-            {persisted.recentVaults.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        ) : null}
-        <button className="btn" onClick={newFile} disabled={!vaultRoot}>
-          New File
-        </button>
-        <button className="btn" onClick={newFolder} disabled={!vaultRoot}>
-          New Folder
-        </button>
-        <button className="btn" onClick={() => reloadDir(selectedDir)} disabled={!vaultRoot}>
-          Refresh
-        </button>
-        <button className="btn" onClick={renameActive} disabled={!activeTab}>
-          Rename
-        </button>
-        <button className="btn" onClick={deleteActive} disabled={!activePath}>
-          Delete
-        </button>
-        <div className="spacer" />
-        <button className="btn" onClick={() => setShowPreview((v) => !v)} disabled={!activeTab}>
-          {showPreview ? "Hide Preview" : "Show Preview"}
-        </button>
-        {vaultRoot ? <span className="pill">Vault: {vaultRoot}</span> : <span className="pill">No vault</span>}
-      </div>
+  const editorPlaceholder = useMemo(() => {
+    if (!vaultRoot) return "Select a vault to start…";
+    if (!activeTab) return "Open a Markdown file from the sidebar…";
+    return "";
+  }, [vaultRoot, activeTab]);
 
-      <div className="main">
-        <div className="sidebar">
-          <div className="sidebarHeader">Explorer</div>
-          {vaultRoot ? (
-            <FileTree
-              rootLabel={rootLabel}
-              nodes={flattenedNodes}
-              activePath={activePath}
-              onToggleDir={toggleDir}
-              onOpenFile={openFile}
-            />
-          ) : (
-            <div className="emptyState">Select a vault folder to start.</div>
-          )}
+  const openActivity = useCallback((next: Activity) => {
+    setActivity(next);
+    setSidebarOpen(true);
+  }, []);
+
+  const startDraggingIfAllowed = useCallback(
+    (ev: React.MouseEvent) => {
+      if (ev.button !== 0) return;
+      const target = ev.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('[data-no-drag="true"]')) return;
+      void appWindow.startDragging();
+    },
+    [appWindow],
+  );
+
+  return (
+    <div className="appShell">
+      <div className="topbar" onMouseDown={startDraggingIfAllowed}>
+        <div className="topbarLeft">
+          <IconButton
+            title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            onClick={() => setSidebarOpen((v) => !v)}
+          >
+            <IconSidebar />
+          </IconButton>
+          <IconButton title="Space" active={activity === "space"} onClick={() => openActivity("space")}>
+            <IconSpace />
+          </IconButton>
+          <IconButton title="Search" active={activity === "search"} onClick={() => openActivity("search")}>
+            <IconSearch />
+          </IconButton>
         </div>
 
-        <div className="editor">
-          <div className="tabs">
+        <div className="topbarCenter">
+          <div className="tabs" role="tablist" aria-label="Tabs">
             {tabs.length === 0 ? (
-              <div className="tab active" style={{ minWidth: 240 }}>
-                <span className="label">Welcome</span>
+              <div className="tab active" role="tab" aria-selected="true" data-no-drag="true">
+                <span className="tabLabel">Welcome</span>
               </div>
             ) : (
               tabs.map((t) => (
                 <div
                   key={t.path}
                   className={`tab${t.path === activePath ? " active" : ""}`}
-                  onClick={() => setActivePath(t.path)}
+                  role="tab"
+                  aria-selected={t.path === activePath}
                   title={t.path}
+                  data-no-drag="true"
+                  onClick={() => setActivePath(t.path)}
                 >
-                  <span className={`dirty${t.dirty ? " on" : ""}`} />
-                  <span className="label">{t.name}</span>
+                  <span className={`dirty${t.dirty ? " on" : ""}`} aria-hidden="true" />
+                  <span className="tabLabel">{t.name}</span>
+                  <button
+                    type="button"
+                    className="tabClose"
+                    aria-label="Close tab"
+                    title="Close tab"
+                    data-no-drag="true"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeTab(t.path);
+                    }}
+                  >
+                    <IconClose size={14} />
+                  </button>
                 </div>
               ))
             )}
           </div>
+        </div>
 
-          <div className="pane">
-            {activeTab ? (
-              showPreview ? (
-                <div className="split">
-                  <textarea
-                    className="textarea"
-                    value={activeTab.content}
-                    onChange={(e) => updateActiveContent(e.target.value)}
-                    spellCheck={false}
+        <div className="topbarRight">
+          <IconButton title="Minimize" onClick={() => void appWindow.minimize()} className="winBtn">
+            <IconMinimize size={16} />
+          </IconButton>
+          <IconButton title="Maximize" onClick={() => void appWindow.toggleMaximize()} className="winBtn">
+            <IconMaximize size={16} />
+          </IconButton>
+          <IconButton title="Close" onClick={() => void appWindow.close()} className="winBtn winClose">
+            <IconClose size={16} />
+          </IconButton>
+        </div>
+
+      </div>
+
+      <div className={`workbench${sidebarOpen ? "" : " sidebarClosed"}`}>
+        <div className="activitybar noDrag" role="navigation" aria-label="Activity bar">
+          <IconButton title="Space" active={activity === "space"} onClick={() => openActivity("space")} className="abBtn">
+            <IconSpace />
+          </IconButton>
+          <IconButton title="Tasks" active={activity === "tasks"} onClick={() => openActivity("tasks")} className="abBtn">
+            <IconTasks />
+          </IconButton>
+          <IconButton
+            title="Calendar"
+            active={activity === "calendar"}
+            onClick={() => openActivity("calendar")}
+            className="abBtn"
+          >
+            <IconCalendar />
+          </IconButton>
+          <IconButton
+            title="Quadrant"
+            active={activity === "quadrant"}
+            onClick={() => openActivity("quadrant")}
+            className="abBtn"
+          >
+            <IconQuadrant />
+          </IconButton>
+          <IconButton
+            title="Workshop"
+            active={activity === "workshop"}
+            onClick={() => openActivity("workshop")}
+            className="abBtn"
+          >
+            <IconWorkshop />
+          </IconButton>
+          <IconButton title="Search" active={activity === "search"} onClick={() => openActivity("search")} className="abBtn">
+            <IconSearch />
+          </IconButton>
+        </div>
+
+        {sidebarOpen ? (
+          <div className="sidebar">
+            <div className="sidebarHeader">
+              <div className="sidebarTitle">
+                {activity === "space"
+                  ? "Space"
+                  : activity === "tasks"
+                    ? "Tasks"
+                    : activity === "calendar"
+                      ? "Calendar"
+                      : activity === "quadrant"
+                        ? "Quadrant"
+                        : activity === "workshop"
+                          ? "Workshop"
+                          : "Search"}
+              </div>
+              <div className="sidebarActions">
+                {activity === "space" ? (
+                  <>
+                    <IconButton title="Select vault" onClick={openFolder} className="toolBtn">
+                      <IconSpace size={16} />
+                    </IconButton>
+                    <IconButton title="New file" onClick={newFile} disabled={!vaultRoot} className="toolBtn">
+                      <IconPlus size={16} />
+                    </IconButton>
+                    <IconButton title="New folder" onClick={newFolder} disabled={!vaultRoot} className="toolBtn">
+                      <IconFolderPlus size={16} />
+                    </IconButton>
+                    <IconButton
+                      title="Refresh"
+                      onClick={() => void reloadDir(selectedDir)}
+                      disabled={!vaultRoot}
+                      className="toolBtn"
+                    >
+                      <IconRefresh size={16} />
+                    </IconButton>
+                  </>
+                ) : null}
+              </div>
+            </div>
+
+            {activity === "space" ? (
+              vaultRoot ? (
+                <>
+                  {persisted.recentVaults.length > 0 ? (
+                    <div className="sidebarSubHeader">
+                      <select
+                        className="select"
+                        value=""
+                        data-no-drag="true"
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (!v) return;
+                          void openRecent(v);
+                          e.target.value = "";
+                        }}
+                        title="Recent vaults"
+                      >
+                        <option value="">Recent…</option>
+                        {persisted.recentVaults.map((p) => (
+                          <option key={p} value={p}>
+                            {p}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+                  <FileTree
+                    rootLabel={rootLabel}
+                    nodes={flattenedNodes}
+                    activePath={activePath}
+                    onToggleDir={toggleDir}
+                    onOpenFile={openFile}
                   />
-                  <iframe
-                    ref={previewRef}
-                    className="preview"
-                    src="/markdown-preview/index.html"
-                    title="Preview"
-                    sandbox="allow-scripts allow-same-origin"
-                    onLoad={pushPreview}
-                  />
-                </div>
+                </>
               ) : (
-                <textarea
-                  className="textarea"
-                  value={activeTab.content}
-                  onChange={(e) => updateActiveContent(e.target.value)}
-                  spellCheck={false}
-                />
+                <div className="emptyState">Select a vault folder to start.</div>
               )
             ) : (
-              <div className="emptyState">
-                Open a Markdown file from the Explorer. Save with <span className="pill">Ctrl+S</span>.
-              </div>
+              <div className="emptyState">Coming soon.</div>
             )}
           </div>
+        ) : null}
+
+        <div className="editorArea">
+          {activeTab ? (
+            <CodeMirrorEditor
+              value={activeTab.content}
+              selection={activeTab.selection}
+              placeholder={editorPlaceholder}
+              onChange={(next) => {
+                setTabs((prev) =>
+                  prev.map((t) => {
+                    if (t.path !== activeTab.path) return t;
+                    return { ...t, content: next, dirty: true };
+                  }),
+                );
+              }}
+              onSelectionChange={(nextSel) => {
+                setTabs((prev) =>
+                  prev.map((t) => {
+                    if (t.path !== activeTab.path) return t;
+                    return { ...t, selection: nextSel };
+                  }),
+                );
+              }}
+            />
+          ) : (
+            <div className="emptyState">
+              Open a Markdown file from the sidebar. Save with <span className="kbd">Ctrl+S</span>.
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="statusbar">
-        <div className="path">{activeTab ? activeTab.path : "No file"}</div>
-        <div className="hint">{activeTab?.dirty ? "Unsaved changes" : "Saved"}</div>
-        <div className="pill">Ctrl+S</div>
+      <div className="statusbar noDrag">
+        <div className="statusLeft">{activeTab ? activeTab.path : "No file"}</div>
+        <div className="statusRight">
+          <IconButton title="Save" onClick={() => void saveActive()} disabled={!activeTab?.dirty}>
+            <IconSave size={16} />
+          </IconButton>
+          <IconButton title="Rename" onClick={() => void renameActive()} disabled={!activeTab}>
+            <IconRename size={16} />
+          </IconButton>
+          <IconButton title="Delete" onClick={() => void deleteActive()} disabled={!activePath} className="danger">
+            <IconTrash size={16} />
+          </IconButton>
+          <div className="statusPill">{activeTab?.dirty ? "Unsaved" : "Saved"}</div>
+        </div>
       </div>
     </div>
   );
 }
-

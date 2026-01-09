@@ -1,5 +1,6 @@
 import React from "react";
 import type { VaultEntry } from "../lib/vaultApi";
+import { IconChevron, IconDocument, IconFolder } from "./icons";
 
 export type TreeNode = VaultEntry & {
   depth: number;
@@ -20,33 +21,43 @@ export function FileTree({ rootLabel, nodes, activePath, onToggleDir, onOpenFile
     <div className="tree" role="tree" aria-label="Explorer">
       <div className="treeRow" style={{ paddingLeft: 6 }} role="treeitem" aria-level={1}>
         <span className="twisty" />
-        <span className="icon">📁</span>
+        <span className="icon" aria-hidden="true">
+          <IconFolder size={16} />
+        </span>
         <span className="label" title={rootLabel}>
           {rootLabel}
         </span>
       </div>
-      {nodes.map((n) => {
-        const isActive = activePath === n.path;
-        const pad = 12 + n.depth * 14;
-        const twisty = n.isDir ? (n.expanded ? "▼" : "▶") : "";
-        const icon = n.isDir ? "📁" : "📝";
+      {nodes.map((node) => {
+        const isActive = activePath === node.path;
+        const pad = 12 + node.depth * 14;
         return (
           <div
-            key={n.path}
+            key={node.path}
             className={`treeRow${isActive ? " active" : ""}`}
             style={{ paddingLeft: pad }}
             role="treeitem"
-            aria-level={n.depth + 2}
-            aria-expanded={n.isDir ? Boolean(n.expanded) : undefined}
+            aria-level={node.depth + 2}
+            aria-expanded={node.isDir ? Boolean(node.expanded) : undefined}
             onClick={() => {
-              if (n.isDir) onToggleDir(n.path);
-              else onOpenFile(n.path);
+              if (node.isDir) onToggleDir(node.path);
+              else onOpenFile(node.path);
             }}
           >
-            <span className="twisty">{n.loading ? "…" : twisty}</span>
-            <span className="icon">{icon}</span>
-            <span className="label" title={n.path}>
-              {n.name}
+            <span className="twisty" aria-hidden="true">
+              {node.isDir ? (
+                node.loading ? (
+                  <span className="spinner" aria-label="Loading" />
+                ) : (
+                  <IconChevron open={Boolean(node.expanded)} />
+                )
+              ) : null}
+            </span>
+            <span className="icon" aria-hidden="true">
+              {node.isDir ? <IconFolder size={16} /> : <IconDocument size={16} />}
+            </span>
+            <span className="label" title={node.path}>
+              {node.name}
             </span>
           </div>
         );
@@ -54,4 +65,3 @@ export function FileTree({ rootLabel, nodes, activePath, onToggleDir, onOpenFile
     </div>
   );
 }
-

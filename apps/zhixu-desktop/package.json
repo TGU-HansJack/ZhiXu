@@ -10,8 +10,13 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.8.0",
+    "@codemirror/lang-markdown": "^6.3.4",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.36.3",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.0.0",
+    "codemirror": "^6.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
