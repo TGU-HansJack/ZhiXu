@@ -3,6 +3,9 @@
     <string name="nav_space">空间</string>
     <string name="nav_docs">文档</string>
     <string name="nav_tasks">任务</string>
+    <string name="nav_calendar">日历</string>
+    <string name="nav_quadrants">四象限</string>
+    <string name="nav_pomodoro">番茄</string>
     <string name="nav_settings">设置</string>
     <string name="nav_me">我的</string>
 

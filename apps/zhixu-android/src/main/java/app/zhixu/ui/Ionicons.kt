@@ -41,6 +41,7 @@ object Ionicons {
     @DrawableRes val AddCircleOutline: Int = R.drawable.ic_ion_add_circle_outline
     @DrawableRes val RemoveCircleOutline: Int = R.drawable.ic_ion_remove_circle_outline
     @DrawableRes val GridOutline: Int = R.drawable.ic_ion_grid_outline
+    @DrawableRes val Target: Int = R.drawable.ic_target_24px
 
     @DrawableRes val ArrowBack: Int = R.drawable.ic_ion_arrow_back_outline
     @DrawableRes val ArrowForward: Int = R.drawable.ic_ion_arrow_forward_outline

@@ -328,15 +328,10 @@ fun ZhixuApp(
     }
 
     var docSearchRequestToken by remember { mutableLongStateOf(0L) }
-    var spaceSearchRequestToken by remember { mutableLongStateOf(0L) }
-    var spaceUploadRequestToken by remember { mutableLongStateOf(0L) }
-    var spaceNewFolderRequestToken by remember { mutableLongStateOf(0L) }
-    var spaceAllDirsExpanded by remember { mutableStateOf(false) }
     var meRefreshToken by remember { mutableLongStateOf(0L) }
     var dirStructureMutationToken by remember { mutableLongStateOf(0L) }
     var dirStructureMutation by remember { mutableStateOf<DocListMutation?>(null) }
 
-    var selectedSpaceEntryUris by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedDocUris by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedTasks by remember { mutableStateOf<Set<TaskKey>>(emptySet()) }
 
@@ -348,59 +343,65 @@ fun ZhixuApp(
     }
 
     fun clearAllSelections() {
-        selectedSpaceEntryUris = emptySet()
         selectedDocUris = emptySet()
         selectedTasks = emptySet()
     }
 
-    val showTopBar = currentRoute == "home"
-    val showBottomBar = currentRoute in setOf("home", "me")
-    val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 1, pageCount = { 6 })
-    val settledPage by remember { derivedStateOf { pagerState.settledPage } }
-    var lastSettledHomePage by remember { mutableStateOf(settledPage) }
+    val showTopBar = currentRoute in setOf("home", "tasks", "pomodoro")
+    val showBottomBar = currentRoute in setOf("home", "tasks", "pomodoro", "me")
 
-    var bulkDeleteTarget by remember { mutableStateOf<HomeBulkDeleteTarget?>(null) }
+    val todoPagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 0, pageCount = { 3 })
+    val settledTodoPage by remember { derivedStateOf { todoPagerState.settledPage } }
+    var lastSettledTodoPage by remember { mutableStateOf(settledTodoPage) }
+
+    var bulkDeleteTarget by remember { mutableStateOf<BulkDeleteTarget?>(null) }
     val bulkDeleteCount =
-        if (currentRoute != "home") {
-            0
-        } else {
-            when (settledPage) {
-                0 -> selectedSpaceEntryUris.size
-                1 -> selectedDocUris.size
-                2 -> selectedTasks.size
-                else -> 0
-            }
+        when (currentRoute) {
+            "home" -> selectedDocUris.size
+            "tasks" -> selectedTasks.size
+            else -> 0
         }
 
     LaunchedEffect(currentRoute) {
-        if (currentRoute != "home") {
-            clearAllSelections()
-            bulkDeleteTarget = null
-        }
-    }
-
-    LaunchedEffect(currentRoute, settledPage) {
-        if (currentRoute != "home") return@LaunchedEffect
-        if (lastSettledHomePage == settledPage) return@LaunchedEffect
-        lastSettledHomePage = settledPage
         clearAllSelections()
         bulkDeleteTarget = null
     }
 
-    fun navigateHome(pageIndex: Int) {
-        val targetPage = pageIndex.coerceIn(0, 5)
+    LaunchedEffect(currentRoute, settledTodoPage) {
+        if (currentRoute != "tasks") return@LaunchedEffect
+        if (lastSettledTodoPage == settledTodoPage) return@LaunchedEffect
+        lastSettledTodoPage = settledTodoPage
+        clearAllSelections()
+        bulkDeleteTarget = null
+    }
+
+    fun navigateDocs() {
         navController.navigate("home") {
             launchSingleTop = true
             restoreState = true
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
         }
+    }
+
+    fun navigateTasks() {
+        navController.navigate("tasks") {
+            launchSingleTop = true
+            restoreState = true
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+        }
         scope.launch {
-            if (pagerState.currentPage != targetPage) {
-                pagerState.animateScrollToPage(
-                    page = targetPage,
-                    animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
-                )
-            }
+            todoPagerState.animateScrollToPage(
+                page = 0,
+                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
+            )
+        }
+    }
+
+    fun navigatePomodoro() {
+        navController.navigate("pomodoro") {
+            launchSingleTop = true
+            restoreState = true
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
         }
     }
 
@@ -472,10 +473,26 @@ fun ZhixuApp(
                         if (!showTopBar) return@Scaffold
                         Column {
                             when (currentRoute) {
-                                 "home" -> {
-                                     ZhixuTopAppBar(
-                                         containerColor = MaterialTheme.colorScheme.surface,
-                                         title = {
+                                "home" -> {
+                                    ZhixuTopAppBar(
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                        title = { Text(text = stringResource(R.string.nav_docs)) },
+                                        actions = {
+                                            ZhixuIconButton(onClick = { docSearchRequestToken += 1L }) {
+                                                Icon(
+                                                    painter = painterResource(Ionicons.Search),
+                                                    contentDescription = stringResource(R.string.action_search),
+                                                    modifier = Modifier.size(ZhixuTopBarIconSize),
+                                                )
+                                            }
+                                        },
+                                    )
+                                }
+
+                                "tasks" -> {
+                                    ZhixuTopAppBar(
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                        title = {
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -487,143 +504,59 @@ fun ZhixuApp(
                                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                                     verticalAlignment = Alignment.CenterVertically,
                                                 ) {
-                                                TabText(
-                                                    text = stringResource(R.string.nav_space),
-                                                    selected = settledPage == 0,
-                                                    onClick = {
-                                                        if (pagerState.currentPage == 0) return@TabText
-                                                        scope.launch {
-                                                            pagerState.animateScrollToPage(
-                                                                page = 0,
-                                                                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
-                                                            )
-                                                        }
-                                                    },
-                                                )
-                                                TabText(
-                                                    text = stringResource(R.string.nav_docs),
-                                                    selected = settledPage == 1,
-                                                    onClick = {
-                                                        if (pagerState.currentPage == 1) return@TabText
-                                                        scope.launch {
-                                                            pagerState.animateScrollToPage(
-                                                                page = 1,
-                                                                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
-                                                            )
-                                                        }
-                                                    },
-                                                )
-                                                TabText(
-                                                    text = stringResource(R.string.nav_tasks),
-                                                    selected = settledPage == 2,
-                                                    onClick = {
-                                                        if (pagerState.currentPage == 2) return@TabText
-                                                        scope.launch {
-                                                            pagerState.animateScrollToPage(
-                                                                page = 2,
-                                                                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
-                                                            )
-                                                        }
-                                                    },
-                                                )
-                                                TabText(
-                                                    text = stringResource(R.string.nav_calendar),
-                                                    selected = settledPage == 3,
-                                                    onClick = {
-                                                        if (pagerState.currentPage == 3) return@TabText
-                                                        scope.launch {
-                                                            pagerState.animateScrollToPage(
-                                                                page = 3,
-                                                                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
-                                                            )
-                                                        }
-                                                    },
-                                                )
-                                                TabText(
-                                                    text = stringResource(R.string.nav_quadrants),
-                                                    selected = settledPage == 4,
-                                                    onClick = {
-                                                        if (pagerState.currentPage == 4) return@TabText
-                                                        scope.launch {
-                                                            pagerState.animateScrollToPage(
-                                                                page = 4,
-                                                                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
-                                                            )
-                                                        }
-                                                    },
-                                                )
-                                                TabText(
-                                                    text = stringResource(R.string.nav_pomodoro),
-                                                    selected = settledPage == 5,
-                                                    onClick = {
-                                                        if (pagerState.currentPage == 5) return@TabText
-                                                        scope.launch {
-                                                            pagerState.animateScrollToPage(
-                                                                page = 5,
-                                                                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
-                                                            )
-                                                        }
-                                                    },
-                                                )
-                                                }
-                                            }
-                                        },
-                                        actions = {
-                                            when (settledPage) {
-                                                0 -> {
-                                                    ZhixuIconButton(onClick = { spaceUploadRequestToken += 1L }) {
-                                                        Icon(
-                                                            painter = painterResource(Heroicons.ArrowUpTray),
-                                                            contentDescription = null,
-                                                            modifier = Modifier.size(ZhixuTopBarIconSize),
-                                                        )
-                                                    }
-                                                    ZhixuIconButton(onClick = { spaceNewFolderRequestToken += 1L }) {
-                                                        Icon(
-                                                            painter = painterResource(Heroicons.FolderPlus),
-                                                            contentDescription = null,
-                                                            modifier = Modifier.size(ZhixuTopBarIconSize),
-                                                        )
-                                                    }
-                                                    ZhixuIconButton(onClick = { spaceAllDirsExpanded = !spaceAllDirsExpanded }) {
-                                                        Icon(
-                                                            painter =
-                                                                painterResource(
-                                                                    if (spaceAllDirsExpanded) {
-                                                                        Ionicons.ChevronCollapseOutline
-                                                                    } else {
-                                                                        Ionicons.ChevronExpandOutline
-                                                                    },
-                                                                ),
-                                                            contentDescription = null,
-                                                            modifier = Modifier.size(ZhixuTopBarIconSize),
-                                                        )
-                                                    }
-                                                    ZhixuIconButton(onClick = { spaceSearchRequestToken += 1L }) {
-                                                        Icon(
-                                                            painter = painterResource(Ionicons.Search),
-                                                            contentDescription = stringResource(R.string.action_search),
-                                                            modifier = Modifier.size(ZhixuTopBarIconSize),
-                                                        )
-                                                    }
-                                                }
-
-                                                1 -> {
-                                                    ZhixuIconButton(onClick = { docSearchRequestToken += 1L }) {
-                                                        Icon(
-                                                            painter = painterResource(Ionicons.Search),
-                                                            contentDescription = stringResource(R.string.action_search),
-                                                            modifier = Modifier.size(ZhixuTopBarIconSize),
-                                                        )
-                                                    }
+                                                    TabText(
+                                                        text = stringResource(R.string.nav_tasks),
+                                                        selected = settledTodoPage == 0,
+                                                        onClick = {
+                                                            if (todoPagerState.currentPage == 0) return@TabText
+                                                            scope.launch {
+                                                                todoPagerState.animateScrollToPage(
+                                                                    page = 0,
+                                                                    animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
+                                                                )
+                                                            }
+                                                        },
+                                                    )
+                                                    TabText(
+                                                        text = stringResource(R.string.nav_calendar),
+                                                        selected = settledTodoPage == 1,
+                                                        onClick = {
+                                                            if (todoPagerState.currentPage == 1) return@TabText
+                                                            scope.launch {
+                                                                todoPagerState.animateScrollToPage(
+                                                                    page = 1,
+                                                                    animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
+                                                                )
+                                                            }
+                                                        },
+                                                    )
+                                                    TabText(
+                                                        text = stringResource(R.string.nav_quadrants),
+                                                        selected = settledTodoPage == 2,
+                                                        onClick = {
+                                                            if (todoPagerState.currentPage == 2) return@TabText
+                                                            scope.launch {
+                                                                todoPagerState.animateScrollToPage(
+                                                                    page = 2,
+                                                                    animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
+                                                                )
+                                                            }
+                                                        },
+                                                    )
                                                 }
                                             }
                                         },
                                     )
                                 }
 
-                             }
-                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                "pomodoro" -> {
+                                    ZhixuTopAppBar(
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                        title = { Text(text = stringResource(R.string.nav_pomodoro)) },
+                                    )
+                                }
+                            }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
                     },
                     bottomBar = {
@@ -632,10 +565,9 @@ fun ZhixuApp(
                         val onCenterClick = {
                             if (bulkDeleteCount > 0) {
                                 bulkDeleteTarget =
-                                    when (settledPage) {
-                                        0 -> HomeBulkDeleteTarget.Space
-                                        1 -> HomeBulkDeleteTarget.Docs
-                                        2 -> HomeBulkDeleteTarget.Tasks
+                                    when (currentRoute) {
+                                        "home" -> BulkDeleteTarget.Docs
+                                        "tasks" -> BulkDeleteTarget.Tasks
                                         else -> null
                                     }
                             } else {
@@ -644,7 +576,9 @@ fun ZhixuApp(
                         }
                         MainBottomBar(
                             currentRoute = currentRoute,
-                            onHome = { navigateHome(1) },
+                            onDocs = ::navigateDocs,
+                            onTasks = ::navigateTasks,
+                            onPomodoro = ::navigatePomodoro,
                             centerIconRes = centerIconRes,
                             onCenter = onCenterClick,
                             onMe = ::navigateMe,
@@ -655,9 +589,8 @@ fun ZhixuApp(
                     if (target != null) {
                         val count =
                             when (target) {
-                                HomeBulkDeleteTarget.Space -> selectedSpaceEntryUris.size
-                                HomeBulkDeleteTarget.Docs -> selectedDocUris.size
-                                HomeBulkDeleteTarget.Tasks -> selectedTasks.size
+                                BulkDeleteTarget.Docs -> selectedDocUris.size
+                                BulkDeleteTarget.Tasks -> selectedTasks.size
                             }
                         AlertDialog(
                             onDismissRequest = { bulkDeleteTarget = null },
@@ -671,7 +604,7 @@ fun ZhixuApp(
                                         scope.launch {
                                             var failed = 0
                                             when (target) {
-                                                HomeBulkDeleteTarget.Docs -> {
+                                                BulkDeleteTarget.Docs -> {
                                                     val toDelete = selectedDocUris.toList()
                                                     selectedDocUris = emptySet()
                                                     for (uriStr in toDelete) {
@@ -681,29 +614,7 @@ fun ZhixuApp(
                                                     }
                                                 }
 
-                                                HomeBulkDeleteTarget.Space -> {
-                                                    val toDelete = selectedSpaceEntryUris.toList()
-                                                    selectedSpaceEntryUris = emptySet()
-                                                    for (uriStr in toDelete) {
-                                                        val uri = runCatching { Uri.parse(uriStr) }.getOrNull() ?: continue
-                                                        val ok =
-                                                            withContext(Dispatchers.IO) {
-                                                                if (uriStr.endsWith(".md", ignoreCase = true)) {
-                                                                    repository.deleteDoc(uri)
-                                                                } else {
-                                                                    repository.deleteEntry(uri)
-                                                                }
-                                                            }
-                                                        if (ok) onDocListMutated(DocListMutation.Deleted(docUri = uri)) else failed += 1
-                                                        if (root != null) {
-                                                            val rel = repository.computeRelativePath(root, uri)
-                                                            val parent = rel?.substringBeforeLast('/', missingDelimiterValue = "").orEmpty()
-                                                            runCatching { withContext(Dispatchers.IO) { repository.refreshDirIndexForDirectory(root, parentRelativePath = parent) } }
-                                                        }
-                                                    }
-                                                }
-
-                                                HomeBulkDeleteTarget.Tasks -> {
+                                                BulkDeleteTarget.Tasks -> {
                                                     val toDelete = selectedTasks
                                                     selectedTasks = emptySet()
                                                     val byDoc = toDelete.groupBy { it.docUri }
@@ -781,7 +692,7 @@ fun ZhixuApp(
                                             dirStructureMutationToken += 1L
                                             createSheetPage = null
                                             navController.navigate("edit?uri=${Uri.encode(created.uri.toString())}") {
-                                                popUpTo("home") { inclusive = false }
+                                                popUpTo(navController.graph.findStartDestination().id) { inclusive = false }
                                             }
                                         },
                                     )
@@ -800,7 +711,7 @@ fun ZhixuApp(
                                             dirStructureMutationToken += 1L
                                             createSheetPage = null
                                             navController.navigate("edit?uri=${Uri.encode(created.uri.toString())}") {
-                                                popUpTo("home") { inclusive = false }
+                                                popUpTo(navController.graph.findStartDestination().id) { inclusive = false }
                                             }
                                         },
                                     )
@@ -869,30 +780,14 @@ fun ZhixuApp(
                     )
                 }
                 composable("home") {
-                    HomePager(
+                    DocumentListScreen(
                         contentPadding = padding,
                         vaultRootUri = vaultRootUri,
                         repository = repository,
-                        indexUpdater = indexUpdater,
                         documentIndex = documentIndex,
-                        pagerState = pagerState,
-                        docSearchRequestToken = docSearchRequestToken,
-                        spaceSearchRequestToken = spaceSearchRequestToken,
-                        spaceUploadRequestToken = spaceUploadRequestToken,
-                        spaceNewFolderRequestToken = spaceNewFolderRequestToken,
-                        spaceAllDirsExpanded = spaceAllDirsExpanded,
-                        dirStructureMutationToken = dirStructureMutationToken,
-                        dirStructureMutation = dirStructureMutation,
-                        onDocListMutated = ::onDocListMutated,
-                        selectedSpaceEntryUris = selectedSpaceEntryUris,
-                        onToggleSpaceEntrySelection = { uri -> selectedSpaceEntryUris = toggleSelection(selectedSpaceEntryUris, uri) },
-                        onClearSpaceEntrySelection = { selectedSpaceEntryUris = emptySet() },
-                        selectedDocUris = selectedDocUris,
-                        onToggleDocSelection = { uri -> selectedDocUris = toggleSelection(selectedDocUris, uri) },
-                        onClearDocSelection = { selectedDocUris = emptySet() },
-                        selectedTasks = selectedTasks,
-                        onToggleTaskSelection = { key -> selectedTasks = toggleSelection(selectedTasks, key) },
-                        onClearTaskSelection = { selectedTasks = emptySet() },
+                        indexUpdater = indexUpdater,
+                        isActive = currentRoute == "home",
+                        searchRequestToken = docSearchRequestToken,
                         onOpenDoc = ::openDoc,
                         onNewDoc = { navController.navigate("newDoc") },
                         onChangeVault = {
@@ -901,6 +796,27 @@ fun ZhixuApp(
                                 popUpTo("home") { inclusive = true }
                             }
                         },
+                        onDocListMutated = ::onDocListMutated,
+                        selectedDocUris = selectedDocUris,
+                        onToggleDocSelection = { uri -> selectedDocUris = toggleSelection(selectedDocUris, uri) },
+                        onClearDocSelection = { selectedDocUris = emptySet() },
+                    )
+                }
+                composable("tasks") {
+                    TodoPager(
+                        contentPadding = padding,
+                        vaultRootUri = vaultRootUri,
+                        repository = repository,
+                        pagerState = todoPagerState,
+                        selectedTasks = selectedTasks,
+                        onToggleTaskSelection = { key -> selectedTasks = toggleSelection(selectedTasks, key) },
+                        onClearTaskSelection = { selectedTasks = emptySet() },
+                        onOpenDoc = ::openDoc,
+                    )
+                }
+                composable("pomodoro") {
+                    PomodoroScreen(
+                        contentPadding = padding,
                     )
                 }
                 composable("me") {
@@ -1231,12 +1147,16 @@ private fun TabText(
 @Composable
 private fun MainBottomBar(
     currentRoute: String?,
-    onHome: () -> Unit,
+    onDocs: () -> Unit,
+    onTasks: () -> Unit,
     centerIconRes: Int,
     onCenter: () -> Unit,
+    onPomodoro: () -> Unit,
     onMe: () -> Unit,
 ) {
-    val selectedHome = currentRoute == "home"
+    val selectedDocs = currentRoute == "home"
+    val selectedTasks = currentRoute == "tasks"
+    val selectedPomodoro = currentRoute == "pomodoro"
     val selectedMe = currentRoute == "me"
     val selectedTint = MaterialTheme.colorScheme.onSurface
     val unselectedTint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1259,20 +1179,38 @@ private fun MainBottomBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
-                ZhixuIconButton(onClick = onHome) {
+                ZhixuIconButton(onClick = onDocs) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
-                            painter = painterResource(if (selectedHome) Ionicons.HomeFilled else Ionicons.Home),
-                            contentDescription = "首页",
-                            tint = if (selectedHome) selectedTint else unselectedTint,
+                            painter = painterResource(Ionicons.DocumentOutline),
+                            contentDescription = stringResource(R.string.nav_docs),
+                            tint = if (selectedDocs) selectedTint else unselectedTint,
                             modifier = Modifier.size(24.dp),
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "首页",
-                            color = if (selectedHome) selectedTint else unselectedTint,
+                            text = stringResource(R.string.nav_docs),
+                            color = if (selectedDocs) selectedTint else unselectedTint,
                             style = MaterialTheme.typography.labelSmall,
-                            fontWeight = if (selectedHome) FontWeight.SemiBold else FontWeight.Normal,
+                            fontWeight = if (selectedDocs) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1,
+                        )
+                    }
+                }
+                ZhixuIconButton(onClick = onTasks) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            painter = painterResource(Ionicons.CheckmarkCircle),
+                            contentDescription = stringResource(R.string.nav_tasks),
+                            tint = if (selectedTasks) selectedTint else unselectedTint,
+                            modifier = Modifier.size(24.dp),
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.nav_tasks),
+                            color = if (selectedTasks) selectedTint else unselectedTint,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (selectedTasks) FontWeight.SemiBold else FontWeight.Normal,
                             maxLines = 1,
                         )
                     }
@@ -1295,17 +1233,35 @@ private fun MainBottomBar(
                         )
                     }
                 }
+                ZhixuIconButton(onClick = onPomodoro) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            painter = painterResource(Ionicons.Target),
+                            contentDescription = stringResource(R.string.nav_pomodoro),
+                            tint = if (selectedPomodoro) selectedTint else unselectedTint,
+                            modifier = Modifier.size(24.dp),
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.nav_pomodoro),
+                            color = if (selectedPomodoro) selectedTint else unselectedTint,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (selectedPomodoro) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1,
+                        )
+                    }
+                }
                 ZhixuIconButton(onClick = onMe) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
                             painter = painterResource(if (selectedMe) Ionicons.UserFilled else Ionicons.User),
-                            contentDescription = "我的",
+                            contentDescription = stringResource(R.string.nav_me),
                             tint = if (selectedMe) selectedTint else unselectedTint,
                             modifier = Modifier.size(24.dp),
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "我的",
+                            text = stringResource(R.string.nav_me),
                             color = if (selectedMe) selectedTint else unselectedTint,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = if (selectedMe) FontWeight.SemiBold else FontWeight.Normal,
@@ -1324,80 +1280,24 @@ internal const val KEY_LONG_IMAGE_FONT_SCALE: String = "long_image_font_scale"
 internal const val KEY_LONG_IMAGE_TITLE: String = "long_image_title"
 
 @Composable
-private fun HomePager(
+private fun TodoPager(
     contentPadding: PaddingValues,
     vaultRootUri: Uri?,
     repository: VaultRepository,
-    indexUpdater: VaultIndexUpdater,
-    documentIndex: DocumentIndex,
     pagerState: androidx.compose.foundation.pager.PagerState,
-    docSearchRequestToken: Long,
-    spaceSearchRequestToken: Long,
-    spaceUploadRequestToken: Long,
-    spaceNewFolderRequestToken: Long,
-    spaceAllDirsExpanded: Boolean,
-    dirStructureMutationToken: Long,
-    dirStructureMutation: DocListMutation?,
-    onDocListMutated: (DocListMutation) -> Unit,
-    selectedSpaceEntryUris: Set<String>,
-    onToggleSpaceEntrySelection: (String) -> Unit,
-    onClearSpaceEntrySelection: () -> Unit,
-    selectedDocUris: Set<String>,
-    onToggleDocSelection: (String) -> Unit,
-    onClearDocSelection: () -> Unit,
     selectedTasks: Set<TaskKey>,
     onToggleTaskSelection: (TaskKey) -> Unit,
     onClearTaskSelection: () -> Unit,
     onOpenDoc: (String, String?, Int?) -> Unit,
-    onNewDoc: () -> Unit,
-    onChangeVault: () -> Unit,
 ) {
     HorizontalPager(
         state = pagerState,
-        beyondViewportPageCount = 2,
+        beyondViewportPageCount = 1,
         modifier = Modifier.fillMaxSize(),
     ) { page ->
         val isActive = !pagerState.isScrollInProgress && pagerState.settledPage == page
         when (page) {
             0 ->
-                SpaceScreen(
-                    contentPadding = contentPadding,
-                    vaultRootUri = vaultRootUri,
-                    repository = repository,
-                    isActive = isActive,
-                    searchRequestToken = spaceSearchRequestToken,
-                    uploadRequestToken = spaceUploadRequestToken,
-                    newFolderRequestToken = spaceNewFolderRequestToken,
-                    allDirsExpanded = spaceAllDirsExpanded,
-                    refreshToken = dirStructureMutationToken,
-                    mutation = dirStructureMutation,
-                    onDocListMutated = onDocListMutated,
-                    onOpenDoc = { rawUri, lineIndex -> onOpenDoc(rawUri, null, lineIndex) },
-                    onChangeVault = onChangeVault,
-                    selectedEntryUris = selectedSpaceEntryUris,
-                    onToggleEntrySelection = onToggleSpaceEntrySelection,
-                    onClearEntrySelection = onClearSpaceEntrySelection,
-                )
-
-            1 ->
-                DocumentListScreen(
-                    contentPadding = contentPadding,
-                    vaultRootUri = vaultRootUri,
-                    repository = repository,
-                    documentIndex = documentIndex,
-                    indexUpdater = indexUpdater,
-                    isActive = isActive,
-                    searchRequestToken = docSearchRequestToken,
-                    onOpenDoc = onOpenDoc,
-                    onNewDoc = onNewDoc,
-                    onChangeVault = onChangeVault,
-                    onDocListMutated = onDocListMutated,
-                    selectedDocUris = selectedDocUris,
-                    onToggleDocSelection = onToggleDocSelection,
-                    onClearDocSelection = onClearDocSelection,
-                )
-
-            2 ->
                 TasksScreen(
                     contentPadding = contentPadding,
                     vaultRootUri = vaultRootUri,
@@ -1409,7 +1309,7 @@ private fun HomePager(
                     onClearTaskSelection = onClearTaskSelection,
                 )
 
-            3 ->
+            1 ->
                 CalendarTasksScreen(
                     contentPadding = contentPadding,
                     vaultRootUri = vaultRootUri,
@@ -1418,18 +1318,13 @@ private fun HomePager(
                     onOpenDoc = onOpenDoc,
                 )
 
-            4 ->
+            2 ->
                 QuadrantsScreen(
                     contentPadding = contentPadding,
                     vaultRootUri = vaultRootUri,
                     repository = repository,
                     isActive = isActive,
                     onOpenDoc = onOpenDoc,
-                )
-
-            5 ->
-                PomodoroScreen(
-                    contentPadding = contentPadding,
                 )
         }
     }
@@ -1447,8 +1342,7 @@ private fun parseNavUri(param: String): Uri {
     return direct
 }
 
-private enum class HomeBulkDeleteTarget {
-    Space,
+private enum class BulkDeleteTarget {
     Docs,
     Tasks,
 }
