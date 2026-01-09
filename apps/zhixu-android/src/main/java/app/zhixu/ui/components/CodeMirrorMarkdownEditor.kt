@@ -5,6 +5,8 @@ import android.os.Looper
 import android.util.Log
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.net.Uri
@@ -31,6 +33,7 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONObject
 import java.net.URLConnection
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -43,6 +46,8 @@ fun CodeMirrorMarkdownEditor(
     placeholder: String = "",
     bottomInsetPx: Int = 0,
     vaultRootUri: Uri? = null,
+    interactionEnabled: Boolean = true,
+    openDrawerGestureEnabled: Boolean = true,
     onValueChange: (TextFieldValue) -> Unit,
 ) {
     val context = LocalContext.current
@@ -117,10 +122,50 @@ fun CodeMirrorMarkdownEditor(
                 setTag(TAG_EDITOR_PAGE_LOADED, false)
                 setTag(TAG_EDITOR_PENDING_STATE, null)
                 setTag(TAG_EDITOR_LAST_SENT_STATE, null)
+                setTag(TAG_EDITOR_DRAWER_GESTURE_ENABLED, openDrawerGestureEnabled)
 
                 isVerticalScrollBarEnabled = false
                 isHorizontalScrollBarEnabled = false
                 overScrollMode = WebView.OVER_SCROLL_NEVER
+
+                val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+                var startX = 0f
+                var startY = 0f
+                var allowParentIntercept = false
+
+                setOnTouchListener { view, event ->
+                    val allowDrawerGesture = (view.getTag(TAG_EDITOR_DRAWER_GESTURE_ENABLED) as? Boolean) ?: true
+                    if (!allowDrawerGesture) {
+                        view.parent?.requestDisallowInterceptTouchEvent(true)
+                        return@setOnTouchListener false
+                    }
+
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> {
+                            startX = event.x
+                            startY = event.y
+                            allowParentIntercept = false
+                            view.parent?.requestDisallowInterceptTouchEvent(true)
+                        }
+                        MotionEvent.ACTION_MOVE -> {
+                            if (!allowParentIntercept) {
+                                val dx = event.x - startX
+                                val dy = event.y - startY
+                                if (abs(dx) > touchSlop && abs(dx) > abs(dy) * 1.15f) {
+                                    allowParentIntercept = true
+                                    view.parent?.requestDisallowInterceptTouchEvent(false)
+                                }
+                            }
+                        }
+                        MotionEvent.ACTION_UP,
+                        MotionEvent.ACTION_CANCEL,
+                        -> {
+                            allowParentIntercept = false
+                        }
+                    }
+
+                    false
+                }
 
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
@@ -214,6 +259,18 @@ fun CodeMirrorMarkdownEditor(
         update = { webView ->
             webView.setBackgroundColor(colors.surface.toArgb())
             webView.setTag(TAG_EDITOR_VAULT_ROOT_URI, vaultRootUri)
+            webView.setTag(TAG_EDITOR_DRAWER_GESTURE_ENABLED, openDrawerGestureEnabled)
+
+            webView.isEnabled = interactionEnabled
+            if (!interactionEnabled) {
+                webView.clearFocus()
+                if (webView.getTag(TAG_EDITOR_PAGE_LOADED) == true) {
+                    webView.evaluateJavascript(
+                        "try{document.activeElement&&document.activeElement.blur&&document.activeElement.blur()}catch(e){}",
+                        null,
+                    )
+                }
+            }
             val nextPrepared = prepared ?: return@AndroidView
             val lastSent = webView.getTag(TAG_EDITOR_LAST_SENT_STATE) as? PreparedEditorState
             val lastFromJs = webView.getTag(TAG_EDITOR_LAST_FROM_JS) as? JsReportedState
@@ -349,6 +406,7 @@ private const val TAG_EDITOR_PENDING_STATE: Int = 0x5A48_4545
 private const val TAG_EDITOR_LAST_SENT_STATE: Int = 0x5A48_4546
 private const val TAG_EDITOR_LAST_FROM_JS: Int = 0x5A48_4547
 private const val TAG_EDITOR_VAULT_ROOT_URI: Int = 0x5A48_4548
+private const val TAG_EDITOR_DRAWER_GESTURE_ENABLED: Int = 0x5A48_4549
 private const val APPASSETS_HOST: String = "appassets.androidplatform.net"
 private const val APPASSETS_ORIGIN: String = "https://$APPASSETS_HOST"
 

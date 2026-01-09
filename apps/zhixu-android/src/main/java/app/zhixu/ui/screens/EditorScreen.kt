@@ -1230,7 +1230,7 @@ fun EditorScreen(
                 }
             }
         },
-    ) {
+    ) { drawerActive ->
         Box(
             modifier =
                 Modifier
@@ -1555,6 +1555,8 @@ fun EditorScreen(
                                     placeholder = if (isLoaded) "输入内容或使用 / 快速插入" else "",
                                     bottomInsetPx = anticipatedToolbarPx + with(density) { 24.dp.roundToPx() },
                                     vaultRootUri = vaultRootUri,
+                                    interactionEnabled = !drawerActive,
+                                    openDrawerGestureEnabled = !isImeVisible,
                                     onValueChange = { next ->
                                         val normalized =
                                             if (next.composition == null) {

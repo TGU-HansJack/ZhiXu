@@ -270,12 +270,8 @@
         pointer-events: none;
         z-index: 2147483646;
         display: none;
-        animation: zhixuCaretBlink 0.72s steps(1, end) infinite;
+        opacity: 1;
         transform: translateZ(0);
-      }
-      @keyframes zhixuCaretBlink {
-        0%, 50% { opacity: 1; }
-        51%, 100% { opacity: 0; }
       }
 
       /* Live preview styles (keep font-family unchanged) */
@@ -585,11 +581,100 @@
       (function () {
         var caretEl = null;
         var raf = 0;
+        var showing = false;
+
+        var BLINK_VISIBLE_MS = 550;
+        var BLINK_HIDDEN_MS = 550;
+        var BLINK_IDLE_DELAY_MS = 400; // 300~500ms
+
+        var blinkTimer = 0;
+        var blinkIdleTimer = 0;
+        var blinking = false;
+        var caretVisible = true;
+        var pauseBlinkUntil = 0;
+
+        function clearTimers() {
+          if (blinkTimer) {
+            clearTimeout(blinkTimer);
+            blinkTimer = 0;
+          }
+          if (blinkIdleTimer) {
+            clearTimeout(blinkIdleTimer);
+            blinkIdleTimer = 0;
+          }
+        }
+
+        function setOpacity(isVisible) {
+          var el = ensureCaret();
+          caretVisible = !!isVisible;
+          el.style.opacity = caretVisible ? "1" : "0";
+        }
+
+        function stopBlink() {
+          blinking = false;
+          if (blinkTimer) {
+            clearTimeout(blinkTimer);
+            blinkTimer = 0;
+          }
+          setOpacity(true);
+        }
+
+        function scheduleNextToggle(ms) {
+          if (!blinking) return;
+          if (blinkTimer) clearTimeout(blinkTimer);
+          blinkTimer = setTimeout(function () {
+            if (!blinking) return;
+            caretVisible = !caretVisible;
+            setOpacity(caretVisible);
+            scheduleNextToggle(caretVisible ? BLINK_VISIBLE_MS : BLINK_HIDDEN_MS);
+          }, ms);
+        }
+
+        function startBlinkNow() {
+          if (!showing) return;
+          blinking = true;
+          setOpacity(true);
+          scheduleNextToggle(BLINK_VISIBLE_MS);
+        }
+
+        function delayBlinkFromNow(ms) {
+          if (blinkIdleTimer) clearTimeout(blinkIdleTimer);
+          blinkIdleTimer = setTimeout(function () {
+            blinkIdleTimer = 0;
+            if (!showing) return;
+            startBlinkNow();
+          }, ms);
+        }
+
+        function touchCaret(reason) {
+          if (!showing) return;
+          var now = Date.now();
+          setOpacity(true);
+
+          if (now < pauseBlinkUntil) {
+            stopBlink();
+            delayBlinkFromNow(Math.max(0, pauseBlinkUntil - now));
+            return;
+          }
+
+          // Restart blinking so the caret is visible immediately.
+          clearTimers();
+          startBlinkNow();
+        }
+
+        function onUserInput() {
+          if (!showing) return;
+          pauseBlinkUntil = Date.now() + BLINK_IDLE_DELAY_MS;
+          setOpacity(true);
+          stopBlink();
+          delayBlinkFromNow(BLINK_IDLE_DELAY_MS);
+        }
 
         function ensureCaret() {
           if (caretEl) return caretEl;
           caretEl = document.createElement("div");
           caretEl.id = "zhixuCaret";
+          caretEl.style.opacity = "1";
           (document.body || document.documentElement).appendChild(caretEl);
           return caretEl;
         }
@@ -668,6 +753,10 @@
         function hide() {
           var el = ensureCaret();
           el.style.display = "none";
+          showing = false;
+          pauseBlinkUntil = 0;
+          clearTimers();
+          blinking = false;
         }
 
         function update() {
@@ -688,6 +777,10 @@
 
             var el = ensureCaret();
             el.style.display = "block";
+            if (!showing) {
+              showing = true;
+              touchCaret("show");
+            }
             el.style.left = rect.left + "px";
             var h = Math.max(18, rect.height);
             var top = rect.top;
@@ -708,12 +801,63 @@
           raf = requestAnimationFrame(update);
         }
 
-        document.addEventListener("selectionchange", schedule, true);
-        document.addEventListener("input", schedule, true);
-        document.addEventListener("keydown", schedule, true);
-        document.addEventListener("keyup", schedule, true);
-        document.addEventListener("focusin", schedule, true);
-        document.addEventListener("focusout", schedule, true);
+        document.addEventListener(
+          "selectionchange",
+          function () {
+            schedule();
+            touchCaret("selectionchange");
+          },
+          true
+        );
+        document.addEventListener(
+          "input",
+          function () {
+            schedule();
+            onUserInput();
+          },
+          true
+        );
+        document.addEventListener(
+          "keydown",
+          function () {
+            schedule();
+            touchCaret("keydown");
+          },
+          true
+        );
+        document.addEventListener(
+          "keyup",
+          function () {
+            schedule();
+            touchCaret("keyup");
+          },
+          true
+        );
+        document.addEventListener(
+          "pointerdown",
+          function () {
+            schedule();
+            touchCaret("pointerdown");
+          },
+          true
+        );
+        document.addEventListener("pointerup", schedule, true);
+        document.addEventListener("click", schedule, true);
+        document.addEventListener(
+          "focusin",
+          function () {
+            schedule();
+            touchCaret("focusin");
+          },
+          true
+        );
+        document.addEventListener(
+          "focusout",
+          function () {
+            schedule();
+          },
+          true
+        );
         window.addEventListener("scroll", schedule, true);
         window.addEventListener("resize", schedule, true);
         schedule();

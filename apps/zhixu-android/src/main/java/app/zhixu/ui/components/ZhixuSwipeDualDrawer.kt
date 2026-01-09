@@ -49,10 +49,10 @@ fun ZhixuSwipeDualDrawer(
     drawerScrimMaxAlpha: Float = 0.36f,
     leftDrawerContent: @Composable (modifier: Modifier, closeDrawer: () -> Unit, isOpen: Boolean) -> Unit,
     rightDrawerContent: @Composable (modifier: Modifier, closeDrawer: () -> Unit, isOpen: Boolean) -> Unit,
-    content: @Composable () -> Unit,
+    content: @Composable (drawerActive: Boolean) -> Unit,
 ) {
     if (!enabled) {
-        content()
+        content(false)
         return
     }
 
@@ -307,7 +307,7 @@ fun ZhixuSwipeDualDrawer(
                     }
                 },
     ) {
-        content()
+        content(scrimProgress > 0f || dragging)
 
         if (scrimProgress > 0f) {
             Box(
