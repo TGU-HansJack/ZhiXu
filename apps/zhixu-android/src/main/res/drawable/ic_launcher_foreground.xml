@@ -1,12 +1,7 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,20c-13.255,0 -24,10.745 -24,24s10.745,24 24,24s24,-10.745 24,-24S67.255,20 54,20zM54,26c9.941,0 18,8.059 18,18s-8.059,18 -18,18s-18,-8.059 -18,-18S44.059,26 54,26z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M32,70h44v6H32z" />
-</vector>
+<?xml version="1.0" encoding="utf-8"?>
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@mipmap/ic_launcher_foreground"
+    android:insetLeft="8dp"
+    android:insetTop="8dp"
+    android:insetRight="8dp"
+    android:insetBottom="8dp" />
