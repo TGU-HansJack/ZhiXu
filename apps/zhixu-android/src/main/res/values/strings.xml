@@ -102,6 +102,8 @@
     <string name="draw_note_title">Drawing</string>
     <string name="draw_tool">Tool</string>
     <string name="draw_tool_pen">Pen</string>
+    <string name="draw_pen_style_fountain">钢笔</string>
+    <string name="draw_pen_style_ballpoint">圆珠笔</string>
     <string name="draw_tool_highlighter">Highlighter</string>
     <string name="draw_tool_shape">Shape</string>
     <string name="draw_tool_lasso">Lasso</string>

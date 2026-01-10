@@ -43,8 +43,8 @@ class PenToolMachine : DrawToolMachine {
             DrawStrokeState(
                 id = strokeId,
                 tool = ZhixuDrawTool.Pen,
-                colorArgb = editor.colorArgb,
-                width = editor.penWidth,
+                colorArgb = editor.currentPenColorArgb,
+                width = editor.currentPenWidth,
                 alpha = 1f,
                 points = mutableStateListOf(e.pagePosition),
                 isComplete = false,
@@ -87,7 +87,7 @@ class HighlighterToolMachine : DrawToolMachine {
             DrawStrokeState(
                 id = strokeId,
                 tool = ZhixuDrawTool.Highlighter,
-                colorArgb = editor.colorArgb,
+                colorArgb = editor.highlighterColorArgb,
                 width = editor.highlighterWidth,
                 alpha = editor.highlighterAlpha,
                 points = mutableStateListOf(e.pagePosition),
@@ -142,8 +142,8 @@ class ShapeToolMachine : DrawToolMachine {
             DrawShapeState(
                 id = shapeId,
                 shape = editor.shapeMode,
-                colorArgb = editor.colorArgb,
-                width = editor.penWidth,
+                colorArgb = editor.shapeColorArgb,
+                width = editor.shapeWidth,
                 alpha = 1f,
                 start = s,
                 end = e.pagePosition,
@@ -349,4 +349,3 @@ class PanToolMachine : DrawToolMachine {
     override fun onUp(editor: DrawEditorState, e: ToolPointerEvent) = Unit
     override fun onCancel(editor: DrawEditorState) = Unit
 }
-

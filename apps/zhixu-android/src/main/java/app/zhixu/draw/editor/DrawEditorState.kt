@@ -28,6 +28,11 @@ enum class DrawToolId {
     Pan,
 }
 
+enum class DrawPenStyle {
+    FountainPen,
+    BallpointPen,
+}
+
 enum class DrawShapeMode {
     Line,
     Rectangle,
@@ -95,13 +100,57 @@ class DrawEditorState private constructor(
     var currentPageIndex by mutableIntStateOf(0)
 
     var toolId by mutableStateOf(DrawToolId.Pen)
+    var penStyle by mutableStateOf(DrawPenStyle.FountainPen)
     var shapeMode by mutableStateOf(DrawShapeMode.Line)
 
-    var colorArgb by mutableIntStateOf(0xFF000000.toInt())
-    var penWidth by mutableFloatStateOf(3f)
+    var fountainPenColorArgb by mutableIntStateOf(0xFF000000.toInt())
+    var fountainPenWidth by mutableFloatStateOf(3f)
+
+    var ballpointPenColorArgb by mutableIntStateOf(0xFF000000.toInt())
+    var ballpointPenWidth by mutableFloatStateOf(3f)
+
+    var highlighterColorArgb by mutableIntStateOf(0xFF000000.toInt())
     var highlighterWidth by mutableFloatStateOf(18f)
     var highlighterAlpha by mutableFloatStateOf(0.35f)
+
+    var shapeColorArgb by mutableIntStateOf(0xFF000000.toInt())
+    var shapeWidth by mutableFloatStateOf(3f)
+
     var eraserRadius by mutableFloatStateOf(14f)
+
+    var currentPenColorArgb: Int
+        get() =
+            when (penStyle) {
+                DrawPenStyle.FountainPen -> fountainPenColorArgb
+                DrawPenStyle.BallpointPen -> ballpointPenColorArgb
+            }
+        set(value) {
+            when (penStyle) {
+                DrawPenStyle.FountainPen -> fountainPenColorArgb = value
+                DrawPenStyle.BallpointPen -> ballpointPenColorArgb = value
+            }
+        }
+
+    var currentPenWidth: Float
+        get() =
+            when (penStyle) {
+                DrawPenStyle.FountainPen -> fountainPenWidth
+                DrawPenStyle.BallpointPen -> ballpointPenWidth
+            }
+        set(value) {
+            when (penStyle) {
+                DrawPenStyle.FountainPen -> fountainPenWidth = value
+                DrawPenStyle.BallpointPen -> ballpointPenWidth = value
+            }
+        }
+
+    fun colorForTool(id: DrawToolId): Int? =
+        when (id) {
+            DrawToolId.Pen -> currentPenColorArgb
+            DrawToolId.Highlighter -> highlighterColorArgb
+            DrawToolId.Shape -> shapeColorArgb
+            else -> null
+        }
 
     var selectedElementIds by mutableStateOf<Set<String>>(emptySet())
 

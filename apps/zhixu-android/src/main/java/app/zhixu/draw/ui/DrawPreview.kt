@@ -73,7 +73,7 @@ private fun DrawPageThumbnail(
         withTransform(
             transformBlock = {
                 translate(0f, yOffset)
-                scale(scale, scale)
+                scale(scale, scale, pivot = Offset.Zero)
             },
         ) {
             drawRect(

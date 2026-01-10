@@ -31,6 +31,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -48,6 +49,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -75,12 +77,18 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import app.zhixu.R
 import app.zhixu.data.VaultRepository
+import app.zhixu.data.dataStore
 import app.zhixu.draw.ZhixuDrawElement
 import app.zhixu.draw.ZhixuDrawFormat
 import app.zhixu.draw.editor.DrawEditorState
 import app.zhixu.draw.editor.DrawElementState
+import app.zhixu.draw.editor.DrawPenStyle
 import app.zhixu.draw.editor.DrawShapeMode
 import app.zhixu.draw.editor.DrawShapeState
 import app.zhixu.draw.editor.DrawStrokeState
@@ -103,17 +111,49 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.hypot
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 private const val MinScale: Float = 0.3f
 private const val MaxScale: Float = 5.0f
+
+private val drawPenStyleKey = stringPreferencesKey("draw_pen_style")
+private val drawFountainPenColorArgbKey = intPreferencesKey("draw_pen_fountain_color_argb")
+private val drawFountainPenWidthKey = floatPreferencesKey("draw_pen_fountain_width")
+private val drawBallpointPenColorArgbKey = intPreferencesKey("draw_pen_ballpoint_color_argb")
+private val drawBallpointPenWidthKey = floatPreferencesKey("draw_pen_ballpoint_width")
+private val drawHighlighterColorArgbKey = intPreferencesKey("draw_highlighter_color_argb")
+private val drawHighlighterWidthKey = floatPreferencesKey("draw_highlighter_width")
+private val drawHighlighterAlphaKey = floatPreferencesKey("draw_highlighter_alpha")
+private val drawShapeColorArgbKey = intPreferencesKey("draw_shape_color_argb")
+private val drawShapeWidthKey = floatPreferencesKey("draw_shape_width")
+private val drawShapeModeKey = stringPreferencesKey("draw_shape_mode")
+private val drawEraserRadiusKey = floatPreferencesKey("draw_eraser_radius")
+
+private data class DrawToolPrefs(
+    val penStyle: DrawPenStyle = DrawPenStyle.FountainPen,
+    val fountainPenColorArgb: Int = 0xFF000000.toInt(),
+    val fountainPenWidth: Float = 3f,
+    val ballpointPenColorArgb: Int = 0xFF000000.toInt(),
+    val ballpointPenWidth: Float = 3f,
+    val highlighterColorArgb: Int = 0xFF000000.toInt(),
+    val highlighterWidth: Float = 18f,
+    val highlighterAlpha: Float = 0.35f,
+    val shapeColorArgb: Int = 0xFF000000.toInt(),
+    val shapeWidth: Float = 3f,
+    val shapeMode: DrawShapeMode = DrawShapeMode.Line,
+    val eraserRadius: Float = 14f,
+)
 
 private data class DrawUndoHistory(
     val undoStack: ArrayDeque<List<ZhixuDrawElement>> = ArrayDeque(),
     val redoStack: ArrayDeque<List<ZhixuDrawElement>> = ArrayDeque(),
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun DrawScreen(
     vaultRootUri: Uri,
@@ -133,6 +173,93 @@ fun DrawScreen(
     var isLoading by remember { mutableStateOf(true) }
     var loadFailed by remember { mutableStateOf(false) }
     var editor by remember { mutableStateOf(DrawEditorState.newDocument()) }
+
+    var toolPrefs by remember { mutableStateOf<DrawToolPrefs?>(null) }
+
+    LaunchedEffect(Unit) {
+        val prefs = runCatching { context.dataStore.data.first() }.getOrNull()
+        if (prefs == null) {
+            toolPrefs = DrawToolPrefs()
+            return@LaunchedEffect
+        }
+
+        val penStyle =
+            runCatching { DrawPenStyle.valueOf(prefs[drawPenStyleKey] ?: DrawPenStyle.FountainPen.name) }
+                .getOrDefault(DrawPenStyle.FountainPen)
+        val shapeMode =
+            runCatching { DrawShapeMode.valueOf(prefs[drawShapeModeKey] ?: DrawShapeMode.Line.name) }
+                .getOrDefault(DrawShapeMode.Line)
+
+        toolPrefs =
+            DrawToolPrefs(
+                penStyle = penStyle,
+                fountainPenColorArgb = prefs[drawFountainPenColorArgbKey] ?: 0xFF000000.toInt(),
+                fountainPenWidth = (prefs[drawFountainPenWidthKey] ?: 3f).coerceIn(0.5f, 18f),
+                ballpointPenColorArgb = prefs[drawBallpointPenColorArgbKey] ?: 0xFF000000.toInt(),
+                ballpointPenWidth = (prefs[drawBallpointPenWidthKey] ?: 3f).coerceIn(0.5f, 18f),
+                highlighterColorArgb = prefs[drawHighlighterColorArgbKey] ?: 0xFF000000.toInt(),
+                highlighterWidth = (prefs[drawHighlighterWidthKey] ?: 18f).coerceIn(4f, 42f),
+                highlighterAlpha = (prefs[drawHighlighterAlphaKey] ?: 0.35f).coerceIn(0.05f, 0.9f),
+                shapeColorArgb = prefs[drawShapeColorArgbKey] ?: 0xFF000000.toInt(),
+                shapeWidth = (prefs[drawShapeWidthKey] ?: 3f).coerceIn(0.5f, 18f),
+                shapeMode = shapeMode,
+                eraserRadius = (prefs[drawEraserRadiusKey] ?: 14f).coerceIn(4f, 64f),
+            )
+    }
+
+    LaunchedEffect(editor, toolPrefs) {
+        val prefs = toolPrefs ?: return@LaunchedEffect
+        editor.penStyle = prefs.penStyle
+        editor.fountainPenColorArgb = prefs.fountainPenColorArgb
+        editor.fountainPenWidth = prefs.fountainPenWidth
+        editor.ballpointPenColorArgb = prefs.ballpointPenColorArgb
+        editor.ballpointPenWidth = prefs.ballpointPenWidth
+        editor.highlighterColorArgb = prefs.highlighterColorArgb
+        editor.highlighterWidth = prefs.highlighterWidth
+        editor.highlighterAlpha = prefs.highlighterAlpha
+        editor.shapeColorArgb = prefs.shapeColorArgb
+        editor.shapeWidth = prefs.shapeWidth
+        editor.shapeMode = prefs.shapeMode
+        editor.eraserRadius = prefs.eraserRadius
+    }
+
+    LaunchedEffect(editor, toolPrefs) {
+        if (toolPrefs == null) return@LaunchedEffect
+        snapshotFlow {
+            DrawToolPrefs(
+                penStyle = editor.penStyle,
+                fountainPenColorArgb = editor.fountainPenColorArgb,
+                fountainPenWidth = editor.fountainPenWidth,
+                ballpointPenColorArgb = editor.ballpointPenColorArgb,
+                ballpointPenWidth = editor.ballpointPenWidth,
+                highlighterColorArgb = editor.highlighterColorArgb,
+                highlighterWidth = editor.highlighterWidth,
+                highlighterAlpha = editor.highlighterAlpha,
+                shapeColorArgb = editor.shapeColorArgb,
+                shapeWidth = editor.shapeWidth,
+                shapeMode = editor.shapeMode,
+                eraserRadius = editor.eraserRadius,
+            )
+        }
+            .distinctUntilChanged()
+            .debounce(250)
+            .collect { next ->
+                context.dataStore.edit { store ->
+                    store[drawPenStyleKey] = next.penStyle.name
+                    store[drawFountainPenColorArgbKey] = next.fountainPenColorArgb
+                    store[drawFountainPenWidthKey] = next.fountainPenWidth
+                    store[drawBallpointPenColorArgbKey] = next.ballpointPenColorArgb
+                    store[drawBallpointPenWidthKey] = next.ballpointPenWidth
+                    store[drawHighlighterColorArgbKey] = next.highlighterColorArgb
+                    store[drawHighlighterWidthKey] = next.highlighterWidth
+                    store[drawHighlighterAlphaKey] = next.highlighterAlpha
+                    store[drawShapeColorArgbKey] = next.shapeColorArgb
+                    store[drawShapeWidthKey] = next.shapeWidth
+                    store[drawShapeModeKey] = next.shapeMode.name
+                    store[drawEraserRadiusKey] = next.eraserRadius
+                }
+            }
+    }
 
     val penTool = remember { PenToolMachine() }
     val highlighterTool = remember { HighlighterToolMachine() }
@@ -305,6 +432,32 @@ fun DrawScreen(
     var showToolDrawer by remember { mutableStateOf(false) }
     val toolDrawerState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    fun handleToolDockClick(id: DrawToolId) {
+        when (id) {
+            DrawToolId.Lasso,
+            DrawToolId.Pan,
+            -> {
+                editor.toolId = id
+                editor.clearOverlaysAndSelection()
+                showToolDrawer = false
+            }
+
+            DrawToolId.Pen,
+            DrawToolId.Highlighter,
+            DrawToolId.Shape,
+            DrawToolId.Eraser,
+            -> {
+                if (editor.toolId == id) {
+                    showToolDrawer = true
+                } else {
+                    editor.toolId = id
+                    editor.clearOverlaysAndSelection()
+                    showToolDrawer = false
+                }
+            }
+        }
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
@@ -420,11 +573,7 @@ fun DrawScreen(
 
                 DrawToolDock(
                     editor = editor,
-                    onSelectTool = {
-                        editor.toolId = it
-                        editor.clearOverlaysAndSelection()
-                        showToolDrawer = true
-                    },
+                    onToolClick = ::handleToolDockClick,
                     modifier =
                         Modifier
                             .align(Alignment.BottomCenter)
@@ -439,6 +588,7 @@ fun DrawScreen(
         ModalBottomSheet(
             onDismissRequest = { showToolDrawer = false },
             sheetState = toolDrawerState,
+            dragHandle = { DrawSlimDragHandle() },
         ) {
             DrawToolDrawerContent(
                 editor = editor,
@@ -554,11 +704,39 @@ private fun DrawCircleIconButton(
 }
 
 @Composable
+private fun DrawSlimDragHandle(modifier: Modifier = Modifier) {
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp, bottom = 2.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(2.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+            modifier = Modifier.size(width = 34.dp, height = 4.dp),
+            content = {},
+        )
+    }
+}
+
+@Composable
 private fun DrawToolDock(
     editor: DrawEditorState,
-    onSelectTool: (DrawToolId) -> Unit,
+    onToolClick: (DrawToolId) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val fountainPenColor = Color(editor.fountainPenColorArgb)
+    val ballpointPenColor = Color(editor.ballpointPenColorArgb)
+    val penColor = if (editor.penStyle == DrawPenStyle.FountainPen) fountainPenColor else ballpointPenColor
+    val highlighterColor = Color(editor.highlighterColorArgb)
+    val shapeColor = Color(editor.shapeColorArgb)
+    val penIcon =
+        when (editor.penStyle) {
+            DrawPenStyle.FountainPen -> R.drawable.ic_lucide_pen_tool
+            DrawPenStyle.BallpointPen -> R.drawable.ic_lucide_pencil
+        }
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(18.dp),
@@ -573,39 +751,42 @@ private fun DrawToolDock(
         ) {
             DrawToolDockButton(
                 selected = editor.toolId == DrawToolId.Pen,
-                iconRes = Ionicons.BrushOutline,
+                iconRes = penIcon,
                 contentDescription = stringResource(R.string.draw_tool_pen),
-                onClick = { onSelectTool(DrawToolId.Pen) },
+                iconTint = penColor,
+                onClick = { onToolClick(DrawToolId.Pen) },
             )
             DrawToolDockButton(
                 selected = editor.toolId == DrawToolId.Highlighter,
-                iconRes = R.drawable.ic_ink_highlighter_24px,
+                iconRes = R.drawable.ic_lucide_highlighter,
                 contentDescription = stringResource(R.string.draw_tool_highlighter),
-                onClick = { onSelectTool(DrawToolId.Highlighter) },
+                iconTint = highlighterColor,
+                onClick = { onToolClick(DrawToolId.Highlighter) },
             )
             DrawToolDockButton(
                 selected = editor.toolId == DrawToolId.Shape,
-                iconRes = R.drawable.ic_triangle_circle_24px,
+                iconRes = R.drawable.ic_lucide_pyramid,
                 contentDescription = stringResource(R.string.draw_tool_shape),
-                onClick = { onSelectTool(DrawToolId.Shape) },
+                iconTint = shapeColor,
+                onClick = { onToolClick(DrawToolId.Shape) },
             )
             DrawToolDockButton(
                 selected = editor.toolId == DrawToolId.Lasso,
-                iconRes = R.drawable.ic_lasso_select_24px,
+                iconRes = R.drawable.ic_lucide_lasso,
                 contentDescription = stringResource(R.string.draw_tool_lasso),
-                onClick = { onSelectTool(DrawToolId.Lasso) },
+                onClick = { onToolClick(DrawToolId.Lasso) },
             )
             DrawToolDockButton(
                 selected = editor.toolId == DrawToolId.Eraser,
-                iconRes = R.drawable.ic_ink_eraser_24px,
+                iconRes = R.drawable.ic_lucide_eraser,
                 contentDescription = stringResource(R.string.draw_tool_eraser),
-                onClick = { onSelectTool(DrawToolId.Eraser) },
+                onClick = { onToolClick(DrawToolId.Eraser) },
             )
             DrawToolDockButton(
                 selected = editor.toolId == DrawToolId.Pan,
-                iconRes = R.drawable.ic_pinch_zoom_out_24px,
+                iconRes = R.drawable.ic_lucide_hand,
                 contentDescription = stringResource(R.string.draw_tool_pan),
-                onClick = { onSelectTool(DrawToolId.Pan) },
+                onClick = { onToolClick(DrawToolId.Pan) },
             )
         }
     }
@@ -617,9 +798,11 @@ private fun DrawToolDockButton(
     iconRes: Int,
     contentDescription: String,
     onClick: () -> Unit,
+    iconTint: Color? = null,
 ) {
     val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
-    val fg = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+    val fg =
+        iconTint ?: if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
     Surface(
         color = bg,
         shape = RoundedCornerShape(12.dp),
@@ -637,6 +820,68 @@ private fun DrawToolDockButton(
                 tint = fg,
             )
         }
+    }
+}
+
+@Composable
+private fun DrawPenStyleHeader(
+    penStyle: DrawPenStyle,
+    fountainPenColor: Color,
+    ballpointPenColor: Color,
+    onSelect: (DrawPenStyle) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
+            DrawPenStyleOption(
+                selected = penStyle == DrawPenStyle.FountainPen,
+                label = stringResource(R.string.draw_pen_style_fountain),
+                iconRes = R.drawable.ic_lucide_pen_tool,
+                tint = fountainPenColor,
+                onClick = { onSelect(DrawPenStyle.FountainPen) },
+            )
+            DrawPenStyleOption(
+                selected = penStyle == DrawPenStyle.BallpointPen,
+                label = stringResource(R.string.draw_pen_style_ballpoint),
+                iconRes = R.drawable.ic_lucide_pencil,
+                tint = ballpointPenColor,
+                onClick = { onSelect(DrawPenStyle.BallpointPen) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DrawPenStyleOption(
+    selected: Boolean,
+    label: String,
+    iconRes: Int,
+    tint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val labelColor = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+    val iconAlpha = if (selected) 1f else 0.45f
+    Column(
+        modifier = modifier.clickable(onClick = onClick).padding(vertical = 6.dp, horizontal = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            color = labelColor,
+        )
+        androidx.compose.material3.Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            modifier = Modifier.size(30.dp).alpha(iconAlpha),
+            tint = tint,
+        )
     }
 }
 
@@ -663,7 +908,17 @@ private fun DrawToolDrawerContent(
                 DrawToolId.Eraser -> stringResource(R.string.draw_tool_eraser)
                 DrawToolId.Pan -> stringResource(R.string.draw_tool_pan)
             }
-        Text(toolLabel, style = MaterialTheme.typography.titleMedium)
+        if (editor.toolId == DrawToolId.Pen) {
+            DrawPenStyleHeader(
+                penStyle = editor.penStyle,
+                fountainPenColor = Color(editor.fountainPenColorArgb),
+                ballpointPenColor = Color(editor.ballpointPenColorArgb),
+                onSelect = { editor.penStyle = it },
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+        } else {
+            Text(toolLabel, style = MaterialTheme.typography.titleMedium)
+        }
 
         if (editor.toolId == DrawToolId.Shape) {
             val chipScroll = rememberScrollState()
@@ -690,20 +945,43 @@ private fun DrawToolDrawerContent(
         }
 
         if (editor.toolId == DrawToolId.Pen || editor.toolId == DrawToolId.Highlighter || editor.toolId == DrawToolId.Shape) {
+            val selectedArgb =
+                when (editor.toolId) {
+                    DrawToolId.Pen -> editor.currentPenColorArgb
+                    DrawToolId.Highlighter -> editor.highlighterColorArgb
+                    DrawToolId.Shape -> editor.shapeColorArgb
+                    else -> editor.currentPenColorArgb
+                }
+            val onPick: (Int) -> Unit =
+                when (editor.toolId) {
+                    DrawToolId.Pen -> { argb -> editor.currentPenColorArgb = argb }
+                    DrawToolId.Highlighter -> { argb -> editor.highlighterColorArgb = argb }
+                    DrawToolId.Shape -> { argb -> editor.shapeColorArgb = argb }
+                    else -> { _ -> }
+                }
             DrawColorRow(
-                selectedArgb = editor.colorArgb,
-                onPick = { editor.colorArgb = it },
+                selectedArgb = selectedArgb,
+                onPick = onPick,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
 
         when (editor.toolId) {
-            DrawToolId.Pen, DrawToolId.Shape -> {
+            DrawToolId.Pen -> {
                 LabeledSlider(
                     label = stringResource(R.string.draw_stroke_width),
-                    value = editor.penWidth,
+                    value = editor.currentPenWidth,
                     range = 0.5f..18f,
-                    onValueChange = { editor.penWidth = it },
+                    onValueChange = { editor.currentPenWidth = it },
+                )
+            }
+
+            DrawToolId.Shape -> {
+                LabeledSlider(
+                    label = stringResource(R.string.draw_stroke_width),
+                    value = editor.shapeWidth,
+                    range = 0.5f..18f,
+                    onValueChange = { editor.shapeWidth = it },
                 )
             }
 
@@ -915,7 +1193,7 @@ private fun DrawEditorCanvas(
         withTransform(
             transformBlock = {
                 translate(translation.x, translation.y)
-                scale(scale, scale)
+                scale(scale, scale, pivot = Offset.Zero)
             },
         ) {
             drawPageBackground(
@@ -1042,8 +1320,8 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawOverlays(
 ) {
     editor.previewShape?.let { preview ->
         val dash = PathEffect.dashPathEffect(floatArrayOf(10f / scale, 10f / scale))
-        val color = Color(editor.colorArgb).copy(alpha = 0.9f)
-        val w = editor.penWidth.coerceAtLeast(0.2f)
+        val color = Color(editor.shapeColorArgb).copy(alpha = 0.9f)
+        val w = editor.shapeWidth.coerceAtLeast(0.2f)
         val rect = rectFromPoints(preview.start, preview.end)
         when (preview.mode) {
             DrawShapeMode.Line ->
@@ -1189,7 +1467,6 @@ private suspend fun PointerInputScope.handleDrawGestures(
                     activeTool.onMove(editor, toolEvent)
                     lastViewPos = viewPos
                     lastPagePos = pagePos
-                    if (activeTool.id == DrawToolId.Pan) snapViewport(editor, marginPx)
                     change.consume()
                 } else {
                     activeTool.onUp(editor, toolEvent)
@@ -1273,31 +1550,7 @@ private fun clampTranslation(
     translation: Offset,
     marginPx: Float,
 ): Offset {
-    if (viewportSize == IntSize.Zero) return translation
-    val vw = viewportSize.width.toFloat()
-    val vh = viewportSize.height.toFloat()
-    val s = scale.coerceAtLeast(0.0001f)
-    val contentW = pageWidth * s
-    val contentH = pageHeight * s
-
-    val minX = vw - contentW - marginPx
-    val maxX = marginPx
-    val minY = vh - contentH - marginPx
-    val maxY = marginPx
-
-    val x =
-        if (contentW + marginPx * 2f <= vw) {
-            (vw - contentW) / 2f
-        } else {
-            translation.x.coerceIn(minX, maxX)
-        }
-    val y =
-        if (contentH + marginPx * 2f <= vh) {
-            (vh - contentH) / 2f
-        } else {
-            translation.y.coerceIn(minY, maxY)
-        }
-    return Offset(x, y)
+    return translation
 }
 
 private fun clampToPage(editor: DrawEditorState, pagePoint: Offset): Offset {
