@@ -416,7 +416,7 @@ private fun openVaultResource(
     relativePath: String,
 ): WebResourceResponse? {
     val context = webView.context ?: return null
-    val root = DocumentFile.fromTreeUri(context, vaultRoot) ?: return null
+    val root = app.zhixu.data.vaultRootToDocumentFile(context, vaultRoot) ?: return null
     val segments =
         relativePath
             .split('/')

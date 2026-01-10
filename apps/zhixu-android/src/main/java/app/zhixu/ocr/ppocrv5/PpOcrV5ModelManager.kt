@@ -3,6 +3,7 @@ package app.zhixu.ocr.ppocrv5
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import androidx.documentfile.provider.DocumentFile
 import app.zhixu.data.VaultRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -39,30 +40,11 @@ class PpOcrV5ModelManager(
         ensureFilesPresent(vaultRootUri, detParam, detBin, recParam, recBin)
         validateModelFilesOrThrow(detParam, detBin, recParam, recBin)
 
-        // Mirror to vault for cache management / portability.
-        repository.ensureVaultStructure(vaultRootUri)
-        val vaultDirs = listOf(VAULT_DIR_PRIMARY, VAULT_DIR_LEGACY)
-        val versionJson =
-            JSONObject()
-                .put("engine", "ppocrv5ncnn")
-                .put("model", "mobile")
-                .put("version", version)
-                .put("source", MODEL_BASE_URL)
-                .toString(2) + "\n"
-
-        for (dir in vaultDirs) {
-            val versionUri = repository.ensureVaultFile(vaultRootUri, "$dir/version.json", "application/json")
-            repository.writeText(versionUri, versionJson)
-            for (file in listOf(detParam, detBin, recParam, recBin)) {
-                val mime =
-                    when {
-                        file.name.endsWith(".param", ignoreCase = true) -> "text/plain"
-                        else -> "application/octet-stream"
-                    }
-                val uri = repository.ensureVaultFile(vaultRootUri, "$dir/${file.name}", mime)
-                repository.writeBytes(uri, file.readBytes())
-            }
-        }
+        mirrorToVaultIfNeeded(
+            vaultRootUri = vaultRootUri,
+            version = version,
+            files = listOf(detParam, detBin, recParam, recBin),
+        )
 
         ModelPaths(
             detParam = detParam,
@@ -95,11 +77,14 @@ class PpOcrV5ModelManager(
             Log.i("ZhixuOcr", "ppocrv5 models restored from vault")
             return
         }
-        Log.i("ZhixuOcr", "ppocrv5 models downloading from network")
-        downloadTo(detParam, MODEL_BASE_URL + detParam.name)
-        downloadTo(detBin, MODEL_BASE_URL + detBin.name)
-        downloadTo(recParam, MODEL_BASE_URL + recParam.name)
-        downloadTo(recBin, MODEL_BASE_URL + recBin.name)
+        Log.i("ZhixuOcr", "ppocrv5 models downloading from network primary=$MODEL_BASE_URL fallback=$MODEL_FALLBACK_BASE_URL")
+
+        fun urlsFor(name: String): List<String> = listOf(MODEL_BASE_URL + name, MODEL_FALLBACK_BASE_URL + name)
+
+        downloadTo(detParam, urlsFor(detParam.name))
+        downloadTo(detBin, urlsFor(detBin.name))
+        downloadTo(recParam, urlsFor(recParam.name))
+        downloadTo(recBin, urlsFor(recBin.name))
     }
 
     private suspend fun tryRestoreFromVault(
@@ -158,15 +143,35 @@ class PpOcrV5ModelManager(
         }
     }
 
-    private fun downloadTo(dest: File, url: String) {
+    private fun downloadTo(dest: File, urls: List<String>) {
+        require(urls.isNotEmpty()) { "urls is empty" }
         val tmp = File(dest.parentFile, dest.name + ".download")
-        val request = Request.Builder().url(url).build()
-        httpClient.newCall(request).execute().use { resp ->
-            if (!resp.isSuccessful) error("Download failed ${resp.code} for $url")
-            val body = resp.body ?: error("Empty response body for $url")
-            tmp.sink().buffer().use { sink ->
-                sink.writeAll(body.source())
+        runCatching { tmp.delete() }
+
+        var lastError: Throwable? = null
+        for (url in urls) {
+            val request = Request.Builder().url(url).build()
+            try {
+                httpClient.newCall(request).execute().use { resp ->
+                    if (!resp.isSuccessful) error("Download failed ${resp.code} for $url")
+                    val body = resp.body ?: error("Empty response body for $url")
+                    tmp.sink().buffer().use { sink ->
+                        sink.writeAll(body.source())
+                    }
+                }
+                if (tmp.exists() && tmp.length() > 0L) {
+                    lastError = null
+                    break
+                }
+            } catch (e: Exception) {
+                lastError = e
+                runCatching { tmp.delete() }
             }
+        }
+
+        if (!tmp.exists() || tmp.length() <= 0L) {
+            val last = lastError?.message ?: lastError?.javaClass?.simpleName ?: "unknown"
+            error("Download failed for ${dest.name}; tried=${urls.joinToString()} last=$last")
         }
         if (dest.exists()) dest.delete()
         if (!tmp.renameTo(dest)) {
@@ -175,10 +180,89 @@ class PpOcrV5ModelManager(
         }
     }
 
+    private suspend fun mirrorToVaultIfNeeded(
+        vaultRootUri: Uri,
+        version: String,
+        files: List<File>,
+    ) {
+        val versionJson =
+            JSONObject()
+                .put("engine", "ppocrv5ncnn")
+                .put("model", "mobile")
+                .put("version", version)
+                .put("source", MODEL_BASE_URL)
+                .toString(2) + "\n"
+
+        for (dir in listOf(VAULT_DIR_PRIMARY, VAULT_DIR_LEGACY)) {
+            val upToDate = isVaultCopyUpToDate(vaultRootUri = vaultRootUri, dir = dir, version = version, files = files)
+            if (upToDate) continue
+
+            Log.i("ZhixuOcr", "ppocrv5 models mirroring to vault dir=$dir version=$version")
+            val versionUri = repository.ensureVaultFile(vaultRootUri, "$dir/version.json", "application/json")
+            repository.writeText(versionUri, versionJson)
+
+            for (file in files) {
+                val rel = "$dir/${file.name}"
+                val expectedSize = file.length()
+                if (expectedSize > 0 && vaultFileSizeMatches(vaultRootUri, rel, expectedSize)) continue
+
+                val mime =
+                    when {
+                        file.name.endsWith(".param", ignoreCase = true) -> "text/plain"
+                        else -> "application/octet-stream"
+                    }
+                val uri = repository.ensureVaultFile(vaultRootUri, rel, mime)
+                repository.writeBytes(uri, file.readBytes())
+            }
+        }
+    }
+
+    private suspend fun isVaultCopyUpToDate(
+        vaultRootUri: Uri,
+        dir: String,
+        version: String,
+        files: List<File>,
+    ): Boolean {
+        val versionUri = repository.resolveVaultFileUri(vaultRootUri, "$dir/version.json") ?: return false
+        val preview = repository.readTextPreview(versionUri, maxChars = 2000).trim()
+        if (preview.isBlank()) return false
+        val json = runCatching { JSONObject(preview) }.getOrNull() ?: return false
+        if (json.optString("engine") != "ppocrv5ncnn") return false
+        if (json.optString("model") != "mobile") return false
+        if (json.optString("version") != version) return false
+
+        for (file in files) {
+            val expectedSize = file.length()
+            if (expectedSize <= 0) return false
+            if (!vaultFileSizeMatches(vaultRootUri, "$dir/${file.name}", expectedSize)) return false
+        }
+        return true
+    }
+
+    private suspend fun vaultFileSizeMatches(
+        vaultRootUri: Uri,
+        relativePath: String,
+        expectedSize: Long,
+    ): Boolean {
+        val uri = repository.resolveVaultFileUri(vaultRootUri, relativePath) ?: return false
+        val actualSize = readSize(uri) ?: return false
+        return actualSize == expectedSize && actualSize > 0L
+    }
+
+    private fun readSize(uri: Uri): Long? {
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            val path = uri.path ?: return null
+            return File(path).length()
+        }
+        return DocumentFile.fromSingleUri(context, uri)?.length()
+    }
+
     companion object {
         // Pin to the upstream release tag so downloads are stable.
         const val MODEL_VERSION = "20251001.bd9b849"
-        const val MODEL_BASE_URL =
+        // Prefer self-hosted mirror; fall back to upstream GitHub if needed.
+        const val MODEL_BASE_URL = "https://zhixu.app/ocr/"
+        const val MODEL_FALLBACK_BASE_URL =
             "https://raw.githubusercontent.com/nihui/ncnn-android-ppocrv5/" +
                 MODEL_VERSION +
                 "/app/src/main/assets/"

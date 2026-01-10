@@ -96,6 +96,7 @@ import app.zhixu.data.appManagedVaultRootUri
 import app.zhixu.ai.AiOcrPostProcessor
 import app.zhixu.draw.ZhixuDrawFormat
 import app.zhixu.ocr.NoopOcrEngine
+import app.zhixu.ocr.OcrEngineCache
 import app.zhixu.ocr.OcrWorkflow
 import app.zhixu.ocr.ppocrv5.PpOcrV5OcrEngine
 import app.zhixu.sync.VaultAutoSync
@@ -181,15 +182,24 @@ fun ZhixuApp(
                 appLogs = appLogs,
             )
         }
+    val ocrEngineCache =
+        remember(appContext) {
+            OcrEngineCache(
+                factory = { vaultRootUri ->
+                    runCatching { PpOcrV5OcrEngine(appContext, repository, vaultRootUri) }
+                        .getOrElse { NoopOcrEngine(engineName = "unavailable") }
+                },
+                releaser = { engine ->
+                    (engine as? PpOcrV5OcrEngine)?.release()
+                },
+            )
+        }
     val ocrWorkflow =
         remember(appContext) {
             OcrWorkflow(
                 context = appContext,
                 repository = repository,
-                engineProvider = { vaultRootUri ->
-                runCatching { PpOcrV5OcrEngine(appContext, repository, vaultRootUri) }
-                    .getOrElse { NoopOcrEngine(engineName = "unavailable") }
-                },
+                engineProvider = { vaultRootUri -> ocrEngineCache.get(vaultRootUri) },
                 aiPostProcessor = aiOcrPostProcessor,
                 aiPrefs = aiPrefs,
             )
