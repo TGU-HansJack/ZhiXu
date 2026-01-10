@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.zhixu.R
 import app.zhixu.ui.components.ZhixuIconButton
+import app.zhixu.ui.components.ZhixuSwitch
 import app.zhixu.data.UiPreferences
 import app.zhixu.data.UiSettings
 import app.zhixu.data.UiThemeMode
@@ -75,6 +76,7 @@ fun UiSettingsScreen(
                 UiSettings(
                     languageTag = "",
                     themeMode = UiThemeMode.SYSTEM,
+                    strictDocListPreview = true,
                 ),
         )
 
@@ -177,6 +179,45 @@ fun UiSettingsScreen(
                         ModeCard(UiThemeMode.LIGHT, stringResource(R.string.settings_ui_theme_light), Icons.Outlined.LightMode)
                         ModeCard(UiThemeMode.DARK, stringResource(R.string.settings_ui_theme_dark), Icons.Outlined.DarkMode)
                     }
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(14.dp)) }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    ListItem(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { scope.launch { uiPrefs.setStrictDocListPreview(!uiSettings.strictDocListPreview) } },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(Ionicons.EyeOutline),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        },
+                        headlineContent = { Text(stringResource(R.string.settings_ui_strict_preview_title)) },
+                        supportingContent = {
+                            Text(
+                                stringResource(R.string.settings_ui_strict_preview_subtitle),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        trailingContent = {
+                            ZhixuSwitch(
+                                checked = uiSettings.strictDocListPreview,
+                                onCheckedChange = { checked -> scope.launch { uiPrefs.setStrictDocListPreview(checked) } },
+                            )
+                        },
+                    )
                 }
             }
 

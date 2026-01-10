@@ -1,6 +1,7 @@
 ﻿package app.zhixu.ui.screens
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.SystemClock
@@ -35,6 +36,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -97,6 +103,7 @@ import app.zhixu.data.DocumentIndex
 import app.zhixu.data.SearchResult
 import app.zhixu.data.TaskSearchResult
 import app.zhixu.data.UiDoc
+import app.zhixu.data.UiPreferences
 import app.zhixu.data.VaultIndexUpdater
 import app.zhixu.data.VaultRepository
 import app.zhixu.draw.ZhixuDrawFormat
@@ -142,7 +149,10 @@ fun DocumentListScreen(
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val highlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+    val configuration = LocalConfiguration.current
+    val isTablet = configuration.smallestScreenWidthDp >= 600
     val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
 
     var savedFirstVisibleKey by rememberSaveable(vaultRootUri) { mutableStateOf<String?>(null) }
     var savedFirstVisibleIndex by rememberSaveable(vaultRootUri) { mutableIntStateOf(0) }
@@ -182,14 +192,27 @@ fun DocumentListScreen(
     val previewCache = remember(vaultRootUri) { mutableStateMapOf<String, String>() }
     val drawingPreviewCache = remember(vaultRootUri) { mutableStateMapOf<String, List<ZhixuDrawPage>>() }
 
-    LaunchedEffect(isActive, docs) {
+    val uiPrefs = remember(context) { UiPreferences(context.applicationContext) }
+    val strictDocListPreview by uiPrefs.strictDocListPreview.collectAsState(initial = true)
+    val showDocPreview =
+        isTablet ||
+            strictDocListPreview ||
+            configuration.orientation != Configuration.ORIENTATION_LANDSCAPE
+
+    LaunchedEffect(isActive, docs, isTablet) {
         if (!isActive) return@LaunchedEffect
         if (docs.isEmpty()) return@LaunchedEffect
 
         val needsRestore =
-            listState.firstVisibleItemIndex == 0 &&
-                listState.firstVisibleItemScrollOffset == 0 &&
-                (savedFirstVisibleIndex != 0 || savedFirstVisibleOffset != 0)
+            if (isTablet) {
+                gridState.firstVisibleItemIndex == 0 &&
+                    gridState.firstVisibleItemScrollOffset == 0 &&
+                    (savedFirstVisibleIndex != 0 || savedFirstVisibleOffset != 0)
+            } else {
+                listState.firstVisibleItemIndex == 0 &&
+                    listState.firstVisibleItemScrollOffset == 0 &&
+                    (savedFirstVisibleIndex != 0 || savedFirstVisibleOffset != 0)
+            }
 
         if (needsRestore) {
             val targetIndexFromKey =
@@ -205,14 +228,27 @@ fun DocumentListScreen(
                 }
 
             if (targetIndex != 0 || savedFirstVisibleOffset != 0) {
-                listState.scrollToItem(
-                    index = targetIndex,
-                    scrollOffset = savedFirstVisibleOffset.coerceAtLeast(0),
-                )
+                if (isTablet) {
+                    gridState.scrollToItem(
+                        index = targetIndex,
+                        scrollOffset = savedFirstVisibleOffset.coerceAtLeast(0),
+                    )
+                } else {
+                    listState.scrollToItem(
+                        index = targetIndex,
+                        scrollOffset = savedFirstVisibleOffset.coerceAtLeast(0),
+                    )
+                }
             }
         }
 
-        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+        snapshotFlow {
+            if (isTablet) {
+                gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
+            } else {
+                listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+            }
+        }
             .distinctUntilChanged()
             .collect { (index, offset) ->
                 savedFirstVisibleIndex = index
@@ -337,26 +373,152 @@ fun DocumentListScreen(
                 indicator = {},
             ) {
                     Box(modifier = Modifier.fillMaxSize().background(listBg)) {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            state = listState,
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            if (docs.isEmpty()) {
-                                item {
-                                    Text(
-                                        text = stringResource(R.string.docs_empty),
-                                        modifier = Modifier.padding(8.dp),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        if (isTablet) {
+                            LazyVerticalGrid(
+                                modifier = Modifier.fillMaxSize(),
+                                columns = GridCells.Fixed(2),
+                                state = gridState,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                if (docs.isEmpty()) {
+                                    item(span = { GridItemSpan(maxLineSpan) }) {
+                                        Text(
+                                            text = stringResource(R.string.docs_empty),
+                                            modifier = Modifier.padding(8.dp),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                gridItemsIndexed(
+                                    items = docs,
+                                    key = { _, doc -> doc.uri },
+                                    contentType = { _, _ -> "doc" },
+                                ) { _, doc ->
+                                    val title = doc.baseName.ifBlank { defaultTitle }
+                                    val editedAt = doc.createdAtText.ifBlank { editedAtDash }
+                                    val docUriStr = doc.uri.toString()
+                                    val isDrawing = ZhixuDrawFormat.hasDrawingExtension(doc.name)
+                                    val previewKey =
+                                        remember(docUriStr, doc.lastModified) { "$docUriStr@${doc.lastModified}" }
+                                    val previewMarkdown = if (isDrawing) null else previewCache[previewKey]
+                                    val previewPages = if (isDrawing) drawingPreviewCache[previewKey] else null
+
+                                    if (showDocPreview) {
+                                        if (!isDrawing) {
+                                            LaunchedEffect(previewKey) {
+                                                if (previewCache.containsKey(previewKey)) return@LaunchedEffect
+                                                previewCache[previewKey] = ""
+                                                val raw = repository.readTextPreview(doc.uri, maxChars = 2500)
+                                                previewCache[previewKey] = extractDocPreviewMarkdown(raw, maxChars = 300)
+                                            }
+                                        } else {
+                                            LaunchedEffect(previewKey) {
+                                                if (drawingPreviewCache.containsKey(previewKey)) return@LaunchedEffect
+                                                drawingPreviewCache[previewKey] = emptyList()
+                                                val pages =
+                                                    withContext(Dispatchers.IO) {
+                                                        val bytes = repository.readBytes(doc.uri) ?: return@withContext emptyList<ZhixuDrawPage>()
+                                                        runCatching { ZhixuDrawFormat.decode(bytes).pages.take(4) }.getOrDefault(emptyList())
+                                                    }
+                                                drawingPreviewCache[previewKey] = pages
+                                            }
+                                        }
+                                    }
+
+                                    val previewContent: (@Composable () -> Unit)? =
+                                        if (!showDocPreview) {
+                                            null
+                                        } else {
+                                            when {
+                                                isDrawing -> {
+                                                    {
+                                                        Surface(
+                                                            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                                                            color = listBg,
+                                                            shape = RoundedCornerShape(8.dp),
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                                                contentAlignment = Alignment.Center,
+                                                            ) {
+                                                                DrawDocumentPreviewRow(
+                                                                    pages = previewPages,
+                                                                    maxHeight = configuration.screenHeightDp.dp / 3,
+                                                                    modifier = Modifier.fillMaxWidth(),
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                !previewMarkdown.isNullOrBlank() -> {
+                                                    {
+                                                        Surface(
+                                                            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                                                            color = listBg,
+                                                            shape = RoundedCornerShape(8.dp),
+                                                        ) {
+                                                            MarkwonPreviewText(
+                                                                markwon = markwon,
+                                                                markdown = previewMarkdown,
+                                                                textStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                                                                maxLines = Int.MAX_VALUE,
+                                                                modifier =
+                                                                    Modifier
+                                                                        .fillMaxWidth()
+                                                                        .wrapContentHeight()
+                                                                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                                                                        .pointerInteropFilter { false },
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                else -> null
+                                            }
+                                        }
+
+                                    DocRow(
+                                        title = title,
+                                        editedAt = editedAt,
+                                        previewContent = previewContent,
+                                        selectionMode = selectionMode,
+                                        selected = docUriStr in selectedDocUris,
+                                        onClick = {
+                                            if (selectionMode) onToggleDocSelection(docUriStr) else onOpenDoc(docUriStr, null, null)
+                                        },
+                                        onLongClick = { onToggleDocSelection(docUriStr) },
+                                        onMoreClick = {
+                                            selectedDoc = doc
+                                            showDocMenu = true
+                                        },
                                     )
                                 }
                             }
-                            itemsIndexed(
-                                items = docs,
-                                key = { _, doc -> doc.uri },
-                                contentType = { _, _ -> "doc" },
-                            ) { _, doc ->
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                state = listState,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                if (docs.isEmpty()) {
+                                    item {
+                                        Text(
+                                            text = stringResource(R.string.docs_empty),
+                                            modifier = Modifier.padding(8.dp),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                itemsIndexed(
+                                    items = docs,
+                                    key = { _, doc -> doc.uri },
+                                    contentType = { _, _ -> "doc" },
+                                ) { _, doc ->
                                 val title = doc.baseName.ifBlank { defaultTitle }
                                 val editedAt = doc.createdAtText.ifBlank { editedAtDash }
                                 val docUriStr = doc.uri.toString()
@@ -365,74 +527,80 @@ fun DocumentListScreen(
                                 val previewMarkdown = if (isDrawing) null else previewCache[previewKey]
                                 val previewPages = if (isDrawing) drawingPreviewCache[previewKey] else null
 
-                                if (!isDrawing) {
-                                    LaunchedEffect(previewKey) {
-                                        if (previewCache.containsKey(previewKey)) return@LaunchedEffect
-                                        previewCache[previewKey] = ""
-                                        val raw = repository.readTextPreview(doc.uri, maxChars = 2500)
-                                        previewCache[previewKey] = extractDocPreviewMarkdown(raw, maxChars = 300)
-                                    }
-                                } else {
-                                    LaunchedEffect(previewKey) {
-                                        if (drawingPreviewCache.containsKey(previewKey)) return@LaunchedEffect
-                                        drawingPreviewCache[previewKey] = emptyList()
-                                        val pages =
-                                            withContext(Dispatchers.IO) {
-                                                val bytes = repository.readBytes(doc.uri) ?: return@withContext emptyList<ZhixuDrawPage>()
-                                                runCatching { ZhixuDrawFormat.decode(bytes).pages.take(4) }.getOrDefault(emptyList())
-                                            }
-                                        drawingPreviewCache[previewKey] = pages
+                                if (showDocPreview) {
+                                    if (!isDrawing) {
+                                        LaunchedEffect(previewKey) {
+                                            if (previewCache.containsKey(previewKey)) return@LaunchedEffect
+                                            previewCache[previewKey] = ""
+                                            val raw = repository.readTextPreview(doc.uri, maxChars = 2500)
+                                            previewCache[previewKey] = extractDocPreviewMarkdown(raw, maxChars = 300)
+                                        }
+                                    } else {
+                                        LaunchedEffect(previewKey) {
+                                            if (drawingPreviewCache.containsKey(previewKey)) return@LaunchedEffect
+                                            drawingPreviewCache[previewKey] = emptyList()
+                                            val pages =
+                                                withContext(Dispatchers.IO) {
+                                                    val bytes = repository.readBytes(doc.uri) ?: return@withContext emptyList<ZhixuDrawPage>()
+                                                    runCatching { ZhixuDrawFormat.decode(bytes).pages.take(4) }.getOrDefault(emptyList())
+                                                }
+                                            drawingPreviewCache[previewKey] = pages
+                                        }
                                     }
                                 }
 
                                 val previewContent: (@Composable () -> Unit)? =
-                                    when {
-                                        isDrawing -> {
-                                            {
-                                                Surface(
-                                                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                                                    color = listBg,
-                                                    shape = RoundedCornerShape(8.dp),
-                                                 ) {
-                                                    Box(
-                                                        modifier = Modifier.fillMaxWidth().padding(8.dp),
-                                                        contentAlignment = Alignment.Center,
+                                    if (!showDocPreview) {
+                                        null
+                                    } else {
+                                        when {
+                                            isDrawing -> {
+                                                {
+                                                    Surface(
+                                                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                                                        color = listBg,
+                                                        shape = RoundedCornerShape(8.dp),
                                                     ) {
-                                                        DrawDocumentPreviewRow(
-                                                            pages = previewPages,
-                                                            maxHeight = LocalConfiguration.current.screenHeightDp.dp / 3,
-                                                            modifier = Modifier.fillMaxWidth(),
-                                                        )
+                                                        Box(
+                                                            modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                                            contentAlignment = Alignment.Center,
+                                                        ) {
+                                                            DrawDocumentPreviewRow(
+                                                                pages = previewPages,
+                                                                maxHeight = configuration.screenHeightDp.dp / 3,
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                            )
+                                                        }
                                                     }
-                                                 }
-                                             }
-                                         }
-
-                                        !previewMarkdown.isNullOrBlank() -> {
-                                            {
-                                                Surface(
-                                                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                                                    color = listBg,
-                                                    shape = RoundedCornerShape(8.dp),
-                                                ) {
-                                                    MarkwonPreviewText(
-                                                        markwon = markwon,
-                                                        markdown = previewMarkdown,
-                                                        textStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                                                        maxLines = Int.MAX_VALUE,
-                                                        modifier =
-                                                            Modifier
-                                                                .fillMaxWidth()
-                                                                .wrapContentHeight()
-                                                                .padding(horizontal = 12.dp, vertical = 10.dp)
-                                                                .pointerInteropFilter { false },
-                                                    )
                                                 }
                                             }
-                                        }
 
-                                        else -> null
+                                            !previewMarkdown.isNullOrBlank() -> {
+                                                {
+                                                    Surface(
+                                                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                                                        color = listBg,
+                                                        shape = RoundedCornerShape(8.dp),
+                                                    ) {
+                                                        MarkwonPreviewText(
+                                                            markwon = markwon,
+                                                            markdown = previewMarkdown,
+                                                            textStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                                                            maxLines = Int.MAX_VALUE,
+                                                            modifier =
+                                                                Modifier
+                                                                    .fillMaxWidth()
+                                                                    .wrapContentHeight()
+                                                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                                                                    .pointerInteropFilter { false },
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            else -> null
+                                        }
                                     }
 
                                 DocRow(
@@ -451,6 +619,7 @@ fun DocumentListScreen(
                                     },
                                 )
                             }
+                        }
                         }
 
                         RefreshStatusBanner(

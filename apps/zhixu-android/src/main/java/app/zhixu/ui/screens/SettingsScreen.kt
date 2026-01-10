@@ -141,6 +141,7 @@ fun SettingsScreen(
                 UiSettings(
                     languageTag = "",
                     themeMode = UiThemeMode.SYSTEM,
+                    strictDocListPreview = true,
                 ),
         )
 
@@ -748,6 +749,43 @@ private fun UiSettingsFullScreen(
                         ModeCard(UiThemeMode.LIGHT, stringResource(R.string.settings_ui_theme_light), Icons.Outlined.LightMode)
                         ModeCard(UiThemeMode.DARK, stringResource(R.string.settings_ui_theme_dark), Icons.Outlined.DarkMode)
                     }
+                }
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    ListItem(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { scope.launch { uiPrefs.setStrictDocListPreview(!uiSettings.strictDocListPreview) } },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(Ionicons.EyeOutline),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        },
+                        headlineContent = { Text(stringResource(R.string.settings_ui_strict_preview_title)) },
+                        supportingContent = {
+                            Text(
+                                stringResource(R.string.settings_ui_strict_preview_subtitle),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        trailingContent = {
+                            ZhixuSwitch(
+                                checked = uiSettings.strictDocListPreview,
+                                onCheckedChange = { checked -> scope.launch { uiPrefs.setStrictDocListPreview(checked) } },
+                            )
+                        },
+                    )
                 }
             }
 
@@ -1611,6 +1649,41 @@ private fun UiSettingsDialog(
                         ModeCard(UiThemeMode.LIGHT, stringResource(R.string.settings_ui_theme_light), Icons.Outlined.LightMode)
                         ModeCard(UiThemeMode.DARK, stringResource(R.string.settings_ui_theme_dark), Icons.Outlined.DarkMode)
                     }
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    ListItem(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { scope.launch { uiPrefs.setStrictDocListPreview(!uiSettings.strictDocListPreview) } },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(Ionicons.EyeOutline),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        },
+                        headlineContent = { Text(stringResource(R.string.settings_ui_strict_preview_title)) },
+                        supportingContent = {
+                            Text(
+                                stringResource(R.string.settings_ui_strict_preview_subtitle),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        trailingContent = {
+                            ZhixuSwitch(
+                                checked = uiSettings.strictDocListPreview,
+                                onCheckedChange = { checked -> scope.launch { uiPrefs.setStrictDocListPreview(checked) } },
+                            )
+                        },
+                    )
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -323,6 +323,8 @@
     <string name="settings_ui_theme_system">跟随系统</string>
     <string name="settings_ui_theme_light">浅色</string>
     <string name="settings_ui_theme_dark">深色</string>
+    <string name="settings_ui_strict_preview_title">严格预览显示</string>
+    <string name="settings_ui_strict_preview_subtitle">固定显示预览，避免横屏时关闭预览</string>
     <string name="settings_placeholder_accessibility">无障碍</string>
     <string name="settings_placeholder_notifications">通知</string>
     <string name="settings_placeholder_update">检查更新</string>

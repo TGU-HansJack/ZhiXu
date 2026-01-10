@@ -2,6 +2,7 @@ package app.zhixu.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -27,6 +28,7 @@ enum class UiThemeMode(
 data class UiSettings(
     val languageTag: String,
     val themeMode: UiThemeMode,
+    val strictDocListPreview: Boolean,
 )
 
 class UiPreferences(
@@ -34,12 +36,14 @@ class UiPreferences(
 ) {
     private val languageTagKey = stringPreferencesKey("ui_language_tag")
     private val themeModeKey = stringPreferencesKey("ui_theme_mode")
+    private val strictDocListPreviewKey = booleanPreferencesKey("ui_strict_doc_list_preview")
 
     val settings: Flow<UiSettings> =
         context.dataStore.data.map { prefs ->
             UiSettings(
                 languageTag = prefs[languageTagKey] ?: "",
                 themeMode = UiThemeMode.fromRaw(prefs[themeModeKey]),
+                strictDocListPreview = prefs[strictDocListPreviewKey] ?: true,
             )
         }
 
@@ -53,6 +57,8 @@ class UiPreferences(
 
     val themeMode: Flow<UiThemeMode> = context.dataStore.data.map { prefs -> UiThemeMode.fromRaw(prefs[themeModeKey]) }
 
+    val strictDocListPreview: Flow<Boolean> = context.dataStore.data.map { prefs -> prefs[strictDocListPreviewKey] ?: true }
+
     suspend fun setLanguageTag(tag: String) {
         context.dataStore.edit { prefs ->
             prefs[languageTagKey] = tag.trim()
@@ -62,6 +68,12 @@ class UiPreferences(
     suspend fun setThemeMode(mode: UiThemeMode) {
         context.dataStore.edit { prefs ->
             prefs[themeModeKey] = mode.raw
+        }
+    }
+
+    suspend fun setStrictDocListPreview(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[strictDocListPreviewKey] = enabled
         }
     }
 }
