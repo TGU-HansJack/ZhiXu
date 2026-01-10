@@ -115,6 +115,7 @@ internal fun TodoComposerSheet(
                             remindPersistent = draft.remindPersistent,
                             tags = draft.tags,
                             priority = draft.priority,
+                            repeat = draft.repeat,
                         )
                     if (!ok) {
                         android.widget.Toast.makeText(context, "添加失败", android.widget.Toast.LENGTH_SHORT).show()
@@ -414,6 +415,52 @@ internal fun OcrComposerSheet(
                         modifier = Modifier.weight(1f),
                     ) {
                         Text(text = if (busy) "生成中…" else "生成笔记")
+                    }
+                }
+
+                val canGenerateTodos =
+                    aiState.aiEnabled &&
+                        aiState.ocrMode == AiPreferences.OcrMode.OCR_PLUS_AI &&
+                        aiState.ocrCreateTodos
+                if (canGenerateTodos) {
+                    androidx.compose.material3.Button(
+                        onClick = {
+                            val root = vaultRootUri
+                            if (root == null) {
+                                android.widget.Toast.makeText(context, "未选择资料库", android.widget.Toast.LENGTH_SHORT).show()
+                            } else if (aiState.apiKey.isBlank() || aiState.model.isBlank()) {
+                                android.widget.Toast.makeText(context, "AI 未配置 model/apiKey", android.widget.Toast.LENGTH_SHORT).show()
+                            } else if (!busy) {
+                                scope.launch {
+                                    busy = true
+                                    try {
+                                        val result = workflow.generateTodosFromOcrText(vaultRootUri = root, editedOcrText = editedText)
+                                        val msg =
+                                            result.reason
+                                                ?: when {
+                                                    result.created > 0 && result.failed == 0 -> "已生成待办：${result.created}条"
+                                                    result.created > 0 -> "已生成待办：${result.created}条（失败：${result.failed}/${result.total}）"
+                                                    else -> "未生成待办"
+                                                }
+                                        android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (e: Exception) {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            "生成待办失败：${e.message ?: e.javaClass.simpleName}",
+                                            android.widget.Toast.LENGTH_SHORT,
+                                        ).show()
+                                    } finally {
+                                        busy = false
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(text = if (busy) "生成中…" else "生成待办")
                     }
                 }
             }

@@ -1359,6 +1359,7 @@ class VaultRepository(
             remindPersistent = false,
             tags = emptyList(),
             priority = null,
+            repeat = null,
         )
     }
 
@@ -1371,6 +1372,7 @@ class VaultRepository(
         remindPersistent: Boolean = false,
         tags: List<String>,
         priority: Int?,
+        repeat: String? = null,
     ): Boolean = withContext(Dispatchers.IO) {
         val trimmed = title.trim()
         if (trimmed.isBlank()) return@withContext false
@@ -1410,6 +1412,15 @@ class VaultRepository(
                 append(" @priority(")
                 append(p.coerceIn(1, 4))
                 append(")")
+            }
+            val rep = repeat?.trim().orEmpty()
+            if (rep.isNotBlank()) {
+                val safe = rep.replace(")", " ").replace("(", " ").trim()
+                if (safe.isNotBlank()) {
+                    append(" @repeat(")
+                    append(safe)
+                    append(")")
+                }
             }
             for (tag in tags.map { it.trim() }.filter { it.isNotBlank() }.distinct()) {
                 append(" @tag(")

@@ -96,8 +96,16 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import app.zhixu.core.tasks.TaskSmartParseResult
+import app.zhixu.core.tasks.TaskSmartParser
+import app.zhixu.core.tasks.SmartTokenKind
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTextField
 import androidx.compose.ui.res.painterResource
@@ -478,6 +486,7 @@ internal data class TaskDraft(
     val remindPersistent: Boolean,
     val tags: List<String>,
     val priority: Int?,
+    val repeat: String?,
 )
 
 private enum class TimeRange(val label: String, val defaultTime: LocalTime?) {
@@ -509,31 +518,63 @@ internal fun TaskComposer(
 
     val currentOnSubmit by rememberUpdatedState(onSubmit)
     fun submit() {
-        val (cleanTitle, detected) = extractTaskDraft(text)
-        val finalTitle = cleanTitle.trim()
+        val now = LocalDateTime.now()
+        val detected = TaskSmartParser.parse(text, now)
+        val finalTitle = detected.cleanedTitle.trim()
         if (finalTitle.isBlank()) return
 
-        val finalDate = dueDate ?: detected.dueDate
-        val finalRange = timeRange ?: detected.timeRange
-        val finalTime =
-            when (finalRange) {
-                TimeRange.AllDay -> null
-                null -> dueTime
-                else -> dueTime ?: finalRange.defaultTime
+        var finalDate = dueDate ?: detected.dueDate
+        val detectedAllDay = detected.allDay
+        val finalAllDay = timeRange == TimeRange.AllDay || (timeRange == null && dueTime == null && detectedAllDay)
+        var finalTime =
+            when {
+                finalAllDay -> null
+                dueTime != null -> dueTime
+                detected.dueTime != null -> detected.dueTime
+                timeRange != null -> timeRange!!.defaultTime
+                else -> null
             }
         val finalPriority = priority ?: detected.priority
         val finalTags = (tags + detected.tags).map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        val finalRepeat = detected.repeat
 
         val remindAt =
             if (reminderOffsetDays != null && finalDate != null) {
                 finalDate
                     .atTime(reminderTime)
                     .minusDays(reminderOffsetDays!!.toLong())
-                    .takeIf { it.isAfter(LocalDateTime.now()) }
+                    .takeIf { it.isAfter(now) }
             } else {
-                null
+                val spec = detected.remind
+                val baseDate = finalDate
+                val baseTime = finalTime ?: LocalTime.of(9, 0)
+                when (spec) {
+                    null -> null
+                    TaskSmartParseResult.ReminderSpec.AtDue -> {
+                        baseDate?.atTime(baseTime)?.takeIf { it.isAfter(now) }
+                    }
+                    is TaskSmartParseResult.ReminderSpec.OffsetBefore -> {
+                        baseDate?.atTime(baseTime)?.let(spec.delta::subtractFrom)?.takeIf { it.isAfter(now) }
+                    }
+                    is TaskSmartParseResult.ReminderSpec.OffsetAfter -> {
+                        baseDate?.atTime(baseTime)?.let(spec.delta::addTo)?.takeIf { it.isAfter(now) }
+                    }
+                    is TaskSmartParseResult.ReminderSpec.FromNow -> {
+                        val dt = spec.delta.addTo(now)
+                        if (finalDate == null && timeRange == null && dueTime == null && finalTime == null) {
+                            finalDate = dt.toLocalDate()
+                            finalTime = dt.toLocalTime()
+                        }
+                        dt.takeIf { it.isAfter(now) }
+                    }
+                }
             }
-        val remindPersistentFinal = reminderPersistent && remindAt != null
+        val remindPersistentFinal =
+            if (reminderOffsetDays != null) {
+                reminderPersistent && remindAt != null
+            } else {
+                (reminderPersistent || detected.remindPersistent) && remindAt != null
+            }
 
         currentOnSubmit(
             TaskDraft(
@@ -544,6 +585,7 @@ internal fun TaskComposer(
                 remindPersistent = remindPersistentFinal,
                 tags = finalTags,
                 priority = finalPriority,
+                repeat = finalRepeat,
             ),
         )
 
@@ -564,6 +606,34 @@ internal fun TaskComposer(
         modifier = modifier.padding(horizontal = 16.dp),
         singleLine = true,
         placeholder = { Text(stringResource(R.string.task_input_hint)) },
+        visualTransformation =
+            remember(text) {
+                val highlight = Color(0xFFD6ECFF)
+                VisualTransformation { input ->
+                    if (text.isBlank()) return@VisualTransformation TransformedText(input, OffsetMapping.Identity)
+                    val spans =
+                        TaskSmartParser.findTokens(text)
+                            .filter { it.start < it.endExclusive && it.endExclusive <= input.text.length }
+                            .map { token ->
+                                val alpha =
+                                    when (token.kind) {
+                                        SmartTokenKind.Date -> 0.80f
+                                        SmartTokenKind.Time -> 0.80f
+                                        SmartTokenKind.Remind -> 0.75f
+                                        SmartTokenKind.Repeat -> 0.75f
+                                        SmartTokenKind.Tag -> 0.65f
+                                        SmartTokenKind.Priority -> 0.65f
+                                    }
+                                AnnotatedString.Range(
+                                    item = SpanStyle(background = highlight.copy(alpha = alpha)),
+                                    start = token.start,
+                                    end = token.endExclusive,
+                                )
+                            }
+                    val out = AnnotatedString(text = input.text, spanStyles = spans)
+                    TransformedText(out, OffsetMapping.Identity)
+                }
+            },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = { submit() }),
         trailingIcon = {
@@ -2161,101 +2231,6 @@ private fun TaskTagSheet(
             Button(modifier = Modifier.weight(1f), onClick = { onConfirm(tags) }) { Text(stringResource(R.string.task_input_confirm)) }
         }
     }
-}
-
-private data class ParsedDraft(
-    val dueDate: LocalDate? = null,
-    val timeRange: TimeRange? = null,
-    val tags: List<String> = emptyList(),
-    val priority: Int? = null,
-)
-
-private fun extractTaskDraft(raw: String): Pair<String, ParsedDraft> {
-    var text = raw.trim()
-    if (text.isBlank()) return "" to ParsedDraft()
-
-    var date: LocalDate? = null
-    var range: TimeRange? = null
-    val tags = ArrayList<String>()
-    var priority: Int? = null
-
-    val now = LocalDate.now()
-
-    fun stripToken(token: String) {
-        text = text.replace(token, " ").replace(Regex("""\s{2,}"""), " ").trim()
-    }
-
-    // tags: #xxx or @xxx
-    Regex("""(^|\s)[#@]([\p{L}\p{N}_-]{1,20})""").findAll(text).forEach { m ->
-        val t = m.groupValues[2]
-        if (t.isNotBlank()) tags += t
-    }
-    text = text.replace(Regex("""[#@][\p{L}\p{N}_-]{1,20}"""), " ").replace(Regex("""\s{2,}"""), " ").trim()
-
-    // priority: p1..p4 or P1..P4
-    Regex("""\b[pP]([1-4])\b""").find(text)?.let { m ->
-        priority = m.groupValues[1].toIntOrNull()
-        stripToken(m.value)
-    }
-
-    // relative day
-    when {
-        text.contains("后天") -> {
-            date = now.plusDays(2); stripToken("后天")
-        }
-        text.contains("明天") -> {
-            date = now.plusDays(1); stripToken("明天")
-        }
-        text.contains("今天") || text.contains("今日") -> {
-            date = now; stripToken("今天"); stripToken("今日")
-        }
-    }
-
-    // time range words
-    val rangeMap = listOf(
-        "上午" to TimeRange.Morning,
-        "早上" to TimeRange.Morning,
-        "明早" to TimeRange.Morning,
-        "下午" to TimeRange.Afternoon,
-        "晚上" to TimeRange.Evening,
-        "今晚" to TimeRange.Evening,
-        "夜里" to TimeRange.Night,
-        "深夜" to TimeRange.Night,
-        "全天" to TimeRange.AllDay,
-    )
-    for ((token, r) in rangeMap) {
-        if (text.contains(token)) {
-            range = r
-            stripToken(token)
-            break
-        }
-    }
-
-    // date patterns: 2025-12-26 / 2025/12/26
-    Regex("""\b(20\d{2})[-/\.](\d{1,2})[-/\.](\d{1,2})\b""").find(text)?.let { m ->
-        val y = m.groupValues[1].toInt()
-        val mo = m.groupValues[2].toInt()
-        val d = m.groupValues[3].toInt()
-        runCatching { LocalDate.of(y, mo, d) }.onSuccess { date = it; stripToken(m.value) }
-    }
-
-    // date patterns: 12月26日
-    Regex("""\b(\d{1,2})月(\d{1,2})日\b""").find(text)?.let { m ->
-        val mo = m.groupValues[1].toInt()
-        val d = m.groupValues[2].toInt()
-        val y = now.year
-        runCatching { LocalDate.of(y, mo, d) }.onSuccess { date = it; stripToken(m.value) }
-    }
-
-    // date patterns: 12/26 or 12-26
-    Regex("""\b(\d{1,2})[-/](\d{1,2})\b""").find(text)?.let { m ->
-        val mo = m.groupValues[1].toInt()
-        val d = m.groupValues[2].toInt()
-        val y = now.year
-        runCatching { LocalDate.of(y, mo, d) }.onSuccess { date = it; stripToken(m.value) }
-    }
-
-    return text to ParsedDraft(dueDate = date, timeRange = range, tags = tags, priority = priority)
 }
 
 private fun buildDueChipLabel(date: LocalDate?, range: TimeRange?): String {
