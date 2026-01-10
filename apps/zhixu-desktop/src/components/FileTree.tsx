@@ -1,6 +1,7 @@
 import React from "react";
 import type { VaultEntry } from "../lib/vaultApi";
 import { IconChevron, IconDocument, IconFolder } from "./icons";
+import { Tooltip } from "./Tooltip";
 
 export type TreeNode = VaultEntry & {
   depth: number;
@@ -24,9 +25,9 @@ export function FileTree({ rootLabel, nodes, activePath, onToggleDir, onOpenFile
         <span className="icon" aria-hidden="true">
           <IconFolder size={16} />
         </span>
-        <span className="label" title={rootLabel}>
-          {rootLabel}
-        </span>
+        <Tooltip label={rootLabel} placement="right">
+          <span className="label">{rootLabel}</span>
+        </Tooltip>
       </div>
       {nodes.map((node) => {
         const isActive = activePath === node.path;
@@ -56,9 +57,9 @@ export function FileTree({ rootLabel, nodes, activePath, onToggleDir, onOpenFile
             <span className="icon" aria-hidden="true">
               {node.isDir ? <IconFolder size={16} /> : <IconDocument size={16} />}
             </span>
-            <span className="label" title={node.path}>
-              {node.name}
-            </span>
+            <Tooltip label={node.path} placement="right">
+              <span className="label">{node.name}</span>
+            </Tooltip>
           </div>
         );
       })}

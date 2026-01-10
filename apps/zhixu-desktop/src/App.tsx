@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CodeMirrorEditor, type CodeMirrorSelection } from "./components/CodeMirrorEditor";
 import { FileTree, type TreeNode } from "./components/FileTree";
+import { Tooltip, type TooltipPlacement } from "./components/Tooltip";
 import {
   IconCalendar,
   IconClose,
@@ -55,6 +56,7 @@ function sortEntries(entries: VaultEntry[]): VaultEntry[] {
 
 function IconButton({
   title,
+  tooltipPlacement,
   active,
   disabled,
   className,
@@ -62,23 +64,25 @@ function IconButton({
   children,
 }: React.PropsWithChildren<{
   title: string;
+  tooltipPlacement?: TooltipPlacement;
   active?: boolean;
   disabled?: boolean;
   className?: string;
   onClick?: () => void;
 }>) {
   return (
-    <button
-      className={`iconBtn${active ? " active" : ""}${className ? ` ${className}` : ""}`}
-      title={title}
-      aria-label={title}
-      data-no-drag="true"
-      onClick={onClick}
-      disabled={disabled}
-      type="button"
-    >
-      {children}
-    </button>
+    <Tooltip label={title} placement={tooltipPlacement}>
+      <button
+        className={`iconBtn${active ? " active" : ""}${className ? ` ${className}` : ""}`}
+        aria-label={title}
+        data-no-drag="true"
+        onClick={onClick}
+        disabled={disabled}
+        type="button"
+      >
+        {children}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -347,15 +351,16 @@ export function App() {
       <div className="topbar" onMouseDown={startDraggingIfAllowed}>
         <div className="topbarLeft">
           <IconButton
-            title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            title={sidebarOpen ? "收起" : "展开"}
+            tooltipPlacement="right"
             onClick={() => setSidebarOpen((v) => !v)}
           >
             <IconSidebar />
           </IconButton>
-          <IconButton title="Space" active={activity === "space"} onClick={() => openActivity("space")}>
+          <IconButton title="空间" tooltipPlacement="bottom" active={activity === "space"} onClick={() => openActivity("space")}>
             <IconSpace />
           </IconButton>
-          <IconButton title="Search" active={activity === "search"} onClick={() => openActivity("search")}>
+          <IconButton title="搜索" tooltipPlacement="bottom" active={activity === "search"} onClick={() => openActivity("search")}>
             <IconSearch />
           </IconButton>
         </div>
@@ -368,60 +373,76 @@ export function App() {
               </div>
             ) : (
               tabs.map((t) => (
-                <div
-                  key={t.path}
-                  className={`tab${t.path === activePath ? " active" : ""}`}
-                  role="tab"
-                  aria-selected={t.path === activePath}
-                  title={t.path}
-                  data-no-drag="true"
-                  onClick={() => setActivePath(t.path)}
-                >
-                  <span className={`dirty${t.dirty ? " on" : ""}`} aria-hidden="true" />
-                  <span className="tabLabel">{t.name}</span>
-                  <button
-                    type="button"
-                    className="tabClose"
-                    aria-label="Close tab"
-                    title="Close tab"
+                <Tooltip key={t.path} label={t.path} placement="bottom">
+                  <div
+                    className={`tab${t.path === activePath ? " active" : ""}`}
+                    role="tab"
+                    aria-selected={t.path === activePath}
                     data-no-drag="true"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      closeTab(t.path);
-                    }}
+                    onClick={() => setActivePath(t.path)}
                   >
-                    <IconClose size={14} />
-                  </button>
-                </div>
+                    <span className={`dirty${t.dirty ? " on" : ""}`} aria-hidden="true" />
+                    <span className="tabLabel">{t.name}</span>
+                    <button
+                      type="button"
+                      className="tabClose"
+                      aria-label="Close tab"
+                      data-no-drag="true"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeTab(t.path);
+                      }}
+                    >
+                      <Tooltip label="关闭标签" placement="bottom">
+                        <span aria-hidden="true">
+                          <IconClose size={14} />
+                        </span>
+                      </Tooltip>
+                    </button>
+                  </div>
+                </Tooltip>
               ))
             )}
           </div>
         </div>
 
         <div className="topbarRight">
-          <IconButton title="Minimize" onClick={() => void appWindow.minimize()} className="winBtn">
+          <IconButton title="最小化" tooltipPlacement="bottom" onClick={() => void appWindow.minimize()} className="winBtn">
             <IconMinimize size={16} />
           </IconButton>
-          <IconButton title="Maximize" onClick={() => void appWindow.toggleMaximize()} className="winBtn">
+          <IconButton title="最大化" tooltipPlacement="bottom" onClick={() => void appWindow.toggleMaximize()} className="winBtn">
             <IconMaximize size={16} />
           </IconButton>
-          <IconButton title="Close" onClick={() => void appWindow.close()} className="winBtn winClose">
+          <IconButton title="关闭" tooltipPlacement="bottom" onClick={() => void appWindow.close()} className="winBtn winClose">
             <IconClose size={16} />
           </IconButton>
         </div>
 
       </div>
 
-      <div className={`workbench${sidebarOpen ? "" : " sidebarClosed"}`}>
-        <div className="activitybar noDrag" role="navigation" aria-label="Activity bar">
-          <IconButton title="Space" active={activity === "space"} onClick={() => openActivity("space")} className="abBtn">
+        <div className={`workbench${sidebarOpen ? "" : " sidebarClosed"}`}>
+          <div className="activitybar noDrag" role="navigation" aria-label="Activity bar">
+          <IconButton
+            title="空间"
+            tooltipPlacement="right"
+            active={activity === "space"}
+            onClick={() => openActivity("space")}
+            className="abBtn"
+          >
             <IconSpace />
           </IconButton>
-          <IconButton title="Tasks" active={activity === "tasks"} onClick={() => openActivity("tasks")} className="abBtn">
+          <IconButton
+            title="任务"
+            tooltipPlacement="right"
+            active={activity === "tasks"}
+            onClick={() => openActivity("tasks")}
+            className="abBtn"
+          >
             <IconTasks />
           </IconButton>
           <IconButton
-            title="Calendar"
+            title="日历"
+            tooltipPlacement="right"
             active={activity === "calendar"}
             onClick={() => openActivity("calendar")}
             className="abBtn"
@@ -429,7 +450,8 @@ export function App() {
             <IconCalendar />
           </IconButton>
           <IconButton
-            title="Quadrant"
+            title="象限"
+            tooltipPlacement="right"
             active={activity === "quadrant"}
             onClick={() => openActivity("quadrant")}
             className="abBtn"
@@ -437,14 +459,21 @@ export function App() {
             <IconQuadrant />
           </IconButton>
           <IconButton
-            title="Workshop"
+            title="工坊"
+            tooltipPlacement="right"
             active={activity === "workshop"}
             onClick={() => openActivity("workshop")}
             className="abBtn"
           >
             <IconWorkshop />
           </IconButton>
-          <IconButton title="Search" active={activity === "search"} onClick={() => openActivity("search")} className="abBtn">
+          <IconButton
+            title="搜索"
+            tooltipPlacement="right"
+            active={activity === "search"}
+            onClick={() => openActivity("search")}
+            className="abBtn"
+          >
             <IconSearch />
           </IconButton>
         </div>
@@ -468,17 +497,17 @@ export function App() {
               <div className="sidebarActions">
                 {activity === "space" ? (
                   <>
-                    <IconButton title="Select vault" onClick={openFolder} className="toolBtn">
+                    <IconButton title="选择库" onClick={openFolder} className="toolBtn">
                       <IconSpace size={16} />
                     </IconButton>
-                    <IconButton title="New file" onClick={newFile} disabled={!vaultRoot} className="toolBtn">
+                    <IconButton title="新建文件" onClick={newFile} disabled={!vaultRoot} className="toolBtn">
                       <IconPlus size={16} />
                     </IconButton>
-                    <IconButton title="New folder" onClick={newFolder} disabled={!vaultRoot} className="toolBtn">
+                    <IconButton title="新建文件夹" onClick={newFolder} disabled={!vaultRoot} className="toolBtn">
                       <IconFolderPlus size={16} />
                     </IconButton>
                     <IconButton
-                      title="Refresh"
+                      title="刷新"
                       onClick={() => void reloadDir(selectedDir)}
                       disabled={!vaultRoot}
                       className="toolBtn"
@@ -495,25 +524,26 @@ export function App() {
                 <>
                   {persisted.recentVaults.length > 0 ? (
                     <div className="sidebarSubHeader">
-                      <select
-                        className="select"
-                        value=""
-                        data-no-drag="true"
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          if (!v) return;
-                          void openRecent(v);
-                          e.target.value = "";
-                        }}
-                        title="Recent vaults"
-                      >
-                        <option value="">Recent…</option>
-                        {persisted.recentVaults.map((p) => (
-                          <option key={p} value={p}>
-                            {p}
-                          </option>
-                        ))}
-                      </select>
+                      <Tooltip label="最近使用的库" placement="right">
+                        <select
+                          className="select"
+                          value=""
+                          data-no-drag="true"
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (!v) return;
+                            void openRecent(v);
+                            e.target.value = "";
+                          }}
+                        >
+                          <option value="">Recent…</option>
+                          {persisted.recentVaults.map((p) => (
+                            <option key={p} value={p}>
+                              {p}
+                            </option>
+                          ))}
+                        </select>
+                      </Tooltip>
                     </div>
                   ) : null}
                   <FileTree
@@ -567,13 +597,19 @@ export function App() {
       <div className="statusbar noDrag">
         <div className="statusLeft">{activeTab ? activeTab.path : "No file"}</div>
         <div className="statusRight">
-          <IconButton title="Save" onClick={() => void saveActive()} disabled={!activeTab?.dirty}>
+          <IconButton title="保存" tooltipPlacement="top" onClick={() => void saveActive()} disabled={!activeTab?.dirty}>
             <IconSave size={16} />
           </IconButton>
-          <IconButton title="Rename" onClick={() => void renameActive()} disabled={!activeTab}>
+          <IconButton title="重命名" tooltipPlacement="top" onClick={() => void renameActive()} disabled={!activeTab}>
             <IconRename size={16} />
           </IconButton>
-          <IconButton title="Delete" onClick={() => void deleteActive()} disabled={!activePath} className="danger">
+          <IconButton
+            title="删除"
+            tooltipPlacement="top"
+            onClick={() => void deleteActive()}
+            disabled={!activePath}
+            className="danger"
+          >
             <IconTrash size={16} />
           </IconButton>
           <div className="statusPill">{activeTab?.dirty ? "Unsaved" : "Saved"}</div>

@@ -86,6 +86,89 @@ input {
   cursor: pointer;
 }
 
+.tooltipHost {
+  position: relative;
+  display: inline-flex;
+}
+
+.tooltipBubble {
+  --tooltip-bg: rgba(0, 0, 0, 0.92);
+  --tooltip-gap: 4px; /* distance between arrow tip and anchor */
+  --tooltip-arrow: 8px; /* square size; visible becomes 45-45-90 triangle via overlap */
+  --tooltip-tip: calc(var(--tooltip-arrow) * 0.7071);
+  --tooltip-arrow-overlap: 1px; /* avoid subpixel seam between arrow and bubble */
+  --tooltip-offset: calc(var(--tooltip-tip) + var(--tooltip-gap));
+  position: fixed;
+  z-index: 9999;
+  padding: 5px 8px;
+  border-radius: 4px;
+  background: var(--tooltip-bg);
+  color: #ffffff;
+  font-size: 13px;
+  line-height: 1.15;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 1;
+  transform: translate(var(--tooltip-translate-x, 0), var(--tooltip-translate-y, 0)) scale(1);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.25));
+}
+
+.tooltipBubble::after {
+  content: "";
+  position: absolute;
+  width: var(--tooltip-arrow);
+  height: var(--tooltip-arrow);
+  background: var(--tooltip-bg);
+  transform: rotate(45deg);
+}
+
+.tooltipBubble[data-placement="right"] {
+  --tooltip-translate-x: var(--tooltip-offset);
+  --tooltip-translate-y: -50%;
+}
+
+.tooltipBubble[data-placement="right"]::after {
+  left: calc(-0.5 * var(--tooltip-arrow) + var(--tooltip-arrow-overlap));
+  top: 50%;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.tooltipBubble[data-placement="left"] {
+  --tooltip-translate-x: calc(-100% - var(--tooltip-offset));
+  --tooltip-translate-y: -50%;
+}
+
+.tooltipBubble[data-placement="left"]::after {
+  right: calc(-0.5 * var(--tooltip-arrow) + var(--tooltip-arrow-overlap));
+  top: 50%;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.tooltipBubble[data-placement="top"] {
+  --tooltip-translate-x: -50%;
+  --tooltip-translate-y: calc(-100% - var(--tooltip-offset));
+}
+
+.tooltipBubble[data-placement="top"]::after {
+  left: 50%;
+  bottom: calc(-0.5 * var(--tooltip-arrow) + var(--tooltip-arrow-overlap));
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.tooltipBubble[data-placement="bottom"] {
+  --tooltip-translate-x: -50%;
+  --tooltip-translate-y: var(--tooltip-offset);
+}
+
+.tooltipBubble[data-placement="bottom"]::after {
+  left: 50%;
+  top: calc(-0.5 * var(--tooltip-arrow) + var(--tooltip-arrow-overlap));
+  transform: translateX(-50%) rotate(45deg);
+}
+
 .iconBtn:hover {
   background: var(--iconBgHover);
   color: var(--text);
@@ -127,6 +210,9 @@ input {
 }
 
 .activitybar {
+  position: relative;
+  z-index: 3;
+  grid-column: 1;
   background: var(--panel-2);
   border-right: 1px solid var(--border);
   display: flex;
@@ -144,6 +230,9 @@ input {
 }
 
 .sidebar {
+  position: relative;
+  z-index: 2;
+  grid-column: 2;
   background: var(--panel);
   border-right: 1px solid var(--border);
   display: flex;
@@ -280,6 +369,9 @@ input {
 }
 
 .editorArea {
+  position: relative;
+  z-index: 1;
+  grid-column: 3;
   min-width: 0;
   min-height: 0;
   background: var(--bg);
