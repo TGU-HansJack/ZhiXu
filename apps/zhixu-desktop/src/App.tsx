@@ -23,6 +23,7 @@ import {
   IconWorkshop,
 } from "./components/icons";
 import { basename, dirname, join } from "./lib/path";
+import { getFileTypeLabel, isTextFile, stripExtension } from "./lib/fileType";
 import {
   createDir,
   createFile,
@@ -40,9 +41,12 @@ import {
 
 type Activity = "space" | "tasks" | "calendar" | "quadrant" | "workshop" | "search";
 
+type TabKind = "text" | "binary";
+
 type Tab = {
   path: string;
   name: string;
+  kind: TabKind;
   content: string;
   savedContent: string;
   dirty: boolean;
@@ -178,20 +182,39 @@ export function App() {
     setSelectedDir(dirname(path));
     setActivity("space");
     setSidebarOpen(true);
+
+    const fileName = basename(path);
+    const tabName = stripExtension(fileName);
+    const textFile = isTextFile(fileName);
+    const binaryLabel = getFileTypeLabel(fileName) ?? "文件";
+    const binaryPlaceholder = `该文件类型暂不支持在应用内打开：${binaryLabel}\n\n路径：${path}`;
+
     setTabs((prev) => {
       const existing = prev.find((t) => t.path === path);
       if (existing) return prev;
       return [
         ...prev,
-        { path, name: basename(path), content: "", savedContent: "", dirty: false, selection: { anchor: 0, head: 0 } },
+        textFile
+          ? { path, name: tabName, kind: "text", content: "", savedContent: "", dirty: false, selection: { anchor: 0, head: 0 } }
+          : {
+              path,
+              name: tabName,
+              kind: "binary",
+              content: binaryPlaceholder,
+              savedContent: binaryPlaceholder,
+              dirty: false,
+              selection: { anchor: 0, head: 0 },
+            },
       ];
     });
+
+    if (!textFile) return;
     try {
       const content = await readTextFile(path);
       setTabs((prev) =>
         prev.map((t) =>
           t.path === path
-            ? { ...t, content, savedContent: content, dirty: false, selection: { anchor: 0, head: 0 } }
+            ? { ...t, kind: "text", content, savedContent: content, dirty: false, selection: { anchor: 0, head: 0 } }
             : t,
         ),
       );
@@ -201,7 +224,7 @@ export function App() {
   }, []);
 
   const saveActive = useCallback(async () => {
-    if (!activeTab || !activeTab.dirty) return;
+    if (!activeTab || activeTab.kind !== "text" || !activeTab.dirty) return;
     if (savingRef.current) return;
     savingRef.current = true;
     try {
@@ -252,13 +275,50 @@ export function App() {
     if (!activeTab) return;
     const next = window.prompt("重命名为（库内相对路径）：", activeTab.path);
     if (!next || next === activeTab.path) return;
+
+    const nextFileName = basename(next);
+    const nextName = stripExtension(nextFileName);
+    const nextText = isTextFile(nextFileName);
+    const nextBinaryLabel = getFileTypeLabel(nextFileName) ?? "文件";
+    const nextBinaryPlaceholder = `该文件类型暂不支持在应用内打开：${nextBinaryLabel}\n\n路径：${next}`;
+
     try {
       await renameEntry(activeTab.path, next);
-      const nextName = basename(next);
-      setTabs((prev) => prev.map((t) => (t.path === activeTab.path ? { ...t, path: next, name: nextName } : t)));
+      setTabs((prev) =>
+        prev.map((t) => {
+          if (t.path !== activeTab.path) return t;
+          if (!nextText) {
+            return {
+              ...t,
+              path: next,
+              name: nextName,
+              kind: "binary",
+              content: nextBinaryPlaceholder,
+              savedContent: nextBinaryPlaceholder,
+              dirty: false,
+              selection: { anchor: 0, head: 0 },
+            };
+          }
+          return { ...t, path: next, name: nextName, kind: "text" };
+        }),
+      );
       setActivePath(next);
       await reloadDir(dirname(activeTab.path));
       await reloadDir(dirname(next));
+      if (nextText) {
+        try {
+          const content = await readTextFile(next);
+          setTabs((prev) =>
+            prev.map((t) =>
+              t.path === next
+                ? { ...t, kind: "text", content, savedContent: content, dirty: false, selection: { anchor: 0, head: 0 } }
+                : t,
+            ),
+          );
+        } catch (e) {
+          console.error(e);
+        }
+      }
     } catch (e) {
       console.error(e);
       window.alert(String(e));
@@ -341,7 +401,7 @@ export function App() {
 
   const editorPlaceholder = useMemo(() => {
     if (!vaultRoot) return "请选择一个库开始…";
-    if (!activeTab) return "从主侧栏打开一个 Markdown 文件…";
+    if (!activeTab) return "从主侧栏打开一个 Markdown 或 Zhixu 文件…";
     return "";
   }, [vaultRoot, activeTab]);
 
@@ -609,10 +669,12 @@ export function App() {
               value={activeTab.content}
               selection={activeTab.selection}
               placeholder={editorPlaceholder}
+              readOnly={activeTab.kind !== "text"}
               onChange={(next) => {
                 setTabs((prev) =>
                   prev.map((t) => {
                     if (t.path !== activeTab.path) return t;
+                    if (t.kind !== "text") return t;
                     if (t.content === next) return t;
                     return { ...t, content: next, dirty: next !== t.savedContent };
                   }),
@@ -629,7 +691,7 @@ export function App() {
             />
           ) : (
             <div className="emptyState">
-              从主侧栏打开一个 Markdown 文件。使用 <span className="kbd">Ctrl+S</span> 保存。
+              从主侧栏打开一个 Markdown 或 Zhixu 文件。使用 <span className="kbd">Ctrl+S</span> 保存。
             </div>
           )}
         </div>

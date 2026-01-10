@@ -100,16 +100,37 @@ fn resolve_in_vault(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
     Ok(candidate)
 }
 
-fn ensure_markdown_path(rel_path: &str) -> Result<(), String> {
+fn ensure_non_empty_path(rel_path: &str) -> Result<(), String> {
     let rel = rel_path.replace('\\', "/");
     let clean = rel.trim_matches('/');
     if clean.is_empty() {
         return Err("Missing path".to_string());
     }
-    if !clean.to_ascii_lowercase().ends_with(".md") {
-        return Err("Only .md files are supported in this phase".to_string());
+    Ok(())
+}
+
+fn ensure_text_path(rel_path: &str) -> Result<(), String> {
+    ensure_non_empty_path(rel_path)?;
+    let rel = rel_path.replace('\\', "/");
+    let clean = rel.trim_matches('/');
+    let lower = clean.to_ascii_lowercase();
+    if !(lower.ends_with(".md") || lower.ends_with(".zhixu")) {
+        return Err("Only .md or .zhixu text files are supported".to_string());
     }
     Ok(())
+}
+
+fn is_supported_file_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.ends_with(".md")
+        || lower.ends_with(".zhixu")
+        || lower.ends_with(".pdf")
+        || lower.ends_with(".png")
+        || lower.ends_with(".jpg")
+        || lower.ends_with(".jpeg")
+        || lower.ends_with(".gif")
+        || lower.ends_with(".webp")
+        || lower.ends_with(".svg")
 }
 
 #[tauri::command]
@@ -160,7 +181,7 @@ fn list_dir(rel_path: String, state: tauri::State<'_, VaultState>) -> Result<Vec
             continue;
         }
         let is_dir = entry.file_type().map_err(|e| format!("Failed to read type: {e}"))?.is_dir();
-        if !is_dir && !name.to_ascii_lowercase().ends_with(".md") {
+        if !is_dir && !is_supported_file_name(&name) {
             continue;
         }
         let rel = to_vault_path(&root, &path)?;
@@ -171,7 +192,7 @@ fn list_dir(rel_path: String, state: tauri::State<'_, VaultState>) -> Result<Vec
 
 #[tauri::command]
 fn read_text_file(rel_path: String, state: tauri::State<'_, VaultState>) -> Result<String, String> {
-    ensure_markdown_path(&rel_path)?;
+    ensure_text_path(&rel_path)?;
     let root = state.0.lock().unwrap().clone().ok_or_else(|| "No vault selected".to_string())?;
     let path = resolve_in_vault(&root, &rel_path)?;
     let md = fs::metadata(&path).map_err(|e| format!("Failed to read file: {e}"))?;
@@ -183,7 +204,7 @@ fn read_text_file(rel_path: String, state: tauri::State<'_, VaultState>) -> Resu
 
 #[tauri::command]
 fn write_text_file(rel_path: String, content: String, state: tauri::State<'_, VaultState>) -> Result<(), String> {
-    ensure_markdown_path(&rel_path)?;
+    ensure_text_path(&rel_path)?;
     let root = state.0.lock().unwrap().clone().ok_or_else(|| "No vault selected".to_string())?;
     let path = resolve_in_vault(&root, &rel_path)?;
     if let Some(parent) = path.parent() {
@@ -201,7 +222,7 @@ fn create_dir(rel_path: String, state: tauri::State<'_, VaultState>) -> Result<(
 
 #[tauri::command]
 fn create_file(rel_path: String, state: tauri::State<'_, VaultState>) -> Result<(), String> {
-    ensure_markdown_path(&rel_path)?;
+    ensure_text_path(&rel_path)?;
     let root = state.0.lock().unwrap().clone().ok_or_else(|| "No vault selected".to_string())?;
     let path = resolve_in_vault(&root, &rel_path)?;
     if let Some(parent) = path.parent() {
@@ -215,8 +236,8 @@ fn create_file(rel_path: String, state: tauri::State<'_, VaultState>) -> Result<
 
 #[tauri::command]
 fn rename_entry(from_rel_path: String, to_rel_path: String, state: tauri::State<'_, VaultState>) -> Result<(), String> {
-    ensure_markdown_path(&from_rel_path)?;
-    ensure_markdown_path(&to_rel_path)?;
+    ensure_non_empty_path(&from_rel_path)?;
+    ensure_non_empty_path(&to_rel_path)?;
     let root = state.0.lock().unwrap().clone().ok_or_else(|| "No vault selected".to_string())?;
     let from = resolve_in_vault(&root, &from_rel_path)?;
     if !from.exists() {

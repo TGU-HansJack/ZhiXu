@@ -13,11 +13,12 @@ type Props = {
   value: string;
   selection?: CodeMirrorSelection;
   placeholder?: string;
+  readOnly?: boolean;
   onChange: (next: string) => void;
   onSelectionChange?: (next: CodeMirrorSelection) => void;
 };
 
-export function CodeMirrorEditor({ value, selection, placeholder, onChange, onSelectionChange }: Props) {
+export function CodeMirrorEditor({ value, selection, placeholder, readOnly = false, onChange, onSelectionChange }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const callbacksRef = useRef({ onChange, onSelectionChange });
@@ -72,12 +73,14 @@ export function CodeMirrorEditor({ value, selection, placeholder, onChange, onSe
       markdown(),
       EditorView.lineWrapping,
       EditorState.tabSize.of(2),
+      EditorState.readOnly.of(readOnly),
+      EditorView.editable.of(!readOnly),
       EditorView.contentAttributes.of({ "aria-label": "编辑器" }),
       placeholder ? cmPlaceholder(placeholder) : [],
       theme,
       updateListener,
     ];
-  }, [placeholder]);
+  }, [placeholder, readOnly]);
 
   useEffect(() => {
     const host = hostRef.current;

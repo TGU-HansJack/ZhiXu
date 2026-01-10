@@ -1,5 +1,6 @@
 import React from "react";
 import type { VaultEntry } from "../lib/vaultApi";
+import { getFileTypeLabel, stripExtension } from "../lib/fileType";
 import { IconChevron, IconDocument, IconFolder } from "./icons";
 import { Tooltip } from "./Tooltip";
 
@@ -32,6 +33,8 @@ export function FileTree({ rootLabel, nodes, activePath, onToggleDir, onOpenFile
       {nodes.map((node) => {
         const isActive = activePath === node.path;
         const pad = 12 + node.depth * 14;
+        const displayName = node.isDir ? node.name : stripExtension(node.name);
+        const typeLabel = node.isDir ? null : getFileTypeLabel(node.name);
         return (
           <div
             key={node.path}
@@ -58,8 +61,13 @@ export function FileTree({ rootLabel, nodes, activePath, onToggleDir, onOpenFile
               {node.isDir ? <IconFolder size={16} /> : <IconDocument size={16} />}
             </span>
             <Tooltip label={node.path} placement="right">
-              <span className="label">{node.name}</span>
+              <span className="label">{displayName}</span>
             </Tooltip>
+            {typeLabel ? (
+              <span className="fileType" aria-hidden="true">
+                {typeLabel}
+              </span>
+            ) : null}
           </div>
         );
       })}

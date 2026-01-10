@@ -16,10 +16,10 @@ export async function selectVault(): Promise<string> {
   const selected = await open({
     directory: true,
     multiple: false,
-    title: "Open Folder",
+    title: "选择库文件夹",
   });
   if (typeof selected !== "string") {
-    throw new Error("Dialog canceled");
+    throw new Error("已取消选择文件夹");
   }
   return setVaultRoot(selected);
 }
