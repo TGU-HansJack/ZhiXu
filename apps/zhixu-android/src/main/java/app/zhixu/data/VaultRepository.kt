@@ -1192,57 +1192,104 @@ class VaultRepository(
             val drawingDocs = listDrawingDocs(rootUri)
 
             val keepUris = (markdownDocs.asSequence() + drawingDocs.asSequence()).map { it.uri.toString() }.toHashSet()
+            val indexedMetaResult = runCatching { indexRepository.listAllIndexedDocMeta() }
+            val indexedMeta = indexedMetaResult.getOrNull().orEmpty()
+
+            var didChange = false
+
             val stale =
-                runCatching { indexRepository.listAllDocUris() }
-                    .getOrElse { emptyList() }
-                    .filterNot { keepUris.contains(it) }
+                if (indexedMetaResult.isSuccess) {
+                    indexedMeta.keys.filterNot(keepUris::contains)
+                } else {
+                    runCatching { indexRepository.listAllDocUris() }
+                        .getOrElse { emptyList() }
+                        .filterNot(keepUris::contains)
+                }
             if (stale.isNotEmpty()) {
                 runCatching { indexRepository.deleteDocumentsByUriStrings(stale) }
+                    .onSuccess { didChange = true }
                     .onFailure { Log.e("Zhixu", "Index prune failed", it) }
             }
 
             val coroutineContext = currentCoroutineContext()
+            var processed = 0
             for (doc in markdownDocs) {
                 coroutineContext.ensureActive()
-                runCatching {
-                    val content = readText(doc.uri)
-                    val normalized = TaskSyntax.normalizeMarkdown(content)
-                    val finalContent =
-                        if (normalized.insertedIds > 0) {
-                            writeText(doc.uri, normalized.markdown)
-                            normalized.markdown
-                        } else {
-                            content
-                        }
-                    val stat = DocumentFile.fromSingleUri(context, doc.uri)
-                    val indexedDoc =
-                        doc.copy(
-                            lastModified = stat?.lastModified() ?: doc.lastModified,
-                            size = stat?.length() ?: finalContent.toByteArray(StandardCharsets.UTF_8).size.toLong(),
-                        )
-                    indexRepository.indexDocument(indexedDoc, finalContent)
-                }.onFailure {
-                    Log.e("Zhixu", "Index failed for ${doc.uri}", it)
+                val uriStr = doc.uri.toString()
+                val prev = indexedMeta[uriStr]
+
+                val shouldIndex =
+                    when {
+                        !indexedMetaResult.isSuccess -> true
+                        prev == null -> true
+                        doc.lastModified <= 0L -> true
+                        prev.lastModified != doc.lastModified || prev.size != doc.size -> true
+                        else -> false
+                    }
+
+                if (!shouldIndex) {
+                    if (doc.name.isNotBlank() && doc.name != prev?.name) {
+                        runCatching { indexRepository.updateDocName(docUri = uriStr, newName = doc.name) }
+                            .onSuccess { didChange = true }
+                    }
+                } else {
+                    runCatching {
+                        val content = readText(doc.uri)
+                        val normalized = TaskSyntax.normalizeMarkdown(content)
+                        val finalContent =
+                            if (normalized.insertedIds > 0) {
+                                writeText(doc.uri, normalized.markdown)
+                                normalized.markdown
+                            } else {
+                                content
+                            }
+                        val stat = DocumentFile.fromSingleUri(context, doc.uri)
+                        val indexedDoc =
+                            doc.copy(
+                                lastModified = stat?.lastModified() ?: doc.lastModified,
+                                size = stat?.length() ?: finalContent.toByteArray(StandardCharsets.UTF_8).size.toLong(),
+                            )
+                        indexRepository.indexDocument(indexedDoc, finalContent)
+                        didChange = true
+                    }.onFailure {
+                        Log.e("Zhixu", "Index failed for ${doc.uri}", it)
+                    }
                 }
-                yield()
+
+                processed += 1
+                if (processed % 32 == 0) yield()
             }
 
             for (doc in drawingDocs) {
                 coroutineContext.ensureActive()
-                runCatching {
-                    val stat = DocumentFile.fromSingleUri(context, doc.uri)
-                    val indexedDoc =
-                        doc.copy(
-                            lastModified = stat?.lastModified() ?: doc.lastModified,
-                            size = stat?.length() ?: doc.size,
-                        )
-                    indexRepository.indexDocument(indexedDoc, "")
-                }.onFailure {
-                    Log.e("Zhixu", "Index failed for ${doc.uri}", it)
+                val uriStr = doc.uri.toString()
+                val prev = indexedMeta[uriStr]
+                val shouldIndex =
+                    when {
+                        !indexedMetaResult.isSuccess -> true
+                        prev == null -> true
+                        doc.lastModified <= 0L -> true
+                        prev.lastModified != doc.lastModified || prev.size != doc.size -> true
+                        else -> false
+                    }
+                if (shouldIndex) {
+                    runCatching {
+                        val stat = DocumentFile.fromSingleUri(context, doc.uri)
+                        val indexedDoc =
+                            doc.copy(
+                                lastModified = stat?.lastModified() ?: doc.lastModified,
+                                size = stat?.length() ?: doc.size,
+                            )
+                        indexRepository.indexDocument(indexedDoc, "")
+                        didChange = true
+                    }.onFailure {
+                        Log.e("Zhixu", "Index failed for ${doc.uri}", it)
+                    }
                 }
-                yield()
+                processed += 1
+                if (processed % 32 == 0) yield()
             }
-            signalIndexChanged()
+            if (didChange) signalIndexChanged()
         } finally {
             indexBuildInProgress = false
         }

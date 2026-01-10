@@ -26,6 +26,12 @@ class VaultIndexRepository(
 
     enum class TaskStatusFilter { All, Undone, Done }
 
+    data class IndexedDocMeta(
+        val name: String,
+        val lastModified: Long,
+        val size: Long,
+    )
+
     suspend fun hasAnyIndexedDocs(): Boolean = withContext(Dispatchers.IO) {
         mutex.withLock {
             val database = db.readableDatabase
@@ -96,6 +102,71 @@ class VaultIndexRepository(
                 }
             }
             out
+        }
+    }
+
+    suspend fun listAllIndexedDocMeta(): Map<String, IndexedDocMeta> = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val database = db.readableDatabase
+            val out = HashMap<String, IndexedDocMeta>()
+            database.rawQuery(
+                """
+                SELECT
+                  uri,
+                  COALESCE(name, '') AS name,
+                  CAST(COALESCE(last_modified, '0') AS INTEGER) AS last_modified,
+                  CAST(COALESCE(size, '0') AS INTEGER) AS size
+                FROM docs_fts
+                """.trimIndent(),
+                null,
+            ).use { cursor ->
+                val uriIdx = cursor.getColumnIndexOrThrow("uri")
+                val nameIdx = cursor.getColumnIndexOrThrow("name")
+                val lastIdx = cursor.getColumnIndexOrThrow("last_modified")
+                val sizeIdx = cursor.getColumnIndexOrThrow("size")
+                while (cursor.moveToNext()) {
+                    val uriStr = cursor.getString(uriIdx).orEmpty()
+                    if (uriStr.isBlank()) continue
+                    out[uriStr] =
+                        IndexedDocMeta(
+                            name = cursor.getString(nameIdx).orEmpty(),
+                            lastModified = cursor.getLong(lastIdx),
+                            size = cursor.getLong(sizeIdx),
+                        )
+                }
+            }
+            out
+        }
+    }
+
+    suspend fun updateDocName(
+        docUri: String,
+        newName: String,
+    ) = withContext(Dispatchers.IO) {
+        val uri = docUri.trim()
+        val name = newName.trim()
+        if (uri.isBlank() || name.isBlank()) return@withContext
+
+        mutex.withLock {
+            val database = db.writableDatabase
+            database.beginTransaction()
+            try {
+                runCatching {
+                    database.execSQL(
+                        "UPDATE docs_fts SET name = ? WHERE uri = ?",
+                        arrayOf<Any?>(name, uri),
+                    )
+                }
+                runCatching {
+                    database.execSQL(
+                        "UPDATE tasks SET doc_name = ? WHERE doc_uri = ?",
+                        arrayOf<Any?>(name, uri),
+                    )
+                }
+                database.setTransactionSuccessful()
+            } finally {
+                database.endTransaction()
+            }
         }
     }
 

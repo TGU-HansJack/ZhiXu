@@ -192,17 +192,22 @@ fun VaultDrawer(
         expandedDirs.keys.filter { it != dirPath && it.startsWith(dirPath) }.forEach { expandedDirs.remove(it) }
     }
 
-    suspend fun reloadDir(dirPath: String) {
+    suspend fun reloadDir(
+        dirPath: String,
+        refresh: Boolean,
+    ) {
         val key = dirPath
         if (loadingDirs[key] == true) return
         loadingDirs[key] = true
         try {
             repository.ensureDirIndexBuilt(vaultRootUri, force = false)
-            runCatching {
-                repository.refreshDirIndexForDirectory(
-                    rootUri = vaultRootUri,
-                    parentRelativePath = key.takeIf { it.isNotBlank() },
-                )
+            if (refresh) {
+                runCatching {
+                    repository.refreshDirIndexForDirectory(
+                        rootUri = vaultRootUri,
+                        parentRelativePath = key.takeIf { it.isNotBlank() },
+                    )
+                }
             }
             if (key.isBlank()) {
                 errorText = null
@@ -250,7 +255,7 @@ fun VaultDrawer(
         val now = System.currentTimeMillis()
         val cacheAgeMs = if (cacheUpdatedAtMs > 0L) (now - cacheUpdatedAtMs) else Long.MAX_VALUE
         if (entries.isEmpty() || cacheAgeMs > 30 * 60 * 1000L) {
-            reloadDir("")
+            reloadDir("", refresh = false)
         }
     }
 
@@ -281,16 +286,13 @@ fun VaultDrawer(
                         .map { parentPathOf(it) ?: "" }
             }.distinct()
 
-        val dirsToRefresh =
-            (dirsToRefreshInitial + dirsToRefreshInitial.map { parentPathOf(it) ?: "" })
-                .distinct()
+        val dirsToRefresh = dirsToRefreshInitial
 
         var refreshedAny = false
         for (dir in dirsToRefresh) {
             if (loadedDirs[dir] == true) {
                 refreshedAny = true
-                runCatching { repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = dir) }
-                reloadDir(dir)
+                reloadDir(dir, refresh = true)
             }
         }
         if (!refreshedAny) persistCache()
@@ -488,7 +490,7 @@ fun VaultDrawer(
                             if (!isDirLoading) {
                                 if (!isExpanded && loadedDirs[dirPath] != true) {
                                     expandedDirs[dirPath] = true
-                                    scope.launch { reloadDir(dirPath) }
+                                    scope.launch { reloadDir(dirPath, refresh = false) }
                                 } else {
                                     expandedDirs[dirPath] = !isExpanded
                                 }
@@ -741,7 +743,6 @@ fun VaultDrawer(
                         val entry = selectedEntry ?: return@TextButton
                         val desiredName = renameInput.trim()
                         if (desiredName.isBlank()) return@TextButton
-                        val parentDir = entry.parentPath ?: ""
                         val uri = entry.uri
                         showRenameDialog = false
                         selectedEntry = null
@@ -755,19 +756,16 @@ fun VaultDrawer(
                             val ok =
                                 runCatching {
                                     if (entry.isDirectory) {
-                                        repository.renameDirectory(uri, desiredName) ?: return@runCatching false
-                                        repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)
-                                        expandedDirs.clear()
-                                        reloadDir("")
+                                        val renamedDir = repository.renameDirectory(uri, desiredName) ?: return@runCatching false
+                                        onDocListMutated(DocListMutation.Renamed(oldUri = uri, newUri = renamedDir))
                                     } else {
                                         if (entry.name.endsWith(".md", ignoreCase = true)) {
                                             val renamedDoc = repository.renameDoc(uri, desiredName) ?: return@runCatching false
                                             onDocListMutated(DocListMutation.Renamed(oldUri = uri, newUri = renamedDoc))
                                         } else {
-                                            repository.renameFile(uri, desiredName) ?: return@runCatching false
+                                            val renamedFile = repository.renameFile(uri, desiredName) ?: return@runCatching false
+                                            onDocListMutated(DocListMutation.Renamed(oldUri = uri, newUri = renamedFile))
                                         }
-                                        repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)
-                                        reloadDir(parentDir)
                                     }
                                     true
                                 }.getOrElse { false }
@@ -804,7 +802,6 @@ fun VaultDrawer(
                     onClick = {
                         val entry = selectedEntry ?: return@TextButton
                         val uri = entry.uri ?: return@TextButton
-                        val parentDir = entry.parentPath ?: ""
                         scope.launch {
                             val ok =
                                 runCatching {
@@ -812,9 +809,6 @@ fun VaultDrawer(
                                         val deleted = repository.deleteEntry(uri)
                                         if (!deleted) return@runCatching false
                                         onDocListMutated(DocListMutation.Deleted(docUri = uri))
-                                        repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)
-                                        expandedDirs.clear()
-                                        reloadDir("")
                                     } else {
                                         if (entry.name.endsWith(".md", ignoreCase = true)) {
                                             val deleted = repository.deleteDoc(uri)
@@ -825,8 +819,6 @@ fun VaultDrawer(
                                             if (deleted) onDocListMutated(DocListMutation.Deleted(docUri = uri))
                                             if (!deleted) return@runCatching false
                                         }
-                                        repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = parentDir)
-                                        reloadDir(parentDir)
                                     }
                                     true
                                 }.getOrElse { false }
@@ -909,8 +901,6 @@ fun VaultDrawer(
                                     .show()
                             }
                             runCatching { repository.indexDocUri(created.uri) }
-                            runCatching { repository.refreshDirIndexForDirectory(vaultRootUri, parentRelativePath = dir.relativePath) }
-                            runCatching { reloadDir(dir.relativePath) }
                             onDocListMutated(DocListMutation.Created(created))
                             onOpenDoc(created.uri.toString())
                         }

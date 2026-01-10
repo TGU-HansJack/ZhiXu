@@ -169,6 +169,7 @@ fun DocumentListScreen(
     var pendingOpenSearch by remember { mutableStateOf(false) }
     var lastSearchToken by remember { mutableLongStateOf(searchRequestToken) }
     var pendingShowUpdatedBanner by remember { mutableStateOf(false) }
+    var sawRefreshingForBanner by remember { mutableStateOf(false) }
 
     var selectedDoc by remember { mutableStateOf<UiDoc?>(null) }
     var showDocMenu by remember { mutableStateOf(false) }
@@ -261,6 +262,21 @@ fun DocumentListScreen(
         }
     }
 
+    LaunchedEffect(isActive, isIndexUpdating) {
+        if (!isActive) return@LaunchedEffect
+        if (pendingShowUpdatedBanner) {
+            if (isIndexUpdating) {
+                sawRefreshingForBanner = true
+            } else if (sawRefreshingForBanner) {
+                lastRefreshBannerAtMs = SystemClock.uptimeMillis()
+                pendingShowUpdatedBanner = false
+                sawRefreshingForBanner = false
+            }
+        } else {
+            sawRefreshingForBanner = false
+        }
+    }
+
     fun clearSearch() {
         query = ""
         results = emptyList()
@@ -314,7 +330,7 @@ fun DocumentListScreen(
                 onRefresh = {
                     if (!isActive) return@PullToRefreshBox
                     pendingShowUpdatedBanner = true
-                    indexUpdater.requestForceRefresh()
+                    indexUpdater.requestRefresh()
                 },
                 state = pullState,
                 modifier = Modifier.fillMaxSize(),

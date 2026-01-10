@@ -15,6 +15,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -28,6 +29,8 @@ class VaultIndexUpdater(
     @Volatile private var canRunHeavyWork: Boolean = true
     @Volatile private var vaultRootUri: Uri? = null
     @Volatile private var docsDirUri: Uri? = null
+    @Volatile private var pendingObserverChange: Boolean = false
+    @Volatile private var lastIndexSignalUptimeMs: Long = 0L
 
     private var observer: ContentObserver? = null
     private var registerJob: Job? = null
@@ -39,8 +42,21 @@ class VaultIndexUpdater(
     private val _isUpdating = MutableStateFlow(false)
     val isUpdating: StateFlow<Boolean> = _isUpdating.asStateFlow()
 
+    init {
+        scope.launch {
+            repository.indexChanges.collect {
+                lastIndexSignalUptimeMs = SystemClock.uptimeMillis()
+            }
+        }
+    }
+
     fun setCanRunHeavyWork(canRun: Boolean) {
+        val prev = canRunHeavyWork
         canRunHeavyWork = canRun
+        if (!prev && canRun && pendingObserverChange) {
+            pendingObserverChange = false
+            scheduleRefresh(force = false, debounceMs = 600)
+        }
     }
 
     fun setVaultRootUri(root: Uri?) {
@@ -53,6 +69,10 @@ class VaultIndexUpdater(
 
     fun requestForceRefresh() {
         scheduleRefresh(force = true, debounceMs = 0)
+    }
+
+    fun requestRefresh() {
+        scheduleRefresh(force = false, debounceMs = 0)
     }
 
     private fun start(root: Uri) {
@@ -102,8 +122,16 @@ class VaultIndexUpdater(
             object : ContentObserver(Handler(Looper.getMainLooper())) {
                 override fun onChange(selfChange: Boolean) {
                     val root = vaultRootUri ?: return
+                    val now = SystemClock.uptimeMillis()
+                    val recentIndexSignal = now - lastIndexSignalUptimeMs
+                    if (recentIndexSignal in 0..1_500L) return
+
                     repository.invalidateDocListCache(root)
-                    scheduleRefresh(force = false, debounceMs = 250)
+                    if (!canRunHeavyWork) {
+                        pendingObserverChange = true
+                        return
+                    }
+                    scheduleRefresh(force = false, debounceMs = 600)
                 }
 
                 override fun onChange(selfChange: Boolean, uri: Uri?) {
