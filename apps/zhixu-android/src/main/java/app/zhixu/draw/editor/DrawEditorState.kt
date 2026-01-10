@@ -155,6 +155,49 @@ class DrawEditorState private constructor(
         selectedElementIds = emptySet()
     }
 
+    fun snapshotPageElements(pageIndex: Int = currentPageIndex): List<ZhixuDrawElement> {
+        val page = pages.getOrNull(pageIndex) ?: return emptyList()
+        return page.elements.mapNotNull { el ->
+            when (el) {
+                is DrawStrokeState ->
+                    ZhixuDrawStroke(
+                        id = el.id,
+                        tool = el.tool,
+                        colorArgb = el.colorArgb,
+                        width = el.width,
+                        alpha = el.alpha,
+                        points = el.points.toList(),
+                    )
+                is DrawShapeState ->
+                    ZhixuDrawShapeElement(
+                        id = el.id,
+                        shape =
+                            when (el.shape) {
+                                DrawShapeMode.Line -> ZhixuDrawShape.Line
+                                DrawShapeMode.Rectangle -> ZhixuDrawShape.Rectangle
+                                DrawShapeMode.Ellipse -> ZhixuDrawShape.Ellipse
+                            },
+                        colorArgb = el.colorArgb,
+                        width = el.width,
+                        alpha = el.alpha,
+                        start = el.start,
+                        end = el.end,
+                    )
+                else -> null
+            }
+        }
+    }
+
+    fun restorePageElements(
+        elements: List<ZhixuDrawElement>,
+        pageIndex: Int = currentPageIndex,
+    ) {
+        val page = pages.getOrNull(pageIndex) ?: return
+        page.elements.clear()
+        page.elements.addAll(elements.map { it.toState() })
+        clearOverlaysAndSelection()
+    }
+
     fun toDocument(): ZhixuDrawDocument {
         val pageFiles = pages.mapIndexed { index, _ -> app.zhixu.draw.ZhixuDrawFormat.pageFileName(index) }
         val meta =
@@ -273,4 +316,3 @@ private fun ZhixuDrawElement.toState(): DrawElementState =
     }
 
 internal fun newElementId(): String = Ulid.next()
-

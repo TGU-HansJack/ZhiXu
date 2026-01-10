@@ -35,6 +35,8 @@ object Ionicons {
     @DrawableRes val CopyOutline: Int = R.drawable.ic_ion_copy_outline
     @DrawableRes val ShareSocialOutline: Int = R.drawable.ic_ion_share_social_outline
     @DrawableRes val TrashOutline: Int = R.drawable.ic_ion_trash_outline
+    @DrawableRes val SaveOutline: Int = R.drawable.ic_ion_save_outline
+    @DrawableRes val BrushOutline: Int = R.drawable.ic_ion_brush_outline
     @DrawableRes val ExtensionPuzzleOutline: Int = R.drawable.ic_ion_extension_puzzle_outline
     @DrawableRes val CloudDownloadOutline: Int = R.drawable.ic_ion_cloud_download_outline
     @DrawableRes val CloseCircleOutline: Int = R.drawable.ic_ion_close_circle_outline

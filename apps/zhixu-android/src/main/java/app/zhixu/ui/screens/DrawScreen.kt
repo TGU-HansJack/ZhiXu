@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,17 +18,21 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
@@ -35,6 +40,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,6 +50,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -63,12 +70,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import app.zhixu.R
 import app.zhixu.data.VaultRepository
+import app.zhixu.draw.ZhixuDrawElement
 import app.zhixu.draw.ZhixuDrawFormat
 import app.zhixu.draw.editor.DrawEditorState
 import app.zhixu.draw.editor.DrawElementState
@@ -84,12 +93,11 @@ import app.zhixu.draw.tools.PanToolMachine
 import app.zhixu.draw.tools.PenToolMachine
 import app.zhixu.draw.tools.ShapeToolMachine
 import app.zhixu.draw.tools.ToolPointerEvent
+import app.zhixu.ui.Heroicons
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.DocListMutation
-import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTextField
-import app.zhixu.ui.components.ZhixuTopAppBar
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -100,6 +108,12 @@ import kotlinx.coroutines.launch
 private const val MinScale: Float = 0.3f
 private const val MaxScale: Float = 5.0f
 
+private data class DrawUndoHistory(
+    val undoStack: ArrayDeque<List<ZhixuDrawElement>> = ArrayDeque(),
+    val redoStack: ArrayDeque<List<ZhixuDrawElement>> = ArrayDeque(),
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DrawScreen(
     vaultRootUri: Uri,
@@ -140,6 +154,69 @@ fun DrawScreen(
     fun markEdited() {
         editor.modifiedAtMs = System.currentTimeMillis()
     }
+
+    val histories = remember { HashMap<String, DrawUndoHistory>() }
+    var canUndo by remember { mutableStateOf(false) }
+    var canRedo by remember { mutableStateOf(false) }
+
+    fun ensureHistoryForCurrentPage(): DrawUndoHistory? {
+        val page = editor.currentPageOrNull() ?: return null
+        val history =
+            histories.getOrPut(page.id) {
+                DrawUndoHistory().also { it.undoStack.addLast(editor.snapshotPageElements()) }
+            }
+        if (history.undoStack.isEmpty()) history.undoStack.addLast(editor.snapshotPageElements())
+        return history
+    }
+
+    fun refreshUndoRedoAvailability() {
+        val history = ensureHistoryForCurrentPage()
+        canUndo = (history?.undoStack?.size ?: 0) > 1
+        canRedo = history?.redoStack?.isNotEmpty() == true
+    }
+
+    fun commitEdit() {
+        markEdited()
+        val history = ensureHistoryForCurrentPage() ?: return
+        val snapshot = editor.snapshotPageElements()
+        val last = history.undoStack.lastOrNull()
+        if (last != null && last == snapshot) {
+            refreshUndoRedoAvailability()
+            return
+        }
+        if (history.undoStack.size >= 100) history.undoStack.removeFirst()
+        history.undoStack.addLast(snapshot)
+        history.redoStack.clear()
+        refreshUndoRedoAvailability()
+    }
+
+    fun undoStroke() {
+        val history = ensureHistoryForCurrentPage() ?: return
+        if (history.undoStack.size <= 1) return
+        val current = history.undoStack.removeLast()
+        history.redoStack.addLast(current)
+        val previous = history.undoStack.last()
+        editor.restorePageElements(previous)
+        markEdited()
+        refreshUndoRedoAvailability()
+    }
+
+    fun redoStroke() {
+        val history = ensureHistoryForCurrentPage() ?: return
+        if (history.redoStack.isEmpty()) return
+        val next = history.redoStack.removeLast()
+        history.undoStack.addLast(next)
+        editor.restorePageElements(next)
+        markEdited()
+        refreshUndoRedoAvailability()
+    }
+
+    LaunchedEffect(editor) {
+        histories.clear()
+        refreshUndoRedoAvailability()
+    }
+
+    LaunchedEffect(editor, editor.currentPageIndex) { refreshUndoRedoAvailability() }
 
     LaunchedEffect(docUri) {
         currentDocUri = docUri
@@ -213,7 +290,7 @@ fun DrawScreen(
         val page = editor.currentPageOrNull() ?: return
         page.elements.clear()
         editor.clearOverlaysAndSelection()
-        markEdited()
+        commitEdit()
     }
 
     fun deleteSelection() {
@@ -222,55 +299,19 @@ fun DrawScreen(
         if (selected.isEmpty()) return
         page.elements.removeAll { it.id in selected }
         editor.selectedElementIds = emptySet()
-        markEdited()
+        commitEdit()
     }
+
+    var showToolDrawer by remember { mutableStateOf(false) }
+    val toolDrawerState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-        topBar = {
-            Column {
-                ZhixuTopAppBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    title = {
-                        Text(
-                            text = guessTitleFromUri(currentDocUri) ?: stringResource(R.string.draw_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
-                    navigationIcon = {
-                        ZhixuIconButton(onClick = onBack) {
-                            androidx.compose.material3.Icon(
-                                painter =
-                                    painterResource(
-                                        if (LocalLayoutDirection.current == LayoutDirection.Rtl) Ionicons.ArrowForward else Ionicons.ArrowBack,
-                                    ),
-                                contentDescription = stringResource(R.string.action_back),
-                                modifier = Modifier.size(ZhixuTopBarIconSize),
-                            )
-                        }
-                    },
-                    actions = {
-                        if (editor.selectedElementIds.isNotEmpty()) {
-                            TextButton(onClick = ::deleteSelection) { Text(stringResource(R.string.action_delete)) }
-                        }
-                        TextButton(onClick = { showClearDialog = true }) { Text(stringResource(R.string.draw_action_clear)) }
-                        TextButton(onClick = ::requestSave) { Text(stringResource(R.string.action_save)) }
-                    },
-                )
-                HorizontalDivider()
-            }
-        },
     ) { padding ->
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-        ) {
+        val editorReady = !isLoading && !loadFailed
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             when {
                 isLoading -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -293,21 +334,119 @@ fun DrawScreen(
                         editor = editor,
                         marginPx = marginPx,
                         toolMachineFor = ::toolMachineFor,
-                        onEdited = ::markEdited,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                    )
-                    DrawBottomBar(
-                        editor = editor,
-                        marginPx = marginPx,
-                        onEdited = ::markEdited,
-                        onSaveAs = ::requestSaveAs,
-                        modifier = Modifier.fillMaxWidth(),
+                        onEdited = ::commitEdit,
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
+
+            Row(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                DrawCircleIconButton(
+                    onClick = onBack,
+                    contentDescription = stringResource(R.string.action_back),
+                ) {
+                    androidx.compose.material3.Icon(
+                        painter =
+                            painterResource(
+                                if (LocalLayoutDirection.current == LayoutDirection.Rtl) Ionicons.ArrowForward else Ionicons.ArrowBack,
+                            ),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                DrawCircleIconButton(
+                    onClick = ::undoStroke,
+                    enabled = editorReady && canUndo,
+                    contentDescription = stringResource(R.string.action_undo),
+                ) {
+                    androidx.compose.material3.Icon(
+                        painter = painterResource(Heroicons.ArrowUturnLeft),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                DrawCircleIconButton(
+                    onClick = ::redoStroke,
+                    enabled = editorReady && canRedo,
+                    contentDescription = stringResource(R.string.action_redo),
+                ) {
+                    androidx.compose.material3.Icon(
+                        painter = painterResource(Heroicons.ArrowUturnRight),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+
+            if (editorReady) {
+                Row(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .windowInsetsPadding(WindowInsets.statusBars)
+                            .padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    DrawCircleIconButton(
+                        onClick = { showClearDialog = true },
+                        contentDescription = stringResource(R.string.draw_action_clear),
+                    ) {
+                        androidx.compose.material3.Icon(
+                            painter = painterResource(Heroicons.Trash),
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    DrawCircleIconButton(
+                        onClick = ::requestSave,
+                        contentDescription = stringResource(R.string.action_save),
+                    ) {
+                        androidx.compose.material3.Icon(
+                            painter = painterResource(Ionicons.SaveOutline),
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+
+                DrawToolDock(
+                    editor = editor,
+                    onSelectTool = {
+                        editor.toolId = it
+                        editor.clearOverlaysAndSelection()
+                        showToolDrawer = true
+                    },
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .windowInsetsPadding(WindowInsets.navigationBars)
+                            .padding(bottom = 12.dp),
+                )
+            }
+        }
+    }
+
+    if (showToolDrawer && !isLoading && !loadFailed) {
+        ModalBottomSheet(
+            onDismissRequest = { showToolDrawer = false },
+            sheetState = toolDrawerState,
+        ) {
+            DrawToolDrawerContent(
+                editor = editor,
+                marginPx = marginPx,
+                onEdited = ::commitEdit,
+                onSaveAs = ::requestSaveAs,
+                onDeleteSelection = ::deleteSelection,
+            )
         }
     }
 
@@ -388,201 +527,279 @@ fun DrawScreen(
 }
 
 @Composable
-private fun DrawBottomBar(
-    editor: DrawEditorState,
-    marginPx: Float,
-    onEdited: () -> Unit,
-    onSaveAs: () -> Unit,
+private fun DrawCircleIconButton(
+    onClick: () -> Unit,
+    contentDescription: String,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit,
 ) {
-    Surface(color = MaterialTheme.colorScheme.surface, modifier = modifier) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            val scroll = rememberScrollState()
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(scroll),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                ToolChip(
-                    selected = editor.toolId == DrawToolId.Pen,
-                    label = stringResource(R.string.draw_tool_pen),
-                    onClick = {
-                        editor.toolId = DrawToolId.Pen
-                        editor.clearOverlaysAndSelection()
-                    },
-                )
-                ToolChip(
-                    selected = editor.toolId == DrawToolId.Highlighter,
-                    label = stringResource(R.string.draw_tool_highlighter),
-                    onClick = {
-                        editor.toolId = DrawToolId.Highlighter
-                        editor.clearOverlaysAndSelection()
-                    },
-                )
-                ToolChip(
-                    selected = editor.toolId == DrawToolId.Shape,
-                    label = stringResource(R.string.draw_tool_shape),
-                    onClick = {
-                        editor.toolId = DrawToolId.Shape
-                        editor.clearOverlaysAndSelection()
-                    },
-                )
-                ToolChip(
-                    selected = editor.toolId == DrawToolId.Lasso,
-                    label = stringResource(R.string.draw_tool_lasso),
-                    onClick = {
-                        editor.toolId = DrawToolId.Lasso
-                        editor.clearOverlaysAndSelection()
-                    },
-                )
-                ToolChip(
-                    selected = editor.toolId == DrawToolId.Eraser,
-                    label = stringResource(R.string.draw_tool_eraser),
-                    onClick = {
-                        editor.toolId = DrawToolId.Eraser
-                        editor.clearOverlaysAndSelection()
-                    },
-                )
-                ToolChip(
-                    selected = editor.toolId == DrawToolId.Pan,
-                    label = stringResource(R.string.draw_tool_pan),
-                    onClick = {
-                        editor.toolId = DrawToolId.Pan
-                        editor.clearOverlaysAndSelection()
-                    },
-                )
-            }
-
-            if (editor.toolId == DrawToolId.Shape) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(scroll),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    ToolChip(
-                        selected = editor.shapeMode == DrawShapeMode.Line,
-                        label = stringResource(R.string.draw_shape_line),
-                        onClick = { editor.shapeMode = DrawShapeMode.Line },
-                    )
-                    ToolChip(
-                        selected = editor.shapeMode == DrawShapeMode.Rectangle,
-                        label = stringResource(R.string.draw_shape_rect),
-                        onClick = { editor.shapeMode = DrawShapeMode.Rectangle },
-                    )
-                    ToolChip(
-                        selected = editor.shapeMode == DrawShapeMode.Ellipse,
-                        label = stringResource(R.string.draw_shape_ellipse),
-                        onClick = { editor.shapeMode = DrawShapeMode.Ellipse },
-                    )
-                }
-            }
-
-            if (editor.toolId == DrawToolId.Pen || editor.toolId == DrawToolId.Highlighter || editor.toolId == DrawToolId.Shape) {
-                DrawColorRow(
-                    selectedArgb = editor.colorArgb,
-                    onPick = { editor.colorArgb = it },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-
-            when (editor.toolId) {
-                DrawToolId.Pen, DrawToolId.Shape -> {
-                    LabeledSlider(
-                        label = stringResource(R.string.draw_stroke_width),
-                        value = editor.penWidth,
-                        range = 0.5f..18f,
-                        onValueChange = { editor.penWidth = it },
-                    )
-                }
-
-                DrawToolId.Highlighter -> {
-                    LabeledSlider(
-                        label = stringResource(R.string.draw_stroke_width),
-                        value = editor.highlighterWidth,
-                        range = 4f..42f,
-                        onValueChange = { editor.highlighterWidth = it },
-                    )
-                    LabeledSlider(
-                        label = stringResource(R.string.draw_highlighter_alpha),
-                        value = editor.highlighterAlpha,
-                        range = 0.05f..0.9f,
-                        onValueChange = { editor.highlighterAlpha = it },
-                    )
-                }
-
-                DrawToolId.Eraser -> {
-                    LabeledSlider(
-                        label = stringResource(R.string.draw_eraser_size),
-                        value = editor.eraserRadius,
-                        range = 4f..64f,
-                        onValueChange = { editor.eraserRadius = it },
-                    )
-                }
-
-                else -> Unit
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    ZhixuIconButton(
-                        onClick = {
-                            editor.goToPreviousPage()
-                            centerPage(editor, marginPx)
-                        },
-                    ) {
-                        androidx.compose.material3.Icon(
-                            painter = painterResource(Ionicons.ChevronBack),
-                            contentDescription = null,
-                            modifier = Modifier.size(ZhixuTopBarIconSize),
-                        )
-                    }
-                    Text(
-                        text = "${editor.currentPageIndex + 1} / ${editor.pages.size}",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    ZhixuIconButton(
-                        onClick = {
-                            editor.goToNextPage()
-                            centerPage(editor, marginPx)
-                        },
-                    ) {
-                        androidx.compose.material3.Icon(
-                            painter = painterResource(Ionicons.ChevronForward),
-                            contentDescription = null,
-                            modifier = Modifier.size(ZhixuTopBarIconSize),
-                        )
-                    }
-                    ZhixuIconButton(
-                        onClick = {
-                            editor.addPageLikeCurrent()
-                            centerPage(editor, marginPx)
-                            onEdited()
-                        },
-                    ) {
-                        androidx.compose.material3.Icon(
-                            painter = painterResource(Ionicons.AddCircleOutline),
-                            contentDescription = null,
-                            modifier = Modifier.size(ZhixuTopBarIconSize),
-                        )
-                    }
-                }
-
-                TextButton(onClick = onSaveAs) { Text(stringResource(R.string.draw_save_as_title)) }
-            }
+    val contentAlpha = if (enabled) 1f else 0.38f
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape = CircleShape,
+        tonalElevation = 2.dp,
+        shadowElevation = 6.dp,
+        modifier =
+            modifier
+                .size(44.dp)
+                .alpha(contentAlpha)
+                .clickable(enabled = enabled, onClick = onClick)
+                .semantics { this.contentDescription = contentDescription },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            content()
         }
     }
 }
 
 @Composable
-private fun ToolChip(
+private fun DrawToolDock(
+    editor: DrawEditorState,
+    onSelectTool: (DrawToolId) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(18.dp),
+        tonalElevation = 3.dp,
+        shadowElevation = 6.dp,
+        modifier = modifier.height(44.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            DrawToolDockButton(
+                selected = editor.toolId == DrawToolId.Pen,
+                iconRes = Ionicons.BrushOutline,
+                contentDescription = stringResource(R.string.draw_tool_pen),
+                onClick = { onSelectTool(DrawToolId.Pen) },
+            )
+            DrawToolDockButton(
+                selected = editor.toolId == DrawToolId.Highlighter,
+                iconRes = R.drawable.ic_ink_highlighter_24px,
+                contentDescription = stringResource(R.string.draw_tool_highlighter),
+                onClick = { onSelectTool(DrawToolId.Highlighter) },
+            )
+            DrawToolDockButton(
+                selected = editor.toolId == DrawToolId.Shape,
+                iconRes = R.drawable.ic_triangle_circle_24px,
+                contentDescription = stringResource(R.string.draw_tool_shape),
+                onClick = { onSelectTool(DrawToolId.Shape) },
+            )
+            DrawToolDockButton(
+                selected = editor.toolId == DrawToolId.Lasso,
+                iconRes = R.drawable.ic_lasso_select_24px,
+                contentDescription = stringResource(R.string.draw_tool_lasso),
+                onClick = { onSelectTool(DrawToolId.Lasso) },
+            )
+            DrawToolDockButton(
+                selected = editor.toolId == DrawToolId.Eraser,
+                iconRes = R.drawable.ic_ink_eraser_24px,
+                contentDescription = stringResource(R.string.draw_tool_eraser),
+                onClick = { onSelectTool(DrawToolId.Eraser) },
+            )
+            DrawToolDockButton(
+                selected = editor.toolId == DrawToolId.Pan,
+                iconRes = R.drawable.ic_pinch_zoom_out_24px,
+                contentDescription = stringResource(R.string.draw_tool_pan),
+                onClick = { onSelectTool(DrawToolId.Pan) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DrawToolDockButton(
+    selected: Boolean,
+    iconRes: Int,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+    val fg = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+    Surface(
+        color = bg,
+        shape = RoundedCornerShape(12.dp),
+        modifier =
+            Modifier
+                .size(36.dp)
+                .clickable(onClick = onClick)
+                .semantics { this.contentDescription = contentDescription },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            androidx.compose.material3.Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+                tint = fg,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DrawToolDrawerContent(
+    editor: DrawEditorState,
+    marginPx: Float,
+    onEdited: () -> Unit,
+    onSaveAs: () -> Unit,
+    onDeleteSelection: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scroll = rememberScrollState()
+    Column(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).verticalScroll(scroll),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        val toolLabel =
+            when (editor.toolId) {
+                DrawToolId.Pen -> stringResource(R.string.draw_tool_pen)
+                DrawToolId.Highlighter -> stringResource(R.string.draw_tool_highlighter)
+                DrawToolId.Shape -> stringResource(R.string.draw_tool_shape)
+                DrawToolId.Lasso -> stringResource(R.string.draw_tool_lasso)
+                DrawToolId.Eraser -> stringResource(R.string.draw_tool_eraser)
+                DrawToolId.Pan -> stringResource(R.string.draw_tool_pan)
+            }
+        Text(toolLabel, style = MaterialTheme.typography.titleMedium)
+
+        if (editor.toolId == DrawToolId.Shape) {
+            val chipScroll = rememberScrollState()
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(chipScroll),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ModeChip(
+                    selected = editor.shapeMode == DrawShapeMode.Line,
+                    label = stringResource(R.string.draw_shape_line),
+                    onClick = { editor.shapeMode = DrawShapeMode.Line },
+                )
+                ModeChip(
+                    selected = editor.shapeMode == DrawShapeMode.Rectangle,
+                    label = stringResource(R.string.draw_shape_rect),
+                    onClick = { editor.shapeMode = DrawShapeMode.Rectangle },
+                )
+                ModeChip(
+                    selected = editor.shapeMode == DrawShapeMode.Ellipse,
+                    label = stringResource(R.string.draw_shape_ellipse),
+                    onClick = { editor.shapeMode = DrawShapeMode.Ellipse },
+                )
+            }
+        }
+
+        if (editor.toolId == DrawToolId.Pen || editor.toolId == DrawToolId.Highlighter || editor.toolId == DrawToolId.Shape) {
+            DrawColorRow(
+                selectedArgb = editor.colorArgb,
+                onPick = { editor.colorArgb = it },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        when (editor.toolId) {
+            DrawToolId.Pen, DrawToolId.Shape -> {
+                LabeledSlider(
+                    label = stringResource(R.string.draw_stroke_width),
+                    value = editor.penWidth,
+                    range = 0.5f..18f,
+                    onValueChange = { editor.penWidth = it },
+                )
+            }
+
+            DrawToolId.Highlighter -> {
+                LabeledSlider(
+                    label = stringResource(R.string.draw_stroke_width),
+                    value = editor.highlighterWidth,
+                    range = 4f..42f,
+                    onValueChange = { editor.highlighterWidth = it },
+                )
+                LabeledSlider(
+                    label = stringResource(R.string.draw_highlighter_alpha),
+                    value = editor.highlighterAlpha,
+                    range = 0.05f..0.9f,
+                    onValueChange = { editor.highlighterAlpha = it },
+                )
+            }
+
+            DrawToolId.Eraser -> {
+                LabeledSlider(
+                    label = stringResource(R.string.draw_eraser_size),
+                    value = editor.eraserRadius,
+                    range = 4f..64f,
+                    onValueChange = { editor.eraserRadius = it },
+                )
+            }
+
+            DrawToolId.Lasso -> {
+                if (editor.selectedElementIds.isNotEmpty()) {
+                    TextButton(onClick = onDeleteSelection) { Text(stringResource(R.string.action_delete)) }
+                }
+            }
+
+            else -> Unit
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ZhixuIconButton(
+                    onClick = {
+                        editor.goToPreviousPage()
+                        centerPage(editor, marginPx)
+                    },
+                ) {
+                    androidx.compose.material3.Icon(
+                        painter = painterResource(Ionicons.ChevronBack),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                Text(
+                    text = "${editor.currentPageIndex + 1} / ${editor.pages.size}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                ZhixuIconButton(
+                    onClick = {
+                        editor.goToNextPage()
+                        centerPage(editor, marginPx)
+                    },
+                ) {
+                    androidx.compose.material3.Icon(
+                        painter = painterResource(Ionicons.ChevronForward),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                ZhixuIconButton(
+                    onClick = {
+                        editor.addPageLikeCurrent()
+                        centerPage(editor, marginPx)
+                        onEdited()
+                    },
+                ) {
+                    androidx.compose.material3.Icon(
+                        painter = painterResource(Ionicons.AddCircleOutline),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+
+            TextButton(onClick = onSaveAs) { Text(stringResource(R.string.draw_save_as_title)) }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun ModeChip(
     selected: Boolean,
     label: String,
     onClick: () -> Unit,
@@ -677,7 +894,7 @@ private fun DrawEditorCanvas(
                     editor.viewport.viewportSize = size
                     if (!didInitViewport && size != IntSize.Zero) {
                         didInitViewport = true
-                        centerPage(editor, marginPx)
+                        fitPageToWidth(editor, marginPx)
                     } else {
                         snapViewport(editor, marginPx)
                     }
@@ -1022,6 +1239,17 @@ private fun snapViewport(editor: DrawEditorState, marginPx: Float) {
             translation = editor.viewport.translation,
             marginPx = marginPx,
         )
+}
+
+private fun fitPageToWidth(editor: DrawEditorState, marginPx: Float) {
+    val page = editor.currentPageOrNull() ?: return
+    val size = editor.viewport.viewportSize
+    if (size == IntSize.Zero) return
+    val availableW = (size.width.toFloat() - marginPx * 2f).coerceAtLeast(1f)
+    val scale = (availableW / page.width.coerceAtLeast(1f)).coerceIn(MinScale, MaxScale)
+    editor.viewport.scale = scale
+    editor.viewport.translation = Offset(marginPx, marginPx)
+    snapViewport(editor, marginPx)
 }
 
 private fun centerPage(editor: DrawEditorState, marginPx: Float) {

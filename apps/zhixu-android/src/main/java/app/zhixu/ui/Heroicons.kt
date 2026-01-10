@@ -28,4 +28,5 @@ object Heroicons {
 
     @DrawableRes val FolderPlus: Int = R.drawable.ic_hero_folder_plus
     @DrawableRes val Funnel: Int = R.drawable.ic_hero_funnel
+    @DrawableRes val Trash: Int = R.drawable.ic_hero_trash
 }
