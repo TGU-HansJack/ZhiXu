@@ -1434,6 +1434,7 @@ class VaultRepository(
         val baseName = sanitizeFileName(fileName).removeSuffix(".md").trim().ifBlank { "Untitled" }
         val (created, createdName) = createUniqueMarkdownFile(root, baseName) ?: error("Failed to create document")
         val createdAtMs = System.currentTimeMillis()
+        invalidateDocListCache(rootUri)
         runCatching { indexRepository.upsertDocCreatedAt(created.uri.toString(), createdAtMs) }
         signalIndexChanged()
         if (created.name?.endsWith(".md", ignoreCase = true) != true) {
@@ -1491,6 +1492,7 @@ class VaultRepository(
         val baseName = sanitizeFileName(fileName).removeSuffix(".md").trim().ifBlank { "Untitled" }
         val (created, createdName) = createUniqueMarkdownFile(dir, baseName) ?: return@withContext null
         val createdAtMs = System.currentTimeMillis()
+        invalidateDocListCache(rootUri)
         runCatching { indexRepository.upsertDocCreatedAt(created.uri.toString(), createdAtMs) }
         signalIndexChanged()
         if (created.name?.endsWith(".md", ignoreCase = true) != true) {
