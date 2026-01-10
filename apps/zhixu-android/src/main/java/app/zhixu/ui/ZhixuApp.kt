@@ -1158,7 +1158,7 @@ private fun MainBottomBar(
     val selectedTasks = currentRoute == "tasks"
     val selectedPomodoro = currentRoute == "pomodoro"
     val selectedMe = currentRoute == "me"
-    val selectedTint = MaterialTheme.colorScheme.onSurface
+    val selectedTint = MaterialTheme.colorScheme.primary
     val unselectedTint = MaterialTheme.colorScheme.onSurfaceVariant
 
     Surface(
@@ -1254,7 +1254,7 @@ private fun MainBottomBar(
                 ZhixuIconButton(onClick = onMe) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
-                            painter = painterResource(if (selectedMe) Ionicons.UserFilled else Ionicons.User),
+                            painter = painterResource(Ionicons.User),
                             contentDescription = stringResource(R.string.nav_me),
                             tint = if (selectedMe) selectedTint else unselectedTint,
                             modifier = Modifier.size(24.dp),
