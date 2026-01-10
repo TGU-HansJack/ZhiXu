@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef } from "react";
-import { EditorState } from "@codemirror/state";
+import { Annotation, EditorState } from "@codemirror/state";
 import { EditorView, keymap, placeholder as cmPlaceholder } from "@codemirror/view";
 import { basicSetup } from "codemirror";
 import { indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 
 export type CodeMirrorSelection = { anchor: number; head: number };
+
+const externalValueUpdate = Annotation.define<boolean>();
 
 type Props = {
   value: string;
@@ -23,7 +25,8 @@ export function CodeMirrorEditor({ value, selection, placeholder, onChange, onSe
 
   const extensions = useMemo(() => {
     const updateListener = EditorView.updateListener.of((update) => {
-      if (update.docChanged) callbacksRef.current.onChange(update.state.doc.toString());
+      const isExternalUpdate = update.transactions.some((t) => t.annotation(externalValueUpdate) === true);
+      if (update.docChanged && !isExternalUpdate) callbacksRef.current.onChange(update.state.doc.toString());
       if (update.selectionSet && callbacksRef.current.onSelectionChange) {
         const sel = update.state.selection.main;
         callbacksRef.current.onSelectionChange({ anchor: sel.anchor, head: sel.head });
@@ -69,7 +72,7 @@ export function CodeMirrorEditor({ value, selection, placeholder, onChange, onSe
       markdown(),
       EditorView.lineWrapping,
       EditorState.tabSize.of(2),
-      EditorView.contentAttributes.of({ "aria-label": "Editor" }),
+      EditorView.contentAttributes.of({ "aria-label": "编辑器" }),
       placeholder ? cmPlaceholder(placeholder) : [],
       theme,
       updateListener,
@@ -104,6 +107,7 @@ export function CodeMirrorEditor({ value, selection, placeholder, onChange, onSe
     if (current !== value) {
       const transaction = view.state.update({
         changes: { from: 0, to: view.state.doc.length, insert: value },
+        annotations: externalValueUpdate.of(true),
       });
       view.dispatch(transaction);
     }

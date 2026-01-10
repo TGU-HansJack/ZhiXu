@@ -19,7 +19,7 @@ type Props = {
 
 export function FileTree({ rootLabel, nodes, activePath, onToggleDir, onOpenFile }: Props) {
   return (
-    <div className="tree" role="tree" aria-label="Explorer">
+    <div className="tree" role="tree" aria-label="文件列表">
       <div className="treeRow" style={{ paddingLeft: 6 }} role="treeitem" aria-level={1}>
         <span className="twisty" />
         <span className="icon" aria-hidden="true">
@@ -48,7 +48,7 @@ export function FileTree({ rootLabel, nodes, activePath, onToggleDir, onOpenFile
             <span className="twisty" aria-hidden="true">
               {node.isDir ? (
                 node.loading ? (
-                  <span className="spinner" aria-label="Loading" />
+                  <span className="spinner" aria-label="加载中" />
                 ) : (
                   <IconChevron open={Boolean(node.expanded)} />
                 )

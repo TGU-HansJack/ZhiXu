@@ -44,6 +44,7 @@ type Tab = {
   path: string;
   name: string;
   content: string;
+  savedContent: string;
   dirty: boolean;
   selection: CodeMirrorSelection;
 };
@@ -104,6 +105,8 @@ export function App() {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const activeTab = useMemo(() => tabs.find((t) => t.path === activePath) ?? null, [tabs, activePath]);
+  const tabCount = Math.max(1, tabs.length);
+  const tabsDensity = tabCount >= 14 ? "separators" : tabCount >= 8 ? "dense" : "normal";
 
   const savingRef = useRef(false);
 
@@ -178,12 +181,19 @@ export function App() {
     setTabs((prev) => {
       const existing = prev.find((t) => t.path === path);
       if (existing) return prev;
-      return [...prev, { path, name: basename(path), content: "", dirty: false, selection: { anchor: 0, head: 0 } }];
+      return [
+        ...prev,
+        { path, name: basename(path), content: "", savedContent: "", dirty: false, selection: { anchor: 0, head: 0 } },
+      ];
     });
     try {
       const content = await readTextFile(path);
       setTabs((prev) =>
-        prev.map((t) => (t.path === path ? { ...t, content, dirty: false, selection: { anchor: 0, head: 0 } } : t)),
+        prev.map((t) =>
+          t.path === path
+            ? { ...t, content, savedContent: content, dirty: false, selection: { anchor: 0, head: 0 } }
+            : t,
+        ),
       );
     } catch (e) {
       console.error(e);
@@ -196,7 +206,11 @@ export function App() {
     savingRef.current = true;
     try {
       await writeTextFile(activeTab.path, activeTab.content);
-      setTabs((prev) => prev.map((t) => (t.path === activeTab.path ? { ...t, dirty: false } : t)));
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.path === activeTab.path ? { ...t, savedContent: activeTab.content, dirty: false } : t,
+        ),
+      );
     } catch (e) {
       console.error(e);
     } finally {
@@ -206,7 +220,7 @@ export function App() {
 
   const newFile = useCallback(async () => {
     if (!vaultRoot) return;
-    const name = window.prompt("New file name (relative to selected folder):", "note.md");
+    const name = window.prompt("新建文件名（相对当前选中文件夹）：", "note.md");
     if (!name) return;
     const rel = join(selectedDir, name);
     try {
@@ -221,7 +235,7 @@ export function App() {
 
   const newFolder = useCallback(async () => {
     if (!vaultRoot) return;
-    const name = window.prompt("New folder name (relative to selected folder):", "New Folder");
+    const name = window.prompt("新建文件夹名称（相对当前选中文件夹）：", "新建文件夹");
     if (!name) return;
     const rel = join(selectedDir, name);
     try {
@@ -236,7 +250,7 @@ export function App() {
 
   const renameActive = useCallback(async () => {
     if (!activeTab) return;
-    const next = window.prompt("Rename to (vault-relative path):", activeTab.path);
+    const next = window.prompt("重命名为（库内相对路径）：", activeTab.path);
     if (!next || next === activeTab.path) return;
     try {
       await renameEntry(activeTab.path, next);
@@ -253,7 +267,7 @@ export function App() {
 
   const deleteActive = useCallback(async () => {
     if (!activePath) return;
-    const ok = window.confirm(`Delete?\n\n${activePath}`);
+    const ok = window.confirm(`确认删除？\n\n${activePath}`);
     if (!ok) return;
     try {
       await deleteEntry(activePath);
@@ -270,7 +284,7 @@ export function App() {
     (path: string) => {
       const tab = tabs.find((t) => t.path === path);
       if (tab?.dirty) {
-        const ok = window.confirm(`Close tab with unsaved changes?\n\n${tab.path}`);
+        const ok = window.confirm(`该标签页有未保存的更改，确定关闭？\n\n${tab.path}`);
         if (!ok) return;
       }
       setTabs((prev) => prev.filter((t) => t.path !== path));
@@ -323,11 +337,11 @@ export function App() {
     return out;
   }, [dirCache, expanded, loadingDir]);
 
-  const rootLabel = useMemo(() => (vaultRoot ? basename(vaultRoot) : "No vault"), [vaultRoot]);
+  const rootLabel = useMemo(() => (vaultRoot ? basename(vaultRoot) : "未选择库"), [vaultRoot]);
 
   const editorPlaceholder = useMemo(() => {
-    if (!vaultRoot) return "Select a vault to start…";
-    if (!activeTab) return "Open a Markdown file from the sidebar…";
+    if (!vaultRoot) return "请选择一个库开始…";
+    if (!activeTab) return "从主侧栏打开一个 Markdown 文件…";
     return "";
   }, [vaultRoot, activeTab]);
 
@@ -348,9 +362,11 @@ export function App() {
   );
 
   return (
-    <div className="appShell">
-      <div className="topbar" onMouseDown={startDraggingIfAllowed}>
-        <div className="topbarLeft">
+    <div className={`appShell${sidebarOpen ? "" : " sidebarClosed"}`}>
+      {/* 菜单栏（Menubar）：展开/收起固定按钮、主侧栏顶部按钮、标签页、窗口按钮 */}
+      <div className="topbar menubar" onMouseDown={startDraggingIfAllowed}>
+        <div className="menubarLeft">
+          {/* 展开/收起图标按钮固定 */}
           <IconButton
             title={sidebarOpen ? "收起" : "展开"}
             tooltipPlacement="right"
@@ -359,19 +375,33 @@ export function App() {
           >
             {sidebarOpen ? <IconSidebarClose size={22} /> : <IconSidebarOpen size={22} />}
           </IconButton>
-          <IconButton title="空间" tooltipPlacement="bottom" active={activity === "space"} onClick={() => openActivity("space")}>
-            <IconSpace />
-          </IconButton>
-          <IconButton title="搜索" tooltipPlacement="bottom" active={activity === "search"} onClick={() => openActivity("search")}>
-            <IconSearch />
-          </IconButton>
+          {/* 主侧栏顶部按钮：空间、搜索 */}
+          {sidebarOpen ? (
+            <>
+              <IconButton title="空间" tooltipPlacement="bottom" active={activity === "space"} onClick={() => openActivity("space")}>
+                <IconSpace />
+              </IconButton>
+              <IconButton title="搜索" tooltipPlacement="bottom" active={activity === "search"} onClick={() => openActivity("search")}>
+                <IconSearch />
+              </IconButton>
+            </>
+          ) : null}
         </div>
 
-        <div className="topbarCenter">
-          <div className="tabs" role="tablist" aria-label="Tabs">
+        {/* 标签页显示 */}
+        <div className="menubarTabs">
+          <div
+            className="tabs"
+            data-density={tabsDensity}
+            style={{ ["--tab-count" as any]: tabCount } as React.CSSProperties}
+            role="tablist"
+            aria-label="标签页"
+          >
             {tabs.length === 0 ? (
               <div className="tab active" role="tab" aria-selected="true" data-no-drag="true">
-                <span className="tabLabel">Welcome</span>
+                <div className="tabInner">
+                  <span className="tabLabel">欢迎</span>
+                </div>
               </div>
             ) : (
               tabs.map((t) => (
@@ -380,27 +410,32 @@ export function App() {
                     className={`tab${t.path === activePath ? " active" : ""}`}
                     role="tab"
                     aria-selected={t.path === activePath}
+                    data-dirty={t.dirty ? "true" : "false"}
                     data-no-drag="true"
                     onClick={() => setActivePath(t.path)}
                   >
-                    <span className={`dirty${t.dirty ? " on" : ""}`} aria-hidden="true" />
-                    <span className="tabLabel">{t.name}</span>
-                    <button
-                      type="button"
-                      className="tabClose"
-                      aria-label="Close tab"
-                      data-no-drag="true"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        closeTab(t.path);
-                      }}
-                    >
-                      <Tooltip label="关闭标签" placement="bottom">
-                        <span aria-hidden="true">
-                          <IconClose size={14} />
-                        </span>
-                      </Tooltip>
-                    </button>
+                    <div className="tabInner">
+                      <span className="tabLabel">{t.name}</span>
+                      <button
+                        type="button"
+                        className="tabClose"
+                        aria-label="关闭标签"
+                        data-no-drag="true"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          closeTab(t.path);
+                        }}
+                      >
+                        <Tooltip label="关闭标签" placement="bottom">
+                          <span className="tabCloseGlyph" aria-hidden="true">
+                            <span className="tabCloseDot" />
+                            <span className="tabCloseX">
+                              <IconClose size={14} />
+                            </span>
+                          </span>
+                        </Tooltip>
+                      </button>
+                    </div>
                   </div>
                 </Tooltip>
               ))
@@ -408,7 +443,8 @@ export function App() {
           </div>
         </div>
 
-        <div className="topbarRight">
+        {/* 最大化/最小化/关闭按钮 */}
+        <div className="menubarWindowControls">
           <IconButton title="最小化" tooltipPlacement="bottom" onClick={() => void appWindow.minimize()} className="winBtn">
             <IconMinimize size={16} />
           </IconButton>
@@ -422,8 +458,9 @@ export function App() {
 
       </div>
 
-        <div className={`workbench${sidebarOpen ? "" : " sidebarClosed"}`}>
-          <div className="activitybar noDrag" role="navigation" aria-label="Activity bar">
+      <div className={`workbench${sidebarOpen ? "" : " sidebarClosed"}`}>
+        {/* 功能区（左边按钮边框区） */}
+        <div className="activitybar functionArea noDrag" role="navigation" aria-label="功能区">
           <IconButton
             title="空间"
             tooltipPlacement="right"
@@ -481,20 +518,21 @@ export function App() {
         </div>
 
         {sidebarOpen ? (
-          <div className="sidebar">
+          /* 主侧栏（点击打开的侧栏） */
+          <div className="sidebar mainSidebar">
             <div className="sidebarHeader">
               <div className="sidebarTitle">
                 {activity === "space"
-                  ? "Space"
+                  ? "空间"
                   : activity === "tasks"
-                    ? "Tasks"
+                    ? "任务"
                     : activity === "calendar"
-                      ? "Calendar"
+                      ? "日历"
                       : activity === "quadrant"
-                        ? "Quadrant"
+                        ? "象限"
                         : activity === "workshop"
-                          ? "Workshop"
-                          : "Search"}
+                          ? "工坊"
+                          : "搜索"}
               </div>
               <div className="sidebarActions">
                 {activity === "space" ? (
@@ -536,13 +574,13 @@ export function App() {
                             if (!v) return;
                             void openRecent(v);
                             e.target.value = "";
-                          }}
-                        >
-                          <option value="">Recent…</option>
-                          {persisted.recentVaults.map((p) => (
-                            <option key={p} value={p}>
-                              {p}
-                            </option>
+                        }}
+                      >
+                        <option value="">最近…</option>
+                        {persisted.recentVaults.map((p) => (
+                          <option key={p} value={p}>
+                            {p}
+                          </option>
                           ))}
                         </select>
                       </Tooltip>
@@ -557,10 +595,10 @@ export function App() {
                   />
                 </>
               ) : (
-                <div className="emptyState">Select a vault folder to start.</div>
+                <div className="emptyState">请选择一个库文件夹开始。</div>
               )
             ) : (
-              <div className="emptyState">Coming soon.</div>
+              <div className="emptyState">敬请期待。</div>
             )}
           </div>
         ) : null}
@@ -575,7 +613,8 @@ export function App() {
                 setTabs((prev) =>
                   prev.map((t) => {
                     if (t.path !== activeTab.path) return t;
-                    return { ...t, content: next, dirty: true };
+                    if (t.content === next) return t;
+                    return { ...t, content: next, dirty: next !== t.savedContent };
                   }),
                 );
               }}
@@ -590,14 +629,15 @@ export function App() {
             />
           ) : (
             <div className="emptyState">
-              Open a Markdown file from the sidebar. Save with <span className="kbd">Ctrl+S</span>.
+              从主侧栏打开一个 Markdown 文件。使用 <span className="kbd">Ctrl+S</span> 保存。
             </div>
           )}
         </div>
       </div>
 
-      <div className="statusbar noDrag">
-        <div className="statusLeft">{activeTab ? activeTab.path : "No file"}</div>
+      {/* 状态栏：重命名/删除/保存/文件名称等 */}
+      <div className="statusbar statusBar noDrag">
+        <div className="statusLeft">{activeTab ? activeTab.path : "未打开文件"}</div>
         <div className="statusRight">
           <IconButton title="保存" tooltipPlacement="top" onClick={() => void saveActive()} disabled={!activeTab?.dirty}>
             <IconSave size={16} />
@@ -614,7 +654,7 @@ export function App() {
           >
             <IconTrash size={16} />
           </IconButton>
-          <div className="statusPill">{activeTab?.dirty ? "Unsaved" : "Saved"}</div>
+          <div className="statusPill">{activeTab?.dirty ? "未保存" : "已保存"}</div>
         </div>
       </div>
     </div>

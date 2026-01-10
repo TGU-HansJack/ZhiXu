@@ -41,6 +41,9 @@ input {
 }
 
 .appShell {
+  --functionAreaWidth: 50px;
+  --mainSidebarWidth: 280px;
+  --menubarLeftWidth: max(140px, calc(var(--functionAreaWidth) + var(--mainSidebarWidth)));
   height: 100%;
   display: grid;
   grid-template-rows: 42px 1fr 28px;
@@ -48,29 +51,52 @@ input {
   overflow: hidden;
 }
 
+.appShell.sidebarClosed {
+  --mainSidebarWidth: 0px;
+  --menubarLeftWidth: var(--functionAreaWidth);
+}
+
+.appShell.sidebarClosed .menubarLeft {
+  padding: 0 6px;
+  border-right: none;
+}
+
 .topbar {
   position: relative;
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 10px;
-  padding: 0 10px;
+  grid-template-columns: var(--menubarLeftWidth) 1fr auto;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(14px);
 }
 
-.topbarLeft,
-.topbarRight {
+.menubarLeft {
   display: flex;
   align-items: center;
   gap: 6px;
   z-index: 1;
+  padding: 0 10px;
+  border-right: 1px solid var(--border);
 }
 
-.topbarCenter {
+.menubarTabs {
   min-width: 0;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 10px;
+}
+
+.menubarWindowControls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 1;
+  padding: 0 10px 0 0;
 }
 
 .iconBtn {
@@ -206,13 +232,13 @@ input {
 
 .workbench {
   display: grid;
-  grid-template-columns: 50px 280px 1fr;
+  grid-template-columns: var(--functionAreaWidth) var(--mainSidebarWidth) 1fr;
   min-height: 0;
   min-width: 0;
 }
 
 .workbench.sidebarClosed {
-  grid-template-columns: 50px 0 1fr;
+  grid-template-columns: var(--functionAreaWidth) 0 1fr;
 }
 
 .activitybar {
@@ -289,58 +315,128 @@ input {
 }
 
 .tabs {
+  --tab-count: 1;
+  --tab-gap-base: 48px;
+  --tab-gap-max: 8px;
   display: flex;
   align-items: stretch;
-  gap: 0;
-  overflow-x: auto;
+  gap: clamp(0px, calc(var(--tab-gap-base) / var(--tab-count)), var(--tab-gap-max));
+  overflow-x: hidden;
   overflow-y: hidden;
   white-space: nowrap;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+}
+
+.tabs[data-density="dense"] {
+  --tab-gap-base: 32px;
+  --tab-gap-max: 6px;
+}
+
+.tabs[data-density="separators"] {
+  gap: 0;
 }
 
 .tab {
   display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
+  height: 100%;
+  align-items: flex-end;
+  flex: 1 1 200px;
+  max-width: 200px;
+  min-width: 0;
   background: transparent;
   cursor: pointer;
   color: var(--muted);
-  margin-right: 6px;
+}
+
+.tabInner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  margin-bottom: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.35);
+  position: relative;
+}
+
+.tabs[data-density="dense"] .tabInner {
+  gap: 4px;
+  padding: 0 6px;
+}
+
+.tabs[data-density="separators"] .tabInner {
+  border-color: transparent;
+  background: transparent;
+  padding: 0 6px;
+}
+
+.tabs[data-density="separators"] .tab:not(:first-child) .tabInner::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 14px;
+  background: rgba(0, 0, 0, 0.14);
 }
 
 .tab:hover {
-  background: rgba(0, 0, 0, 0.04);
   color: var(--text);
+}
+
+.tab:hover .tabInner {
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .tab.active {
   color: var(--text);
 }
 
+.tab.active {
+  position: relative;
+  z-index: 2;
+}
+
+.tab.active .tabInner {
+  background: var(--bg);
+  border-color: var(--border);
+  border-bottom-color: transparent;
+  border-radius: 4px 4px 0 0;
+  position: relative;
+  z-index: 2;
+  margin-bottom: -1px;
+}
+
+.tab.active .tabInner::after {
+  content: none;
+}
+
 .tabLabel {
-  max-width: 180px;
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 13px;
 }
 
-.dirty {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.18);
-}
-
-.dirty.on {
-  background: var(--accent);
+.tabs[data-density="separators"] .tabLabel {
+  font-size: 13px;
 }
 
 .tabClose {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   width: 18px;
   height: 18px;
   border-radius: var(--radius);
@@ -353,6 +449,46 @@ input {
 
 .tabClose:hover {
   background: rgba(0, 0, 0, 0.06);
+}
+
+.tabCloseGlyph {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tabCloseDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  display: none;
+}
+
+.tabCloseX {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab[data-dirty="true"] .tabCloseDot {
+  display: inline-block;
+}
+
+.tab[data-dirty="true"] .tabCloseX {
+  display: none;
+}
+
+.tab[data-dirty="true"]:hover .tabCloseDot,
+.tab[data-dirty="true"]:focus-within .tabCloseDot {
+  display: none;
+}
+
+.tab[data-dirty="true"]:hover .tabCloseX,
+.tab[data-dirty="true"]:focus-within .tabCloseX {
+  display: inline-flex;
 }
 
 .uiIcon {
@@ -399,6 +535,62 @@ input {
   flex: 1 1 auto;
 }
 
+.tree,
+.cm-scroller {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.tree::-webkit-scrollbar,
+.cm-scroller::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.tree::-webkit-scrollbar-track,
+.cm-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tree::-webkit-scrollbar-thumb,
+.cm-scroller::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 999px;
+}
+
+.tree:hover::-webkit-scrollbar-thumb,
+.cm-scroller:hover::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.tree::-webkit-scrollbar-button,
+.cm-scroller::-webkit-scrollbar-button {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.tree::-webkit-scrollbar-button:single-button,
+.cm-scroller::-webkit-scrollbar-button:single-button,
+.tree::-webkit-scrollbar-button:single-button:vertical:decrement,
+.cm-scroller::-webkit-scrollbar-button:single-button:vertical:decrement,
+.tree::-webkit-scrollbar-button:single-button:vertical:increment,
+.cm-scroller::-webkit-scrollbar-button:single-button:vertical:increment,
+.tree::-webkit-scrollbar-button:single-button:horizontal:decrement,
+.cm-scroller::-webkit-scrollbar-button:single-button:horizontal:decrement,
+.tree::-webkit-scrollbar-button:single-button:horizontal:increment,
+.cm-scroller::-webkit-scrollbar-button:single-button:horizontal:increment {
+  width: 0;
+  height: 0;
+  display: none;
+  background: transparent;
+}
+
+.tree::-webkit-scrollbar-corner,
+.cm-scroller::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .treeRow {
   display: flex;
   align-items: center;
@@ -408,6 +600,7 @@ input {
   cursor: pointer;
   user-select: none;
   color: rgba(0, 0, 0, 0.75);
+  font-size: 13px;
 }
 
 .treeRow:hover {
