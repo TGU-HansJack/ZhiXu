@@ -23,28 +23,36 @@ export function IconSidebar(props: IconProps) {
   return <MaskIcon {...props} file="/icons/bars-3.svg" />;
 }
 
+export function IconSidebarClose(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/left-panel-close.svg" />;
+}
+
+export function IconSidebarOpen(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/left-panel-open.svg" />;
+}
+
 export function IconSpace(props: IconProps) {
-  return <MaskIcon {...props} file="/icons/folder-open.svg" />;
+  return <MaskIcon {...props} file="/icons/folder-outline.svg" />;
 }
 
 export function IconTasks(props: IconProps) {
-  return <MaskIcon {...props} file="/icons/check.svg" />;
+  return <MaskIcon {...props} file="/icons/checkbox-outline.svg" />;
 }
 
 export function IconCalendar(props: IconProps) {
-  return <MaskIcon {...props} file="/icons/calendar-days.svg" />;
+  return <MaskIcon {...props} file="/icons/calendar-clear-outline.svg" />;
 }
 
 export function IconQuadrant(props: IconProps) {
-  return <MaskIcon {...props} file="/icons/squares-2x2.svg" />;
+  return <MaskIcon {...props} file="/icons/grid-outline.svg" />;
 }
 
 export function IconWorkshop(props: IconProps) {
-  return <MaskIcon {...props} file="/icons/wrench-screwdriver.svg" />;
+  return <MaskIcon {...props} file="/icons/storefront-outline.svg" />;
 }
 
 export function IconSearch(props: IconProps) {
-  return <MaskIcon {...props} file="/icons/magnifying-glass.svg" />;
+  return <MaskIcon {...props} file="/icons/search-outline.svg" />;
 }
 
 export function IconPlus(props: IconProps) {
@@ -60,7 +68,7 @@ export function IconRefresh(props: IconProps) {
 }
 
 export function IconSave(props: IconProps) {
-  return <MaskIcon {...props} file="/icons/bookmark-square.svg" />;
+  return <MaskIcon {...props} file="/icons/save-outline.svg" />;
 }
 
 export function IconTrash(props: IconProps) {
@@ -80,7 +88,7 @@ export function IconMinimize(props: IconProps) {
 }
 
 export function IconMaximize(props: IconProps) {
-  return <MaskIcon {...props} file="/icons/square-2-stack.svg" />;
+  return <MaskIcon {...props} file="/icons/square-outline.svg" />;
 }
 
 export function IconClose(props: IconProps) {
@@ -109,4 +117,3 @@ export function IconFolder(props: IconProps) {
 export function IconDocument(props: IconProps) {
   return <MaskIcon {...props} file="/icons/document.svg" />;
 }
-

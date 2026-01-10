@@ -15,7 +15,8 @@ import {
   IconRename,
   IconSave,
   IconSearch,
-  IconSidebar,
+  IconSidebarClose,
+  IconSidebarOpen,
   IconSpace,
   IconTasks,
   IconTrash,
@@ -354,8 +355,9 @@ export function App() {
             title={sidebarOpen ? "收起" : "展开"}
             tooltipPlacement="right"
             onClick={() => setSidebarOpen((v) => !v)}
+            className="sidebarToggleBtn"
           >
-            <IconSidebar />
+            {sidebarOpen ? <IconSidebarClose size={22} /> : <IconSidebarOpen size={22} />}
           </IconButton>
           <IconButton title="空间" tooltipPlacement="bottom" active={activity === "space"} onClick={() => openActivity("space")}>
             <IconSpace />
