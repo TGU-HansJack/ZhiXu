@@ -70,7 +70,7 @@ input {
   padding: 0;
   --tabbar-bg: #f8f8f8;
   background: var(--tabbar-bg);
-  border-bottom: none;
+  border-bottom: 1px solid var(--border);
   backdrop-filter: none;
 }
 
