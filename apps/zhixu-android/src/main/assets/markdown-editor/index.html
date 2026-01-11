@@ -208,6 +208,7 @@
           "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
         --editorFontSize: 16px;
         --editorLineHeight: 1.55;
+        --editorLineHeightPx: calc(var(--editorFontSize) * var(--editorLineHeight));
         --editorSelection: rgba(47, 111, 235, 0.22);
         --inlineCodeBg: rgba(27, 31, 36, 0.06);
         --inlineCodeFg: var(--onSurface);
@@ -262,7 +263,7 @@
         text-align: right;
         font-size: clamp(7px, calc(var(--editorFontSize) * 0.5), 9px);
         top: 0;
-        bottom: 0;
+        height: var(--editorLineHeightPx);
         display: flex;
         align-items: center;
         justify-content: flex-end;
