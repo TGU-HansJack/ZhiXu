@@ -70,8 +70,20 @@ input {
   padding: 0;
   --tabbar-bg: #f8f8f8;
   background: var(--tabbar-bg);
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
   backdrop-filter: none;
+}
+
+.topbar::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0.5px;
+  background: var(--border);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .menubarLeft {
@@ -593,7 +605,7 @@ input {
 .tab.active .tabInner {
   background: var(--bg);
   border-color: rgba(0, 0, 0, 0.12);
-  border-bottom-color: transparent;
+  border-bottom-width: 0;
   border-radius: 4px 4px 0 0;
   position: relative;
   z-index: 2;
