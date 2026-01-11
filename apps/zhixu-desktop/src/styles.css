@@ -283,6 +283,11 @@ input {
   padding: 10px 10px 8px;
 }
 
+.sidebarHeaderLeft {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .sidebarTitle {
   font-size: 12px;
   letter-spacing: 0.7px;
@@ -298,6 +303,161 @@ input {
 
 .sidebarSubHeader {
   padding: 0 10px 8px;
+}
+
+.vaultPicker {
+  position: relative;
+}
+
+.vaultPickerBtn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f8f8f8;
+  border: none;
+  color: var(--text);
+  padding: 5px 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.vaultPickerBtn:hover {
+  background: #ededed;
+}
+
+.vaultPickerBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.vaultPickerIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.vaultPickerLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.vaultPickerMenu {
+  position: absolute;
+  left: 0;
+  width: 100px;
+  max-width: calc(100vw - 24px);
+  top: calc(100% + 6px);
+  z-index: 10;
+  background: #f8f8f8;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  font-size: 12px;
+}
+
+.vaultPickerList {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.vaultPickerItem {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  justify-content: center;
+  position: relative;
+  text-align: center;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 6px 6px;
+  padding-right: 22px;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.vaultPickerItem:hover {
+  background: #ededed;
+}
+
+.vaultPickerItem.active {
+  background: transparent;
+}
+
+.vaultPickerCheck {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  color: rgba(0, 0, 0, 0.75);
+  font-weight: 600;
+}
+
+.vaultPickerItemText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+  flex: 1 1 auto;
+  align-items: center;
+}
+
+.vaultPickerItemName {
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vaultPickerFooter {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.vaultPickerAdd {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 6px 6px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-weight: 400;
+}
+
+.vaultPickerAdd:hover {
+  background: #ededed;
+}
+
+.vaultPickerAddIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(0, 0, 0, 0.55);
 }
 
 .select {

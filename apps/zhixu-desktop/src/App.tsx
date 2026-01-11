@@ -5,8 +5,10 @@ import { FileTree, type TreeNode } from "./components/FileTree";
 import { Tooltip, type TooltipPlacement } from "./components/Tooltip";
 import {
   IconCalendar,
+  IconChevronsUpDown,
   IconClose,
   IconFolderPlus,
+  IconFolderPlusLucide,
   IconMaximize,
   IconMinimize,
   IconPlus,
@@ -53,6 +55,12 @@ type Tab = {
   selection: CodeMirrorSelection;
 };
 
+function formatPathForDisplay(p: string): string {
+  if (p.startsWith("\\\\?\\UNC\\")) return `\\\\${p.slice("\\\\?\\UNC\\".length)}`;
+  if (p.startsWith("\\\\?\\")) return p.slice("\\\\?\\".length);
+  return p;
+}
+
 function sortEntries(entries: VaultEntry[]): VaultEntry[] {
   return [...entries].sort((a, b) => {
     if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
@@ -97,6 +105,8 @@ export function App() {
 
   const [vaultRoot, setVaultRootState] = useState<string | null>(null);
   const [persisted, setPersisted] = useState<PersistedState>({ lastVault: null, recentVaults: [] });
+  const [vaultPickerOpen, setVaultPickerOpen] = useState(false);
+  const vaultPickerRef = useRef<HTMLDivElement | null>(null);
 
   const [dirCache, setDirCache] = useState<Record<string, VaultEntry[]>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -131,6 +141,7 @@ export function App() {
       const root = await selectVault();
       await resetForVault(root);
       setPersisted(await getPersistedState());
+      setVaultPickerOpen(false);
     } catch (e) {
       console.error(e);
     }
@@ -142,6 +153,7 @@ export function App() {
         const resolved = await setVaultRoot(root);
         await resetForVault(resolved);
         setPersisted(await getPersistedState());
+        setVaultPickerOpen(false);
       } catch (e) {
         console.error(e);
         window.alert(String(e));
@@ -399,6 +411,32 @@ export function App() {
 
   const rootLabel = useMemo(() => (vaultRoot ? basename(vaultRoot) : "未选择库"), [vaultRoot]);
 
+  const vaultOptions = useMemo(() => {
+    const merged: string[] = [];
+    if (vaultRoot) merged.push(vaultRoot);
+    for (const p of persisted.recentVaults) merged.push(p);
+    return [...new Set(merged)];
+  }, [vaultRoot, persisted.recentVaults]);
+
+  useEffect(() => {
+    if (!vaultPickerOpen) return;
+    const onMouseDown = (ev: MouseEvent) => {
+      const host = vaultPickerRef.current;
+      if (!host) return;
+      if (ev.target instanceof Node && host.contains(ev.target)) return;
+      setVaultPickerOpen(false);
+    };
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") setVaultPickerOpen(false);
+    };
+    window.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [vaultPickerOpen]);
+
   const editorPlaceholder = useMemo(() => {
     if (!vaultRoot) return "请选择一个库开始…";
     if (!activeTab) return "从主侧栏打开一个 Markdown 或 Zhixu 文件…";
@@ -581,18 +619,89 @@ export function App() {
           /* 主侧栏（点击打开的侧栏） */
           <div className="sidebar mainSidebar">
             <div className="sidebarHeader">
-              <div className="sidebarTitle">
-                {activity === "space"
-                  ? "空间"
-                  : activity === "tasks"
-                    ? "任务"
-                    : activity === "calendar"
-                      ? "日历"
-                      : activity === "quadrant"
-                        ? "象限"
-                        : activity === "workshop"
-                          ? "工坊"
-                          : "搜索"}
+              <div className="sidebarHeaderLeft">
+                {activity === "space" ? (
+                  <div className="vaultPicker" ref={vaultPickerRef}>
+                    <Tooltip label={vaultRoot ? formatPathForDisplay(vaultRoot) : ""} placement="right">
+                      <button
+                        type="button"
+                        className="vaultPickerBtn"
+                        data-no-drag="true"
+                        onClick={() => {
+                          if (!vaultRoot) {
+                            void openFolder();
+                            return;
+                          }
+                          setVaultPickerOpen((v) => !v);
+                        }}
+                        aria-haspopup="dialog"
+                        aria-expanded={vaultPickerOpen}
+                      >
+                        <span className="vaultPickerIcon" aria-hidden="true">
+                          <IconChevronsUpDown size={18} />
+                        </span>
+                        <span className="vaultPickerLabel">{rootLabel}</span>
+                      </button>
+                    </Tooltip>
+
+                    {vaultPickerOpen ? (
+                      <div className="vaultPickerMenu" role="dialog" aria-label="选择库">
+                        <div className="vaultPickerList" role="list">
+                          {vaultOptions.map((p) => {
+                            const isActive = p === vaultRoot;
+                            const name = basename(p);
+                            return (
+                              <Tooltip key={p} label={formatPathForDisplay(p)} placement="right">
+                                <button
+                                  type="button"
+                                  className={`vaultPickerItem${isActive ? " active" : ""}`}
+                                  onClick={() => {
+                                    if (isActive) return;
+                                    void openRecent(p);
+                                  }}
+                                >
+                                  <span className="vaultPickerItemText">
+                                    <span className="vaultPickerItemName">{name}</span>
+                                  </span>
+                                  <span className="vaultPickerCheck" aria-hidden="true">
+                                    {isActive ? "✓" : ""}
+                                  </span>
+                                </button>
+                              </Tooltip>
+                            );
+                          })}
+                        </div>
+                        <div className="vaultPickerFooter">
+                          <button
+                            type="button"
+                            className="vaultPickerAdd"
+                            onClick={() => {
+                              setVaultPickerOpen(false);
+                              void openFolder();
+                            }}
+                          >
+                            <span className="vaultPickerAddIcon" aria-hidden="true">
+                              <IconFolderPlusLucide size={18} />
+                            </span>
+                            添加新库
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="sidebarTitle">
+                    {activity === "tasks"
+                      ? "任务"
+                      : activity === "calendar"
+                        ? "日历"
+                        : activity === "quadrant"
+                          ? "象限"
+                          : activity === "workshop"
+                            ? "工坊"
+                            : "搜索"}
+                  </div>
+                )}
               </div>
               <div className="sidebarActions">
                 {activity === "space" ? (
@@ -622,30 +731,6 @@ export function App() {
             {activity === "space" ? (
               vaultRoot ? (
                 <>
-                  {persisted.recentVaults.length > 0 ? (
-                    <div className="sidebarSubHeader">
-                      <Tooltip label="最近使用的库" placement="right">
-                        <select
-                          className="select"
-                          value=""
-                          data-no-drag="true"
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            if (!v) return;
-                            void openRecent(v);
-                            e.target.value = "";
-                        }}
-                      >
-                        <option value="">最近…</option>
-                        {persisted.recentVaults.map((p) => (
-                          <option key={p} value={p}>
-                            {p}
-                          </option>
-                          ))}
-                        </select>
-                      </Tooltip>
-                    </div>
-                  ) : null}
                   <FileTree
                     rootLabel={rootLabel}
                     nodes={flattenedNodes}
