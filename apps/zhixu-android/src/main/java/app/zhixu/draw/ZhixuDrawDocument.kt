@@ -18,6 +18,7 @@ data class ZhixuDrawPage(
     val id: String,
     val width: Float,
     val height: Float,
+    val backgroundColorArgb: Int = 0xFFFFFFFF.toInt(),
     val elements: List<ZhixuDrawElement>,
 )
 
@@ -55,4 +56,3 @@ data class ZhixuDrawShapeElement(
     val start: Offset,
     val end: Offset,
 ) : ZhixuDrawElement
-

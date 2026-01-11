@@ -67,6 +67,7 @@ class DrawPageState(
     val id: String,
     var width: Float,
     var height: Float,
+    var backgroundColorArgb: Int,
     val elements: SnapshotStateList<DrawElementState>,
 )
 
@@ -169,6 +170,7 @@ class DrawEditorState private constructor(
                 id = "page_001",
                 width = defaultWidth,
                 height = defaultHeight,
+                backgroundColorArgb = 0xFFFFFFFF.toInt(),
                 elements = mutableStateListOf(),
             ),
         )
@@ -179,9 +181,51 @@ class DrawEditorState private constructor(
         val current = currentPageOrNull()
         val w = current?.width ?: 595f
         val h = current?.height ?: 842f
+        val bg = current?.backgroundColorArgb ?: 0xFFFFFFFF.toInt()
         val id = "page_${(pages.size + 1).toString().padStart(3, '0')}"
-        pages.add(DrawPageState(id = id, width = w, height = h, elements = mutableStateListOf()))
+        pages.add(DrawPageState(id = id, width = w, height = h, backgroundColorArgb = bg, elements = mutableStateListOf()))
         currentPageIndex = pages.lastIndex
+        clearOverlaysAndSelection()
+    }
+
+    fun insertPageAfterCurrent() {
+        val current = currentPageOrNull()
+        val w = current?.width ?: 595f
+        val h = current?.height ?: 842f
+        val bg = current?.backgroundColorArgb ?: 0xFFFFFFFF.toInt()
+        val id = "page_${(pages.size + 1).toString().padStart(3, '0')}"
+        val insertAt = (currentPageIndex + 1).coerceIn(0, pages.size)
+        pages.add(insertAt, DrawPageState(id = id, width = w, height = h, backgroundColorArgb = bg, elements = mutableStateListOf()))
+        currentPageIndex = insertAt
+        clearOverlaysAndSelection()
+    }
+
+    fun rotateCurrentPage90Degrees() {
+        val page = currentPageOrNull() ?: return
+        val oldW = page.width
+        val oldH = page.height
+        if (oldW <= 1f || oldH <= 1f) return
+
+        fun rotate(point: Offset): Offset = Offset(oldH - point.y, point.x)
+
+        for (el in page.elements) {
+            when (el) {
+                is DrawStrokeState -> {
+                    for (i in 0 until el.points.size) {
+                        val p = el.points[i]
+                        el.points[i] = rotate(p)
+                    }
+                }
+
+                is DrawShapeState -> {
+                    el.start = rotate(el.start)
+                    el.end = rotate(el.end)
+                }
+            }
+        }
+
+        page.width = oldH
+        page.height = oldW
         clearOverlaysAndSelection()
     }
 
@@ -262,6 +306,7 @@ class DrawEditorState private constructor(
                     id = page.id,
                     width = page.width,
                     height = page.height,
+                    backgroundColorArgb = page.backgroundColorArgb,
                     elements =
                         page.elements.mapNotNull { el ->
                             when (el) {
@@ -321,6 +366,7 @@ class DrawEditorState private constructor(
                         id = p.id,
                         width = p.width,
                         height = p.height,
+                        backgroundColorArgb = p.backgroundColorArgb,
                         elements =
                             mutableStateListOf<DrawElementState>().also { list ->
                                 list.addAll(p.elements.map { it.toState() })

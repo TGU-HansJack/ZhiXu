@@ -171,6 +171,7 @@ object ZhixuDrawFormat {
             .put("id", page.id)
             .put("width", page.width)
             .put("height", page.height)
+            .put("backgroundColorArgb", page.backgroundColorArgb)
             .put("elements", elements)
             .toString()
     }
@@ -198,6 +199,7 @@ object ZhixuDrawFormat {
         val id = obj.optString("id").orEmpty().ifBlank { "page" }
         val width = obj.optDouble("width", 0.0).toFloat().takeIf { it > 1f } ?: 595f
         val height = obj.optDouble("height", 0.0).toFloat().takeIf { it > 1f } ?: 842f
+        val backgroundColorArgb = obj.optInt("backgroundColorArgb", 0xFFFFFFFF.toInt())
         val elementsArr = obj.optJSONArray("elements") ?: JSONArray()
         val elements = ArrayList<ZhixuDrawElement>(elementsArr.length())
 
@@ -268,6 +270,7 @@ object ZhixuDrawFormat {
             id = id,
             width = width,
             height = height,
+            backgroundColorArgb = backgroundColorArgb,
             elements = elements,
         )
     }
@@ -309,7 +312,7 @@ object ZhixuDrawFormat {
         }
 
         val now = System.currentTimeMillis()
-        val page = ZhixuDrawPage(id = "page_001", width = pageWidth, height = pageHeight, elements = strokes)
+        val page = ZhixuDrawPage(id = "page_001", width = pageWidth, height = pageHeight, backgroundColorArgb = 0xFFFFFFFF.toInt(), elements = strokes)
         val meta =
             ZhixuDrawMeta(
                 formatVersion = 1,

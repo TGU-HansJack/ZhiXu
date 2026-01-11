@@ -77,7 +77,7 @@ private fun DrawPageThumbnail(
             },
         ) {
             drawRect(
-                color = Color.White,
+                color = Color(page?.backgroundColorArgb ?: 0xFFFFFFFF.toInt()),
                 topLeft = Offset.Zero,
                 size = Size(w, h),
             )

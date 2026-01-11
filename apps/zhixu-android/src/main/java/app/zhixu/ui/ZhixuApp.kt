@@ -101,6 +101,7 @@ import app.zhixu.ocr.OcrWorkflow
 import app.zhixu.ocr.ppocrv5.PpOcrV5OcrEngine
 import app.zhixu.sync.VaultAutoSync
 import app.zhixu.sync.WebDavAutoSync
+import app.zhixu.ui.components.CreateDrawSheetContent
 import app.zhixu.ui.components.CreateMenuSheetContent
 import app.zhixu.ui.components.ZhixuCompactDragHandle
 import app.zhixu.ui.components.ZhixuIconButton
@@ -673,11 +674,22 @@ fun ZhixuApp(
                                         onRecord = { android.widget.Toast.makeText(context, "录音：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
                                         onCamera = { android.widget.Toast.makeText(context, "相机：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
                                         onDraw = {
-                                            createSheetPage = null
-                                            navController.navigate("draw?uri=")
+                                            createSheetPage = CreateSheetPage.Draw
                                         },
                                         onNewTodo = { createSheetPage = CreateSheetPage.Todo },
                                         onNewNote = { createSheetPage = CreateSheetPage.Note },
+                                    )
+                                }
+
+                                CreateSheetPage.Draw -> {
+                                    CreateDrawSheetContent(
+                                        onBack = { createSheetPage = CreateSheetPage.Menu },
+                                        onClose = { createSheetPage = null },
+                                        onCreate = { canvasParam, bgArgb ->
+                                            val bgHex = String.format("%08X", bgArgb)
+                                            createSheetPage = null
+                                            navController.navigate("draw?uri=&canvas=${Uri.encode(canvasParam)}&bg=$bgHex")
+                                        },
                                     )
                                 }
 
@@ -1018,9 +1030,17 @@ fun ZhixuApp(
                     )
                 }
                 composable(
-                    route = "draw?uri={uri}",
+                    route = "draw?uri={uri}&canvas={canvas}&bg={bg}",
                     arguments = listOf(
                         navArgument("uri") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        },
+                        navArgument("canvas") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        },
+                        navArgument("bg") {
                             type = NavType.StringType
                             defaultValue = ""
                         },
@@ -1029,16 +1049,20 @@ fun ZhixuApp(
                     val root = vaultRootUri
                     if (root == null) {
                         navController.navigate("vault") {
-                            popUpTo("draw?uri=") { inclusive = true }
+                            popUpTo("draw?uri={uri}&canvas={canvas}&bg={bg}") { inclusive = true }
                         }
                         return@composable
                     }
                     val uriParam = entry.arguments?.getString("uri") ?: ""
                     val docUri = parseNavUri(uriParam).takeIf { it != Uri.EMPTY }
+                    val canvasParam = entry.arguments?.getString("canvas").orEmpty()
+                    val bgParam = entry.arguments?.getString("bg").orEmpty()
                     DrawScreen(
                         vaultRootUri = root,
                         repository = repository,
                         docUri = docUri,
+                        initialCanvasParam = canvasParam,
+                        initialBackgroundHex = bgParam,
                         onDocListMutated = ::onDocListMutated,
                         onBack = { navController.popBackStack() },
                     )
@@ -1359,6 +1383,7 @@ private enum class BulkDeleteTarget {
 
 private enum class CreateSheetPage {
     Menu,
+    Draw,
     Todo,
     Note,
     Ocr,

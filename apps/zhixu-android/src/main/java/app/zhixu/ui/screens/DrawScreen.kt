@@ -1,12 +1,20 @@
 package app.zhixu.ui.screens
 
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Paint
+import android.graphics.Path as AndroidPath
+import android.graphics.pdf.PdfDocument
 import android.net.Uri
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -15,10 +23,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -72,7 +82,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.contentDescription
@@ -84,8 +96,12 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import app.zhixu.R
 import app.zhixu.data.VaultRepository
 import app.zhixu.data.dataStore
+import app.zhixu.draw.ZhixuDrawPage
 import app.zhixu.draw.ZhixuDrawElement
 import app.zhixu.draw.ZhixuDrawFormat
+import app.zhixu.draw.ZhixuDrawShape
+import app.zhixu.draw.ZhixuDrawShapeElement
+import app.zhixu.draw.ZhixuDrawStroke
 import app.zhixu.draw.editor.DrawEditorState
 import app.zhixu.draw.editor.DrawElementState
 import app.zhixu.draw.editor.DrawPenStyle
@@ -107,18 +123,28 @@ import app.zhixu.ui.DocListMutation
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTextField
 import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.hypot
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val MinScale: Float = 0.3f
 private const val MaxScale: Float = 5.0f
+
+private enum class DrawViewMode {
+    Writing,
+    Reading,
+}
 
 private val drawPenStyleKey = stringPreferencesKey("draw_pen_style")
 private val drawFountainPenColorArgbKey = intPreferencesKey("draw_pen_fountain_color_argb")
@@ -153,12 +179,57 @@ private data class DrawUndoHistory(
     val redoStack: ArrayDeque<List<ZhixuDrawElement>> = ArrayDeque(),
 )
 
+private enum class ToolDockEdge {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+@Composable
+private fun DrawToolDragProxy(
+    iconRes: Int,
+    iconTint: Color,
+    modifier: Modifier = Modifier,
+) {
+    val isDark = isSystemInDarkTheme()
+    val bg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = bg,
+        tonalElevation = 0.dp,
+        shadowElevation = 10.dp,
+        modifier = modifier.size(44.dp),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+                        shape = RoundedCornerShape(12.dp),
+                    ),
+            contentAlignment = Alignment.Center,
+        ) {
+            androidx.compose.material3.Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+                tint = iconTint,
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun DrawScreen(
     vaultRootUri: Uri,
     repository: VaultRepository,
     docUri: Uri?,
+    initialCanvasParam: String = "",
+    initialBackgroundHex: String = "",
     onDocListMutated: (DocListMutation) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -173,6 +244,17 @@ fun DrawScreen(
     var isLoading by remember { mutableStateOf(true) }
     var loadFailed by remember { mutableStateOf(false) }
     var editor by remember { mutableStateOf(DrawEditorState.newDocument()) }
+    var viewMode by remember { mutableStateOf(DrawViewMode.Writing) }
+    var toolDockOffsetPx by remember { mutableStateOf(Offset.Zero) }
+    var toolDockSizePx by remember { mutableStateOf(IntSize.Zero) }
+    var toolDockContainerSizePx by remember { mutableStateOf(IntSize.Zero) }
+    var toolDockInitialized by remember { mutableStateOf(false) }
+    var toolDockDragging by remember { mutableStateOf(false) }
+    var toolDockEdge by remember { mutableStateOf(ToolDockEdge.Bottom) }
+    var toolDockPendingAnchorGlobalPx by remember { mutableStateOf<Offset?>(null) }
+    var toolDockDragProxyCenterPx by remember { mutableStateOf<Offset?>(null) }
+    var topStartControlsHeightPx by remember { mutableStateOf(0) }
+    var topEndControlsHeightPx by remember { mutableStateOf(0) }
 
     var toolPrefs by remember { mutableStateOf<DrawToolPrefs?>(null) }
 
@@ -352,6 +434,29 @@ fun DrawScreen(
         editor = DrawEditorState.newDocument()
 
         if (docUri == null) {
+            val preset = initialCanvasParam.trim().lowercase(Locale.US)
+            val (w, h) =
+                when (preset) {
+                    "infinite" -> 2000f to 2000f
+                    else -> 595f to 842f
+                }
+            val bg =
+                initialBackgroundHex
+                    .trim()
+                    .removePrefix("#")
+                    .removePrefix("0x")
+                    .removePrefix("0X")
+                    .takeIf { it.length == 8 }
+                    ?.toLongOrNull(16)
+                    ?.toInt()
+                    ?: 0xFFFFFFFF.toInt()
+
+            editor.ensureHasAtLeastOnePage(defaultWidth = w, defaultHeight = h)
+            editor.currentPageOrNull()?.let { page ->
+                page.width = w
+                page.height = h
+                page.backgroundColorArgb = bg
+            }
             isLoading = false
             return@LaunchedEffect
         }
@@ -432,6 +537,17 @@ fun DrawScreen(
     var showToolDrawer by remember { mutableStateOf(false) }
     val toolDrawerState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    val overflowMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    var showBackgroundPicker by remember { mutableStateOf(false) }
+    val backgroundPickerState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    var showExportSheet by remember { mutableStateOf(false) }
+    val exportSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    var showDeleteFileDialog by remember { mutableStateOf(false) }
+
     fun handleToolDockClick(id: DrawToolId) {
         when (id) {
             DrawToolId.Lasso,
@@ -458,13 +574,159 @@ fun DrawScreen(
         }
     }
 
+    fun setViewMode(next: DrawViewMode) {
+        if (viewMode == next) return
+        viewMode = next
+        if (next == DrawViewMode.Reading) {
+            showToolDrawer = false
+            editor.toolId = DrawToolId.Pan
+            editor.clearOverlaysAndSelection()
+        }
+    }
+
+    fun insertPageAfterCurrent() {
+        editor.insertPageAfterCurrent()
+        centerPage(editor, marginPx)
+        commitEdit()
+    }
+
+    fun rotateCurrentPage90Degrees() {
+        val pageId = editor.currentPageOrNull()?.id
+        editor.rotateCurrentPage90Degrees()
+        centerPage(editor, marginPx)
+        markEdited()
+        if (pageId != null) histories.remove(pageId)
+        refreshUndoRedoAvailability()
+    }
+
+    fun updateCurrentPageBackground(argb: Int) {
+        val page = editor.currentPageOrNull() ?: return
+        page.backgroundColorArgb = argb
+        commitEdit()
+    }
+
+    fun shareOriginal() {
+        scope.launch {
+            val baseName = sanitizeFileName(guessTitleFromUri(currentDocUri) ?: "Drawing").ifBlank { "Drawing" }
+            val now = System.currentTimeMillis()
+            try {
+                val bytes = ZhixuDrawFormat.encode(editor.toDocument())
+                val uri =
+                    withContext(Dispatchers.IO) {
+                        val dir = File(context.cacheDir, "share").apply { mkdirs() }
+                        val file = File(dir, "${baseName}_$now${ZhixuDrawFormat.EXTENSION}")
+                        FileOutputStream(file).use { out -> out.write(bytes) }
+                        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                    }
+                val intent =
+                    Intent(Intent.ACTION_SEND).apply {
+                        type = ZhixuDrawFormat.MIME_TYPE
+                        putExtra(Intent.EXTRA_SUBJECT, baseName)
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                try {
+                    context.startActivity(Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (_: Exception) {
+                    snackbarHostState.showSnackbar("无法打开分享面板")
+                }
+            } catch (_: Exception) {
+                snackbarHostState.showSnackbar("导出失败")
+            }
+        }
+    }
+
+    fun exportPdf() {
+        scope.launch {
+            val baseName = sanitizeFileName(guessTitleFromUri(currentDocUri) ?: "Drawing").ifBlank { "Drawing" }
+            val now = System.currentTimeMillis()
+            try {
+                val pages = editor.toDocument().pages
+                val uri =
+                    withContext(Dispatchers.IO) {
+                        val dir = File(context.cacheDir, "share").apply { mkdirs() }
+                        val file = File(dir, "${baseName}_$now.pdf")
+                        writePagesToPdf(file = file, pages = pages)
+                        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                    }
+                val intent =
+                    Intent(Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(Intent.EXTRA_SUBJECT, baseName)
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                try {
+                    context.startActivity(Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (_: Exception) {
+                    snackbarHostState.showSnackbar("无法打开分享面板")
+                }
+            } catch (_: Exception) {
+                snackbarHostState.showSnackbar("导出失败")
+            }
+        }
+    }
+
+    fun exportImages() {
+        scope.launch {
+            val baseName = sanitizeFileName(guessTitleFromUri(currentDocUri) ?: "Drawing").ifBlank { "Drawing" }
+            val now = System.currentTimeMillis()
+            try {
+                val pages = editor.toDocument().pages
+                val uris =
+                    withContext(Dispatchers.IO) {
+                        val dir = File(context.cacheDir, "share").apply { mkdirs() }
+                        pages.mapIndexed { index, page ->
+                            val bitmap = renderPageToBitmap(page)
+                            val file = File(dir, "${baseName}_${index + 1}_$now.png")
+                            FileOutputStream(file).use { out ->
+                                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                            }
+                            bitmap.recycle()
+                            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                        }
+                    }
+
+                val intent =
+                    if (uris.size <= 1) {
+                        Intent(Intent.ACTION_SEND).apply {
+                            type = "image/png"
+                            putExtra(Intent.EXTRA_SUBJECT, baseName)
+                            putExtra(Intent.EXTRA_STREAM, uris.firstOrNull())
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                    } else {
+                        Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                            type = "image/png"
+                            putExtra(Intent.EXTRA_SUBJECT, baseName)
+                            putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                    }
+                try {
+                    context.startActivity(Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (_: Exception) {
+                    snackbarHostState.showSnackbar("无法打开分享面板")
+                }
+            } catch (_: Exception) {
+                snackbarHostState.showSnackbar("导出失败")
+            }
+        }
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
     ) { padding ->
         val editorReady = !isLoading && !loadFailed
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .onSizeChanged { toolDockContainerSizePx = it },
+        ) {
             when {
                 isLoading -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -498,7 +760,8 @@ fun DrawScreen(
                     Modifier
                         .align(Alignment.TopStart)
                         .windowInsetsPadding(WindowInsets.statusBars)
-                        .padding(12.dp),
+                        .padding(12.dp)
+                        .onSizeChanged { topStartControlsHeightPx = it.height },
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -517,7 +780,7 @@ fun DrawScreen(
                 }
                 DrawCircleIconButton(
                     onClick = ::undoStroke,
-                    enabled = editorReady && canUndo,
+                    enabled = editorReady && canUndo && viewMode == DrawViewMode.Writing,
                     contentDescription = stringResource(R.string.action_undo),
                 ) {
                     androidx.compose.material3.Icon(
@@ -528,7 +791,7 @@ fun DrawScreen(
                 }
                 DrawCircleIconButton(
                     onClick = ::redoStroke,
-                    enabled = editorReady && canRedo,
+                    enabled = editorReady && canRedo && viewMode == DrawViewMode.Writing,
                     contentDescription = stringResource(R.string.action_redo),
                 ) {
                     androidx.compose.material3.Icon(
@@ -545,12 +808,14 @@ fun DrawScreen(
                         Modifier
                             .align(Alignment.TopEnd)
                             .windowInsetsPadding(WindowInsets.statusBars)
-                            .padding(12.dp),
+                            .padding(12.dp)
+                            .onSizeChanged { topEndControlsHeightPx = it.height },
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     DrawCircleIconButton(
                         onClick = { showClearDialog = true },
+                        enabled = viewMode == DrawViewMode.Writing,
                         contentDescription = stringResource(R.string.draw_action_clear),
                     ) {
                         androidx.compose.material3.Icon(
@@ -569,17 +834,272 @@ fun DrawScreen(
                             modifier = Modifier.size(22.dp),
                         )
                     }
+                    DrawCircleIconButton(
+                        onClick = {
+                            showToolDrawer = false
+                            showOverflowMenu = true
+                        },
+                        contentDescription = "更多",
+                    ) {
+                        androidx.compose.material3.Icon(
+                            painter = painterResource(Ionicons.EllipsisHorizontal),
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                 }
 
-                DrawToolDock(
-                    editor = editor,
-                    onToolClick = ::handleToolDockClick,
-                    modifier =
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .windowInsetsPadding(WindowInsets.navigationBars)
-                            .padding(bottom = 12.dp),
-                )
+                if (viewMode == DrawViewMode.Writing) {
+                    val container = toolDockContainerSizePx
+                    val dock = toolDockSizePx
+                    val edgeMargin = with(density) { 6.dp.toPx() }
+                    val navBars = WindowInsets.navigationBars
+                    val statusBars = WindowInsets.statusBars
+                    val layoutDir = LocalLayoutDirection.current
+                    val leftInset = navBars.getLeft(density, layoutDir).toFloat()
+                    val rightInset = navBars.getRight(density, layoutDir).toFloat()
+                    val bottomInset = navBars.getBottom(density).toFloat()
+                    val topInset = statusBars.getTop(density).toFloat()
+                    val topControlsHeightPx =
+                        maxOf(topStartControlsHeightPx, topEndControlsHeightPx)
+                            .takeIf { it > 0 }
+                            ?.toFloat()
+                            ?: (topInset + with(density) { 64.dp.toPx() })
+                    val xMin = leftInset + edgeMargin
+                    val xMax =
+                        (container.width.toFloat() - rightInset - dock.width.toFloat() - edgeMargin)
+                            .coerceAtLeast(xMin)
+                    val yMin = topControlsHeightPx + edgeMargin
+                    val yMax =
+                        (container.height.toFloat() - bottomInset - dock.height.toFloat() - edgeMargin)
+                            .coerceAtLeast(yMin)
+                    val safeLeft = xMin
+                    val safeRight = (container.width.toFloat() - rightInset - edgeMargin).coerceAtLeast(safeLeft)
+                    val safeTop = yMin
+                    val safeBottom = (container.height.toFloat() - bottomInset - edgeMargin).coerceAtLeast(safeTop)
+                    val dragHandleThicknessPx = with(density) { 24.dp.toPx() }
+                    val dragProxyHalfPx = with(density) { 22.dp.toPx() }
+
+                    fun clampDockOffset(offset: Offset): Offset {
+                        if (container == IntSize.Zero || dock == IntSize.Zero) return offset
+                        return Offset(
+                            x = offset.x.coerceIn(xMin, xMax),
+                            y = offset.y.coerceIn(yMin, yMax),
+                        )
+                    }
+
+                    fun dragProxyLocalCenter(
+                        edge: ToolDockEdge,
+                        size: IntSize,
+                    ): Offset =
+                        when (edge) {
+                            ToolDockEdge.Left ->
+                                Offset(
+                                    x = size.width.toFloat() - dragHandleThicknessPx / 2f,
+                                    y = size.height.toFloat() / 2f,
+                                )
+                            ToolDockEdge.Right -> Offset(x = dragHandleThicknessPx / 2f, y = size.height.toFloat() / 2f)
+                            else -> Offset(x = size.width.toFloat() / 2f, y = dragHandleThicknessPx / 2f)
+                        }
+
+                    fun clampProxyCenter(center: Offset): Offset {
+                        val xMinCenter = safeLeft + dragProxyHalfPx
+                        val xMaxCenter = safeRight - dragProxyHalfPx
+                        val yMinCenter = safeTop + dragProxyHalfPx
+                        val yMaxCenter = safeBottom - dragProxyHalfPx
+                        fun coerceInOrCenter(
+                            value: Float,
+                            min: Float,
+                            max: Float,
+                        ): Float =
+                            if (max >= min) {
+                                value.coerceIn(min, max)
+                            } else {
+                                (min + max) / 2f
+                            }
+                        return Offset(
+                            x = coerceInOrCenter(center.x, xMinCenter, xMaxCenter),
+                            y = coerceInOrCenter(center.y, yMinCenter, yMaxCenter),
+                        )
+                    }
+
+                    fun pickNearestEdge(center: Offset): ToolDockEdge {
+                        val dLeft = abs(center.x - safeLeft)
+                        val dRight = abs(safeRight - center.x)
+                        val dTop = abs(center.y - safeTop)
+                        val dBottom = abs(safeBottom - center.y)
+                        val min = minOf(dLeft, dRight, dTop, dBottom)
+                        return when (min) {
+                            dTop -> ToolDockEdge.Top
+                            dLeft -> ToolDockEdge.Left
+                            dRight -> ToolDockEdge.Right
+                            else -> ToolDockEdge.Bottom
+                        }
+                    }
+
+                    fun computeDockOffsetForEdge(
+                        edge: ToolDockEdge,
+                        anchorGlobal: Offset,
+                    ): Offset {
+                        val xCentered = ((xMin + xMax) / 2f).coerceIn(xMin, xMax)
+                        return when (edge) {
+                            ToolDockEdge.Top -> Offset(xCentered, yMin)
+                            ToolDockEdge.Bottom ->
+                                Offset(
+                                    x = (anchorGlobal.x - dock.width.toFloat() / 2f).coerceIn(xMin, xMax),
+                                    y = yMax,
+                                )
+                            ToolDockEdge.Left ->
+                                Offset(
+                                    x = xMin,
+                                    y = (anchorGlobal.y - dock.height.toFloat() / 2f).coerceIn(yMin, yMax),
+                                )
+                            ToolDockEdge.Right ->
+                                Offset(
+                                    x = xMax,
+                                    y = (anchorGlobal.y - dock.height.toFloat() / 2f).coerceIn(yMin, yMax),
+                                )
+                        }
+                    }
+
+                    LaunchedEffect(container, dock) {
+                        if (container == IntSize.Zero || dock == IntSize.Zero) return@LaunchedEffect
+                        val initial =
+                            if (toolDockInitialized) {
+                                toolDockOffsetPx
+                            } else {
+                                toolDockEdge = ToolDockEdge.Bottom
+                                Offset(
+                                    x = (container.width - dock.width).toFloat() / 2f,
+                                    y = yMax,
+                                )
+                            }
+                        toolDockOffsetPx = clampDockOffset(initial)
+                        toolDockInitialized = true
+                    }
+
+                    LaunchedEffect(container, dock, toolDockEdge) {
+                        if (!toolDockInitialized) return@LaunchedEffect
+                        if (container == IntSize.Zero || dock == IntSize.Zero) return@LaunchedEffect
+                        val pending = toolDockPendingAnchorGlobalPx
+                        if (pending != null) {
+                            toolDockOffsetPx = clampDockOffset(computeDockOffsetForEdge(toolDockEdge, pending))
+                            toolDockPendingAnchorGlobalPx = null
+                        } else if (!toolDockDragging) {
+                            toolDockOffsetPx = clampDockOffset(toolDockOffsetPx)
+                        }
+                    }
+
+                    val dragHandleDragModifier =
+                        Modifier.pointerInput(container, dock, toolDockInitialized) {
+                            detectDragGestures(
+                                onDragStart = {
+                                    toolDockDragging = true
+                                    val fallback =
+                                        Offset(
+                                            x = ((safeLeft + safeRight) / 2f),
+                                            y = safeBottom,
+                                        )
+                                    val start =
+                                        if (dock == IntSize.Zero) {
+                                            fallback
+                                        } else {
+                                            toolDockOffsetPx + dragProxyLocalCenter(toolDockEdge, dock)
+                                        }
+                                    toolDockDragProxyCenterPx = clampProxyCenter(start)
+                                },
+                                onDrag = onDockDrag@{ change, dragAmount ->
+                                    change.consume()
+                                    val current = toolDockDragProxyCenterPx ?: return@onDockDrag
+                                    toolDockDragProxyCenterPx = clampProxyCenter(current + dragAmount)
+                                },
+                                onDragEnd = {
+                                    val center = toolDockDragProxyCenterPx
+                                    if (center != null) {
+                                        val targetEdge = pickNearestEdge(center)
+                                        toolDockEdge = targetEdge
+                                        toolDockPendingAnchorGlobalPx = center
+                                        if (dock != IntSize.Zero) {
+                                            toolDockOffsetPx = clampDockOffset(computeDockOffsetForEdge(targetEdge, center))
+                                        }
+                                    }
+                                    toolDockDragging = false
+                                    toolDockDragProxyCenterPx = null
+                                },
+                                onDragCancel = {
+                                    val center = toolDockDragProxyCenterPx
+                                    if (center != null) {
+                                        val targetEdge = pickNearestEdge(center)
+                                        toolDockEdge = targetEdge
+                                        toolDockPendingAnchorGlobalPx = center
+                                        if (dock != IntSize.Zero) {
+                                            toolDockOffsetPx = clampDockOffset(computeDockOffsetForEdge(targetEdge, center))
+                                        }
+                                    }
+                                    toolDockDragging = false
+                                    toolDockDragProxyCenterPx = null
+                                },
+                            )
+                        }
+
+                    DrawToolDock(
+                        editor = editor,
+                        onToolClick = ::handleToolDockClick,
+                        dragging = toolDockDragging,
+                        edge = toolDockEdge,
+                        dragHandleModifier = dragHandleDragModifier,
+                        modifier =
+                            (
+                                if (toolDockInitialized) {
+                                    Modifier.offset { IntOffset(toolDockOffsetPx.x.roundToInt(), toolDockOffsetPx.y.roundToInt()) }
+                                } else {
+                                    Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .windowInsetsPadding(WindowInsets.navigationBars)
+                                        .padding(bottom = 12.dp)
+                                }
+                            ).onSizeChanged { toolDockSizePx = it },
+                    )
+
+                    if (toolDockDragging) {
+                        val proxyCenter = toolDockDragProxyCenterPx
+                        if (proxyCenter != null) {
+                            val (selectedIconRes, selectedIconTint) =
+                                when (editor.toolId) {
+                                    DrawToolId.Pen ->
+                                        (
+                                            when (editor.penStyle) {
+                                                DrawPenStyle.FountainPen -> R.drawable.ic_lucide_pen_tool
+                                                DrawPenStyle.BallpointPen -> R.drawable.ic_lucide_pencil
+                                            }
+                                        ) to
+                                            Color(
+                                                if (editor.penStyle == DrawPenStyle.FountainPen) {
+                                                    editor.fountainPenColorArgb
+                                                } else {
+                                                    editor.ballpointPenColorArgb
+                                                },
+                                            )
+                                    DrawToolId.Highlighter -> R.drawable.ic_lucide_highlighter to Color(editor.highlighterColorArgb)
+                                    DrawToolId.Shape -> R.drawable.ic_lucide_pyramid to Color(editor.shapeColorArgb)
+                                    DrawToolId.Lasso -> R.drawable.ic_lucide_lasso to MaterialTheme.colorScheme.onSurface
+                                    DrawToolId.Eraser -> R.drawable.ic_lucide_eraser to MaterialTheme.colorScheme.onSurface
+                                    DrawToolId.Pan -> R.drawable.ic_lucide_hand to MaterialTheme.colorScheme.onSurface
+                                }
+                            DrawToolDragProxy(
+                                iconRes = selectedIconRes,
+                                iconTint = selectedIconTint,
+                                modifier =
+                                    Modifier.offset {
+                                        IntOffset(
+                                            (proxyCenter.x - dragProxyHalfPx).roundToInt(),
+                                            (proxyCenter.y - dragProxyHalfPx).roundToInt(),
+                                        )
+                                    },
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -598,6 +1118,191 @@ fun DrawScreen(
                 onDeleteSelection = ::deleteSelection,
             )
         }
+    }
+
+    if (showOverflowMenu && !isLoading && !loadFailed) {
+        ModalBottomSheet(
+            onDismissRequest = { showOverflowMenu = false },
+            sheetState = overflowMenuState,
+            dragHandle = { DrawSlimDragHandle() },
+        ) {
+            val canEdit = viewMode == DrawViewMode.Writing
+            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                DrawOverflowSectionTitle(text = "页面")
+                DrawOverflowItem(
+                    label = "插入一页（后一页）",
+                    enabled = canEdit,
+                    onClick = {
+                        showOverflowMenu = false
+                        insertPageAfterCurrent()
+                    },
+                )
+                DrawOverflowItem(
+                    label = "修改背景颜色",
+                    enabled = canEdit,
+                    onClick = {
+                        showOverflowMenu = false
+                        showBackgroundPicker = true
+                    },
+                )
+                DrawOverflowItem(
+                    label = "页面旋转（90°）",
+                    enabled = canEdit,
+                    onClick = {
+                        showOverflowMenu = false
+                        rotateCurrentPage90Degrees()
+                    },
+                )
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+
+                DrawOverflowSectionTitle(text = "视图")
+                DrawOverflowItem(
+                    label = "书写模式",
+                    onClick = {
+                        showOverflowMenu = false
+                        setViewMode(DrawViewMode.Writing)
+                    },
+                    trailing = {
+                        if (viewMode == DrawViewMode.Writing) {
+                            androidx.compose.material3.Icon(
+                                painter = painterResource(Ionicons.Checkmark),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    },
+                )
+                DrawOverflowItem(
+                    label = "阅读模式",
+                    onClick = {
+                        showOverflowMenu = false
+                        setViewMode(DrawViewMode.Reading)
+                    },
+                    trailing = {
+                        if (viewMode == DrawViewMode.Reading) {
+                            androidx.compose.material3.Icon(
+                                painter = painterResource(Ionicons.Checkmark),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    },
+                )
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+
+                DrawOverflowSectionTitle(text = "文件")
+                DrawOverflowItem(
+                    label = "导出文件",
+                    onClick = {
+                        showOverflowMenu = false
+                        showExportSheet = true
+                    },
+                )
+                DrawOverflowItem(
+                    label = "删除文件",
+                    enabled = currentDocUri != null,
+                    onClick = {
+                        showOverflowMenu = false
+                        showDeleteFileDialog = true
+                    },
+                )
+            }
+        }
+    }
+
+    if (showBackgroundPicker && !isLoading && !loadFailed) {
+        ModalBottomSheet(
+            onDismissRequest = { showBackgroundPicker = false },
+            sheetState = backgroundPickerState,
+            dragHandle = { DrawSlimDragHandle() },
+        ) {
+            val bg = editor.currentPageOrNull()?.backgroundColorArgb ?: 0xFFFFFFFF.toInt()
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(text = "背景颜色", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                DrawColorRow(
+                    selectedArgb = bg,
+                    onPick = { argb ->
+                        updateCurrentPageBackground(argb)
+                        showBackgroundPicker = false
+                    },
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+    }
+
+    if (showExportSheet && !isLoading && !loadFailed) {
+        ModalBottomSheet(
+            onDismissRequest = { showExportSheet = false },
+            sheetState = exportSheetState,
+            dragHandle = { DrawSlimDragHandle() },
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                DrawOverflowSectionTitle(text = "导出文件")
+                DrawOverflowItem(
+                    label = "导出 PDF",
+                    onClick = {
+                        showExportSheet = false
+                        exportPdf()
+                    },
+                )
+                DrawOverflowItem(
+                    label = "导出图片",
+                    onClick = {
+                        showExportSheet = false
+                        exportImages()
+                    },
+                )
+                DrawOverflowItem(
+                    label = "分享原件",
+                    onClick = {
+                        showExportSheet = false
+                        shareOriginal()
+                    },
+                )
+            }
+        }
+    }
+
+    if (showDeleteFileDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteFileDialog = false },
+            title = { Text(text = "删除文件") },
+            text = { Text(text = "确定删除当前绘画文件？") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val uri = currentDocUri
+                        showDeleteFileDialog = false
+                        if (uri == null) {
+                            scope.launch { snackbarHostState.showSnackbar("未保存，无法删除") }
+                            return@TextButton
+                        }
+                        scope.launch {
+                            val ok = repository.deleteDoc(uri)
+                            if (ok) {
+                                onDocListMutated(DocListMutation.Deleted(docUri = uri))
+                                onBack()
+                            } else {
+                                snackbarHostState.showSnackbar("删除失败")
+                            }
+                        }
+                    },
+                ) { Text(text = stringResource(R.string.action_delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteFileDialog = false }) {
+                    Text(text = stringResource(R.string.action_cancel))
+                }
+            },
+        )
     }
 
     if (showSaveAsDialog) {
@@ -684,15 +1389,17 @@ private fun DrawCircleIconButton(
     enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
+    val isDark = isSystemInDarkTheme()
+    val bg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
     val contentAlpha = if (enabled) 1f else 0.38f
     Surface(
-        color = MaterialTheme.colorScheme.surface,
+        color = bg,
         shape = CircleShape,
-        tonalElevation = 2.dp,
+        tonalElevation = if (isDark) 2.dp else 0.dp,
         shadowElevation = 6.dp,
         modifier =
             modifier
-                .size(44.dp)
+                .size(40.dp)
                 .alpha(contentAlpha)
                 .clickable(enabled = enabled, onClick = onClick)
                 .semantics { this.contentDescription = contentDescription },
@@ -722,11 +1429,62 @@ private fun DrawSlimDragHandle(modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun DrawOverflowSectionTitle(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+    )
+}
+
+@Composable
+private fun DrawOverflowItem(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    val textColor =
+        if (enabled) {
+            MaterialTheme.colorScheme.onSurface
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+        }
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            color = textColor,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f),
+        )
+        if (trailing != null) trailing()
+    }
+}
+
+@Composable
 private fun DrawToolDock(
     editor: DrawEditorState,
     onToolClick: (DrawToolId) -> Unit,
+    dragging: Boolean,
+    edge: ToolDockEdge,
+    dragHandleModifier: Modifier = Modifier,
     modifier: Modifier = Modifier,
 ) {
+    val isDark = isSystemInDarkTheme()
+    val dockBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
     val fountainPenColor = Color(editor.fountainPenColorArgb)
     val ballpointPenColor = Color(editor.ballpointPenColorArgb)
     val penColor = if (editor.penStyle == DrawPenStyle.FountainPen) fountainPenColor else ballpointPenColor
@@ -737,57 +1495,185 @@ private fun DrawToolDock(
             DrawPenStyle.FountainPen -> R.drawable.ic_lucide_pen_tool
             DrawPenStyle.BallpointPen -> R.drawable.ic_lucide_pencil
         }
+    val barAlpha = if (dragging) 0f else 1f
+    val vertical = edge == ToolDockEdge.Left || edge == ToolDockEdge.Right
+    val dockThickness = 72.dp
+    val handleThickness = 20.dp
+    val handleLength = 72.dp
     Surface(
-        color = MaterialTheme.colorScheme.surface,
+        color = if (dragging) Color.Transparent else dockBg,
         shape = RoundedCornerShape(18.dp),
-        tonalElevation = 3.dp,
-        shadowElevation = 6.dp,
-        modifier = modifier.height(44.dp),
+        tonalElevation = if (dragging) 0.dp else if (isDark) 3.dp else 0.dp,
+        shadowElevation = if (dragging) 0.dp else 6.dp,
+        modifier =
+            if (vertical) {
+                modifier.width(dockThickness)
+            } else {
+                modifier.height(dockThickness)
+            },
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Box(
+            modifier =
+                if (vertical) {
+                    Modifier.fillMaxWidth()
+                } else {
+                    Modifier.fillMaxHeight()
+                },
         ) {
-            DrawToolDockButton(
-                selected = editor.toolId == DrawToolId.Pen,
-                iconRes = penIcon,
-                contentDescription = stringResource(R.string.draw_tool_pen),
-                iconTint = penColor,
-                onClick = { onToolClick(DrawToolId.Pen) },
-            )
-            DrawToolDockButton(
-                selected = editor.toolId == DrawToolId.Highlighter,
-                iconRes = R.drawable.ic_lucide_highlighter,
-                contentDescription = stringResource(R.string.draw_tool_highlighter),
-                iconTint = highlighterColor,
-                onClick = { onToolClick(DrawToolId.Highlighter) },
-            )
-            DrawToolDockButton(
-                selected = editor.toolId == DrawToolId.Shape,
-                iconRes = R.drawable.ic_lucide_pyramid,
-                contentDescription = stringResource(R.string.draw_tool_shape),
-                iconTint = shapeColor,
-                onClick = { onToolClick(DrawToolId.Shape) },
-            )
-            DrawToolDockButton(
-                selected = editor.toolId == DrawToolId.Lasso,
-                iconRes = R.drawable.ic_lucide_lasso,
-                contentDescription = stringResource(R.string.draw_tool_lasso),
-                onClick = { onToolClick(DrawToolId.Lasso) },
-            )
-            DrawToolDockButton(
-                selected = editor.toolId == DrawToolId.Eraser,
-                iconRes = R.drawable.ic_lucide_eraser,
-                contentDescription = stringResource(R.string.draw_tool_eraser),
-                onClick = { onToolClick(DrawToolId.Eraser) },
-            )
-            DrawToolDockButton(
-                selected = editor.toolId == DrawToolId.Pan,
-                iconRes = R.drawable.ic_lucide_hand,
-                contentDescription = stringResource(R.string.draw_tool_pan),
-                onClick = { onToolClick(DrawToolId.Pan) },
-            )
+            if (!vertical) {
+                Row(
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = 10.dp)
+                            .padding(bottom = 6.dp)
+                            .alpha(barAlpha),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    DrawToolDockButton(
+                        selected = editor.toolId == DrawToolId.Pen,
+                        iconRes = penIcon,
+                        contentDescription = stringResource(R.string.draw_tool_pen),
+                        iconTint = penColor,
+                        onClick = { onToolClick(DrawToolId.Pen) },
+                        enabled = true,
+                    )
+                    DrawToolDockButton(
+                        selected = editor.toolId == DrawToolId.Highlighter,
+                        iconRes = R.drawable.ic_lucide_highlighter,
+                        contentDescription = stringResource(R.string.draw_tool_highlighter),
+                        iconTint = highlighterColor,
+                        onClick = { onToolClick(DrawToolId.Highlighter) },
+                        enabled = true,
+                    )
+                    DrawToolDockButton(
+                        selected = editor.toolId == DrawToolId.Shape,
+                        iconRes = R.drawable.ic_lucide_pyramid,
+                        contentDescription = stringResource(R.string.draw_tool_shape),
+                        iconTint = shapeColor,
+                        onClick = { onToolClick(DrawToolId.Shape) },
+                        enabled = true,
+                    )
+                    DrawToolDockButton(
+                        selected = editor.toolId == DrawToolId.Lasso,
+                        iconRes = R.drawable.ic_lucide_lasso,
+                        contentDescription = stringResource(R.string.draw_tool_lasso),
+                        onClick = { onToolClick(DrawToolId.Lasso) },
+                        enabled = true,
+                    )
+                    DrawToolDockButton(
+                        selected = editor.toolId == DrawToolId.Eraser,
+                        iconRes = R.drawable.ic_lucide_eraser,
+                        contentDescription = stringResource(R.string.draw_tool_eraser),
+                        onClick = { onToolClick(DrawToolId.Eraser) },
+                        enabled = true,
+                    )
+                    DrawToolDockButton(
+                        selected = editor.toolId == DrawToolId.Pan,
+                        iconRes = R.drawable.ic_lucide_hand,
+                        contentDescription = stringResource(R.string.draw_tool_pan),
+                        onClick = { onToolClick(DrawToolId.Pan) },
+                        enabled = true,
+                    )
+                }
+            } else {
+                Column(
+                    modifier =
+                        Modifier
+                            .align(Alignment.Center)
+                            .padding(
+                                start = if (edge == ToolDockEdge.Right) 10.dp else 0.dp,
+                                end = if (edge == ToolDockEdge.Left) 10.dp else 0.dp,
+                                top = 10.dp,
+                                bottom = 10.dp,
+                            )
+                            .alpha(barAlpha),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    DrawToolDockButton(
+                        selected = editor.toolId == DrawToolId.Pen,
+                        iconRes = penIcon,
+                        contentDescription = stringResource(R.string.draw_tool_pen),
+                        iconTint = penColor,
+                        onClick = { onToolClick(DrawToolId.Pen) },
+                        enabled = true,
+                    )
+                    DrawToolDockButton(
+                        selected = editor.toolId == DrawToolId.Highlighter,
+                        iconRes = R.drawable.ic_lucide_highlighter,
+                        contentDescription = stringResource(R.string.draw_tool_highlighter),
+                        iconTint = highlighterColor,
+                        onClick = { onToolClick(DrawToolId.Highlighter) },
+                        enabled = true,
+                    )
+                    DrawToolDockButton(
+                        selected = editor.toolId == DrawToolId.Shape,
+                        iconRes = R.drawable.ic_lucide_pyramid,
+                        contentDescription = stringResource(R.string.draw_tool_shape),
+                        iconTint = shapeColor,
+                        onClick = { onToolClick(DrawToolId.Shape) },
+                        enabled = true,
+                    )
+                    DrawToolDockButton(
+                        selected = editor.toolId == DrawToolId.Lasso,
+                        iconRes = R.drawable.ic_lucide_lasso,
+                        contentDescription = stringResource(R.string.draw_tool_lasso),
+                        onClick = { onToolClick(DrawToolId.Lasso) },
+                        enabled = true,
+                    )
+                    DrawToolDockButton(
+                        selected = editor.toolId == DrawToolId.Eraser,
+                        iconRes = R.drawable.ic_lucide_eraser,
+                        contentDescription = stringResource(R.string.draw_tool_eraser),
+                        onClick = { onToolClick(DrawToolId.Eraser) },
+                        enabled = true,
+                    )
+                    DrawToolDockButton(
+                        selected = editor.toolId == DrawToolId.Pan,
+                        iconRes = R.drawable.ic_lucide_hand,
+                        contentDescription = stringResource(R.string.draw_tool_pan),
+                        onClick = { onToolClick(DrawToolId.Pan) },
+                        enabled = true,
+                    )
+                }
+            }
+
+            val handleAlignment =
+                when (edge) {
+                    ToolDockEdge.Left -> Alignment.CenterEnd
+                    ToolDockEdge.Right -> Alignment.CenterStart
+                    else -> Alignment.TopCenter
+                }
+
+            Box(
+                modifier =
+                    dragHandleModifier
+                        .align(handleAlignment)
+                        .size(
+                            width = if (vertical) handleThickness else handleLength,
+                            height = if (vertical) handleLength else handleThickness,
+                        ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(2.dp),
+                    color =
+                        if (dragging) {
+                            Color.Transparent
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                        },
+                    modifier =
+                        if (vertical) {
+                            Modifier.size(width = 4.dp, height = 30.dp)
+                        } else {
+                            Modifier.size(width = 30.dp, height = 4.dp)
+                        },
+                    content = {},
+                )
+            }
         }
     }
 }
@@ -798,18 +1684,20 @@ private fun DrawToolDockButton(
     iconRes: Int,
     contentDescription: String,
     onClick: () -> Unit,
+    enabled: Boolean,
     iconTint: Color? = null,
 ) {
-    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
-    val fg =
-        iconTint ?: if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+    val isDark = isSystemInDarkTheme()
+    val selectedBg = if (isDark) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFF2F2F2)
+    val bg = if (selected) selectedBg else Color.Transparent
+    val fg = iconTint ?: MaterialTheme.colorScheme.onSurface
     Surface(
         color = bg,
         shape = RoundedCornerShape(12.dp),
         modifier =
             Modifier
                 .size(36.dp)
-                .clickable(onClick = onClick)
+                .clickable(enabled = enabled, onClick = onClick)
                 .semantics { this.contentDescription = contentDescription },
     ) {
         Box(contentAlignment = Alignment.Center) {
@@ -1199,6 +2087,7 @@ private fun DrawEditorCanvas(
             drawPageBackground(
                 pageWidth = page.width,
                 pageHeight = page.height,
+                backgroundColor = Color(page.backgroundColorArgb),
                 scale = scale,
                 borderColor = pageBorderColor,
             )
@@ -1223,11 +2112,12 @@ private fun DrawEditorCanvas(
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPageBackground(
     pageWidth: Float,
     pageHeight: Float,
+    backgroundColor: Color,
     scale: Float,
     borderColor: Color,
 ) {
     drawRect(
-        color = Color.White,
+        color = backgroundColor,
         topLeft = Offset.Zero,
         size = Size(pageWidth, pageHeight),
     )
@@ -1608,6 +2498,109 @@ private fun elementBounds(el: DrawElementState): Rect? {
 
         else -> null
     }
+}
+
+private fun renderPageToBitmap(
+    page: ZhixuDrawPage,
+    desiredScale: Float = 2f,
+    maxDimPx: Int = 2048,
+): Bitmap {
+    val w = page.width.coerceAtLeast(1f)
+    val h = page.height.coerceAtLeast(1f)
+    val scale =
+        minOf(
+            desiredScale,
+            maxDimPx.toFloat() / w,
+            maxDimPx.toFloat() / h,
+        ).coerceAtLeast(0.1f)
+    val outW = (w * scale).roundToInt().coerceAtLeast(1)
+    val outH = (h * scale).roundToInt().coerceAtLeast(1)
+    val bitmap = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+    drawPageToAndroidCanvas(android.graphics.Canvas(bitmap), page = page, scale = scale)
+    return bitmap
+}
+
+private fun writePagesToPdf(
+    file: File,
+    pages: List<ZhixuDrawPage>,
+) {
+    file.parentFile?.mkdirs()
+    val doc = PdfDocument()
+    try {
+        for ((index, page) in pages.withIndex()) {
+            val w = page.width.coerceAtLeast(1f).roundToInt()
+            val h = page.height.coerceAtLeast(1f).roundToInt()
+            val info = PdfDocument.PageInfo.Builder(w, h, index + 1).create()
+            val pdfPage = doc.startPage(info)
+            drawPageToAndroidCanvas(pdfPage.canvas, page = page, scale = 1f)
+            doc.finishPage(pdfPage)
+        }
+        FileOutputStream(file).use { out ->
+            doc.writeTo(out)
+        }
+    } finally {
+        doc.close()
+    }
+}
+
+private fun drawPageToAndroidCanvas(
+    canvas: android.graphics.Canvas,
+    page: ZhixuDrawPage,
+    scale: Float,
+) {
+    val paint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+
+    paint.style = Paint.Style.FILL
+    paint.color = page.backgroundColorArgb
+    canvas.drawRect(0f, 0f, page.width * scale, page.height * scale, paint)
+
+    paint.style = Paint.Style.STROKE
+    for (el in page.elements) {
+        when (el) {
+            is ZhixuDrawStroke -> {
+                val pts = el.points
+                if (pts.isEmpty()) continue
+                val path = AndroidPath()
+                path.moveTo(pts[0].x * scale, pts[0].y * scale)
+                for (i in 1 until pts.size) {
+                    val p = pts[i]
+                    path.lineTo(p.x * scale, p.y * scale)
+                }
+                paint.color = applyExtraAlpha(el.colorArgb, el.alpha)
+                paint.strokeWidth = (el.width.coerceAtLeast(0.2f) * scale).coerceAtLeast(0.2f)
+                canvas.drawPath(path, paint)
+            }
+
+            is ZhixuDrawShapeElement -> {
+                val startX = el.start.x * scale
+                val startY = el.start.y * scale
+                val endX = el.end.x * scale
+                val endY = el.end.y * scale
+                val left = minOf(startX, endX)
+                val right = maxOf(startX, endX)
+                val top = minOf(startY, endY)
+                val bottom = maxOf(startY, endY)
+                paint.color = applyExtraAlpha(el.colorArgb, el.alpha)
+                paint.strokeWidth = (el.width.coerceAtLeast(0.2f) * scale).coerceAtLeast(0.2f)
+                when (el.shape) {
+                    ZhixuDrawShape.Line -> canvas.drawLine(startX, startY, endX, endY, paint)
+                    ZhixuDrawShape.Rectangle -> canvas.drawRect(left, top, right, bottom, paint)
+                    ZhixuDrawShape.Ellipse -> canvas.drawOval(left, top, right, bottom, paint)
+                }
+            }
+        }
+    }
+}
+
+private fun applyExtraAlpha(colorArgb: Int, alpha: Float): Int {
+    val baseAlpha = android.graphics.Color.alpha(colorArgb).toFloat() / 255f
+    val outAlpha = (baseAlpha * alpha.coerceIn(0f, 1f)).coerceIn(0f, 1f)
+    val a = (outAlpha * 255f).roundToInt().coerceIn(0, 255)
+    return (colorArgb and 0x00FFFFFF) or (a shl 24)
 }
 
 private fun sanitizeFileName(input: String): String {
