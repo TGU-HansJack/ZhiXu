@@ -1,34 +1,28 @@
 package app.zhixu.draw
 
-import android.util.Xml
 import androidx.compose.ui.geometry.Offset
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import java.io.StringReader
 import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import org.json.JSONArray
 import org.json.JSONObject
-import org.xmlpull.v1.XmlPullParser
 
 object ZhixuDrawFormat {
     const val MIME_TYPE: String = "application/zhixu-drawing"
     const val EXTENSION: String = ".zhixu"
-    const val LEGACY_EXTENSION: String = ".zhixud"
 
     fun hasDrawingExtension(name: String): Boolean {
         val lower = name.lowercase(Locale.US)
-        return (lower.endsWith(EXTENSION) && lower.length > EXTENSION.length) ||
-            (lower.endsWith(LEGACY_EXTENSION) && lower.length > LEGACY_EXTENSION.length)
+        return lower.endsWith(EXTENSION) && lower.length > EXTENSION.length
     }
 
     fun stripDrawingExtension(name: String): String {
         val lower = name.lowercase(Locale.US)
         return when {
             lower.endsWith(EXTENSION) && lower.length > EXTENSION.length -> name.dropLast(EXTENSION.length)
-            lower.endsWith(LEGACY_EXTENSION) && lower.length > LEGACY_EXTENSION.length -> name.dropLast(LEGACY_EXTENSION.length)
             else -> name
         }
     }
@@ -100,13 +94,7 @@ object ZhixuDrawFormat {
             if (pages.isEmpty()) error("No pages found")
             return ZhixuDrawDocument(meta = meta.copy(pageOrder = meta.pageOrder), pages = pages)
         }
-
-        val contentXml = entries["content.xml"]?.toString(Charsets.UTF_8)
-        if (contentXml != null) {
-            return decodeLegacyContentXml(contentXml)
-        }
-
-        error("Invalid drawing file: missing meta.json/content.xml")
+        error("Invalid drawing file: missing meta.json")
     }
 
     fun pageFileName(index: Int): String = "pages/page_${(index + 1).toString().padStart(3, '0')}.json"
@@ -273,84 +261,5 @@ object ZhixuDrawFormat {
             backgroundColorArgb = backgroundColorArgb,
             elements = elements,
         )
-    }
-
-    private fun decodeLegacyContentXml(xml: String): ZhixuDrawDocument {
-        val parser = Xml.newPullParser()
-        parser.setInput(StringReader(xml))
-
-        var pageWidth = 595f
-        var pageHeight = 842f
-        val strokes = ArrayList<ZhixuDrawStroke>()
-
-        while (parser.eventType != XmlPullParser.END_DOCUMENT) {
-            if (parser.eventType == XmlPullParser.START_TAG) {
-                when (parser.name) {
-                    "page" -> {
-                        pageWidth = parser.getAttributeValue(null, "width")?.toFloatOrNull() ?: pageWidth
-                        pageHeight = parser.getAttributeValue(null, "height")?.toFloatOrNull() ?: pageHeight
-                    }
-
-                    "stroke" -> {
-                        val color = parser.getAttributeValue(null, "color")?.let(::rgbaHexToArgb) ?: 0xFF000000.toInt()
-                        val w = parser.getAttributeValue(null, "width")?.toFloatOrNull() ?: 3f
-                        val body = parser.nextText().orEmpty()
-                        val points = parseStrokePoints(body)
-                        strokes +=
-                            ZhixuDrawStroke(
-                                id = "legacy_${strokes.size}",
-                                tool = ZhixuDrawTool.Pen,
-                                colorArgb = color,
-                                width = w,
-                                alpha = 1f,
-                                points = points,
-                            )
-                    }
-                }
-            }
-            parser.next()
-        }
-
-        val now = System.currentTimeMillis()
-        val page = ZhixuDrawPage(id = "page_001", width = pageWidth, height = pageHeight, backgroundColorArgb = 0xFFFFFFFF.toInt(), elements = strokes)
-        val meta =
-            ZhixuDrawMeta(
-                formatVersion = 1,
-                createdAtMs = now,
-                modifiedAtMs = now,
-                pageOrder = listOf(pageFileName(0)),
-            )
-        return ZhixuDrawDocument(meta = meta, pages = listOf(page))
-    }
-
-    private fun parseStrokePoints(text: String): List<Offset> {
-        val items = text.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-        if (items.isEmpty()) return emptyList()
-        val floats = items.mapNotNull { it.toFloatOrNull() }
-        val out = ArrayList<Offset>(floats.size / 2)
-        var i = 0
-        while (i + 1 < floats.size) {
-            out.add(Offset(floats[i], floats[i + 1]))
-            i += 2
-        }
-        return out
-    }
-
-    private fun rgbaHexToArgb(hex: String): Int {
-        val s = hex.trim().removePrefix("#")
-        if (s.length == 8) {
-            val r = s.substring(0, 2).toInt(16)
-            val g = s.substring(2, 4).toInt(16)
-            val b = s.substring(4, 6).toInt(16)
-            val a = s.substring(6, 8).toInt(16)
-            return (a shl 24) or (r shl 16) or (g shl 8) or b
-        }
-        if (s.length == 6) {
-            val r = s.substring(0, 2).toInt(16)
-            val g = s.substring(2, 4).toInt(16)
-            val b = s.substring(4, 6).toInt(16)
-            return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-        }
-        return 0xFF000000.toInt()
     }
 }

@@ -331,8 +331,6 @@ class VaultRepository(
         val ocrImagesDir = ocrDir?.let { findChild(it, "images") ?: it.createDirectory("images") }
         val ocrModelsDir = ocrDir?.let { findChild(it, ".models") ?: it.createDirectory(".models") }
         val ocrPpocrv5Dir = ocrModelsDir?.let { findChild(it, "ppocrv5") ?: it.createDirectory("ppocrv5") }
-        val ocrLegacyModelsDir = ocrDir?.let { findChild(it, "model") ?: it.createDirectory("model") }
-        val ocrLegacyPpocrv5Dir = ocrLegacyModelsDir?.let { findChild(it, "ppocrv5") ?: it.createDirectory("ppocrv5") }
         val pluginState =
             pluginsDir?.let {
                 findChild(it, "state.json") ?: createFileExact(it, "application/json", "state.json")
@@ -355,8 +353,6 @@ class VaultRepository(
         requireNotNull(ocrImagesDir) { ".zhixu/ocr/images directory missing" }
         requireNotNull(ocrModelsDir) { ".zhixu/ocr/.models directory missing" }
         requireNotNull(ocrPpocrv5Dir) { ".zhixu/ocr/.models/ppocrv5 directory missing" }
-        requireNotNull(ocrLegacyModelsDir) { ".zhixu/ocr/model directory missing" }
-        requireNotNull(ocrLegacyPpocrv5Dir) { ".zhixu/ocr/model/ppocrv5 directory missing" }
     }
 
     suspend fun computeVaultTotalSizeBytes(rootUri: Uri): Long = withContext(Dispatchers.IO) {
@@ -717,7 +713,7 @@ class VaultRepository(
             if (!file.isFile) return false
             val name = file.name ?: return false
             val lower = name.lowercase()
-            return (lower.endsWith(".zhixu") && lower.length > ".zhixu".length) || (lower.endsWith(".zhixud") && lower.length > ".zhixud".length)
+            return lower.endsWith(".zhixu") && lower.length > ".zhixu".length
         }
 
         fun shouldSkipDir(path: String): Boolean {
@@ -2275,6 +2271,5 @@ private fun computeDocBaseName(name: String): String =
     when {
         name.endsWith(".md", ignoreCase = true) -> name.dropLast(3)
         name.endsWith(".zhixu", ignoreCase = true) && name.length > ".zhixu".length -> name.dropLast(".zhixu".length)
-        name.endsWith(".zhixud", ignoreCase = true) && name.length > ".zhixud".length -> name.dropLast(".zhixud".length)
         else -> name
     }

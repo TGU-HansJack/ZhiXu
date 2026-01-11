@@ -1082,7 +1082,6 @@ class VaultIndexRepository(
         when {
             name.endsWith(".md", ignoreCase = true) -> name.dropLast(3)
             name.endsWith(".zhixu", ignoreCase = true) && name.length > ".zhixu".length -> name.dropLast(".zhixu".length)
-            name.endsWith(".zhixud", ignoreCase = true) && name.length > ".zhixud".length -> name.dropLast(".zhixud".length)
             else -> name
         }
 

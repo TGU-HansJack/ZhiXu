@@ -95,7 +95,7 @@ class PpOcrV5ModelManager(
         recBin: File,
     ): Boolean {
         val required = listOf(detParam.name, detBin.name, recParam.name, recBin.name)
-        val searchDirs = listOf(VAULT_DIR_PRIMARY, VAULT_DIR_LEGACY)
+        val searchDirs = listOf(VAULT_DIR_PRIMARY)
 
         val bytesByName = HashMap<String, ByteArray>(required.size)
         for (name in required) {
@@ -193,7 +193,7 @@ class PpOcrV5ModelManager(
                 .put("source", MODEL_BASE_URL)
                 .toString(2) + "\n"
 
-        for (dir in listOf(VAULT_DIR_PRIMARY, VAULT_DIR_LEGACY)) {
+        for (dir in listOf(VAULT_DIR_PRIMARY)) {
             val upToDate = isVaultCopyUpToDate(vaultRootUri = vaultRootUri, dir = dir, version = version, files = files)
             if (upToDate) continue
 
@@ -267,7 +267,5 @@ class PpOcrV5ModelManager(
                 MODEL_VERSION +
                 "/app/src/main/assets/"
         const val VAULT_DIR_PRIMARY = ".zhixu/ocr/.models/ppocrv5"
-        // Compatibility: some users may have created without leading dot folder.
-        const val VAULT_DIR_LEGACY = ".zhixu/ocr/model/ppocrv5"
     }
 }
