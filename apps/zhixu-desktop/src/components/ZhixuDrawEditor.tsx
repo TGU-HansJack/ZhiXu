@@ -815,7 +815,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
   );
 
   const handleWheel = useCallback(
-    (ev: React.WheelEvent<HTMLCanvasElement>) => {
+    (ev: WheelEvent) => {
       const canvas = canvasRef.current;
       const editor = editorRef.current;
       if (!canvas || !editor) return;
@@ -840,6 +840,16 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
     },
     [requestCanvasRender],
   );
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      canvas.removeEventListener("wheel", handleWheel);
+    };
+  }, [handleWheel]);
 
   const deleteSelection = useCallback(() => {
     const editor = editorRef.current;
@@ -1544,7 +1554,6 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
           onPointerMove={handlePointerMove}
           onPointerUp={(ev) => endPointer(ev, "up")}
           onPointerCancel={(ev) => endPointer(ev, "cancel")}
-          onWheel={handleWheel}
         />
       </div>
     </div>
