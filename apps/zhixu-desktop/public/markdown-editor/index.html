@@ -1,0 +1,944 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <script>
+      // Kotlin might call these before scripts finish loading; buffer and apply later.
+      window.__payload = {
+        themeJson: null,
+        text: "",
+        selStart: 0,
+        selEnd: 0,
+        mode: "live",
+        fontSizePx: 16,
+        placeholder: "",
+        bottomInsetPx: 0,
+        showLineNumbers: false,
+        showProperties: true,
+      };
+      window.__applyQueued = false;
+      window.__scheduleApply = () => {
+        if (window.__applyQueued) return;
+        window.__applyQueued = true;
+        setTimeout(() => {
+          window.__applyQueued = false;
+          if (window.__apply) window.__apply();
+        }, 0);
+      };
+      window.__setTheme = (json) => { window.__payload.themeJson = json; window.__scheduleApply(); };
+      window.__setFontSize = (px) => { window.__payload.fontSizePx = Number(px) || 16; window.__scheduleApply(); };
+      window.__setMode = (mode) => { window.__payload.mode = mode === "source" ? "source" : "live"; window.__scheduleApply(); };
+      window.__setPlaceholder = (s) => { window.__payload.placeholder = s || ""; window.__scheduleApply(); };
+      window.__setShowLineNumbers = (v) => { window.__payload.showLineNumbers = !!v; window.__scheduleApply(); };
+      window.__setShowProperties = (v) => { window.__payload.showProperties = (v !== false); window.__scheduleApply(); };
+      window.__setBottomInset = (px) => {
+        const v = Math.max(0, Number(px) || 0);
+        window.__payload.bottomInsetPx = v;
+        try { document.documentElement.style.setProperty("--editorBottomInset", v + "px"); } catch (e) {}
+      };
+      window.__setDoc = (text, selStart, selEnd) => {
+        window.__payload.text = text || "";
+        window.__payload.selStart = Number(selStart) || 0;
+        window.__payload.selEnd = Number(selEnd) || window.__payload.selStart;
+        window.__scheduleApply();
+      };
+    </script>
+
+    <script>
+      (() => {
+        const queue = [];
+        function ensureEl() {
+          let el = document.getElementById("__fatal");
+          if (el) return el;
+          el = document.createElement("pre");
+          el.id = "__fatal";
+          el.style.cssText =
+            "position:fixed;left:8px;right:8px;bottom:8px;max-height:45vh;overflow:auto;z-index:2147483647;" +
+            "padding:10px 12px;border-radius:12px;border:1px solid rgba(255,0,0,.35);" +
+            "background:rgba(30,0,0,.88);color:#fff;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;" +
+            "white-space:pre-wrap;word-break:break-word;display:none";
+          (document.body || document.documentElement).appendChild(el);
+          return el;
+        }
+        function show(title, err) {
+          try {
+            const msg =
+              typeof err === "string"
+                ? err
+                : err && err.stack
+                  ? err.stack
+                  : err && err.message
+                    ? err.message
+                    : String(err);
+            queue.push("[" + new Date().toISOString() + "] " + title + "\n" + msg + "\n");
+            const el = ensureEl();
+            el.textContent = queue.join("\n");
+            el.style.display = "block";
+          } catch (_) {}
+        }
+        window.__showFatal = show;
+        window.addEventListener(
+          "error",
+          (e) => {
+            // Ignore resource-load errors for inline images (these are common and not fatal).
+            try {
+              const t = e && e.target;
+              if (t && t.tagName === "IMG") return;
+            } catch (_) {}
+            show("error", (e && (e.error || e.message)) || e);
+          },
+          true
+        );
+        window.addEventListener(
+          "unhandledrejection",
+          (e) => {
+            show("unhandledrejection", e.reason || e);
+          },
+          true
+        );
+
+        // Visible breadcrumb: confirm JS actually runs.
+        try {
+          const boot = document.getElementById("__plainBoot");
+          if (boot) boot.textContent = "JS running...";
+        } catch (_) {}
+      })();
+    </script>
+
+    <script>
+      (() => {
+        if (customElements.get("ion-icon")) return;
+
+        const icons = {
+          "square-outline": `
+            <svg viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+              <rect x="64" y="64" width="384" height="384" rx="48" ry="48" fill="none" stroke="currentColor" stroke-width="32"></rect>
+            </svg>
+          `,
+          "checkbox-outline": `
+            <svg viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+              <rect x="64" y="64" width="384" height="384" rx="48" ry="48" fill="none" stroke="currentColor" stroke-width="32"></rect>
+              <polyline points="352 176 217.6 336 160 272" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"></polyline>
+            </svg>
+          `,
+          "pricetags-outline": `
+            <svg viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+              <path d="M48 256V96a48 48 0 0 1 48-48h160l208 208a48 48 0 0 1 0 68L324 464a48 48 0 0 1-68 0L48 256z" fill="none" stroke="currentColor" stroke-width="32" stroke-linejoin="round"></path>
+              <circle cx="176" cy="144" r="24" fill="none" stroke="currentColor" stroke-width="32"></circle>
+            </svg>
+          `,
+          "text-outline": `
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true" focusable="false">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12H12m-8.25 5.25h16.5" />
+            </svg>
+          `,
+          "list-outline": `
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true" focusable="false">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+            </svg>
+          `,
+          "number-outline": `
+            <svg viewBox="0 0 960 960" aria-hidden="true" focusable="false">
+              <path fill="currentColor" d="M172.31,780Q142,780 121,759Q100,738 100,707.69L100,252.31Q100,222 121,201Q142,180 172.31,180L787.69,180Q818,180 839,201Q860,222 860,252.31L860,707.69Q860,738 839,759Q818,780 787.69,780L172.31,780ZM263.08,597.69L302.15,597.69L302.15,362.31L270.77,362.31L203.08,410.77L224,441.38L263.08,413.85L263.08,597.69ZM386.31,597.69L537.69,597.69L537.69,562.31L440.61,562.31L439.38,559.54Q458.85,541.46 472.92,526.88Q487,512.31 498.46,500.46Q515.69,482.85 523.92,465.42Q532.15,448 532.15,428Q532.15,399.77 511.31,381.04Q490.46,362.31 458,362.31Q433.92,362.31 413.69,376.15Q393.46,390 385.08,412.46L420.46,426.92Q425.85,413.92 435.92,406.42Q446,398.92 458,398.92Q474.15,398.92 484.23,407.5Q494.31,416.08 494.31,430Q494.31,441.77 489.92,451.27Q485.54,460.77 471.54,475.54Q455.92,492.31 435.88,511.96Q415.85,531.62 386.31,560.77L386.31,597.69ZM680,597.69Q714.08,597.69 735.12,578.27Q756.15,558.85 756.15,528Q756.15,508.08 745.58,494.27Q735,480.46 715.85,474L715.85,472Q731.38,465.92 739.77,453.81Q748.15,441.69 748.15,423.54Q748.15,396.54 728.5,379.42Q708.85,362.31 678,362.31Q651.46,362.31 632.65,376.81Q613.85,391.31 607.08,408.46L641.69,422.92Q646.08,411.31 655.85,404.5Q665.62,397.69 678,397.69Q692.15,397.69 701.23,405.77Q710.31,413.85 710.31,426Q710.31,440.77 699.54,449.54Q688.77,458.31 672,458.31L656.31,458.31L656.31,493.69L674,493.69Q695.15,493.69 706.73,502.27Q718.31,510.85 718.31,526Q718.31,540.15 706.73,550.62Q695.15,561.08 680,561.08Q663,561.08 653.04,553.58Q643.08,546.08 635.69,527.85L601.08,541.54Q608.85,568.23 629.58,582.96Q650.31,597.69 680,597.69ZM172.31,720L787.69,720Q793.08,720 796.54,716.54Q800,713.08 800,707.69L800,252.31Q800,246.92 796.54,243.46Q793.08,240 787.69,240L172.31,240Q166.92,240 163.46,243.46Q160,246.92 160,252.31L160,707.69Q160,713.08 163.46,716.54Q166.92,720 172.31,720ZM160,720Q160,720 160,716.54Q160,713.08 160,707.69L160,252.31Q160,246.92 160,243.46Q160,240 160,240L160,240Q160,240 160,243.46Q160,246.92 160,252.31L160,707.69Q160,713.08 160,716.54Q160,720 160,720Z"/>
+            </svg>
+          `,
+          "time-outline": `
+            <svg viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+              <circle cx="256" cy="256" r="192" fill="none" stroke="currentColor" stroke-width="32"></circle>
+              <path d="M256 144v120l80 48" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          `,
+          "calendar-clear-outline": `
+            <svg viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+              <rect x="80" y="96" width="352" height="336" rx="48" ry="48" fill="none" stroke="currentColor" stroke-width="32"></rect>
+              <path d="M144 80v64" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round"></path>
+              <path d="M368 80v64" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round"></path>
+              <path d="M80 176h352" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round"></path>
+              <path d="M176 248h160" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round"></path>
+              <path d="M176 304h120" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round"></path>
+            </svg>
+          `,
+        };
+
+        class IonIcon extends HTMLElement {
+          static get observedAttributes() {
+            return ["name"];
+          }
+
+          constructor() {
+            super();
+            this.attachShadow({ mode: "open" });
+          }
+
+          connectedCallback() {
+            this.#render();
+          }
+
+          attributeChangedCallback() {
+            this.#render();
+          }
+
+          #render() {
+            const name = this.getAttribute("name") || "";
+            const svg = icons[name] || "";
+            this.shadowRoot.innerHTML = `
+              <style>
+                :host { display: inline-flex; width: 1em; height: 1em; color: currentColor; }
+                svg { width: 100%; height: 100%; }
+              </style>
+              ${svg}
+            `;
+          }
+        }
+
+        customElements.define("ion-icon", IonIcon);
+      })();
+    </script>
+
+    <style>
+      * { box-sizing: border-box; }
+      :root {
+        --surface: #FFFFFF;
+        --onSurface: #111111;
+        --outline: rgba(0, 0, 0, 0.18);
+        --primary: #2F6FEB;
+        --editorFont: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, "PingFang SC",
+          "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        --editorFontSize: 16px;
+        --editorLineHeight: 1.55;
+        --editorLineHeightPx: calc(var(--editorFontSize) * var(--editorLineHeight));
+        --editorSelection: rgba(47, 111, 235, 0.22);
+        --inlineCodeBg: rgba(27, 31, 36, 0.06);
+        --inlineCodeFg: var(--onSurface);
+      }
+      html, body { margin: 0; padding: 0; height: 100%; background: var(--surface); color: var(--onSurface); }
+      body { overflow: hidden; }
+      #editor { height: 100%; }
+
+      /* Boot marker (shows even if editor fails) */
+      #__plainBoot {
+        position: fixed;
+        left: 8px;
+        top: 8px;
+        z-index: 2147483647;
+        padding: 6px 10px;
+        border-radius: 10px;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        background: rgba(255, 235, 59, 0.95);
+        color: #111;
+        font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        max-width: calc(100vw - 16px);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* Hide scrollbars (still scrollable) */
+      * { scrollbar-width: none; }
+      *::-webkit-scrollbar { width: 0; height: 0; }
+
+      /* Bottom inset for native toolbar / system bars (set from Android via __setBottomInset). */
+      :root { --editorBottomInset: 0px; }
+      .cm-scroller { padding-bottom: calc(var(--editorBottomInset) + env(safe-area-inset-bottom, 0px)) !important; }
+      .cm-content { padding-bottom: calc(18px + var(--editorBottomInset) + env(safe-area-inset-bottom, 0px)) !important; }
+
+      /* Line numbers (Android: computed via JS + CSS counters)
+         Goal: enabling/disabling line numbers should NOT change the text wrapping width.
+         We achieve this by:
+         - EditorScreen.kt: removes outer horizontal padding when enabled (editor-only)
+         - Here: increases internal left/right padding when enabled, and draws numbers inside the left padding area. */
+      #editor .cm-editor.cm-show-line-numbers .cm-content {
+        padding-left: 24px !important;
+        padding-right: 24px !important;
+      }
+      #editor .cm-editor.cm-show-line-numbers .cm-line { position: relative; }
+      #editor .cm-editor.cm-show-line-numbers .cm-line::before {
+        counter-increment: cmLine;
+        content: counter(cmLine);
+        position: absolute;
+        left: -24px;
+        width: 20px;
+        text-align: right;
+        font-size: clamp(7px, calc(var(--editorFontSize) * 0.5), 9px);
+        top: 0;
+        height: var(--editorLineHeightPx);
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        line-height: 1;
+        color: rgba(127, 127, 127, 0.62);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-variant-numeric: tabular-nums;
+        user-select: none;
+        pointer-events: none;
+      }
+
+      /* Caret (cursor): make it blue and thicker in both live/source modes. */
+      #editor .cm-editor,
+      #editor .cm-editor .cm-content,
+      #editor .cm-lp-fm-input {
+        caret-color: var(--primary) !important;
+      }
+      /* Hide the native caret in the main editor; we draw our own thicker caret overlay. */
+      #editor .cm-editor .cm-content {
+        caret-color: transparent !important;
+      }
+      #editor .cm-editor .cm-cursor,
+      #editor .cm-editor .cm-dropCursor,
+      #editor .cm-editor.cm-focused .cm-cursor,
+      #editor .cm-editor.cm-focused .cm-dropCursor {
+        border-left: 0 !important;
+        width: 3px !important;
+        background: var(--primary) !important;
+        margin-left: -1px !important;
+        box-shadow: 0 0 0 0.5px var(--primary) !important;
+      }
+      #zhixuCaret {
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 2px;
+        height: 18px;
+        background: var(--primary);
+        border-radius: 2px;
+        pointer-events: none;
+        z-index: 2147483646;
+        display: none;
+        opacity: 1;
+        transform: translateZ(0);
+      }
+
+      /* Live preview styles (keep font-family unchanged) */
+      .cm-lp-mark-hidden { display: none !important; }
+      .cm-lp-fm-hidden { display: none !important; }
+      .cm-lp-fm-anchor {
+        padding: 0 !important;
+        margin: 0 !important;
+        border: 0 !important;
+        color: transparent !important;
+      }
+      .cm-lp-strong { font-weight: 750 !important; }
+      .cm-lp-em { font-style: italic !important; }
+      .cm-lp-strike { text-decoration: line-through !important; text-decoration-thickness: 2px; }
+      .cm-lp-inline-code {
+        background: var(--inlineCodeBg);
+        color: var(--inlineCodeFg);
+        border: 1px solid var(--outline);
+        padding: 0.08em 0.28em;
+        border-radius: 6px;
+      }
+
+      /* Fenced code block */
+      .cm-lp-codeblock-line {
+        background: rgba(127, 127, 127, 0.045) !important;
+        padding: 0 1em !important;
+      }
+      .cm-lp-codeblock-first {
+        border-top-left-radius: 4px;
+        border-top-right-radius: 4px;
+      }
+      .cm-lp-codeblock-last {
+        border-bottom-left-radius: 4px;
+        border-bottom-right-radius: 4px;
+      }
+      .cm-lp-codeblock-fence { position: relative; }
+      .cm-lp-codeblock-fence-hidden { color: transparent !important; }
+      .cm-lp-codeblock-header {
+        display: inline-flex;
+        justify-content: flex-end;
+        align-items: center;
+        width: 100%;
+      }
+      .cm-lp-codeblock-copy {
+        all: unset;
+        cursor: pointer;
+        user-select: none;
+        border-radius: 4px;
+        background: rgba(127, 127, 127, 0.10);
+        border: 1px solid var(--outline);
+        color: var(--onSurface);
+        padding: 0 6px;
+        height: 1.2em;
+        line-height: 1.2em;
+        font-size: 0.78em;
+        font-weight: 650;
+        font-family: var(--editorFont);
+      }
+      .cm-lp-codeblock-copy:active { background: rgba(127, 127, 127, 0.12); }
+
+      .cm-lp-codeblock-token-keyword { color: var(--primary); }
+      .cm-lp-codeblock-token-string { color: rgba(46, 160, 67, 0.95); }
+      .cm-lp-codeblock-token-comment { color: rgba(127, 127, 127, 0.80); }
+      .cm-lp-codeblock-token-number { color: rgba(191, 90, 0, 0.95); }
+      .cm-lp-h1 { font-size: 1.55em; font-weight: 750; }
+      .cm-lp-h2 { font-size: 1.28em; font-weight: 750; }
+      .cm-lp-h3 { font-size: 1.16em; font-weight: 750; }
+      .cm-lp-h4 { font-size: 1.06em; font-weight: 750; }
+      .cm-lp-h5 { font-size: 0.98em; font-weight: 750; }
+      .cm-lp-h6 { font-size: 0.92em; font-weight: 750; opacity: 0.92; }
+      .cm-lp-bullet {
+        opacity: 0.92;
+        color: rgba(127, 127, 127, 0.78);
+        display: inline-block;
+        width: 1em;
+      }
+      .cm-lp-bullet::before {
+        content: "";
+        display: inline-block;
+        width: 0.38em;
+        height: 0.38em;
+        margin-right: 0.25em;
+        border-radius: 999px;
+        background: currentColor;
+        vertical-align: middle;
+      }
+      .cm-lp-task { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-right: 6px; line-height: 1; vertical-align: middle; }
+      .cm-lp-task ion-icon { width: 24px; height: 24px; color: var(--primary); transform: translateY(-0.5px); }
+      .cm-lp-task input[type="checkbox"] {
+        width: 16px; height: 16px;
+        accent-color: var(--primary);
+      }
+
+      /* List indent (visual only) */
+      .cm-lp-li { padding-left: 1em !important; }
+
+      /* Links */
+      .cm-lp-link {
+        color: var(--primary);
+        text-decoration: underline;
+        text-decoration-thickness: 2px;
+        text-underline-offset: 0.18em;
+      }
+
+      /* Horizontal rule */
+      .cm-lp-hr {
+        position: relative;
+        padding: 10px 0 !important;
+      }
+      .cm-lp-hr::after {
+        content: "";
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        top: 50%;
+        height: 1px;
+        background: var(--outline);
+        transform: translateY(-50%);
+      }
+      /* Front matter must never render as HR */
+      .cm-lp-fm-anchor.cm-lp-hr { padding: 0 !important; }
+      .cm-lp-fm-anchor.cm-lp-hr::after { display: none !important; }
+
+      /* Blockquote depth */
+      .cm-lp-quote { border-left: 0 !important; opacity: 1 !important; background: rgba(127, 127, 127, 0.06); }
+      .cm-lp-quote-d1, .cm-lp-quote-d2, .cm-lp-quote-d3, .cm-lp-quote-d4, .cm-lp-quote-d5, .cm-lp-quote-d6 {
+        background-repeat: no-repeat;
+        background-size: 1px 100%;
+      }
+      .cm-lp-quote-d1 { background-image: linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)); background-position: 0 0; padding-left: 12px !important; }
+      .cm-lp-quote-d2 { background-image: linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)); background-position: 0 0, 10px 0; padding-left: 22px !important; }
+      .cm-lp-quote-d3 { background-image: linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)); background-position: 0 0, 10px 0, 20px 0; padding-left: 32px !important; }
+      .cm-lp-quote-d4 { background-image: linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)); background-position: 0 0, 10px 0, 20px 0, 30px 0; padding-left: 42px !important; }
+      .cm-lp-quote-d5 { background-image: linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)); background-position: 0 0, 10px 0, 20px 0, 30px 0, 40px 0; padding-left: 52px !important; }
+      .cm-lp-quote-d6 { background-image: linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)), linear-gradient(rgba(127,127,127,0.78), rgba(127,127,127,0.78)); background-position: 0 0, 10px 0, 20px 0, 30px 0, 40px 0, 50px 0; padding-left: 62px !important; }
+
+      /* Ordered list marker */
+      .cm-lp-ol-mark { color: rgba(127, 127, 127, 0.78); font-weight: 400; }
+
+      /* Images */
+      .cm-lp-image-wrap { display: block; margin: 0; cursor: text; }
+      .cm-lp-image { display: block; max-width: 100%; height: auto; border-radius: 0; border: 0; }
+      .cm-lp-image-fallback { opacity: 0.72; }
+
+      /* Front matter (properties) */
+      .cm-lp-fm { display: inline-block; width: 100%; margin: 0 0 8px; border-top: 0; border-bottom: 0; overflow: hidden; color: var(--onSurface); font-size: calc(var(--editorFontSize) - 2px); }
+      .cm-lp-fm-list { width: 100%; }
+      .cm-lp-fm-row {
+        display: grid;
+        grid-template-columns: 28px minmax(90px, 1fr) 2fr;
+        column-gap: 6px;
+        align-items: center;
+        padding: 4px 8px;
+        border-bottom: 1px solid var(--outline);
+        cursor: text;
+      }
+      .cm-lp-fm-row:hover { background: transparent; }
+      .cm-lp-fm-row-name {
+        font-weight: 520;
+        color: rgba(127, 127, 127, 0.92);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .cm-lp-fm-row-value {
+        opacity: 0.96;
+        word-break: break-word;
+        white-space: normal;
+        line-height: 1.35;
+      }
+      .cm-lp-fm-row-value.is-list {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+      }
+      .cm-lp-fm-row-value.is-list .cm-lp-fm-pill { margin: 0; }
+      .cm-lp-fm-row-value.is-list .cm-lp-fm-input {
+        width: auto;
+        flex: 1 1 64px;
+        min-width: 48px;
+      }
+      .cm-lp-fm-add-row {
+        color: var(--primary);
+        user-select: none;
+        border-bottom: 0 !important;
+      }
+      .cm-lp-fm-add-row:hover { background: transparent; }
+      .cm-lp-fm-add-btn {
+        all: unset;
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        padding: 2px 0;
+      }
+      .cm-lp-fm-add-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        color: var(--primary);
+      }
+      .cm-lp-fm-add-icon svg {
+        width: 18px;
+        height: 18px;
+        display: block;
+      }
+      .cm-lp-fm-type-btn {
+        all: unset;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
+        border: 0;
+        background: transparent;
+        color: rgba(127, 127, 127, 0.92);
+        cursor: pointer;
+        flex: 0 0 auto;
+      }
+      .cm-lp-fm-type-btn ion-icon { width: 16px; height: 16px; }
+      .cm-lp-fm-pill {
+        display: inline-flex;
+        align-items: center;
+        margin: 0 4px 4px 0;
+        padding: 1px 6px;
+        border: 1px solid var(--outline);
+        border-radius: 999px;
+        background: var(--editorSelection);
+        color: var(--primary);
+        line-height: 1.25;
+        font-size: 0.92em;
+      }
+      .cm-lp-fm-pill button {
+        all: unset;
+        cursor: pointer;
+        margin-left: 4px;
+        opacity: 0.7;
+        font-weight: 700;
+      }
+      .cm-lp-fm-pill button:hover { opacity: 1; }
+      .cm-lp-fm-input {
+        all: unset;
+        width: 100%;
+        font: inherit;
+        line-height: 1.35;
+        color: var(--onSurface);
+        background: transparent;
+        box-shadow: none;
+        outline: none;
+        min-height: 20px;
+      }
+      .cm-lp-fm-input::placeholder { opacity: 0.45; }
+      .cm-lp-fm-check {
+        all: unset;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--outline);
+        background: rgba(127, 127, 127, 0.06);
+        cursor: pointer;
+      }
+      .cm-lp-fm-check ion-icon { width: 18px; height: 18px; color: var(--primary); }
+      .cm-lp-fm-menu {
+        position: fixed;
+        z-index: 2147483646;
+        min-width: 170px;
+        padding: 6px;
+        border: 1px solid var(--outline);
+        border-radius: 12px;
+        background: var(--surface);
+        box-shadow: none;
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+      .cm-lp-fm-menu-item {
+        all: unset;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 10px;
+        cursor: pointer;
+        box-sizing: border-box;
+      }
+      .cm-lp-fm-menu-item:hover { background: rgba(127, 127, 127, 0.08); }
+      .cm-lp-fm-menu-item ion-icon { width: 18px; height: 18px; color: var(--primary); }
+      .cm-lp-fm-menu-icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; color: var(--primary); flex: 0 0 auto; }
+      .cm-lp-fm-menu-icon svg { width: 18px; height: 18px; display: block; }
+    </style>
+  </head>
+  <body>
+    <div id="editor"></div>
+    <script
+      src="./codemirror.bundle.js"
+      onerror="window.__showFatal && window.__showFatal('script load failed', this.src)"
+    ></script>
+    <script>
+      // Android WebView's native caret is often not width-stylable. Draw a custom caret overlay instead.
+      (function () {
+        var caretEl = null;
+        var raf = 0;
+        var showing = false;
+
+        var BLINK_VISIBLE_MS = 550;
+        var BLINK_HIDDEN_MS = 550;
+        var BLINK_IDLE_DELAY_MS = 400; // 300~500ms
+
+        var blinkTimer = 0;
+        var blinkIdleTimer = 0;
+        var blinking = false;
+        var caretVisible = true;
+        var pauseBlinkUntil = 0;
+
+        function clearTimers() {
+          if (blinkTimer) {
+            clearTimeout(blinkTimer);
+            blinkTimer = 0;
+          }
+          if (blinkIdleTimer) {
+            clearTimeout(blinkIdleTimer);
+            blinkIdleTimer = 0;
+          }
+        }
+
+        function setOpacity(isVisible) {
+          var el = ensureCaret();
+          caretVisible = !!isVisible;
+          el.style.opacity = caretVisible ? "1" : "0";
+        }
+
+        function stopBlink() {
+          blinking = false;
+          if (blinkTimer) {
+            clearTimeout(blinkTimer);
+            blinkTimer = 0;
+          }
+          setOpacity(true);
+        }
+
+        function scheduleNextToggle(ms) {
+          if (!blinking) return;
+          if (blinkTimer) clearTimeout(blinkTimer);
+          blinkTimer = setTimeout(function () {
+            if (!blinking) return;
+            caretVisible = !caretVisible;
+            setOpacity(caretVisible);
+            scheduleNextToggle(caretVisible ? BLINK_VISIBLE_MS : BLINK_HIDDEN_MS);
+          }, ms);
+        }
+
+        function startBlinkNow() {
+          if (!showing) return;
+          blinking = true;
+          setOpacity(true);
+          scheduleNextToggle(BLINK_VISIBLE_MS);
+        }
+
+        function delayBlinkFromNow(ms) {
+          if (blinkIdleTimer) clearTimeout(blinkIdleTimer);
+          blinkIdleTimer = setTimeout(function () {
+            blinkIdleTimer = 0;
+            if (!showing) return;
+            startBlinkNow();
+          }, ms);
+        }
+
+        function touchCaret(reason) {
+          if (!showing) return;
+          var now = Date.now();
+          setOpacity(true);
+
+          if (now < pauseBlinkUntil) {
+            stopBlink();
+            delayBlinkFromNow(Math.max(0, pauseBlinkUntil - now));
+            return;
+          }
+
+          // Restart blinking so the caret is visible immediately.
+          clearTimers();
+          startBlinkNow();
+        }
+
+        function onUserInput() {
+          if (!showing) return;
+          pauseBlinkUntil = Date.now() + BLINK_IDLE_DELAY_MS;
+          setOpacity(true);
+          stopBlink();
+          delayBlinkFromNow(BLINK_IDLE_DELAY_MS);
+        }
+
+        function ensureCaret() {
+          if (caretEl) return caretEl;
+          caretEl = document.createElement("div");
+          caretEl.id = "zhixuCaret";
+          caretEl.style.opacity = "1";
+          (document.body || document.documentElement).appendChild(caretEl);
+          return caretEl;
+        }
+
+        function isInEditor(node) {
+          var editor = document.getElementById("editor");
+          if (!editor || !node) return false;
+          var el = node.nodeType === 1 ? node : node.parentNode;
+          return el && (el === editor || editor.contains(el));
+        }
+
+        function closestCmLine(node) {
+          var editor = document.getElementById("editor");
+          if (!editor || !node) return null;
+          var el = node.nodeType === 1 ? node : node.parentNode;
+          while (el && el !== editor) {
+            try {
+              if (el.classList && el.classList.contains("cm-line")) return el;
+            } catch (_) {}
+            el = el.parentNode;
+          }
+          return null;
+        }
+
+        function pickCaretRect(editor, sel, range) {
+          try {
+            var rects = range && range.getClientRects ? range.getClientRects() : null;
+            if (rects && rects.length) {
+              var r0 = rects[0];
+              if (r0 && isFinite(r0.left) && isFinite(r0.top) && r0.height > 0) {
+                return { left: r0.left, top: r0.top, height: r0.height, kind: "range" };
+              }
+            }
+          } catch (_) {}
+
+          try {
+            var rb = range && range.getBoundingClientRect ? range.getBoundingClientRect() : null;
+            if (rb && isFinite(rb.left) && isFinite(rb.top) && rb.height > 0) {
+              return { left: rb.left, top: rb.top, height: rb.height, kind: "bbox" };
+            }
+          } catch (_) {}
+
+          // Fallback: empty/blank line often yields no selection rects. Use the current line box.
+          try {
+            var line = closestCmLine(sel && sel.anchorNode);
+            if (line) {
+              var lr = line.getBoundingClientRect();
+              if (lr && isFinite(lr.left) && isFinite(lr.top) && lr.height > 0) {
+                return { left: lr.left, top: lr.top, height: lr.height, kind: "line" };
+              }
+            }
+          } catch (_) {}
+
+          // Last resort: use content box + its padding as the start position.
+          try {
+            var content = editor && editor.querySelector ? editor.querySelector(".cm-content") : null;
+            if (content) {
+              var cr = content.getBoundingClientRect();
+              var cs = window.getComputedStyle ? getComputedStyle(content) : null;
+              var pl = cs ? parseFloat(cs.paddingLeft || "0") : 0;
+              var lh = cs ? parseFloat(cs.lineHeight || "18") : 18;
+              if (cr && isFinite(cr.left) && isFinite(cr.top) && cr.height > 0) {
+                return {
+                  left: cr.left + (isFinite(pl) ? pl : 0),
+                  top: cr.top,
+                  height: isFinite(lh) && lh > 0 ? lh : 18,
+                  kind: "content",
+                };
+              }
+            }
+          } catch (_) {}
+
+          return null;
+        }
+
+        function hide() {
+          var el = ensureCaret();
+          el.style.display = "none";
+          showing = false;
+          pauseBlinkUntil = 0;
+          clearTimers();
+          blinking = false;
+        }
+
+        function update() {
+          raf = 0;
+          try {
+            var editor = document.getElementById("editor");
+            if (!editor) return hide();
+            var active = document.activeElement;
+            if (!active || !(active === editor || editor.contains(active))) return hide();
+
+            var sel = document.getSelection ? document.getSelection() : null;
+            if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return hide();
+            if (!isInEditor(sel.anchorNode)) return hide();
+
+            var range = sel.getRangeAt(0);
+            var rect = pickCaretRect(editor, sel, range);
+            if (!rect || !isFinite(rect.left) || !isFinite(rect.top) || rect.height <= 0) return hide();
+
+            var el = ensureCaret();
+            el.style.display = "block";
+            if (!showing) {
+              showing = true;
+              touchCaret("show");
+            }
+            el.style.left = rect.left + "px";
+            var h = Math.max(18, rect.height);
+            var top = rect.top;
+            if (rect.kind === "line" || rect.kind === "content") {
+              // For empty lines, the line box can be taller than the caret; shrink a bit and center.
+              h = Math.max(16, h - 4);
+              top = top + 2;
+            }
+            el.style.top = top + "px";
+            el.style.height = h + "px";
+          } catch (_) {
+            hide();
+          }
+        }
+
+        function schedule() {
+          if (raf) return;
+          raf = requestAnimationFrame(update);
+        }
+
+        document.addEventListener(
+          "selectionchange",
+          function () {
+            schedule();
+            touchCaret("selectionchange");
+          },
+          true
+        );
+        document.addEventListener(
+          "input",
+          function () {
+            schedule();
+            onUserInput();
+          },
+          true
+        );
+        document.addEventListener(
+          "keydown",
+          function () {
+            schedule();
+            touchCaret("keydown");
+          },
+          true
+        );
+        document.addEventListener(
+          "keyup",
+          function () {
+            schedule();
+            touchCaret("keyup");
+          },
+          true
+        );
+        document.addEventListener(
+          "pointerdown",
+          function () {
+            schedule();
+            touchCaret("pointerdown");
+          },
+          true
+        );
+        document.addEventListener("pointerup", schedule, true);
+        document.addEventListener("click", schedule, true);
+        document.addEventListener(
+          "focusin",
+          function () {
+            schedule();
+            touchCaret("focusin");
+          },
+          true
+        );
+        document.addEventListener(
+          "focusout",
+          function () {
+            schedule();
+          },
+          true
+        );
+        window.addEventListener("scroll", schedule, true);
+        window.addEventListener("resize", schedule, true);
+        schedule();
+      })();
+    </script>
+    <script>
+      (function () {
+        function rewriteImg(img) {
+          try {
+            if (!img || img.tagName !== "IMG") return;
+            var raw = img.getAttribute("src") || "";
+            if (!raw) return;
+            if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw)) return;
+            if (raw.indexOf("/vault/") === 0) return;
+            if (raw.indexOf("./") === 0) raw = raw.slice(2);
+            if (raw.indexOf(".zhixu/") === 0) img.setAttribute("src", "/vault/" + raw);
+          } catch (_) {}
+        }
+
+        function scan(root) {
+          try {
+            if (!root) return;
+            if (root.tagName === "IMG") rewriteImg(root);
+            var imgs = root.querySelectorAll ? root.querySelectorAll("img.cm-lp-image") : [];
+            for (var i = 0; i < imgs.length; i++) rewriteImg(imgs[i]);
+          } catch (_) {}
+        }
+
+        var editor = document.getElementById("editor") || document.body;
+        if (!editor) return;
+        scan(editor);
+        try {
+          var obs = new MutationObserver(function (mutations) {
+            for (var i = 0; i < mutations.length; i++) {
+              var m = mutations[i];
+              if (m.type === "attributes" && m.attributeName === "src") {
+                rewriteImg(m.target);
+              } else if (m.addedNodes && m.addedNodes.length) {
+                for (var j = 0; j < m.addedNodes.length; j++) scan(m.addedNodes[j]);
+              }
+            }
+          });
+          obs.observe(editor, { subtree: true, childList: true, attributes: true, attributeFilter: ["src"] });
+        } catch (_) {}
+      })();
+    </script>
+  </body>
+</html>

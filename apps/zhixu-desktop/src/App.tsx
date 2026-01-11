@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CodeMirrorEditor, type CodeMirrorSelection } from "./components/CodeMirrorEditor";
+import { ZhixuMarkdownEditor, type MarkdownEditorMode } from "./components/ZhixuMarkdownEditor";
 import { FileTree, type TreeNode } from "./components/FileTree";
 import { Tooltip, type TooltipPlacement } from "./components/Tooltip";
 import {
@@ -115,6 +116,9 @@ export function App() {
 
   const [activity, setActivity] = useState<Activity>("space");
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+
+  const [editorMode, setEditorMode] = useState<MarkdownEditorMode>("live");
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
@@ -369,16 +373,51 @@ export function App() {
     [tabs],
   );
 
+  const onAppKeyDown = useCallback(
+    (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") {
+        if (shortcutsOpen) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          setShortcutsOpen(false);
+          return;
+        }
+        if (vaultPickerOpen) {
+          setVaultPickerOpen(false);
+          return;
+        }
+        return;
+      }
+
+      const mod = ev.ctrlKey || ev.metaKey;
+      if (!mod) return;
+
+      const key = ev.key.toLowerCase();
+      if (key === "s") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        void saveActive();
+        return;
+      }
+      if (key === "e") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        setEditorMode((m) => (m === "live" ? "source" : "live"));
+        return;
+      }
+      if (key === "k") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        setShortcutsOpen((v) => !v);
+      }
+    },
+    [saveActive, shortcutsOpen, vaultPickerOpen],
+  );
+
   useEffect(() => {
-    const onKeyDown = (ev: KeyboardEvent) => {
-      const isSave = (ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "s";
-      if (!isSave) return;
-      ev.preventDefault();
-      void saveActive();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [saveActive]);
+    window.addEventListener("keydown", onAppKeyDown, true);
+    return () => window.removeEventListener("keydown", onAppKeyDown, true);
+  }, [onAppKeyDown]);
 
   useEffect(() => {
     void (async () => {
@@ -751,33 +790,53 @@ export function App() {
 
         <div className="editorArea">
           {activeTab ? (
-            <CodeMirrorEditor
-              value={activeTab.content}
-              selection={activeTab.selection}
-              placeholder={editorPlaceholder}
-              readOnly={activeTab.kind !== "text"}
-              onChange={(next) => {
-                setTabs((prev) =>
-                  prev.map((t) => {
-                    if (t.path !== activeTab.path) return t;
-                    if (t.kind !== "text") return t;
-                    if (t.content === next) return t;
-                    return { ...t, content: next, dirty: next !== t.savedContent };
-                  }),
-                );
-              }}
-              onSelectionChange={(nextSel) => {
-                setTabs((prev) =>
-                  prev.map((t) => {
-                    if (t.path !== activeTab.path) return t;
-                    return { ...t, selection: nextSel };
-                  }),
-                );
-              }}
-            />
+            activeTab.kind === "text" ? (
+              <ZhixuMarkdownEditor
+                value={activeTab.content}
+                selection={activeTab.selection}
+                placeholder={editorPlaceholder}
+                mode={editorMode}
+                onKeyDownCapture={onAppKeyDown}
+                onChange={(next) => {
+                  setTabs((prev) =>
+                    prev.map((t) => {
+                      if (t.path !== activeTab.path) return t;
+                      if (t.kind !== "text") return t;
+                      if (t.content === next) return t;
+                      return { ...t, content: next, dirty: next !== t.savedContent };
+                    }),
+                  );
+                }}
+                onSelectionChange={(nextSel) => {
+                  setTabs((prev) =>
+                    prev.map((t) => {
+                      if (t.path !== activeTab.path) return t;
+                      return { ...t, selection: nextSel };
+                    }),
+                  );
+                }}
+              />
+            ) : (
+              <CodeMirrorEditor
+                value={activeTab.content}
+                selection={activeTab.selection}
+                placeholder={editorPlaceholder}
+                readOnly={true}
+                onChange={() => {}}
+                onSelectionChange={(nextSel) => {
+                  setTabs((prev) =>
+                    prev.map((t) => {
+                      if (t.path !== activeTab.path) return t;
+                      return { ...t, selection: nextSel };
+                    }),
+                  );
+                }}
+              />
+            )
           ) : (
             <div className="emptyState">
-              从主侧栏打开一个 Markdown 或 Zhixu 文件。使用 <span className="kbd">Ctrl+S</span> 保存。
+              从主侧栏打开一个 Markdown 或 Zhixu 文件。使用 <span className="kbd">Ctrl+S</span> 保存，<span className="kbd">Ctrl+E</span>{" "}
+              切换源码/实时预览，<span className="kbd">Ctrl+K</span> 查看快捷键。
             </div>
           )}
         </div>
@@ -787,6 +846,7 @@ export function App() {
       <div className="statusbar statusBar noDrag">
         <div className="statusLeft">{activeTab ? activeTab.path : "未打开文件"}</div>
         <div className="statusRight">
+          {activeTab?.kind === "text" ? <div className="statusPill">{editorMode === "live" ? "实时预览" : "源码模式"}</div> : null}
           <IconButton title="保存" tooltipPlacement="top" onClick={() => void saveActive()} disabled={!activeTab?.dirty}>
             <IconSave size={16} />
           </IconButton>
@@ -805,6 +865,53 @@ export function App() {
           <div className="statusPill">{activeTab?.dirty ? "未保存" : "已保存"}</div>
         </div>
       </div>
+
+      {shortcutsOpen ? (
+        <div
+          className="modalBackdrop noDrag"
+          data-no-drag="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setShortcutsOpen(false);
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="快捷键"
+        >
+          <div className="modalPanel shortcutModal" data-no-drag="true">
+            <div className="modalHeader">
+              <div className="modalTitle">快捷键</div>
+              <button className="iconBtn" type="button" data-no-drag="true" aria-label="关闭" onClick={() => setShortcutsOpen(false)}>
+                <IconClose size={16} />
+              </button>
+            </div>
+            <div className="modalBody">
+              <div className="shortcutGrid">
+                <span className="kbd">Ctrl+S</span>
+                <div>保存当前文件</div>
+                <span className="kbd">Ctrl+E</span>
+                <div>切换源码模式 / 实时预览模式</div>
+                <span className="kbd">Ctrl+K</span>
+                <div>打开/关闭快捷键列表</div>
+                <span className="kbd">Ctrl+Z</span>
+                <div>撤销</div>
+                <div className="shortcutKeyGroup">
+                  <span className="kbd">Ctrl+Y</span>
+                  <span className="kbd">Ctrl+Shift+Z</span>
+                </div>
+                <div>重做</div>
+                <span className="kbd">Ctrl+F</span>
+                <div>查找</div>
+                <span className="kbd">Ctrl+G</span>
+                <div>查找下一个</div>
+                <span className="kbd">Ctrl+Shift+G</span>
+                <div>查找上一个</div>
+                <span className="kbd">Esc</span>
+                <div>关闭弹窗/搜索面板</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
