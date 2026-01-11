@@ -62,11 +62,13 @@ function anchorPoint(rect: DOMRect, placement: ResolvedPlacement) {
 }
 
 export function Tooltip({ label, placement = "auto", asChild = true, children }: Props) {
+  const enabled = Boolean(label);
   const tooltipId = useId();
   const hostRef = useRef<HTMLElement | null>(null);
   const [hovered, setHovered] = useState(false);
   const [resolvedPlacement, setResolvedPlacement] = useState<ResolvedPlacement>("right");
   const [anchor, setAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const portalRoot = useMemo(() => (typeof document === "undefined" ? null : document.body), []);
 
   const ensurePlacement = useCallback(() => {
     const host = hostRef.current;
@@ -77,19 +79,21 @@ export function Tooltip({ label, placement = "auto", asChild = true, children }:
     setAnchor(anchorPoint(rect, nextPlacement));
   }, [placement]);
 
-  if (!label) return children;
-
-  const portalRoot = useMemo(() => (typeof document === "undefined" ? null : document.body), []);
-
   const child = React.Children.only(children);
   const childRef = (child as { ref?: React.Ref<HTMLElement> }).ref;
 
   const show = useCallback(() => {
+    if (!enabled) return;
     ensurePlacement();
     setHovered(true);
-  }, [ensurePlacement]);
+  }, [enabled, ensurePlacement]);
 
-  const hide = useCallback(() => setHovered(false), []);
+  const hide = useCallback(() => {
+    if (!enabled) return;
+    setHovered(false);
+  }, [enabled]);
+
+  if (!enabled) return children;
 
   return (
     <>

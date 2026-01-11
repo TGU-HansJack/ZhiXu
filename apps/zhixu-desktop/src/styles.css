@@ -68,9 +68,10 @@ input {
   align-items: stretch;
   gap: 0;
   padding: 0;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-  backdrop-filter: blur(14px);
+  --tabbar-bg: #f8f8f8;
+  background: var(--tabbar-bg);
+  border-bottom: none;
+  backdrop-filter: none;
 }
 
 .menubarLeft {
@@ -480,13 +481,15 @@ input {
   --tab-gap-max: 8px;
   display: flex;
   align-items: stretch;
-  gap: clamp(0px, calc(var(--tab-gap-base) / var(--tab-count)), var(--tab-gap-max));
+  gap: 0;
   overflow-x: hidden;
   overflow-y: hidden;
   white-space: nowrap;
   height: 100%;
   width: 100%;
   min-width: 0;
+  padding-bottom: 4px;
+  box-sizing: border-box;
 }
 
 .tabs[data-density="dense"] {
@@ -500,6 +503,7 @@ input {
 
 .tab {
   display: inline-flex;
+  position: relative;
   height: 100%;
   align-items: flex-end;
   flex: 1 1 200px;
@@ -514,17 +518,22 @@ input {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 36px;
-  padding: 0 8px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 4px;
-  margin-bottom: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  margin: 0;
   flex: 1 1 auto;
   min-width: 0;
   box-sizing: border-box;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.35);
+  background: transparent;
   position: relative;
+}
+
+.tabInner > * {
+  position: relative;
+  z-index: 1;
 }
 
 .tabs[data-density="dense"] .tabInner {
@@ -533,28 +542,41 @@ input {
 }
 
 .tabs[data-density="separators"] .tabInner {
-  border-color: transparent;
-  background: transparent;
+  gap: 4px;
   padding: 0 6px;
 }
 
-.tabs[data-density="separators"] .tab:not(:first-child) .tabInner::before {
+.tab:not(:first-child)::before {
   content: "";
   position: absolute;
   left: 0;
   top: 50%;
   transform: translateY(-50%);
   width: 1px;
-  height: 14px;
-  background: rgba(0, 0, 0, 0.14);
+  height: 22px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.tab.active::before {
+  opacity: 0;
+}
+
+.tab.active + .tab::before {
+  opacity: 0;
 }
 
 .tab:hover {
   color: var(--text);
 }
 
-.tab:hover .tabInner {
-  background: rgba(255, 255, 255, 0.55);
+.tab:not(.active):hover .tabInner::after {
+  content: "";
+  position: absolute;
+  inset: 0 4px;
+  background: #eee;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .tab.active {
@@ -568,16 +590,25 @@ input {
 
 .tab.active .tabInner {
   background: var(--bg);
-  border-color: var(--border);
+  border-color: rgba(0, 0, 0, 0.12);
   border-bottom-color: transparent;
   border-radius: 4px 4px 0 0;
   position: relative;
   z-index: 2;
-  margin-bottom: -1px;
+  height: 30px;
+  margin: 0;
 }
 
 .tab.active .tabInner::after {
-  content: none;
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 4px;
+  background: var(--bg);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .tabLabel {
@@ -605,6 +636,21 @@ input {
   color: inherit;
   cursor: pointer;
   padding: 0;
+  opacity: 1;
+  transition: opacity 120ms ease;
+}
+
+.tab:not(.active):not([data-dirty="true"]) .tabClose {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tab:hover .tabClose,
+.tab:focus-within .tabClose,
+.tab.active .tabClose,
+.tab[data-dirty="true"] .tabClose {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .tabClose:hover {
