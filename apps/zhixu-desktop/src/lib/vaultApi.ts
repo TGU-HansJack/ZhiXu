@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import type { DrawDocument } from "../draw/types";
 
 export type VaultEntry = {
   path: string;
@@ -24,6 +25,15 @@ export async function selectVault(): Promise<string> {
   return setVaultRoot(selected);
 }
 
+export async function saveFileDialog(options: { title: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null> {
+  const selected = await save({
+    title: options.title,
+    defaultPath: options.defaultPath,
+    filters: options.filters,
+  });
+  return typeof selected === "string" ? selected : null;
+}
+
 export async function setVaultRoot(path: string): Promise<string> {
   return invoke<string>("set_vault_root", { path });
 }
@@ -42,6 +52,22 @@ export async function readTextFile(relPath: string): Promise<string> {
 
 export async function writeTextFile(relPath: string, content: string): Promise<void> {
   return invoke<void>("write_text_file", { relPath, content });
+}
+
+export async function readDrawDocument(relPath: string): Promise<DrawDocument> {
+  return invoke<DrawDocument>("read_draw_document", { relPath });
+}
+
+export async function writeDrawDocument(relPath: string, document: DrawDocument): Promise<void> {
+  return invoke<void>("write_draw_document", { relPath, document });
+}
+
+export async function writeBytesAbs(path: string, bytes: number[]): Promise<void> {
+  return invoke<void>("write_bytes_abs", { path, bytes });
+}
+
+export async function writeDrawDocumentAbs(path: string, document: DrawDocument): Promise<void> {
+  return invoke<void>("write_draw_document_abs", { path, document });
 }
 
 export async function createDir(relPath: string): Promise<void> {

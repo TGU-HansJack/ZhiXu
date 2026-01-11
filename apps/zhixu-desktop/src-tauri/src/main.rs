@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Manager;
 
+mod draw_format;
+
 struct VaultState(Mutex<Option<PathBuf>>);
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -114,8 +116,19 @@ fn ensure_text_path(rel_path: &str) -> Result<(), String> {
     let rel = rel_path.replace('\\', "/");
     let clean = rel.trim_matches('/');
     let lower = clean.to_ascii_lowercase();
-    if !(lower.ends_with(".md") || lower.ends_with(".zhixu")) {
-        return Err("仅支持 .md 或 .zhixu 文本文件".to_string());
+    if !lower.ends_with(".md") {
+        return Err("仅支持 .md 文本文件".to_string());
+    }
+    Ok(())
+}
+
+fn ensure_draw_path(rel_path: &str) -> Result<(), String> {
+    ensure_non_empty_path(rel_path)?;
+    let rel = rel_path.replace('\\', "/");
+    let clean = rel.trim_matches('/');
+    let lower = clean.to_ascii_lowercase();
+    if !lower.ends_with(draw_format::EXTENSION) {
+        return Err("仅支持 .zhixu 绘图文件".to_string());
     }
     Ok(())
 }
@@ -214,6 +227,62 @@ fn write_text_file(rel_path: String, content: String, state: tauri::State<'_, Va
 }
 
 #[tauri::command]
+fn read_draw_document(rel_path: String, state: tauri::State<'_, VaultState>) -> Result<draw_format::DrawDocumentDto, String> {
+    ensure_draw_path(&rel_path)?;
+    let root = state.0.lock().unwrap().clone().ok_or_else(|| "No vault selected".to_string())?;
+    let path = resolve_in_vault(&root, &rel_path)?;
+    let md = fs::metadata(&path).map_err(|e| format!("Failed to read file: {e}"))?;
+    if !md.is_file() {
+        return Err("Not a file".to_string());
+    }
+    let bytes = fs::read(&path).map_err(|e| format!("Failed to read file: {e}"))?;
+    draw_format::decode(&bytes)
+}
+
+#[tauri::command]
+fn write_draw_document(rel_path: String, document: draw_format::DrawDocumentDto, state: tauri::State<'_, VaultState>) -> Result<(), String> {
+    ensure_draw_path(&rel_path)?;
+    if document.pages.is_empty() {
+        return Err("Document has no pages".to_string());
+    }
+    let root = state.0.lock().unwrap().clone().ok_or_else(|| "No vault selected".to_string())?;
+    let path = resolve_in_vault(&root, &rel_path)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create parent dirs: {e}"))?;
+    }
+    let bytes = draw_format::encode(&document)?;
+    fs::write(&path, bytes).map_err(|e| format!("Failed to write file: {e}"))
+}
+
+#[tauri::command]
+fn write_bytes_abs(path: String, bytes: Vec<u8>) -> Result<(), String> {
+    if path.trim().is_empty() {
+        return Err("Missing path".to_string());
+    }
+    let abs = PathBuf::from(&path);
+    if let Some(parent) = abs.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create parent dirs: {e}"))?;
+    }
+    fs::write(&abs, bytes).map_err(|e| format!("Failed to write file: {e}"))
+}
+
+#[tauri::command]
+fn write_draw_document_abs(path: String, document: draw_format::DrawDocumentDto) -> Result<(), String> {
+    if path.trim().is_empty() {
+        return Err("Missing path".to_string());
+    }
+    if document.pages.is_empty() {
+        return Err("Document has no pages".to_string());
+    }
+    let abs = PathBuf::from(&path);
+    if let Some(parent) = abs.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create parent dirs: {e}"))?;
+    }
+    let bytes = draw_format::encode(&document)?;
+    fs::write(&abs, bytes).map_err(|e| format!("Failed to write file: {e}"))
+}
+
+#[tauri::command]
 fn create_dir(rel_path: String, state: tauri::State<'_, VaultState>) -> Result<(), String> {
     let root = state.0.lock().unwrap().clone().ok_or_else(|| "No vault selected".to_string())?;
     let path = resolve_in_vault(&root, &rel_path)?;
@@ -222,7 +291,15 @@ fn create_dir(rel_path: String, state: tauri::State<'_, VaultState>) -> Result<(
 
 #[tauri::command]
 fn create_file(rel_path: String, state: tauri::State<'_, VaultState>) -> Result<(), String> {
-    ensure_text_path(&rel_path)?;
+    ensure_non_empty_path(&rel_path)?;
+    let rel = rel_path.replace('\\', "/");
+    let clean = rel.trim_matches('/');
+    let lower = clean.to_ascii_lowercase();
+    let is_markdown = lower.ends_with(".md");
+    let is_drawing = lower.ends_with(draw_format::EXTENSION);
+    if !is_markdown && !is_drawing {
+        return Err("仅支持创建 .md 或 .zhixu 文件".to_string());
+    }
     let root = state.0.lock().unwrap().clone().ok_or_else(|| "No vault selected".to_string())?;
     let path = resolve_in_vault(&root, &rel_path)?;
     if let Some(parent) = path.parent() {
@@ -231,7 +308,17 @@ fn create_file(rel_path: String, state: tauri::State<'_, VaultState>) -> Result<
     if path.exists() {
         return Err("File already exists".to_string());
     }
-    fs::write(&path, "").map_err(|e| format!("Failed to create file: {e}"))
+
+    if is_markdown {
+        fs::write(&path, "").map_err(|e| format!("Failed to create file: {e}"))?;
+        return Ok(());
+    }
+
+    let now = now_ms();
+    let doc = draw_format::blank_document(now);
+    let bytes = draw_format::encode(&doc)?;
+    fs::write(&path, bytes).map_err(|e| format!("Failed to create file: {e}"))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -267,6 +354,14 @@ fn get_persisted_state(state: tauri::State<'_, PersistedState>) -> PersistedAppS
     state.0.lock().unwrap().clone()
 }
 
+fn now_ms() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -282,6 +377,10 @@ fn main() {
             list_dir,
             read_text_file,
             write_text_file,
+            read_draw_document,
+            write_draw_document,
+            write_bytes_abs,
+            write_draw_document_abs,
             create_dir,
             create_file,
             rename_entry,

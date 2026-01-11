@@ -75,6 +75,66 @@ export function IconTrash(props: IconProps) {
   return <MaskIcon {...props} file="/icons/trash.svg" />;
 }
 
+export function IconArrowBack(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/arrow-back.svg" />;
+}
+
+export function IconUndo(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/arrow-uturn-left.svg" />;
+}
+
+export function IconRedo(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/arrow-uturn-right.svg" />;
+}
+
+export function IconMoreHorizontal(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/ellipsis-horizontal.svg" />;
+}
+
+export function IconChevronBack(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/chevron-back.svg" />;
+}
+
+export function IconChevronForward(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/chevron-forward.svg" />;
+}
+
+export function IconAddCircle(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/add-circle-outline.svg" />;
+}
+
+export function IconCheckmark(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/checkmark.svg" />;
+}
+
+export function IconLucidePenTool(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/lucide-pen-tool.svg" />;
+}
+
+export function IconLucidePencil(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/lucide-pencil.svg" />;
+}
+
+export function IconLucideHighlighter(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/lucide-highlighter.svg" />;
+}
+
+export function IconLucidePyramid(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/lucide-pyramid.svg" />;
+}
+
+export function IconLucideLasso(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/lucide-lasso.svg" />;
+}
+
+export function IconLucideEraser(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/lucide-eraser.svg" />;
+}
+
+export function IconLucideHand(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/lucide-hand.svg" />;
+}
+
 export function IconChevronsUpDown({ size = 18 }: IconProps) {
   return (
     <svg

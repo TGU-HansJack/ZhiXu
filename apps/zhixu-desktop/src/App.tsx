@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CodeMirrorEditor, type CodeMirrorSelection } from "./components/CodeMirrorEditor";
+import { ZhixuDrawEditor } from "./components/ZhixuDrawEditor";
 import { ZhixuMarkdownEditor, type MarkdownEditorMode } from "./components/ZhixuMarkdownEditor";
 import { FileTree, type TreeNode } from "./components/FileTree";
 import { Tooltip, type TooltipPlacement } from "./components/Tooltip";
@@ -26,35 +27,69 @@ import {
   IconWorkshop,
 } from "./components/icons";
 import { basename, dirname, join } from "./lib/path";
-import { getFileTypeLabel, isTextFile, stripExtension } from "./lib/fileType";
+import { getFileTypeLabel, isTextFile, isZhixuDrawFile, stripExtension } from "./lib/fileType";
 import {
   createDir,
   createFile,
   deleteEntry,
   getPersistedState,
   listDir,
+  readDrawDocument,
   readTextFile,
   renameEntry,
   selectVault,
   setVaultRoot,
+  writeDrawDocument,
   writeTextFile,
   type PersistedState,
   type VaultEntry,
 } from "./lib/vaultApi";
+import type { DrawDocument, DrawViewMode } from "./draw/types";
 
 type Activity = "space" | "tasks" | "calendar" | "quadrant" | "workshop" | "search";
 
-type TabKind = "text" | "binary" | "newtab";
-
-type Tab = {
+type NewTab = {
   path: string;
   name: string;
-  kind: TabKind;
+  kind: "newtab";
+  content: string;
+  savedContent: string;
+  dirty: false;
+  selection: CodeMirrorSelection;
+};
+
+type TextTab = {
+  path: string;
+  name: string;
+  kind: "text";
   content: string;
   savedContent: string;
   dirty: boolean;
   selection: CodeMirrorSelection;
 };
+
+type BinaryTab = {
+  path: string;
+  name: string;
+  kind: "binary";
+  content: string;
+  savedContent: string;
+  dirty: false;
+  selection: CodeMirrorSelection;
+};
+
+type DrawingTab = {
+  path: string;
+  name: string;
+  kind: "drawing";
+  doc: DrawDocument | null;
+  savedDoc: DrawDocument | null;
+  dirty: boolean;
+  viewMode: DrawViewMode;
+  selection: CodeMirrorSelection;
+};
+
+type Tab = NewTab | TextTab | BinaryTab | DrawingTab;
 
 function makeNewTab(id: number): Tab {
   const path = `__newtab__${id}`;
@@ -247,6 +282,7 @@ export function App() {
     const fileName = basename(path);
     const tabName = stripExtension(fileName);
     const textFile = isTextFile(fileName);
+    const drawFile = isZhixuDrawFile(fileName);
     const binaryLabel = getFileTypeLabel(fileName) ?? "文件";
     const binaryPlaceholder = `该文件类型暂不支持在应用内打开：${binaryLabel}\n\n路径：${path}`;
 
@@ -257,44 +293,67 @@ export function App() {
         ...prev,
         textFile
           ? { path, name: tabName, kind: "text", content: "", savedContent: "", dirty: false, selection: { anchor: 0, head: 0 } }
-          : {
-              path,
-              name: tabName,
-              kind: "binary",
-              content: binaryPlaceholder,
-              savedContent: binaryPlaceholder,
-              dirty: false,
-              selection: { anchor: 0, head: 0 },
-            },
+          : drawFile
+            ? { path, name: tabName, kind: "drawing", doc: null, savedDoc: null, dirty: false, viewMode: "writing", selection: { anchor: 0, head: 0 } }
+            : {
+                path,
+                name: tabName,
+                kind: "binary",
+                content: binaryPlaceholder,
+                savedContent: binaryPlaceholder,
+                dirty: false,
+                selection: { anchor: 0, head: 0 },
+              },
       ];
     });
 
-    if (!textFile) return;
-    try {
-      const content = await readTextFile(path);
-      setTabs((prev) =>
-        prev.map((t) =>
-          t.path === path
-            ? { ...t, kind: "text", content, savedContent: content, dirty: false, selection: { anchor: 0, head: 0 } }
-            : t,
-        ),
-      );
-    } catch (e) {
-      console.error(e);
+    if (textFile) {
+      try {
+        const content = await readTextFile(path);
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.path === path && t.kind === "text" ? { ...t, content, savedContent: content, dirty: false } : t,
+          ),
+        );
+      } catch (e) {
+        console.error(e);
+      }
+      return;
+    }
+
+    if (drawFile) {
+      try {
+        const doc = await readDrawDocument(path);
+        setTabs((prev) =>
+          prev.map((t) => (t.path === path && t.kind === "drawing" ? { ...t, doc, savedDoc: doc, dirty: false } : t)),
+        );
+      } catch (e) {
+        console.error(e);
+      }
     }
   }, [pushRecentFile]);
 
   const saveActive = useCallback(async () => {
-    if (!activeTab || activeTab.kind !== "text" || !activeTab.dirty) return;
+    if (!activeTab || !activeTab.dirty) return;
     if (savingRef.current) return;
     savingRef.current = true;
     try {
-      await writeTextFile(activeTab.path, activeTab.content);
-      setTabs((prev) =>
-        prev.map((t) =>
-          t.path === activeTab.path ? { ...t, savedContent: activeTab.content, dirty: false } : t,
-        ),
-      );
+      if (activeTab.kind === "text") {
+        await writeTextFile(activeTab.path, activeTab.content);
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.path === activeTab.path && t.kind === "text" ? { ...t, savedContent: activeTab.content, dirty: false } : t,
+          ),
+        );
+      } else if (activeTab.kind === "drawing") {
+        if (!activeTab.doc) return;
+        await writeDrawDocument(activeTab.path, activeTab.doc);
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.path === activeTab.path && t.kind === "drawing" ? { ...t, savedDoc: activeTab.doc, dirty: false } : t,
+          ),
+        );
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -415,6 +474,7 @@ export function App() {
     const nextFileName = basename(next);
     const nextName = stripExtension(nextFileName);
     const nextText = isTextFile(nextFileName);
+    const nextDraw = isZhixuDrawFile(nextFileName);
     const nextBinaryLabel = getFileTypeLabel(nextFileName) ?? "文件";
     const nextBinaryPlaceholder = `该文件类型暂不支持在应用内打开：${nextBinaryLabel}\n\n路径：${next}`;
 
@@ -423,9 +483,20 @@ export function App() {
       setTabs((prev) =>
         prev.map((t) => {
           if (t.path !== activeTab.path) return t;
+          if (nextDraw) {
+            return {
+              path: next,
+              name: nextName,
+              kind: "drawing",
+              doc: t.kind === "drawing" ? t.doc : null,
+              savedDoc: t.kind === "drawing" ? t.savedDoc : null,
+              dirty: t.kind === "drawing" ? t.dirty : false,
+              viewMode: t.kind === "drawing" ? t.viewMode : "writing",
+              selection: { anchor: 0, head: 0 },
+            };
+          }
           if (!nextText) {
             return {
-              ...t,
               path: next,
               name: nextName,
               kind: "binary",
@@ -435,7 +506,15 @@ export function App() {
               selection: { anchor: 0, head: 0 },
             };
           }
-          return { ...t, path: next, name: nextName, kind: "text" };
+          return {
+            path: next,
+            name: nextName,
+            kind: "text",
+            content: t.kind === "text" ? t.content : "",
+            savedContent: t.kind === "text" ? t.savedContent : "",
+            dirty: t.kind === "text" ? t.dirty : false,
+            selection: { anchor: 0, head: 0 },
+          };
         }),
       );
       setActivePath(next);
@@ -444,13 +523,14 @@ export function App() {
       if (nextText) {
         try {
           const content = await readTextFile(next);
-          setTabs((prev) =>
-            prev.map((t) =>
-              t.path === next
-                ? { ...t, kind: "text", content, savedContent: content, dirty: false, selection: { anchor: 0, head: 0 } }
-                : t,
-            ),
-          );
+          setTabs((prev) => prev.map((t) => (t.path === next && t.kind === "text" ? { ...t, content, savedContent: content, dirty: false } : t)));
+        } catch (e) {
+          console.error(e);
+        }
+      } else if (nextDraw) {
+        try {
+          const doc = await readDrawDocument(next);
+          setTabs((prev) => prev.map((t) => (t.path === next && t.kind === "drawing" ? { ...t, doc, savedDoc: doc, dirty: false } : t)));
         } catch (e) {
           console.error(e);
         }
@@ -652,7 +732,7 @@ export function App() {
 
   const editorPlaceholder = useMemo(() => {
     if (!vaultRoot) return "请选择一个库开始…";
-    if (!activeTab) return "从主侧栏打开一个 Markdown 或 Zhixu 文件…";
+    if (!activeTab) return "从主侧栏打开一个 Markdown 或绘图（.zhixu）文件…";
     return "";
   }, [vaultRoot, activeTab]);
 
@@ -1025,6 +1105,23 @@ export function App() {
                   );
                 }}
               />
+            ) : activeTab.kind === "drawing" ? (
+              <ZhixuDrawEditor
+                path={activeTab.path}
+                doc={activeTab.doc}
+                savedDoc={activeTab.savedDoc}
+                dirty={activeTab.dirty}
+                viewMode={activeTab.viewMode}
+                onBack={() => closeTab(activeTab.path)}
+                onSave={() => void saveActive()}
+                onDeleteFile={() => void deleteActive()}
+                onOpenFile={(path) => void openFile(path)}
+                onUpdate={(patch) => {
+                  setTabs((prev) =>
+                    prev.map((t) => (t.path === activeTab.path && t.kind === "drawing" ? { ...t, ...patch } : t)),
+                  );
+                }}
+              />
             ) : (
               <CodeMirrorEditor
                 value={activeTab.content}
@@ -1044,7 +1141,7 @@ export function App() {
             )
           ) : (
             <div className="emptyState">
-              从主侧栏打开一个 Markdown 或 Zhixu 文件。使用 <span className="kbd">Ctrl+S</span> 保存，<span className="kbd">Ctrl+E</span>{" "}
+              从主侧栏打开一个 Markdown 或绘图（.zhixu）文件。使用 <span className="kbd">Ctrl+S</span> 保存，<span className="kbd">Ctrl+E</span>{" "}
               切换源码/实时预览，<span className="kbd">Ctrl+K</span> 查看快捷键。
             </div>
           )}

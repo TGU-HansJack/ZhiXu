@@ -26,5 +26,9 @@ export function getFileTypeLabel(nameOrPath: string): string | null {
 
 export function isTextFile(nameOrPath: string): boolean {
   const ext = getFileExtension(nameOrPath);
-  return ext === "md" || ext === "zhixu";
+  return ext === "md";
+}
+
+export function isZhixuDrawFile(nameOrPath: string): boolean {
+  return getFileExtension(nameOrPath) === "zhixu";
 }
