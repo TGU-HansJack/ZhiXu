@@ -44,7 +44,7 @@ import {
 
 type Activity = "space" | "tasks" | "calendar" | "quadrant" | "workshop" | "search";
 
-type TabKind = "text" | "binary";
+type TabKind = "text" | "binary" | "newtab";
 
 type Tab = {
   path: string;
@@ -55,6 +55,19 @@ type Tab = {
   dirty: boolean;
   selection: CodeMirrorSelection;
 };
+
+function makeNewTab(id: number): Tab {
+  const path = `__newtab__${id}`;
+  return {
+    path,
+    name: "新标签页",
+    kind: "newtab",
+    content: "",
+    savedContent: "",
+    dirty: false,
+    selection: { anchor: 0, head: 0 },
+  };
+}
 
 function formatPathForDisplay(p: string): string {
   if (p.startsWith("\\\\?\\UNC\\")) return `\\\\${p.slice("\\\\?\\UNC\\".length)}`;
@@ -120,18 +133,32 @@ export function App() {
   const [editorMode, setEditorMode] = useState<MarkdownEditorMode>("live");
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
-  const [tabs, setTabs] = useState<Tab[]>([]);
-  const [activePath, setActivePath] = useState<string | null>(null);
+  const newTabIdRef = useRef(2);
+  const [tabs, setTabs] = useState<Tab[]>(() => [makeNewTab(1)]);
+  const [activePath, setActivePath] = useState<string | null>(() => "__newtab__1");
   const activeTab = useMemo(() => tabs.find((t) => t.path === activePath) ?? null, [tabs, activePath]);
   const tabCount = Math.max(1, tabs.length);
   const tabsDensity = tabCount >= 14 ? "separators" : tabCount >= 8 ? "dense" : "normal";
 
   const savingRef = useRef(false);
 
+  const recentKey = useCallback((root: string) => `zhixu.desktop.recentFiles:${root}`, []);
+  const [recentFiles, setRecentFiles] = useState<string[]>([]);
+  const [allFiles, setAllFiles] = useState<string[]>([]);
+
+  const [filePickerOpen, setFilePickerOpen] = useState(false);
+  const [filePickerQuery, setFilePickerQuery] = useState("");
+  const [filePickerMode, setFilePickerMode] = useState<"all" | "recent">("all");
+  const [filePickerLoading, setFilePickerLoading] = useState(false);
+  const [filePickerActiveIndex, setFilePickerActiveIndex] = useState(0);
+  const filePickerSeqRef = useRef(0);
+  const filePickerInputRef = useRef<HTMLInputElement | null>(null);
+
   const resetForVault = useCallback(async (root: string) => {
     setVaultRootState(root);
-    setTabs([]);
-    setActivePath(null);
+    const tab = makeNewTab(newTabIdRef.current++);
+    setTabs([tab]);
+    setActivePath(tab.path);
     setSelectedDir("");
     setDirCache({});
     setExpanded({});
@@ -140,14 +167,16 @@ export function App() {
     setDirCache({ "": entries });
   }, []);
 
-  const openFolder = useCallback(async () => {
+  const openFolder = useCallback(async (): Promise<string | null> => {
     try {
       const root = await selectVault();
       await resetForVault(root);
       setPersisted(await getPersistedState());
       setVaultPickerOpen(false);
+      return root;
     } catch (e) {
       console.error(e);
+      return null;
     }
   }, [resetForVault]);
 
@@ -193,7 +222,23 @@ export function App() {
     [expanded, dirCache],
   );
 
+  const pushRecentFile = useCallback(
+    (path: string) => {
+      if (!vaultRoot) return;
+      const key = recentKey(vaultRoot);
+      setRecentFiles((prev) => {
+        const next = [path, ...prev.filter((p) => p !== path)].slice(0, 50);
+        try {
+          localStorage.setItem(key, JSON.stringify(next));
+        } catch (_) {}
+        return next;
+      });
+    },
+    [recentKey, vaultRoot],
+  );
+
   const openFile = useCallback(async (path: string) => {
+    pushRecentFile(path);
     setActivePath(path);
     setSelectedDir(dirname(path));
     setActivity("space");
@@ -237,7 +282,7 @@ export function App() {
     } catch (e) {
       console.error(e);
     }
-  }, []);
+  }, [pushRecentFile]);
 
   const saveActive = useCallback(async () => {
     if (!activeTab || activeTab.kind !== "text" || !activeTab.dirty) return;
@@ -271,6 +316,81 @@ export function App() {
       window.alert(String(e));
     }
   }, [vaultRoot, selectedDir, reloadDir, openFile]);
+
+  const createUntitledInRoot = useCallback(async () => {
+    let root = vaultRoot;
+    if (!root) {
+      root = await openFolder();
+      if (!root) return;
+    }
+
+    try {
+      const entries = sortEntries(await listDir(""));
+      const existing = new Set(entries.filter((e) => !e.isDir).map((e) => e.name));
+      let max = 0;
+      for (const name of existing) {
+        const m = /^未命名\s+(\d+)\.md$/i.exec(name);
+        if (m) max = Math.max(max, Number(m[1]) || 0);
+      }
+      let n = max + 1;
+      let fileName = `未命名 ${n}.md`;
+      while (existing.has(fileName)) {
+        n += 1;
+        fileName = `未命名 ${n}.md`;
+      }
+
+      await createFile(fileName);
+      await reloadDir("");
+      await openFile(fileName);
+    } catch (e) {
+      console.error(e);
+      window.alert(String(e));
+    }
+  }, [openFile, openFolder, reloadDir, vaultRoot]);
+
+  const buildAllFiles = useCallback(async () => {
+    const seq = ++filePickerSeqRef.current;
+    setFilePickerLoading(true);
+    try {
+      const out: string[] = [];
+      const stack: string[] = [""];
+      while (stack.length) {
+        const dir = stack.pop()!;
+        const entries = sortEntries(await listDir(dir));
+        for (const e of entries) {
+          if (e.isDir) stack.push(e.path);
+          else out.push(e.path);
+        }
+        if (seq !== filePickerSeqRef.current) return;
+      }
+      if (seq !== filePickerSeqRef.current) return;
+      setAllFiles(out);
+    } finally {
+      if (seq === filePickerSeqRef.current) setFilePickerLoading(false);
+    }
+  }, [vaultRoot]);
+
+  const openFilePicker = useCallback(
+    async (mode: "all" | "recent" = "all") => {
+      let root = vaultRoot;
+      if (!root) {
+        root = await openFolder();
+        if (!root) return;
+      }
+      setFilePickerMode(mode);
+      setFilePickerQuery("");
+      setFilePickerActiveIndex(0);
+      setFilePickerOpen(true);
+      setTimeout(() => filePickerInputRef.current?.focus(), 0);
+    },
+    [openFolder, vaultRoot],
+  );
+
+  const addNewTab = useCallback(() => {
+    const tab = makeNewTab(newTabIdRef.current++);
+    setTabs((prev) => [...prev, tab]);
+    setActivePath(tab.path);
+  }, []);
 
   const newFolder = useCallback(async () => {
     if (!vaultRoot) return;
@@ -363,14 +483,17 @@ export function App() {
         const ok = window.confirm(`该标签页有未保存的更改，确定关闭？\n\n${tab.path}`);
         if (!ok) return;
       }
-      setTabs((prev) => prev.filter((t) => t.path !== path));
-      setActivePath((prev) => {
-        if (prev !== path) return prev;
-        const remaining = tabs.filter((t) => t.path !== path);
-        return remaining.length ? remaining[remaining.length - 1]!.path : null;
-      });
+      const remaining = tabs.filter((t) => t.path !== path);
+      if (remaining.length === 0) {
+        const next = makeNewTab(newTabIdRef.current++);
+        setTabs([next]);
+        setActivePath(next.path);
+        return;
+      }
+      setTabs(remaining);
+      if (activePath === path) setActivePath(remaining[remaining.length - 1]!.path);
     },
-    [tabs],
+    [activePath, tabs],
   );
 
   const onAppKeyDown = useCallback(
@@ -393,6 +516,18 @@ export function App() {
       if (!mod) return;
 
       const key = ev.key.toLowerCase();
+      if (key === "n") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        void createUntitledInRoot();
+        return;
+      }
+      if (key === "o") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        void openFilePicker("all");
+        return;
+      }
       if (key === "s") {
         ev.preventDefault();
         ev.stopPropagation();
@@ -411,7 +546,7 @@ export function App() {
         setShortcutsOpen((v) => !v);
       }
     },
-    [saveActive, shortcutsOpen, vaultPickerOpen],
+    [createUntitledInRoot, openFilePicker, saveActive, shortcutsOpen, vaultPickerOpen],
   );
 
   useEffect(() => {
@@ -428,6 +563,45 @@ export function App() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!vaultRoot) {
+      setRecentFiles([]);
+      setAllFiles([]);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(recentKey(vaultRoot));
+      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+      setRecentFiles(Array.isArray(parsed) ? (parsed.filter((p) => typeof p === "string") as string[]) : []);
+    } catch (_) {
+      setRecentFiles([]);
+    }
+    setAllFiles([]);
+  }, [recentKey, vaultRoot]);
+
+  useEffect(() => {
+    if (!filePickerOpen) return;
+    if (filePickerMode !== "all") return;
+    if (!filePickerQuery.trim()) return;
+    if (allFiles.length) return;
+    if (filePickerLoading) return;
+    void buildAllFiles();
+  }, [allFiles.length, buildAllFiles, filePickerLoading, filePickerMode, filePickerOpen, filePickerQuery]);
+
+  const filePickerItems = useMemo(() => {
+    const q = filePickerQuery.trim().toLowerCase();
+    const base = filePickerMode === "recent" ? recentFiles : q ? allFiles : recentFiles;
+    if (!q) return base;
+    return base.filter((p) => p.toLowerCase().includes(q) || basename(p).toLowerCase().includes(q));
+  }, [allFiles, filePickerMode, filePickerQuery, recentFiles]);
+
+  const filePickerVisibleItems = useMemo(() => filePickerItems.slice(0, 10), [filePickerItems]);
+
+  useEffect(() => {
+    if (!filePickerOpen) return;
+    setFilePickerActiveIndex((i) => Math.min(i, Math.max(0, filePickerVisibleItems.length - 1)));
+  }, [filePickerOpen, filePickerVisibleItems.length]);
 
   const flattenedNodes: TreeNode[] = useMemo(() => {
     const out: TreeNode[] = [];
@@ -534,50 +708,61 @@ export function App() {
             role="tablist"
             aria-label="标签页"
           >
-            {tabs.length === 0 ? (
-              <div className="tab active" role="tab" aria-selected="true" data-no-drag="true">
+            {tabs.map((t) => (
+              <div
+                key={t.path}
+                className={`tab${t.path === activePath ? " active" : ""}`}
+                role="tab"
+                aria-selected={t.path === activePath}
+                data-dirty={t.dirty ? "true" : "false"}
+                data-no-drag="true"
+                onClick={() => setActivePath(t.path)}
+              >
                 <div className="tabInner">
-                  <span className="tabLabel">欢迎</span>
+                  <Tooltip label={t.kind === "newtab" ? "新标签页" : t.path} placement="bottom">
+                    <span className="tabLabel">{t.name}</span>
+                  </Tooltip>
+                  <button
+                    type="button"
+                    className="tabClose"
+                    aria-label="关闭标签"
+                    data-no-drag="true"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeTab(t.path);
+                    }}
+                  >
+                    <Tooltip label="关闭标签" placement="bottom">
+                      <span className="tabCloseGlyph" aria-hidden="true">
+                        <span className="tabCloseDot" />
+                        <span className="tabCloseX">
+                          <IconClose size={14} />
+                        </span>
+                      </span>
+                    </Tooltip>
+                  </button>
                 </div>
               </div>
-            ) : (
-              tabs.map((t) => (
-                <div
-                  key={t.path}
-                  className={`tab${t.path === activePath ? " active" : ""}`}
-                  role="tab"
-                  aria-selected={t.path === activePath}
-                  data-dirty={t.dirty ? "true" : "false"}
-                  data-no-drag="true"
-                  onClick={() => setActivePath(t.path)}
-                >
-                  <div className="tabInner">
-                    <Tooltip label={t.path} placement="bottom">
-                      <span className="tabLabel">{t.name}</span>
-                    </Tooltip>
-                    <button
-                      type="button"
-                      className="tabClose"
-                      aria-label="关闭标签"
-                      data-no-drag="true"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        closeTab(t.path);
-                      }}
+            ))}
+
+            <div className="tab tabAdd" role="tab" aria-selected="false" data-no-drag="true" onClick={addNewTab}>
+              <div className="tabInner">
+                <Tooltip label="新标签页" placement="bottom">
+                  <span className="tabAddIcon" aria-hidden="true">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth="1.5"
+                      stroke="currentColor"
+                      className="tabAddSvg"
                     >
-                      <Tooltip label="关闭标签" placement="bottom">
-                        <span className="tabCloseGlyph" aria-hidden="true">
-                          <span className="tabCloseDot" />
-                          <span className="tabCloseX">
-                            <IconClose size={14} />
-                          </span>
-                        </span>
-                      </Tooltip>
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                  </span>
+                </Tooltip>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -790,7 +975,31 @@ export function App() {
 
         <div className="editorArea">
           {activeTab ? (
-            activeTab.kind === "text" ? (
+            activeTab.kind === "newtab" ? (
+              <div className="newTabPage">
+                <div className="newTabActions">
+                  <button type="button" className="newTabTextBtn" onClick={() => void createUntitledInRoot()}>
+                    创建新文件（Ctrl+N)
+                  </button>
+                  <button type="button" className="newTabTextBtn" onClick={() => void openFilePicker("all")}>
+                    打开文件(Ctrl + O)
+                  </button>
+                  <button type="button" className="newTabTextBtn" onClick={() => void openFilePicker("recent")}>
+                    查看近期文件(Ctrl+O)
+                  </button>
+                  <button
+                    type="button"
+                    className="newTabTextBtn"
+                    onClick={() => {
+                      if (!activePath) return;
+                      closeTab(activePath);
+                    }}
+                  >
+                    关闭标签页
+                  </button>
+                </div>
+              </div>
+            ) : activeTab.kind === "text" ? (
               <ZhixuMarkdownEditor
                 value={activeTab.content}
                 selection={activeTab.selection}
@@ -908,6 +1117,91 @@ export function App() {
                 <span className="kbd">Esc</span>
                 <div>关闭弹窗/搜索面板</div>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {filePickerOpen ? (
+        <div
+          className="modalBackdrop noDrag"
+          data-no-drag="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setFilePickerOpen(false);
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="文件搜索"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              setFilePickerOpen(false);
+              return;
+            }
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setFilePickerActiveIndex((i) => Math.min(i + 1, Math.max(0, filePickerVisibleItems.length - 1)));
+              return;
+            }
+            if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setFilePickerActiveIndex((i) => Math.max(0, i - 1));
+              return;
+            }
+            if (e.key === "Enter") {
+              e.preventDefault();
+              const chosen = filePickerVisibleItems[filePickerActiveIndex];
+              if (!chosen) return;
+              setFilePickerOpen(false);
+              void openFile(chosen);
+              return;
+            }
+          }}
+        >
+          <div className="modalPanel filePickerModal" data-no-drag="true">
+            <div className="filePickerHeader">
+              <input
+                ref={filePickerInputRef}
+                className="filePickerInput"
+                placeholder="输入以切换或创建文件...."
+                value={filePickerQuery}
+                onChange={(e) => {
+                  setFilePickerQuery(e.target.value);
+                  setFilePickerActiveIndex(0);
+                }}
+              />
+            </div>
+
+            <div className="filePickerBody">
+              {filePickerLoading ? <div className="filePickerHint">正在加载…</div> : null}
+              {!filePickerLoading && filePickerVisibleItems.length === 0 ? <div className="filePickerHint">没有匹配结果</div> : null}
+              <div className="filePickerList" role="list">
+                {filePickerVisibleItems.map((p, idx) => {
+                  const name = stripExtension(basename(p));
+                  const active = idx === filePickerActiveIndex;
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      className={`filePickerItem${active ? " active" : ""}`}
+                      onMouseEnter={() => setFilePickerActiveIndex(idx)}
+                      onClick={() => {
+                        setFilePickerOpen(false);
+                        void openFile(p);
+                      }}
+                    >
+                      <div className="filePickerName">{name}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="filePickerFooter">
+              <span className="filePickerFooterKey">↑↓</span> 导航
+              <span className="filePickerFooterKey">↵</span> 打开
+              <span className="filePickerFooterKey">Esc</span> 退出
             </div>
           </div>
         </div>

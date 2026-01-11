@@ -28,4 +28,3 @@ export function isTextFile(nameOrPath: string): boolean {
   const ext = getFileExtension(nameOrPath);
   return ext === "md" || ext === "zhixu";
 }
-

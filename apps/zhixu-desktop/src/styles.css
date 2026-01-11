@@ -104,6 +104,11 @@ input {
   padding: 0 10px;
 }
 
+.menubarTabs .tabs {
+  width: auto;
+  flex: 1 1 auto;
+}
+
 .menubarWindowControls {
   display: flex;
   align-items: center;
@@ -524,6 +529,32 @@ input {
   background: transparent;
   cursor: pointer;
   color: var(--muted);
+}
+
+.tab.tabAdd {
+  flex: 0 0 48px;
+  max-width: 48px;
+}
+
+.tab.tabAdd .tabInner {
+  justify-content: center;
+}
+
+.tabAddIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.tabAddSvg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.tab:hover .tabAddIcon {
+  color: var(--text);
 }
 
 .tabInner {
@@ -1028,4 +1059,132 @@ input {
   gap: 6px;
   flex-wrap: wrap;
   align-items: center;
+}
+
+.newTabPage {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.newTabActions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.newTabTextBtn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.78);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.newTabTextBtn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.filePickerModal {
+  width: min(720px, calc(100vw - 32px));
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.filePickerHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: #ffffff;
+}
+
+.filePickerInput {
+  flex: 1 1 auto;
+  width: 100%;
+  border: none;
+  outline: none;
+  font-size: 16px;
+  line-height: 1.2;
+  padding: 2px 0;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.filePickerBody {
+  padding: 8px 0;
+  max-height: min(420px, calc(100vh - 220px));
+  overflow: auto;
+  background: #ffffff;
+}
+
+.filePickerHint {
+  padding: 10px 14px 8px;
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 13px;
+}
+
+.filePickerList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px;
+}
+
+.filePickerItem {
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 8px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.filePickerItem:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.filePickerItem.active {
+  background: rgba(0, 0, 0, 0.08);
+  border-color: transparent;
+}
+
+.filePickerName {
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.88);
+  line-height: 1.2;
+}
+
+.filePickerFooter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.04);
+  color: rgba(0, 0, 0, 0.62);
+  font-size: 11px;
+}
+
+.filePickerFooterKey {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 5px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.8);
+  color: rgba(0, 0, 0, 0.7);
+  font-weight: 650;
 }

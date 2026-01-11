@@ -115,7 +115,7 @@ fn ensure_text_path(rel_path: &str) -> Result<(), String> {
     let clean = rel.trim_matches('/');
     let lower = clean.to_ascii_lowercase();
     if !(lower.ends_with(".md") || lower.ends_with(".zhixu")) {
-        return Err("Only .md or .zhixu text files are supported".to_string());
+        return Err("仅支持 .md 或 .zhixu 文本文件".to_string());
     }
     Ok(())
 }
