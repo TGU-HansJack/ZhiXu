@@ -112,7 +112,7 @@ ZhiXu/
 
 ## 许可证
 
-- 本仓库代码：`Apache-2.0`（见 `LICENSE`）
+- 本仓库代码：`GPL-3.0`（见 `LICENSE`）
 - Android 内置第三方声明：`apps/zhixu-android/src/main/assets/third_party_notices/`
 
 ## 贡献
