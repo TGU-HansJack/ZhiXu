@@ -647,6 +647,12 @@ input {
   pointer-events: none;
 }
 
+.tab:not(.active):not([data-dirty="true"]):hover .tabClose,
+.tab:not(.active):not([data-dirty="true"]):focus-within .tabClose {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .tab:hover .tabClose,
 .tab:focus-within .tabClose,
 .tab.active .tabClose,
@@ -656,7 +662,7 @@ input {
 }
 
 .tabClose:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: #ededed;
 }
 
 .tabCloseGlyph {

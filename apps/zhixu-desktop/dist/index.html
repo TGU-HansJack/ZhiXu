@@ -102,9 +102,19 @@
         transition: opacity 120ms ease !important;
       }
 
+      .tabClose:hover {
+        background: #ededed !important;
+      }
+
       .tab:not(.active):not([data-dirty="true"]) .tabClose {
         opacity: 0 !important;
         pointer-events: none !important;
+      }
+
+      .tab:not(.active):not([data-dirty="true"]):hover .tabClose,
+      .tab:not(.active):not([data-dirty="true"]):focus-within .tabClose {
+        opacity: 1 !important;
+        pointer-events: auto !important;
       }
 
       .tab:hover .tabClose,
