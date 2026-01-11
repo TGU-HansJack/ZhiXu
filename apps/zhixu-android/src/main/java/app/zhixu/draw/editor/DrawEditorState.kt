@@ -158,6 +158,7 @@ class DrawEditorState private constructor(
     val lassoPathPoints: SnapshotStateList<Offset> = mutableStateListOf()
     var previewShape by mutableStateOf<PreviewShape?>(null)
     var eraserCursor by mutableStateOf<Offset?>(null)
+    var previewStroke by mutableStateOf<DrawStrokeState?>(null)
 
     val viewport: DrawViewportState = DrawViewportState()
 
@@ -245,6 +246,7 @@ class DrawEditorState private constructor(
         lassoPathPoints.clear()
         previewShape = null
         eraserCursor = null
+        previewStroke = null
         selectedElementIds = emptySet()
     }
 

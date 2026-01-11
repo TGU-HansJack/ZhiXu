@@ -4,6 +4,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.geometry.Offset
 import app.zhixu.draw.ZhixuDrawTool
 import app.zhixu.draw.editor.DrawEditorState
+import app.zhixu.draw.editor.DrawPageState
 import app.zhixu.draw.editor.DrawShapeMode
 import app.zhixu.draw.editor.DrawShapeState
 import app.zhixu.draw.editor.DrawStrokeState
@@ -35,88 +36,178 @@ interface DrawToolMachine {
 class PenToolMachine : DrawToolMachine {
     override val id: DrawToolId = DrawToolId.Pen
     private var activeStrokeId: String? = null
+    private val pendingStrokeIds: ArrayList<String> = ArrayList()
 
     override fun onDown(editor: DrawEditorState, e: ToolPointerEvent) {
-        val page = editor.currentPageOrNull() ?: return
-        val strokeId = newElementId()
-        val stroke =
-            DrawStrokeState(
-                id = strokeId,
-                tool = ZhixuDrawTool.Pen,
-                colorArgb = editor.currentPenColorArgb,
-                width = editor.currentPenWidth,
-                alpha = 1f,
-                points = mutableStateListOf(e.pagePosition),
-                isComplete = false,
-            )
-        page.elements.add(stroke)
-        activeStrokeId = strokeId
+        pendingStrokeIds.clear()
+        activeStrokeId = null
+        handlePointer(editor, e)
     }
 
     override fun onMove(editor: DrawEditorState, e: ToolPointerEvent) {
-        val page = editor.currentPageOrNull() ?: return
-        val strokeId = activeStrokeId ?: return
-        val stroke = page.elements.lastOrNull { it is DrawStrokeState && it.id == strokeId } as? DrawStrokeState ?: return
-        stroke.points.add(e.pagePosition)
+        handlePointer(editor, e)
     }
 
     override fun onUp(editor: DrawEditorState, e: ToolPointerEvent) {
-        val page = editor.currentPageOrNull() ?: return
-        val strokeId = activeStrokeId ?: return
-        val stroke = page.elements.lastOrNull { it is DrawStrokeState && it.id == strokeId } as? DrawStrokeState
-        stroke?.isComplete = true
+        editor.previewStroke = null
+        markPendingStrokesComplete(editor)
+        pendingStrokeIds.clear()
         activeStrokeId = null
     }
 
     override fun onCancel(editor: DrawEditorState) {
-        val page = editor.currentPageOrNull() ?: return
-        val strokeId = activeStrokeId ?: return
-        page.elements.removeAll { it.id == strokeId }
+        editor.previewStroke = null
+        removePendingStrokes(editor)
+        pendingStrokeIds.clear()
         activeStrokeId = null
+    }
+
+    private fun handlePointer(editor: DrawEditorState, e: ToolPointerEvent) {
+        val page = editor.currentPageOrNull() ?: return
+        val rawPagePos = editor.viewport.viewToPage(e.viewPosition)
+
+        if (isInPage(page, rawPagePos)) {
+            editor.previewStroke = null
+            val strokeId = activeStrokeId
+            if (strokeId == null) {
+                val newStrokeId = newElementId()
+                page.elements.add(
+                    DrawStrokeState(
+                        id = newStrokeId,
+                        tool = ZhixuDrawTool.Pen,
+                        colorArgb = editor.currentPenColorArgb,
+                        width = editor.currentPenWidth,
+                        alpha = 1f,
+                        points = mutableStateListOf(clampToPage(page, rawPagePos)),
+                        isComplete = false,
+                    ),
+                )
+                pendingStrokeIds.add(newStrokeId)
+                activeStrokeId = newStrokeId
+                return
+            }
+
+            val stroke = page.elements.lastOrNull { it is DrawStrokeState && it.id == strokeId } as? DrawStrokeState ?: return
+            stroke.points.add(clampToPage(page, rawPagePos))
+            return
+        }
+
+        // Outside page: show a live preview path, but don't persist it to the document.
+        activeStrokeId = null
+        pushPreviewPoint(
+            editor = editor,
+            tool = ZhixuDrawTool.Pen,
+            colorArgb = editor.currentPenColorArgb,
+            width = editor.currentPenWidth,
+            alpha = 1f,
+            point = rawPagePos,
+        )
+    }
+
+    private fun markPendingStrokesComplete(editor: DrawEditorState) {
+        val page = editor.currentPageOrNull() ?: return
+        if (pendingStrokeIds.isEmpty()) return
+        val pending = pendingStrokeIds.toHashSet()
+        for (el in page.elements) {
+            val stroke = el as? DrawStrokeState ?: continue
+            if (stroke.id in pending) stroke.isComplete = true
+        }
+    }
+
+    private fun removePendingStrokes(editor: DrawEditorState) {
+        val page = editor.currentPageOrNull() ?: return
+        if (pendingStrokeIds.isEmpty()) return
+        val pending = pendingStrokeIds.toHashSet()
+        page.elements.removeAll { it is DrawStrokeState && it.id in pending }
     }
 }
 
 class HighlighterToolMachine : DrawToolMachine {
     override val id: DrawToolId = DrawToolId.Highlighter
     private var activeStrokeId: String? = null
+    private val pendingStrokeIds: ArrayList<String> = ArrayList()
 
     override fun onDown(editor: DrawEditorState, e: ToolPointerEvent) {
-        val page = editor.currentPageOrNull() ?: return
-        val strokeId = newElementId()
-        val stroke =
-            DrawStrokeState(
-                id = strokeId,
-                tool = ZhixuDrawTool.Highlighter,
-                colorArgb = editor.highlighterColorArgb,
-                width = editor.highlighterWidth,
-                alpha = editor.highlighterAlpha,
-                points = mutableStateListOf(e.pagePosition),
-                isComplete = false,
-            )
-        page.elements.add(stroke)
-        activeStrokeId = strokeId
+        pendingStrokeIds.clear()
+        activeStrokeId = null
+        handlePointer(editor, e)
     }
 
     override fun onMove(editor: DrawEditorState, e: ToolPointerEvent) {
-        val page = editor.currentPageOrNull() ?: return
-        val strokeId = activeStrokeId ?: return
-        val stroke = page.elements.lastOrNull { it is DrawStrokeState && it.id == strokeId } as? DrawStrokeState ?: return
-        stroke.points.add(e.pagePosition)
+        handlePointer(editor, e)
     }
 
     override fun onUp(editor: DrawEditorState, e: ToolPointerEvent) {
-        val page = editor.currentPageOrNull() ?: return
-        val strokeId = activeStrokeId ?: return
-        val stroke = page.elements.lastOrNull { it is DrawStrokeState && it.id == strokeId } as? DrawStrokeState
-        stroke?.isComplete = true
+        editor.previewStroke = null
+        markPendingStrokesComplete(editor)
+        pendingStrokeIds.clear()
         activeStrokeId = null
     }
 
     override fun onCancel(editor: DrawEditorState) {
-        val page = editor.currentPageOrNull() ?: return
-        val strokeId = activeStrokeId ?: return
-        page.elements.removeAll { it.id == strokeId }
+        editor.previewStroke = null
+        removePendingStrokes(editor)
+        pendingStrokeIds.clear()
         activeStrokeId = null
+    }
+
+    private fun handlePointer(editor: DrawEditorState, e: ToolPointerEvent) {
+        val page = editor.currentPageOrNull() ?: return
+        val rawPagePos = editor.viewport.viewToPage(e.viewPosition)
+
+        if (isInPage(page, rawPagePos)) {
+            editor.previewStroke = null
+            val strokeId = activeStrokeId
+            if (strokeId == null) {
+                val newStrokeId = newElementId()
+                page.elements.add(
+                    DrawStrokeState(
+                        id = newStrokeId,
+                        tool = ZhixuDrawTool.Highlighter,
+                        colorArgb = editor.highlighterColorArgb,
+                        width = editor.highlighterWidth,
+                        alpha = editor.highlighterAlpha,
+                        points = mutableStateListOf(clampToPage(page, rawPagePos)),
+                        isComplete = false,
+                    ),
+                )
+                pendingStrokeIds.add(newStrokeId)
+                activeStrokeId = newStrokeId
+                return
+            }
+
+            val stroke = page.elements.lastOrNull { it is DrawStrokeState && it.id == strokeId } as? DrawStrokeState ?: return
+            stroke.points.add(clampToPage(page, rawPagePos))
+            return
+        }
+
+        // Outside page: show a live preview path, but don't persist it to the document.
+        activeStrokeId = null
+        pushPreviewPoint(
+            editor = editor,
+            tool = ZhixuDrawTool.Highlighter,
+            colorArgb = editor.highlighterColorArgb,
+            width = editor.highlighterWidth,
+            alpha = editor.highlighterAlpha,
+            point = rawPagePos,
+        )
+    }
+
+    private fun markPendingStrokesComplete(editor: DrawEditorState) {
+        val page = editor.currentPageOrNull() ?: return
+        if (pendingStrokeIds.isEmpty()) return
+        val pending = pendingStrokeIds.toHashSet()
+        for (el in page.elements) {
+            val stroke = el as? DrawStrokeState ?: continue
+            if (stroke.id in pending) stroke.isComplete = true
+        }
+    }
+
+    private fun removePendingStrokes(editor: DrawEditorState) {
+        val page = editor.currentPageOrNull() ?: return
+        if (pendingStrokeIds.isEmpty()) return
+        val pending = pendingStrokeIds.toHashSet()
+        page.elements.removeAll { it is DrawStrokeState && it.id in pending }
     }
 }
 
@@ -348,4 +439,49 @@ class PanToolMachine : DrawToolMachine {
     }
     override fun onUp(editor: DrawEditorState, e: ToolPointerEvent) = Unit
     override fun onCancel(editor: DrawEditorState) = Unit
+}
+
+private fun isInPage(page: DrawPageState, point: Offset): Boolean {
+    val w = page.width.coerceAtLeast(0f)
+    val h = page.height.coerceAtLeast(0f)
+    return point.x >= 0f && point.x <= w && point.y >= 0f && point.y <= h
+}
+
+private fun clampToPage(page: DrawPageState, point: Offset): Offset {
+    val w = page.width.coerceAtLeast(0f)
+    val h = page.height.coerceAtLeast(0f)
+    return Offset(point.x.coerceIn(0f, w), point.y.coerceIn(0f, h))
+}
+
+private fun pushPreviewPoint(
+    editor: DrawEditorState,
+    tool: ZhixuDrawTool,
+    colorArgb: Int,
+    width: Float,
+    alpha: Float,
+    point: Offset,
+) {
+    val preview = editor.previewStroke
+    val canReuse =
+        preview != null &&
+            preview.tool == tool &&
+            preview.colorArgb == colorArgb &&
+            preview.width == width &&
+            preview.alpha == alpha
+
+    if (!canReuse) {
+        editor.previewStroke =
+            DrawStrokeState(
+                id = "preview",
+                tool = tool,
+                colorArgb = colorArgb,
+                width = width,
+                alpha = alpha,
+                points = mutableStateListOf(point),
+                isComplete = false,
+            )
+        return
+    }
+
+    preview.points.add(point)
 }

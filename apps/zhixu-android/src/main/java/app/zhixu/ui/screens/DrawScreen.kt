@@ -385,7 +385,6 @@ fun DrawScreen(
     }
 
     fun commitEdit() {
-        markEdited()
         val history = ensureHistoryForCurrentPage() ?: return
         val snapshot = editor.snapshotPageElements()
         val last = history.undoStack.lastOrNull()
@@ -393,6 +392,7 @@ fun DrawScreen(
             refreshUndoRedoAvailability()
             return
         }
+        markEdited()
         if (history.undoStack.size >= 100) history.undoStack.removeFirst()
         history.undoStack.addLast(snapshot)
         history.redoStack.clear()
@@ -2260,6 +2260,29 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawOverlays(
         )
     }
 
+    editor.previewStroke?.let { preview ->
+        val pts = preview.points
+        if (pts.isNotEmpty()) {
+            val color = Color(preview.colorArgb).copy(alpha = preview.alpha.coerceIn(0f, 1f))
+            val w = preview.width.coerceAtLeast(0.2f)
+            if (pts.size == 1) {
+                drawCircle(color = color, center = pts.first(), radius = w / 2f)
+            } else {
+                val path = buildPath(pts)
+                drawPath(
+                    path = path,
+                    color = color,
+                    style =
+                        Stroke(
+                            width = w,
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round,
+                        ),
+                )
+            }
+        }
+    }
+
     drawRect(
         color = Color.Transparent,
         topLeft = Offset.Zero,
@@ -2311,6 +2334,7 @@ private suspend fun PointerInputScope.handleDrawGestures(
                     isTransform = true
                     activeTool.onCancel(editor)
                     editor.previewShape = null
+                    editor.previewStroke = null
                     editor.eraserCursor = null
                     editor.lassoPathPoints.clear()
                     prevCentroid = centroidOf(pressed)
