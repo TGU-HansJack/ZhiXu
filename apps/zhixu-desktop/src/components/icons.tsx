@@ -115,6 +115,10 @@ export function IconLucidePencil(props: IconProps) {
   return <MaskIcon {...props} file="/icons/lucide-pencil.svg" />;
 }
 
+export function IconLucideBrush(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/lucide-brush.svg" />;
+}
+
 export function IconLucideHighlighter(props: IconProps) {
   return <MaskIcon {...props} file="/icons/lucide-highlighter.svg" />;
 }

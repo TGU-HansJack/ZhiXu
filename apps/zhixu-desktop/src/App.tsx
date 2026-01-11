@@ -11,6 +11,7 @@ import {
   IconClose,
   IconFolderPlus,
   IconFolderPlusLucide,
+  IconLucideBrush,
   IconMaximize,
   IconMinimize,
   IconPlus,
@@ -369,6 +370,35 @@ export function App() {
     try {
       await createFile(rel);
       await reloadDir(selectedDir);
+      await openFile(rel);
+    } catch (e) {
+      console.error(e);
+      window.alert(String(e));
+    }
+  }, [vaultRoot, selectedDir, reloadDir, openFile]);
+
+  const newCanvas = useCallback(async () => {
+    if (!vaultRoot) return;
+
+    const dir = selectedDir;
+    try {
+      const entries = sortEntries(await listDir(dir));
+      const existing = new Set(entries.filter((e) => !e.isDir).map((e) => e.name));
+      let max = 0;
+      for (const name of existing) {
+        const m = /^未命名\\s+(\\d+)\\.zhixu$/i.exec(name);
+        if (m) max = Math.max(max, Number(m[1]) || 0);
+      }
+      let n = max + 1;
+      let fileName = `未命名 ${n}.zhixu`;
+      while (existing.has(fileName)) {
+        n += 1;
+        fileName = `未命名 ${n}.zhixu`;
+      }
+      const rel = join(dir, fileName);
+
+      await createFile(rel);
+      await reloadDir(dir);
       await openFile(rel);
     } catch (e) {
       console.error(e);
@@ -1011,8 +1041,8 @@ export function App() {
               <div className="sidebarActions">
                 {activity === "space" ? (
                   <>
-                    <IconButton title="选择库" onClick={openFolder} className="toolBtn">
-                      <IconSpace size={16} />
+                    <IconButton title="新建画布" onClick={() => void newCanvas()} disabled={!vaultRoot} className="toolBtn">
+                      <IconLucideBrush size={16} />
                     </IconButton>
                     <IconButton title="新建文件" onClick={newFile} disabled={!vaultRoot} className="toolBtn">
                       <IconPlus size={16} />
@@ -1107,6 +1137,7 @@ export function App() {
               />
             ) : activeTab.kind === "drawing" ? (
               <ZhixuDrawEditor
+                key={activeTab.path}
                 path={activeTab.path}
                 doc={activeTab.doc}
                 savedDoc={activeTab.savedDoc}

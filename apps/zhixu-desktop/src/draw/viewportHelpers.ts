@@ -14,9 +14,10 @@ export function snapViewport(editor: DrawEditorModel, marginPx: number) {
   const contentH = page.height * scale;
 
   const clampAxis = (t: number, viewport: number, content: number): number => {
-    const min = viewport - content - marginPx;
-    const max = marginPx;
-    if (min > max) return (min + max) / 2;
+    const a = viewport - content - marginPx;
+    const b = marginPx;
+    const min = Math.min(a, b);
+    const max = Math.max(a, b);
     return Math.min(max, Math.max(min, t));
   };
 
@@ -60,4 +61,3 @@ export function zoomAroundViewPoint(editor: DrawEditorModel, viewPoint: DrawPoin
   editor.viewport.translation = [viewPoint[0] - pageUnder[0] * scale, viewPoint[1] - pageUnder[1] * scale];
   snapViewport(editor, marginPx);
 }
-

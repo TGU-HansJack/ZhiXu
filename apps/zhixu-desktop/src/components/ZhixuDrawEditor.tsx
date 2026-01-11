@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { PDFDocument } from "pdf-lib";
 import type { DrawDocument, DrawElement, DrawPage, DrawPoint, DrawToolId, DrawViewMode } from "../draw/types";
@@ -204,11 +205,53 @@ function DrawLabeledSlider({
 export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, onSave, onDeleteFile, onOpenFile, onUpdate }: Props) {
   const canvasWrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasMetricsRef = useRef<{ cssWidth: number; cssHeight: number; scaleX: number; scaleY: number }>({
+    cssWidth: 0,
+    cssHeight: 0,
+    scaleX: 1,
+    scaleY: 1,
+  });
+  const dprRef = useRef<number>(typeof window !== "undefined" ? (window.devicePixelRatio || 1) : 1);
+  const syncCanvasSizeRef = useRef<(() => void) | null>(null);
   const editorRef = useRef<DrawEditorModel | null>(null);
   const historiesRef = useRef<Record<string, UndoHistory>>({});
   const didInitViewportRef = useRef(false);
   const rafRef = useRef<number | null>(null);
   const pointersRef = useRef<Map<number, DrawPoint>>(new Map());
+  const syncCanvasToDom = useCallback((): boolean => {
+    const canvas = canvasRef.current;
+    const editor = editorRef.current;
+    if (!canvas || !editor) return false;
+
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w < 2 || h < 2) return false;
+
+    const dpr = Number.isFinite(dprRef.current) && dprRef.current > 0 ? dprRef.current : 1;
+    const nextW = Math.max(1, Math.round(w * dpr));
+    const nextH = Math.max(1, Math.round(h * dpr));
+    const resized = canvas.width !== nextW || canvas.height !== nextH;
+    if (canvas.width !== nextW) canvas.width = nextW;
+    if (canvas.height !== nextH) canvas.height = nextH;
+
+    canvasMetricsRef.current = {
+      cssWidth: w,
+      cssHeight: h,
+      scaleX: canvas.width / w,
+      scaleY: canvas.height / h,
+    };
+
+    editor.viewport.viewportSize = { width: w, height: h };
+    if (!didInitViewportRef.current) {
+      didInitViewportRef.current = true;
+      fitPageToWidth(editor, 24);
+    } else if (resized) {
+      snapViewport(editor, 24);
+    }
+
+    return true;
+  }, []);
   const inputRef = useRef<{
     activeTool: DrawToolMachine | null;
     modifiesDocument: boolean;
@@ -274,15 +317,23 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
       const editor = editorRef.current;
       if (!canvas || !editor) return;
 
+      syncCanvasToDom();
+
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      const dpr = window.devicePixelRatio || 1;
-      const cssW = canvas.width / dpr;
-      const cssH = canvas.height / dpr;
+      const { cssWidth, cssHeight, scaleX, scaleY } = canvasMetricsRef.current;
+      const dpr = Number.isFinite(dprRef.current) && dprRef.current > 0 ? dprRef.current : 1;
+      const cssW = cssWidth > 0 ? cssWidth : canvas.width / Math.max(1, dpr);
+      const cssH = cssHeight > 0 ? cssHeight : canvas.height / Math.max(1, dpr);
+      const sx = Number.isFinite(scaleX) && scaleX > 0 ? scaleX : dpr;
+      const sy = Number.isFinite(scaleY) && scaleY > 0 ? scaleY : dpr;
 
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, cssW, cssH);
+      // Clear in device pixels to avoid edge artifacts/ghosting when cssW/cssH are fractional.
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.setTransform(sx, 0, 0, sy, 0, 0);
 
       const canvasBackground = "rgba(0,0,0,0.04)";
       ctx.fillStyle = canvasBackground;
@@ -504,6 +555,43 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
     [tools],
   );
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!(window as any).__TAURI__) return;
+
+    const appWindow = getCurrentWindow();
+    let unlisten: (() => void) | null = null;
+    let disposed = false;
+
+    const setDpr = (next: number) => {
+      if (!Number.isFinite(next) || next <= 0) return;
+      if (dprRef.current === next) return;
+      dprRef.current = next;
+      syncCanvasSizeRef.current?.();
+      requestCanvasRender();
+    };
+
+    appWindow
+      .scaleFactor()
+      .then((factor) => {
+        if (disposed) return;
+        setDpr(factor);
+      })
+      .catch(() => {});
+
+    appWindow
+      .onScaleChanged(({ payload }) => setDpr(payload.scaleFactor))
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => {});
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [requestCanvasRender]);
+
   const applyToolId = useCallback(
     (next: DrawToolId) => {
       const editor = editorRef.current;
@@ -613,30 +701,28 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
   }, [requestCanvasRender, viewMode]);
 
   useEffect(() => {
-    const wrap = canvasWrapRef.current;
     const canvas = canvasRef.current;
     const editor = editorRef.current;
-    if (!wrap || !canvas || !editor) return;
+    if (!canvas || !editor) return;
 
-    const ro = new ResizeObserver(() => {
-      const rect = wrap.getBoundingClientRect();
-      const w = Math.max(1, rect.width);
-      const h = Math.max(1, rect.height);
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
-      editor.viewport.viewportSize = { width: w, height: h };
-      if (!didInitViewportRef.current) {
-        didInitViewportRef.current = true;
-        fitPageToWidth(editor, 24);
-      } else {
-        snapViewport(editor, 24);
-      }
+    const syncSize = () => {
+      syncCanvasToDom();
       requestCanvasRender();
-    });
-    ro.observe(wrap);
-    return () => ro.disconnect();
-  }, [requestCanvasRender]);
+    };
+
+    const ro = new ResizeObserver(syncSize);
+    ro.observe(canvas);
+    syncCanvasSizeRef.current = syncSize;
+    syncSize();
+    const raf = window.requestAnimationFrame(syncSize);
+    window.addEventListener("resize", syncSize);
+    return () => {
+      syncCanvasSizeRef.current = null;
+      ro.disconnect();
+      window.removeEventListener("resize", syncSize);
+      window.cancelAnimationFrame(raf);
+    };
+  }, [doc, requestCanvasRender, syncCanvasToDom]);
 
   const handlePointerDown = useCallback(
     (ev: React.PointerEvent<HTMLCanvasElement>) => {
@@ -822,7 +908,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
 
       ev.preventDefault();
 
-      if (ev.ctrlKey || ev.metaKey) {
+      if (ev.ctrlKey || ev.metaKey || ev.altKey) {
         const rect = canvas.getBoundingClientRect();
         const viewPos: DrawPoint = [ev.clientX - rect.left, ev.clientY - rect.top];
         const factor = Math.exp(-ev.deltaY * 0.001);
