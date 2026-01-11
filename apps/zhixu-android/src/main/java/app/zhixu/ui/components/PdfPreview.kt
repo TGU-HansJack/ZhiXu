@@ -149,9 +149,9 @@ fun PdfPreview(
                 settings.setSupportZoom(true)
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
-                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                 settings.allowFileAccess = false
-                settings.allowContentAccess = true
+                settings.allowContentAccess = false
 
                 addJavascriptInterface(
                     PdfBridge(

@@ -1,125 +1,120 @@
-# 知序 (Zhixu)
+# 知序（Zhixu）
 
-> AI 原生的个人知识与任务管理系统 | 隐私优先
+AI 原生的个人知识与任务管理系统（隐私优先，Vault 本地文件夹）。
 
-知序是一个「原生优先」的个人知识与任务管理系统，专注于解决**信息管理混乱**与**多端同步困难**两大痛点。采用 Android 原生端优先的策略，同时在底层统一数据格式、协议与语义，为未来 Web / Desktop 复用核心逻辑奠定基础。
+- 官网：`https://zhixu.app`
+- QQ 群：`892430777`
 
-## 核心特性
+## 现状 / 进度
 
-- **Vault 文档管理** - 基于文件夹的本地知识库，兼容 Markdown 生态
-- **任务管理** - 内置任务语法，自动补全唯一 ID，轻松追踪待办
-- **Markdown 编辑** - 纯文本编辑 + 实时预览，支持 LaTeX 公式、Mermaid 图表
-- **多端同步** - 支持 WebDAV / Git 同步协议
-- **OCR 识别** - 集成 PaddleOCR v5，支持图片文字提取
-- **隐私优先** - 数据完全本地存储，无云端依赖
+- Android：当前主力开发与可用版本（Jetpack Compose + SAF）
+- 同步：官方服务 / WebDAV（可选启用）
+- 插件：JS 插件（J2V8，实验性）
+- Desktop：Tauri + React（实验中，见 `docs/desktop-tauri-plan.md` 与 `apps/zhixu-desktop/`）
+- Server：Node.js + MySQL 示例（见 `.server/Server/`）
 
-## 快速开始
+## 核心功能
+
+- Vault：基于文件夹的本地知识库（Markdown 为主）
+- 编辑器：CodeMirror（WebView）+ 源码/实时预览模式，支持表格/任务列表/代码高亮等
+- 预览：KaTeX（公式）、Mermaid（图表）、PDF/图片预览、长图导出
+- 任务：任务语法 + 完成统计（本地）
+- OCR：集成 PaddleOCR v5（本地识别，可从图片生成文本/待办）
+- 番茄钟：后台服务与通知
+- 插件：从本地文件夹 / 官方列表 / Git 仓库安装（可选启用）
+
+## 数据与安全说明
+
+- 数据默认存放在本地 Vault；同步仅在你启用后才会产生网络访问。
+- Android 内的 Markdown/PDF/编辑器 WebView 资源来自本地 `assets/`（无 CDN 远程脚本）。
+- 插件是可执行代码：插件可读取当前文档内容并可通过 `api.http()` 发起网络请求；请仅安装信任来源的插件。
+
+## 快速开始（Android）
 
 ### 环境要求
 
-- Android Studio Hedgehog (2023.1.1) 或更高版本
+- Android Studio（推荐使用最新稳定版）
 - JDK 17+
-- Android SDK (minSdk 24, targetSdk 35)
-- NDK (用于 OCR 模块编译)
+- Android SDK（`minSdk 26`，`targetSdk 35`）
+- NDK + CMake（OCR 原生模块）
 
-### 构建项目
+### 构建
 
 ```bash
-# 克隆仓库
-git clone https://github.com/TGU-HansJack/ZhiXu.git
 cd ZhiXu
 
-# 构建 Debug 版本
+# Debug
 ./gradlew :apps:zhixu-android:assembleDebug
 
-# 构建 Release 版本（需要配置签名）
+# Release（需要签名）
 ./gradlew :apps:zhixu-android:assembleRelease
 ```
 
-### 配置签名（Release 构建）
+> Windows 可使用 `gradlew.bat`。
 
-1. 生成您自己的签名密钥：
-   ```bash
-   keytool -genkey -v -keystore your-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias your-alias
-   ```
+### Release 签名（示例）
 
-2. 在 `local.properties` 中配置签名信息：
-   ```properties
-   RELEASE_STORE_FILE=your-release-key.jks
-   RELEASE_STORE_PASSWORD=your-store-password
-   RELEASE_KEY_ALIAS=your-alias
-   RELEASE_KEY_PASSWORD=your-key-password
-   ```
+1) 生成 keystore：
 
-> **安全提示**：请勿将签名密钥 (`.jks` / `.keystore`) 和密码提交到版本控制！
-
-## 项目结构
-
-```
-zhixu/
-├── apps/
-│   ├── zhixu-android/          # Android 主应用
-│   └── zhixu-android-benchmark/ # 性能基准测试
-├── core/                        # 跨平台核心库
-│   ├── model/                   # 数据模型
-│   ├── parser/                  # Markdown/任务解析器
-│   ├── index/                   # 全文索引
-│   ├── sync/                    # 同步协议实现
-│   ├── tasks/                   # 任务管理逻辑
-│   └── ai/                      # AI 能力集成
-└── docs/                        # 项目文档
+```bash
+keytool -genkey -v -keystore your-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias your-alias
 ```
 
-## 技术栈
+2) 在 `local.properties` 配置：
 
-| 层级 | 技术选型 |
-|------|----------|
-| UI | Kotlin + Jetpack Compose + Material 3 |
-| 架构 | MVVM + Clean Architecture |
-| Markdown | Markwon (渲染) + markdown-it (预览) |
-| 数学公式 | KaTeX |
-| 图表 | Mermaid |
-| OCR | PaddleOCR v5 (C++ Native) |
-| JS 引擎 | J2V8 |
-| 同步 | OkHttp + JGit |
-| 存储 | DataStore + 文件系统 |
+```properties
+RELEASE_STORE_FILE=your-release-key.jks
+RELEASE_STORE_PASSWORD=your-store-password
+RELEASE_KEY_ALIAS=your-alias
+RELEASE_KEY_PASSWORD=your-key-password
+```
+
+## 快速开始（Server）
+
+位于 `.server/Server/`，提供账号/计划与 Vault 同步接口的示例实现。
+
+```bash
+cd ZhiXu/.server/Server
+cp .env.example .env
+docker compose up --build
+```
+
+默认监听 `http://localhost:3001`。
+
+## 快速开始（Desktop，实验性）
+
+```bash
+cd ZhiXu/apps/zhixu-desktop
+npm i
+npm run tauri dev
+```
+
+> 需要 Rust 工具链与 Tauri 环境依赖（详见 Tauri 官方文档）。
 
 ## 文档
 
-项目设计文档位于 `docs/` 目录：
+- Desktop 规划：`docs/desktop-tauri-plan.md`
+- 官网静态站点：`.web/zhixu.app/`
 
-- 架构方案 - `docs/plan-a-native-first.md`
-- Vault 规范 - `docs/vault-spec.md`
-- 任务语法 - `docs/task-syntax.md`
-- 编辑器设计 - `docs/editor-spec.md`
-- 同步协议 - `docs/sync-protocol.md`
+## 项目结构（主要）
 
-## 贡献指南
-
-欢迎提交 Issue 和 Pull Request！
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m 'Add amazing feature'`)
-4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 提交 Pull Request
+```
+ZhiXu/
+├── apps/
+│   ├── zhixu-android/            # Android 客户端
+│   ├── zhixu-android-benchmark/  # Baseline Profile / Macrobenchmark
+│   └── zhixu-desktop/            # Desktop（Tauri，实验中）
+├── core/                         # 共享核心（tasks / ocr / ai 等）
+├── docs/                         # 设计/计划文档
+├── .server/Server/               # 服务端示例（账号/同步）
+└── .web/zhixu.app/               # 官网静态站点
+```
 
 ## 许可证
 
-本项目采用 [Apache License 2.0](LICENSE) 开源许可证。
+- 本仓库代码：`Apache-2.0`（见 `LICENSE`）
+- Android 内置第三方声明：`apps/zhixu-android/src/main/assets/third_party_notices/`
 
-- **客户端** (Android / Desktop) - Apache-2.0（本仓库）
-- **云服务** (同步托管 / AI 代理) - 独立闭源服务
+## 贡献
 
-## 致谢
-
-感谢以下开源项目：
-
-- [Markwon](https://github.com/noties/Markwon) - Android Markdown 渲染
-- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) - OCR 引擎
-- [KaTeX](https://katex.org/) - 数学公式渲染
-- [Mermaid](https://mermaid.js.org/) - 图表渲染
-
----
-
-**知序** - 让知识有序流动
+欢迎提 Issue / PR。涉及安全问题请优先提交最小复现与影响说明。

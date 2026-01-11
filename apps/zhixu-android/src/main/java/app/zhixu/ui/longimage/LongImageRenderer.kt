@@ -10,6 +10,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.documentfile.provider.DocumentFile
+import androidx.webkit.WebViewAssetLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -37,6 +38,10 @@ internal suspend fun renderLongImage(input: LongImageRenderInput): Bitmap =
         val context = input.context
         // Improve reliability of full-document drawing for offscreen WebViews.
         runCatching { WebView.enableSlowWholeDocumentDraw() }
+        val assetLoader =
+            WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
+                .build()
         val webView =
             WebView(context).apply {
                 setBackgroundColor(input.backgroundArgb)
@@ -53,11 +58,9 @@ internal suspend fun renderLongImage(input: LongImageRenderInput): Bitmap =
                 settings.setSupportZoom(false)
                 settings.builtInZoomControls = false
                 settings.displayZoomControls = false
-                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                settings.allowFileAccess = true
+                settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                settings.allowFileAccess = false
                 settings.allowContentAccess = true
-                settings.allowFileAccessFromFileURLs = true
-                settings.allowUniversalAccessFromFileURLs = true
             }
 
         try {
@@ -72,10 +75,11 @@ internal suspend fun renderLongImage(input: LongImageRenderInput): Bitmap =
                 webView.webViewClient =
                     LongImageWebViewClient(
                         context = context,
+                        assetLoader = assetLoader,
                         vaultRootUri = input.vaultRootUri,
                         onPageReady = { if (cont.isActive) cont.resume(Unit) },
                     )
-                webView.loadUrl("file:///android_asset/markdown-preview/index.html")
+                webView.loadUrl("$APPASSETS_ORIGIN/assets/markdown-preview/index.html")
             }
 
             val themeQuoted = JSONObject.quote(input.themeJson)
@@ -218,6 +222,7 @@ private suspend fun awaitNextFrame() {
 
 private class LongImageWebViewClient(
     private val context: Context,
+    private val assetLoader: WebViewAssetLoader,
     internal val vaultRootUri: Uri?,
     private val onPageReady: (WebView) -> Unit,
 ) : WebViewClient() {
@@ -228,6 +233,7 @@ private class LongImageWebViewClient(
 
     override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
         val uri = request.url ?: return null
+        assetLoader.shouldInterceptRequest(uri)?.let { return it }
         if (uri.scheme != "zhixu" || uri.host != "vault") return null
         val root = vaultRootUri ?: return emptyNotFound()
         val relPath = uri.getQueryParameter("path")?.let(Uri::decode).orEmpty()
@@ -251,6 +257,9 @@ private class LongImageWebViewClient(
             ByteArrayInputStream(ByteArray(0)),
         )
 }
+
+private const val APPASSETS_HOST: String = "appassets.androidplatform.net"
+private const val APPASSETS_ORIGIN: String = "https://$APPASSETS_HOST"
 
 private fun resolveVaultPath(
     context: Context,

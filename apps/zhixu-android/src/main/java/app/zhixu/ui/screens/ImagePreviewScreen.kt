@@ -85,11 +85,9 @@ fun ImagePreviewScreen(
                     settings.setSupportZoom(true)
                     settings.builtInZoomControls = true
                     settings.displayZoomControls = false
-                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                     settings.allowFileAccess = true
                     settings.allowContentAccess = true
-                    settings.allowFileAccessFromFileURLs = true
-                    settings.allowUniversalAccessFromFileURLs = true
 
                     webViewClient = android.webkit.WebViewClient()
 
@@ -107,4 +105,3 @@ fun ImagePreviewScreen(
         )
     }
 }
-

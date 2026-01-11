@@ -104,7 +104,9 @@ fun WebPageScreen(
                     settings.loadsImagesAutomatically = true
                     settings.useWideViewPort = true
                     settings.loadWithOverviewMode = true
-                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                    settings.allowFileAccess = false
+                    settings.allowContentAccess = false
 
                     webViewClient =
                         object : WebViewClient() {

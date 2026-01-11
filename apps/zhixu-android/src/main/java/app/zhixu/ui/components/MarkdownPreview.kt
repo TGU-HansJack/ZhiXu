@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.documentfile.provider.DocumentFile
+import androidx.webkit.WebViewAssetLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -55,6 +56,13 @@ fun MarkdownPreview(
     val vaultRoot = vaultRootUri?.toString().orEmpty()
     val effectiveFontScale = fontScale.coerceIn(0.5f, 2.5f)
     val showProperties = showNoteProperties
+
+    val assetLoader =
+        remember(context) {
+            WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
+                .build()
+        }
     val nextTheme =
         PreviewTheme(
             isDark = colors.surface.toArgb().isProbablyDark(),
@@ -105,11 +113,9 @@ fun MarkdownPreview(
                 settings.setSupportZoom(true)
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
-                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                settings.allowFileAccess = true
+                settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                settings.allowFileAccess = false
                 settings.allowContentAccess = true
-                settings.allowFileAccessFromFileURLs = true
-                settings.allowUniversalAccessFromFileURLs = true
 
                 addJavascriptInterface(
                     PreviewBridge(
@@ -132,6 +138,7 @@ fun MarkdownPreview(
                 webViewClient =
                     PreviewWebViewClient(
                         context = context,
+                        assetLoader = assetLoader,
                         vaultResolver = vaultResolver,
                         onOpenWikiLink = onOpenWikiLink,
                         onOpenVaultDocUri = onOpenVaultDocUri,
@@ -143,7 +150,7 @@ fun MarkdownPreview(
                         },
                     )
 
-                loadUrl("file:///android_asset/markdown-preview/index.html")
+                loadUrl("$APPASSETS_ORIGIN/assets/markdown-preview/index.html")
             }
         },
         update = { view ->
@@ -282,6 +289,7 @@ private class PreviewBridge(
 
 private class PreviewWebViewClient(
     private val context: android.content.Context,
+    private val assetLoader: WebViewAssetLoader,
     private val vaultResolver: VaultPathResolver?,
     private val onOpenWikiLink: ((String) -> Unit)?,
     private val onOpenVaultDocUri: ((Uri) -> Unit)?,
@@ -294,6 +302,7 @@ private class PreviewWebViewClient(
 
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val uri = request.url ?: return false
+        if (uri.host.equals(APPASSETS_HOST, ignoreCase = true)) return false
         when (uri.scheme) {
             "zhixu" -> {
                 when (uri.host) {
@@ -328,6 +337,7 @@ private class PreviewWebViewClient(
 
     override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
         val uri = request.url ?: return null
+        assetLoader.shouldInterceptRequest(uri)?.let { return it }
         if (uri.scheme != "zhixu" || uri.host != "vault") return null
         val relPath = uri.getQueryParameter("path")?.let(Uri::decode).orEmpty()
         if (relPath.isBlank()) return emptyNotFound()
@@ -426,3 +436,5 @@ private fun applyPreparedState(
 private const val TAG_PENDING_STATE: Int = 0x5A48_4958
 private const val TAG_PAGE_LOADED: Int = 0x5A48_4959
 private const val TAG_LAST_SENT_STATE: Int = 0x5A48_4960
+private const val APPASSETS_HOST: String = "appassets.androidplatform.net"
+private const val APPASSETS_ORIGIN: String = "https://$APPASSETS_HOST"

@@ -184,7 +184,7 @@ fun CodeMirrorMarkdownEditor(
                 settings.setSupportZoom(false)
                 settings.builtInZoomControls = false
                 settings.displayZoomControls = false
-                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 settings.allowFileAccess = false
                 settings.allowContentAccess = true
 
