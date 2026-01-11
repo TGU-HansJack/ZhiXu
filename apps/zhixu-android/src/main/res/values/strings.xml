@@ -372,6 +372,19 @@
 
     <!-- Settings placeholders -->
     <string name="settings_placeholder_coming_soon">Coming soon</string>
+    <string name="editor_settings_subtitle">Default mode &amp; display</string>
+    <string name="editor_settings_section_mode">Mode</string>
+    <string name="editor_settings_default_mode_title">Default editing mode</string>
+    <string name="editor_settings_default_mode_subtitle">Default mode when opening a note in the editor view.</string>
+    <string name="editor_settings_mode_live_preview">Live preview</string>
+    <string name="editor_settings_mode_source">Source mode</string>
+    <string name="editor_settings_section_display">Display</string>
+    <string name="editor_settings_note_properties_visible_title">Note properties visible</string>
+    <string name="editor_settings_note_properties_visible_subtitle">On by default. When off, don’t render as a properties section; render as plain Markdown instead.</string>
+    <string name="editor_settings_show_line_numbers_title">Show line numbers</string>
+    <string name="editor_settings_show_line_numbers_subtitle">Show small line numbers on the left side of the editor (live preview/source mode).</string>
+    <string name="editor_settings_editor_toolbar_visible_title">Editor toolbar visible</string>
+    <string name="editor_settings_editor_toolbar_visible_subtitle">You can hide the bottom toolbar. On by default.</string>
     <string name="settings_placeholder_ui">User interface</string>
     <string name="settings_ui_theme_title">Theme</string>
     <string name="settings_ui_theme_system">Follow system</string>

@@ -68,6 +68,9 @@ import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuSwitch
 import app.zhixu.ui.components.ZhixuTopAppBar
+import app.zhixu.data.EditorDefaultMode
+import app.zhixu.data.EditorPreferences
+import app.zhixu.data.EditorSettings
 import app.zhixu.data.SyncPreferences
 import app.zhixu.ui.Ionicons
 import app.zhixu.data.WebDavConfig
@@ -108,6 +111,19 @@ fun LongImageScreen(
     )
     val userName = webDavConfig.username.trim().ifBlank { "用户" }
 
+    val editorPrefs = remember(context) { EditorPreferences(context.applicationContext) }
+    val editorSettings by
+        editorPrefs.settings.collectAsState(
+            initial =
+                EditorSettings(
+                    defaultMode = EditorDefaultMode.LIVE_PREVIEW,
+                    showNoteProperties = true,
+                    showLineNumbers = false,
+                    showEditorToolbar = true,
+                ),
+        )
+    val showNoteProperties = editorSettings.showNoteProperties
+
     val palette =
         remember {
             listOf(
@@ -145,7 +161,7 @@ fun LongImageScreen(
             ).toJson()
         }
 
-    LaunchedEffect(markdown, vaultRootUri, fontScale, bgColor, themeJson) {
+    LaunchedEffect(markdown, vaultRootUri, fontScale, bgColor, themeJson, showNoteProperties) {
         isGenerating = true
         previewBitmap = null
         baseBitmap =
@@ -158,6 +174,7 @@ fun LongImageScreen(
                         vaultRootUri = vaultRootUri,
                         themeJson = themeJson,
                         fontScale = fontScale,
+                        showNoteProperties = showNoteProperties,
                         backgroundArgb = bgColorArgb,
                         targetWidthPx = widthPx,
                     ),

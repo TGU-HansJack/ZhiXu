@@ -144,6 +144,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import app.zhixu.R
 import app.zhixu.data.dataStore
 import app.zhixu.data.AppLogRepository
+import app.zhixu.data.EditorDefaultMode
+import app.zhixu.data.EditorPreferences
+import app.zhixu.data.EditorSettings
 import app.zhixu.data.LogPreferences
 import app.zhixu.data.VaultRepository
 import app.zhixu.ui.Heroicons
@@ -158,7 +161,6 @@ import app.zhixu.plugins.PluginRepository
 import app.zhixu.plugins.runtime.EditorActionContext
 import app.zhixu.plugins.runtime.JsPluginRuntime
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import app.zhixu.ui.components.CodeMirrorMarkdownEditor
 import app.zhixu.ui.components.MarkdownPreview
@@ -241,6 +243,17 @@ fun EditorScreen(
     val logPrefs = remember(context) { LogPreferences(context.applicationContext) }
     val debugLogs by logPrefs.debugEnabled.collectAsState(initial = false)
     val appLogs = remember(context) { AppLogRepository(context.applicationContext) }
+    val editorPrefs = remember(context) { EditorPreferences(context.applicationContext) }
+    val editorSettings by
+        editorPrefs.settings.collectAsState(
+            initial =
+                EditorSettings(
+                    defaultMode = EditorDefaultMode.LIVE_PREVIEW,
+                    showNoteProperties = true,
+                    showLineNumbers = false,
+                    showEditorToolbar = true,
+                ),
+        )
     var title by remember { mutableStateOf("") }
     var titleFieldValue by remember { mutableStateOf(TextFieldValue(text = "")) }
     var originalFileName by remember { mutableStateOf("") }
@@ -273,7 +286,8 @@ fun EditorScreen(
     val imeInsets = WindowInsets.ime
     var imeBottomPx by remember { mutableIntStateOf(0) }
     val isImeVisible = imeBottomPx > 0
-    val showEditorToolbar = !isPreview && !isPdfDoc
+    val showEditorToolbar = !isPreview && !isPdfDoc && editorSettings.showEditorToolbar
+    val isSourceMode = editorSettings.defaultMode == EditorDefaultMode.SOURCE
     val fallbackToolbarHeightPx = with(density) { 56.dp.roundToPx() }
     var toolbarHeightPx by remember { mutableIntStateOf(fallbackToolbarHeightPx) }
     val toolbarGapPx = with(density) { 10.dp.roundToPx() }
@@ -330,28 +344,17 @@ fun EditorScreen(
     var openOutlineToken by remember { mutableStateOf(0L) }
 
     val editorFontSizeKey = remember { floatPreferencesKey("editor_font_size_sp") }
-    val editorSourceModeKey = remember { booleanPreferencesKey("editor_source_mode") }
     var editorFontSizeSpValue by remember { mutableStateOf(16f) }
-    var isSourceMode by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         val prefs = context.dataStore.data.first()
         editorFontSizeSpValue = (prefs[editorFontSizeKey] ?: 16f).coerceIn(12f, 28f)
-        isSourceMode = prefs[editorSourceModeKey] ?: false
     }
 
     fun persistEditorFontSize(next: Float) {
         scope.launch {
             context.dataStore.edit { prefs ->
                 prefs[editorFontSizeKey] = next.coerceIn(12f, 28f)
-            }
-        }
-    }
-
-    fun persistEditorSourceMode(next: Boolean) {
-        scope.launch {
-            context.dataStore.edit { prefs ->
-                prefs[editorSourceModeKey] = next
             }
         }
     }
@@ -1399,12 +1402,20 @@ fun EditorScreen(
                         shape = RoundedCornerShape(0.dp),
                         color = MaterialTheme.colorScheme.surface,
                     ) {
+                        val editorContentHorizontalPadding =
+                            if (isPdfDoc) {
+                                0.dp
+                            } else if (!isPreview && editorSettings.showLineNumbers) {
+                                0.dp
+                            } else {
+                                12.dp
+                            }
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(
-                                    start = if (isPdfDoc) 0.dp else 12.dp,
-                                    end = if (isPdfDoc) 0.dp else 12.dp,
+                                    start = editorContentHorizontalPadding,
+                                    end = editorContentHorizontalPadding,
                                     top = if (isPdfDoc) 0.dp else 0.dp,
                                     bottom = if (isPdfDoc) 0.dp else 6.dp,
                                 ),
@@ -1507,6 +1518,7 @@ fun EditorScreen(
                                     modifier = Modifier.fillMaxSize(),
                                     markdown = content.text,
                                     fontScale = (editorFontSizeSpValue / 16f).coerceIn(0.75f, 1.75f),
+                                    showNoteProperties = editorSettings.showNoteProperties,
                                     vaultRootUri = vaultRootUri,
                                     onOpenWikiLink = { name ->
                                         val root = vaultRootUri ?: return@MarkdownPreview
@@ -1552,6 +1564,8 @@ fun EditorScreen(
                                     value = content,
                                     fontSizeSpValue = editorFontSizeSpValue,
                                     isSourceMode = isSourceMode,
+                                    showLineNumbers = editorSettings.showLineNumbers,
+                                    showNoteProperties = editorSettings.showNoteProperties,
                                     placeholder = if (isLoaded) "输入内容或使用 / 快速插入" else "",
                                     bottomInsetPx = anticipatedToolbarPx + with(density) { 24.dp.roundToPx() },
                                     vaultRootUri = vaultRootUri,
@@ -1733,8 +1747,15 @@ fun EditorScreen(
                                 ZhixuSwitch(
                                     checked = isSourceMode,
                                     onCheckedChange = { next ->
-                                        isSourceMode = next
-                                        persistEditorSourceMode(next)
+                                        scope.launch {
+                                            editorPrefs.setDefaultMode(
+                                                if (next) {
+                                                    EditorDefaultMode.SOURCE
+                                                } else {
+                                                    EditorDefaultMode.LIVE_PREVIEW
+                                                },
+                                            )
+                                        }
                                     },
                                 )
                             }

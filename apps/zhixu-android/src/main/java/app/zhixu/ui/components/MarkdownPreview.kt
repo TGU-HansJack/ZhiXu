@@ -34,6 +34,7 @@ fun MarkdownPreview(
     modifier: Modifier = Modifier,
     markdown: String,
     fontScale: Float = 1f,
+    showNoteProperties: Boolean = true,
     vaultRootUri: Uri? = null,
     onOpenWikiLink: ((String) -> Unit)? = null,
     onOpenVaultDocUri: ((Uri) -> Unit)? = null,
@@ -53,6 +54,7 @@ fun MarkdownPreview(
     val rawMarkdown = markdown
     val vaultRoot = vaultRootUri?.toString().orEmpty()
     val effectiveFontScale = fontScale.coerceIn(0.5f, 2.5f)
+    val showProperties = showNoteProperties
     val nextTheme =
         PreviewTheme(
             isDark = colors.surface.toArgb().isProbablyDark(),
@@ -67,7 +69,7 @@ fun MarkdownPreview(
     val themeJson = nextTheme.toJson()
 
     var prepared by remember { mutableStateOf<PreparedPreviewState?>(null) }
-    LaunchedEffect(rawMarkdown, vaultRoot, themeJson, effectiveFontScale) {
+    LaunchedEffect(rawMarkdown, vaultRoot, themeJson, effectiveFontScale, showProperties) {
         // Move heavy string processing (regex + JSON escaping) off the main thread to avoid traversal jank.
         val next =
             withContext(Dispatchers.Default) {
@@ -77,6 +79,7 @@ fun MarkdownPreview(
                     vaultRootQuoted = JSONObject.quote(vaultRoot),
                     markdownQuoted = JSONObject.quote(preprocessed),
                     fontScale = effectiveFontScale,
+                    showProperties = showProperties,
                 )
             }
         prepared = next
@@ -234,6 +237,7 @@ private data class PreparedPreviewState(
     val vaultRootQuoted: String,
     val markdownQuoted: String,
     val fontScale: Float,
+    val showProperties: Boolean,
 )
 
 private data class PreviewTheme(
@@ -413,6 +417,7 @@ private fun applyPreparedState(
           window.__setVaultRoot(${pending.vaultRootQuoted});
           window.__setMarkdown(${pending.markdownQuoted});
           window.__setFontScale(${pending.fontScale});
+          if (window.__setShowProperties) window.__setShowProperties(${pending.showProperties});
         })();
         """.trimIndent()
     view.post { view.evaluateJavascript(js, null) }

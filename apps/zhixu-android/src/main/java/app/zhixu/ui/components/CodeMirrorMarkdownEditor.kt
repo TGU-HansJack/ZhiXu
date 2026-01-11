@@ -43,6 +43,8 @@ fun CodeMirrorMarkdownEditor(
     value: TextFieldValue,
     fontSizeSpValue: Float,
     isSourceMode: Boolean,
+    showLineNumbers: Boolean = false,
+    showNoteProperties: Boolean = true,
     placeholder: String = "",
     bottomInsetPx: Int = 0,
     vaultRootUri: Uri? = null,
@@ -77,6 +79,8 @@ fun CodeMirrorMarkdownEditor(
     val mode = if (isSourceMode) "source" else "live"
     val effectiveFontSize = fontSizeSpValue.coerceIn(12f, 28f)
     val effectiveBottomInsetPx = max(0, bottomInsetPx)
+    val showLineNumbersEnabled = showLineNumbers
+    val showProperties = showNoteProperties
 
     var prepared by remember { mutableStateOf<PreparedEditorState?>(null) }
     LaunchedEffect(
@@ -88,6 +92,8 @@ fun CodeMirrorMarkdownEditor(
         effectiveFontSize,
         placeholder,
         effectiveBottomInsetPx,
+        showLineNumbersEnabled,
+        showProperties,
     ) {
         prepared =
             PreparedEditorState(
@@ -99,6 +105,8 @@ fun CodeMirrorMarkdownEditor(
                 fontSizePx = effectiveFontSize,
                 placeholderQuoted = JSONObject.quote(placeholder),
                 bottomInsetPx = effectiveBottomInsetPx,
+                showLineNumbers = showLineNumbersEnabled,
+                showProperties = showProperties,
             )
     }
 
@@ -286,7 +294,9 @@ fun CodeMirrorMarkdownEditor(
                         it.modeQuoted != nextPrepared.modeQuoted ||
                         it.fontSizePx != nextPrepared.fontSizePx ||
                         it.placeholderQuoted != nextPrepared.placeholderQuoted ||
-                        it.bottomInsetPx != nextPrepared.bottomInsetPx
+                        it.bottomInsetPx != nextPrepared.bottomInsetPx ||
+                        it.showLineNumbers != nextPrepared.showLineNumbers ||
+                        it.showProperties != nextPrepared.showProperties
                 } ?: true
             if (isEchoFromJs && !settingsChanged) {
                 webView.setTag(TAG_EDITOR_LAST_FROM_JS, null)
@@ -316,6 +326,8 @@ private data class PreparedEditorState(
     val fontSizePx: Float,
     val placeholderQuoted: String,
     val bottomInsetPx: Int,
+    val showLineNumbers: Boolean,
+    val showProperties: Boolean,
 )
 
 private data class EditorTheme(
@@ -394,6 +406,8 @@ private fun applyPreparedState(
           window.__setFontSize(${pending.fontSizePx});
           window.__setMode(${pending.modeQuoted});
           window.__setPlaceholder(${pending.placeholderQuoted});
+          if (window.__setShowLineNumbers) window.__setShowLineNumbers(${pending.showLineNumbers});
+          if (window.__setShowProperties) window.__setShowProperties(${pending.showProperties});
           if (window.__setBottomInset) window.__setBottomInset(${pending.bottomInsetPx});
           window.__setDoc(${pending.textQuoted}, ${pending.selectionStart}, ${pending.selectionEnd});
         })();

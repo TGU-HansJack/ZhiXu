@@ -88,7 +88,7 @@
     <string name="new_doc_error_write_failed">文档已创建，但写入初始内容失败。</string>
 
     <!-- Editor -->
-    <string name="editor_title">编辑</string>
+    <string name="editor_title">编辑器</string>
     <string name="action_back">返回</string>
     <string name="action_preview">预览</string>
     <string name="action_edit">编辑</string>
@@ -318,6 +318,19 @@
 
     <!-- Settings placeholders -->
     <string name="settings_placeholder_coming_soon">敬请期待</string>
+    <string name="editor_settings_subtitle">默认编辑模式、显示</string>
+    <string name="editor_settings_section_mode">模式设定</string>
+    <string name="editor_settings_default_mode_title">默认编辑模式</string>
+    <string name="editor_settings_default_mode_subtitle">在编辑视图下，进入笔记默认采用的编辑模式。</string>
+    <string name="editor_settings_mode_live_preview">实时预览</string>
+    <string name="editor_settings_mode_source">源码模式</string>
+    <string name="editor_settings_section_display">显示</string>
+    <string name="editor_settings_note_properties_visible_title">笔记属性可见</string>
+    <string name="editor_settings_note_properties_visible_subtitle">默认开启，关闭则不渲染成笔记属性区，而是简单 Markdown 渲染</string>
+    <string name="editor_settings_show_line_numbers_title">显示行号</string>
+    <string name="editor_settings_show_line_numbers_subtitle">在编辑区左外框显示小字行数（实时预览/源码模式）</string>
+    <string name="editor_settings_editor_toolbar_visible_title">编辑工具条可见</string>
+    <string name="editor_settings_editor_toolbar_visible_subtitle">底部工具条支持关闭显示，默认开启显示。</string>
     <string name="settings_placeholder_ui">用户界面</string>
     <string name="settings_ui_theme_title">模式</string>
     <string name="settings_ui_theme_system">跟随系统</string>

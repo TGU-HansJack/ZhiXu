@@ -148,6 +148,7 @@ fun SettingsScreen(
     var showAccountDialog by remember { mutableStateOf(false) }
     var showProDialog by remember { mutableStateOf(false) }
     var showSpaceDialog by remember { mutableStateOf(false) }
+    var showEditorDialog by remember { mutableStateOf(false) }
     var showUiDialog by remember { mutableStateOf(false) }
     var showSyncDialog by remember { mutableStateOf(false) }
     var showPermissionsDialog by remember { mutableStateOf(false) }
@@ -216,8 +217,8 @@ fun SettingsScreen(
                     SettingsRow(
                         iconRes = Ionicons.DocumentOutline,
                         title = stringResource(R.string.editor_title),
-                        subtitle = stringResource(R.string.settings_placeholder_coming_soon),
-                        onClick = { toast(context.getString(R.string.settings_placeholder_coming_soon)) },
+                        subtitle = stringResource(R.string.editor_settings_subtitle),
+                        onClick = { showEditorDialog = true },
                     )
 
                     HorizontalDivider(color = dividerColor)
@@ -365,6 +366,15 @@ fun SettingsScreen(
                 vaultSyncPrefs = vaultSyncPrefs,
                 repository = repository,
                 onBack = { showSpaceDialog = false },
+            )
+        }
+    }
+
+    if (showEditorDialog) {
+        FullScreenDialog(onDismiss = { showEditorDialog = false }) {
+            EditorSettingsScreen(
+                contentPadding = PaddingValues(0.dp),
+                onBack = { showEditorDialog = false },
             )
         }
     }

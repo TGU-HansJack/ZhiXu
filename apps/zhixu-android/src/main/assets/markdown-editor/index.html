@@ -15,6 +15,8 @@
         fontSizePx: 16,
         placeholder: "",
         bottomInsetPx: 0,
+        showLineNumbers: false,
+        showProperties: true,
       };
       window.__applyQueued = false;
       window.__scheduleApply = () => {
@@ -29,6 +31,8 @@
       window.__setFontSize = (px) => { window.__payload.fontSizePx = Number(px) || 16; window.__scheduleApply(); };
       window.__setMode = (mode) => { window.__payload.mode = mode === "source" ? "source" : "live"; window.__scheduleApply(); };
       window.__setPlaceholder = (s) => { window.__payload.placeholder = s || ""; window.__scheduleApply(); };
+      window.__setShowLineNumbers = (v) => { window.__payload.showLineNumbers = !!v; window.__scheduleApply(); };
+      window.__setShowProperties = (v) => { window.__payload.showProperties = (v !== false); window.__scheduleApply(); };
       window.__setBottomInset = (px) => {
         const v = Math.max(0, Number(px) || 0);
         window.__payload.bottomInsetPx = v;
@@ -238,6 +242,32 @@
       :root { --editorBottomInset: 0px; }
       .cm-scroller { padding-bottom: calc(var(--editorBottomInset) + env(safe-area-inset-bottom, 0px)) !important; }
       .cm-content { padding-bottom: calc(18px + var(--editorBottomInset) + env(safe-area-inset-bottom, 0px)) !important; }
+
+      /* Line numbers (Android: computed via JS + CSS counters)
+         Goal: enabling/disabling line numbers should NOT change the text wrapping width.
+         We achieve this by:
+         - EditorScreen.kt: removes outer horizontal padding when enabled (editor-only)
+         - Here: increases internal left/right padding when enabled, and draws numbers inside the left padding area. */
+      #editor .cm-editor.cm-show-line-numbers .cm-content {
+        padding-left: 24px !important;
+        padding-right: 24px !important;
+      }
+      #editor .cm-editor.cm-show-line-numbers .cm-line { position: relative; }
+      #editor .cm-editor.cm-show-line-numbers .cm-line::before {
+        counter-increment: cmLine;
+        content: counter(cmLine);
+        position: absolute;
+        left: -24px;
+        width: 20px;
+        text-align: right;
+        font-size: clamp(7px, calc(var(--editorFontSize) * 0.5), 9px);
+        line-height: 1;
+        color: rgba(127, 127, 127, 0.62);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-variant-numeric: tabular-nums;
+        user-select: none;
+        pointer-events: none;
+      }
 
       /* Caret (cursor): make it blue and thicker in both live/source modes. */
       #editor .cm-editor,

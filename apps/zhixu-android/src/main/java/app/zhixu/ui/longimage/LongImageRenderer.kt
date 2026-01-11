@@ -27,6 +27,7 @@ internal data class LongImageRenderInput(
     val vaultRootUri: Uri?,
     val themeJson: String,
     val fontScale: Float,
+    val showNoteProperties: Boolean,
     val backgroundArgb: Int,
     val targetWidthPx: Int,
 )
@@ -88,6 +89,7 @@ internal suspend fun renderLongImage(input: LongImageRenderInput): Bitmap =
                   window.__setVaultRoot($vaultRootQuoted);
                   window.__setMarkdown($markdownQuoted);
                   window.__setFontScale(${input.fontScale.coerceIn(0.5f, 2.5f)});
+                  if (window.__setShowProperties) window.__setShowProperties(${input.showNoteProperties});
                 })();
                 """.trimIndent()
             evalJs(webView, js)

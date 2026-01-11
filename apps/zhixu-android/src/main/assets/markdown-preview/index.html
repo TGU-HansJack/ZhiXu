@@ -6,7 +6,7 @@
 
     <script>
       // Kotlin might call these before scripts finish loading; buffer and apply later.
-      window.__payload = { themeJson: null, vaultRoot: "", markdown: "", fontScale: 1 };
+      window.__payload = { themeJson: null, vaultRoot: "", markdown: "", fontScale: 1, showProperties: true };
       window.__applyQueued = false;
       window.__scheduleApply = () => {
         if (window.__applyQueued) return;
@@ -21,6 +21,7 @@
       window.__setVaultRoot = (s) => { window.__payload.vaultRoot = s || ""; window.__scheduleApply(); };
       window.__setMarkdown = (md) => { window.__payload.markdown = md || ""; window.__scheduleApply(); };
       window.__setFontScale = (s) => { window.__payload.fontScale = Number(s) || 1; window.__scheduleApply(); };
+      window.__setShowProperties = (v) => { window.__payload.showProperties = (v !== false); window.__scheduleApply(); };
     </script>
 
     <style>
@@ -267,6 +268,7 @@
     <script>
       let theme = { isDark: false };
       let lastRenderedMarkdown = null;
+      let lastRenderedShowProperties = true;
       let io = null;
       let depsRetryTimer = null;
       let depsRetryAttempts = 0;
@@ -544,11 +546,14 @@
         try {
           if (!window.markdownit) throw new Error("markdown-it not loaded");
 
+          const payload = window.__payload || {};
+          const showProperties = payload.showProperties !== false;
           const mdInput = mdText || "";
-          const parts = extractFrontMatter(mdInput);
+          const parts = showProperties ? extractFrontMatter(mdInput) : { front: null, body: mdInput };
           // Avoid re-rendering when only theme/vaultRoot changed.
-          if (lastRenderedMarkdown === mdInput) return;
+          if (lastRenderedMarkdown === mdInput && lastRenderedShowProperties === showProperties) return;
           lastRenderedMarkdown = mdInput;
+          lastRenderedShowProperties = showProperties;
           cleanupObservers();
 
           const md = window.markdownit({
@@ -562,7 +567,7 @@
             .use(window.markdownitFootnote || (() => (md) => md))
             .use(window.markdownItAnchor || (() => (md) => md), { level: [1, 2, 3, 4, 5, 6], permalink: false });
 
-          renderFrontMatter(parts.front);
+          renderFrontMatter(showProperties ? parts.front : null);
           container.innerHTML = md.render(parts.body || "");
         } catch (e) {
           // JS deps failed (offline/CDN blocked/etc). Fallback to plain text so it's never blank.
