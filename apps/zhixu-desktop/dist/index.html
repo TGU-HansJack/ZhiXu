@@ -34,6 +34,7 @@
         background: transparent !important;
         height: 30px !important;
         margin: 0 !important;
+        overflow: visible !important;
       }
 
       .tabInner > * {
@@ -53,19 +54,26 @@
 
       /* divider lines between tabs */
       .tab:not(:first-child)::before {
-        content: "";
-        position: absolute;
-        left: 0;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 1px;
-        height: 22px;
-        background: rgba(0, 0, 0, 0.18);
+        content: none !important;
+        display: none !important;
       }
 
-      .tab.active::before,
-      .tab.active + .tab::before {
-        opacity: 0;
+      .tab:not(:first-child) .tabInner::before {
+        content: "" !important;
+        position: absolute !important;
+        left: 0 !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+        width: 2px !important;
+        height: 22px !important;
+        background: rgba(0, 0, 0, 0.18) !important;
+        border-radius: 0 !important;
+        z-index: 1 !important;
+      }
+
+      .tab.active .tabInner::before,
+      .tab.active + .tab .tabInner::before {
+        opacity: 0 !important;
       }
 
       .tab.active .tabInner {
@@ -87,13 +95,6 @@
         background: var(--bg) !important;
         pointer-events: none !important;
         z-index: 0 !important;
-      }
-
-
-      /* disable old inner divider pseudo from built CSS */
-      .tab:not(:first-child) .tabInner::before {
-        content: none !important;
-        display: none !important;
       }
 
       .tabClose {

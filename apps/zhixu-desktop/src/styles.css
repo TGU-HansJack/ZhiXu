@@ -526,7 +526,7 @@ input {
   flex: 1 1 auto;
   min-width: 0;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
   background: transparent;
   position: relative;
 }
@@ -546,22 +546,24 @@ input {
   padding: 0 6px;
 }
 
-.tab:not(:first-child)::before {
+.tab:not(:first-child) .tabInner::before {
   content: "";
   position: absolute;
   left: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 1px;
+  width: 2px;
   height: 22px;
   background: rgba(0, 0, 0, 0.18);
+  border-radius: 0;
+  z-index: 1;
 }
 
-.tab.active::before {
+.tab.active .tabInner::before {
   opacity: 0;
 }
 
-.tab.active + .tab::before {
+.tab.active + .tab .tabInner::before {
   opacity: 0;
 }
 
