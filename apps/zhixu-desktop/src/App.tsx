@@ -503,39 +503,40 @@ export function App() {
               </div>
             ) : (
               tabs.map((t) => (
-                <Tooltip key={t.path} label={t.path} placement="bottom">
-                  <div
-                    className={`tab${t.path === activePath ? " active" : ""}`}
-                    role="tab"
-                    aria-selected={t.path === activePath}
-                    data-dirty={t.dirty ? "true" : "false"}
-                    data-no-drag="true"
-                    onClick={() => setActivePath(t.path)}
-                  >
-                    <div className="tabInner">
+                <div
+                  key={t.path}
+                  className={`tab${t.path === activePath ? " active" : ""}`}
+                  role="tab"
+                  aria-selected={t.path === activePath}
+                  data-dirty={t.dirty ? "true" : "false"}
+                  data-no-drag="true"
+                  onClick={() => setActivePath(t.path)}
+                >
+                  <div className="tabInner">
+                    <Tooltip label={t.path} placement="bottom">
                       <span className="tabLabel">{t.name}</span>
-                      <button
-                        type="button"
-                        className="tabClose"
-                        aria-label="关闭标签"
-                        data-no-drag="true"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          closeTab(t.path);
-                        }}
-                      >
-                        <Tooltip label="关闭标签" placement="bottom">
-                          <span className="tabCloseGlyph" aria-hidden="true">
-                            <span className="tabCloseDot" />
-                            <span className="tabCloseX">
-                              <IconClose size={14} />
-                            </span>
+                    </Tooltip>
+                    <button
+                      type="button"
+                      className="tabClose"
+                      aria-label="关闭标签"
+                      data-no-drag="true"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeTab(t.path);
+                      }}
+                    >
+                      <Tooltip label="关闭标签" placement="bottom">
+                        <span className="tabCloseGlyph" aria-hidden="true">
+                          <span className="tabCloseDot" />
+                          <span className="tabCloseX">
+                            <IconClose size={14} />
                           </span>
-                        </Tooltip>
-                      </button>
-                    </div>
+                        </span>
+                      </Tooltip>
+                    </button>
                   </div>
-                </Tooltip>
+                </div>
               ))
             )}
           </div>

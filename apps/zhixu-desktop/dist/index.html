@@ -128,5 +128,24 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Prevent the file-path tooltip on the tab from showing when hovering the close button.
+      document.addEventListener(
+        "mouseover",
+        (e) => {
+          const target = e.target instanceof Element ? e.target : null;
+          if (!target) return;
+          if (!target.closest(".tabClose")) return;
+
+          for (const bubble of document.querySelectorAll(".tooltipBubble")) {
+            const text = (bubble.textContent || "").trim();
+            if (text !== "关闭标签") bubble.remove();
+          }
+
+          e.stopPropagation();
+        },
+        true
+      );
+    </script>
   </body>
 </html>
