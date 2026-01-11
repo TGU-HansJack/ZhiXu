@@ -551,7 +551,7 @@ input {
   position: absolute;
   left: 0;
   top: 50%;
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
   width: 2px;
   height: 22px;
   background: rgba(0, 0, 0, 0.18);
