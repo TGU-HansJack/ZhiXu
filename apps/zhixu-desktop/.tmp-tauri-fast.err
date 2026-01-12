@@ -1,0 +1,6 @@
+     Running BeforeDevCommand (`node -e "process.exit(0)"`)
+     Running DevCommand (`cargo  run --no-default-features --color always --`)
+        Info Watching D:\ZhiXu-main\ZhiXu\apps\zhixu-desktop\src-tauri for changes...
+[1m[92m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.55s
+[1m[92m     Running[0m `target\debug\zhixu_desktop.exe`
+[1m[91merror[0m: process didn't exit successfully: `target\debug\zhixu_desktop.exe` (exit code: 0xffffffff)

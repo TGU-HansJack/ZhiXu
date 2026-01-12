@@ -1,0 +1,7 @@
+       Debug [tauri_cli::helpers::app_paths] Found Tauri project inside D:\ZhiXu-main\ZhiXu\apps\zhixu-desktop\src-tauri on early lookup
+     Running [tauri_cli::dev] BeforeDevCommand (`node -e "process.exit(0)"`)
+     Running [tauri_cli::interface::rust::desktop] DevCommand (`cargo  run --no-default-features --color always --`)
+[1m[92m   Compiling[0m zhixu_desktop v0.1.0 (D:\ZhiXu-main\ZhiXu\apps\zhixu-desktop\src-tauri)
+[1m[96m    Building[0m [=======================> ] 398/400: zhixu...[1m[96m    Building[0m [=======================> ] 399/400: zhixu...                                                            [1m[92m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 4.73s
+[1m[92m     Running[0m `target\debug\zhixu_desktop.exe`
+[1m[91merror[0m: process didn't exit successfully: `target\debug\zhixu_desktop.exe` (exit code: 0xffffffff)

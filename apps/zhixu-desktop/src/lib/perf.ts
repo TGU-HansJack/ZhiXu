@@ -332,11 +332,13 @@ export function logStartupSummary(context?: string, extra?: Record<string, unkno
   const appMounted = lastMarkStartTime("zhixu:app:mounted");
   const appLayout = lastMarkStartTime("zhixu:app:layout");
   const reactRenderCall = lastMarkStartTime("zhixu:react:render-call");
+  const shellVisible = lastMarkStartTime("shell:visible");
   const bootInit = lastMarkStartTime("zhixu:boot:init");
   const vitals = vitalsState();
 
   const base: Record<string, unknown> = {
     ...(context ? { context } : {}),
+    ...(shellVisible != null ? { shellVisibleMs: round1(shellVisible) } : {}),
     ...(bootInit != null ? { bootInitMs: round1(bootInit) } : {}),
     ...(reactRenderCall != null ? { reactRenderCallMs: round1(reactRenderCall) } : {}),
     ...(appLayout != null ? { appLayoutMs: round1(appLayout) } : {}),
@@ -396,6 +398,11 @@ function collectStartupTimelineRows(): StartupTimelineRow[] {
       if (!p || p.startTime <= 0) continue;
       items.push({ tMs: p.startTime, name: `paint:${p.name}` });
     }
+  } catch (_) {}
+
+  try {
+    const shellVisible = lastMarkStartTime("shell:visible");
+    if (shellVisible != null && shellVisible > 0 && shellVisible <= nowMs) items.push({ tMs: shellVisible, name: "mark:shell:visible" });
   } catch (_) {}
 
   try {

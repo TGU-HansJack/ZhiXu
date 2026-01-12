@@ -208,6 +208,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const splash = document.getElementById("zhixu-boot-splash");
+    if (splash && splash.getAttribute("data-hidden") !== "true") {
+      splash.setAttribute("data-hidden", "true");
+      window.setTimeout(() => splash.remove(), 240);
+    }
+
     if (!isDevPerfEnabled()) return;
     initDevPerfLogging();
     runDevPerfOnce("mark:zhixu:app:mounted", () => devPerfMark("zhixu:app:mounted"));

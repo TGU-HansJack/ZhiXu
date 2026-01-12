@@ -1,0 +1,6 @@
+[31merror when starting dev server:
+Error: Port 1420 is already in use
+    at Server.onError (file:///D:/ZhiXu-main/ZhiXu/apps/zhixu-desktop/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:45596:18)
+    at Server.emit (node:events:519:28)
+    at emitErrorNT (node:net:1976:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m

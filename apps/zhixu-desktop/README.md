@@ -20,8 +20,12 @@ Prerequisites:
 
 Commands:
 - `npm install`
-- `npm run dev`
-- `npm run tauri dev`
+- `npm run tauri dev` (starts Vite automatically)
+
+Fast restart (keep Vite warm; avoids re-starting Vite on every Tauri restart):
+- Terminal A: `npm run dev` (keep running)
+- Terminal B: `npm run tauri:dev:fast`
+- If you see `Waiting for your frontend dev server...`, it means `npm run dev` is not running (or the port/host changed).
 
 If `cargo check` / `tauri dev` fails with missing Windows icons, regenerate them:
 - `.\node_modules\.bin\tauri icon .\src-tauri\icons\icon.png`

@@ -1,0 +1,6 @@
+{
+  "build": {
+    "beforeDevCommand": "node -e \"process.exit(0)\""
+  }
+}
+

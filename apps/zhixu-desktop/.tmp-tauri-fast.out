@@ -1,0 +1,4 @@
+
+> zhixu-desktop@0.0.0 tauri:dev:fast
+> tauri dev -c src-tauri/tauri.external-dev.conf.json
+

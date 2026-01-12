@@ -5,10 +5,282 @@
     <link rel="icon" href="data:," />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Zhixu</title>
-    <script type="module" crossorigin src="/assets/index-A9G27yNe.js"></script>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        background: #ffffff;
+        color: rgba(0, 0, 0, 0.88);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue",
+          Arial, "Noto Sans", "Liberation Sans", sans-serif;
+        overflow: hidden;
+      }
+
+      #root {
+        height: 100%;
+      }
+
+      /* HTML 启动骨架：在 JS/React 加载前避免白屏 */
+      #zhixu-boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: grid;
+        grid-template-rows: 42px 1fr 28px;
+        background: #ffffff;
+        opacity: 1;
+      }
+
+      #zhixu-boot-splash[data-hidden="true"] {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 180ms ease;
+      }
+
+      #zhixu-boot-splash .zhixuBootTopbar {
+        position: relative;
+        display: grid;
+        grid-template-columns: 280px 1fr 120px;
+        align-items: center;
+        gap: 12px;
+        padding: 0 10px;
+        background: #f8f8f8;
+      }
+
+      #zhixu-boot-splash .zhixuBootTopbar::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 1px;
+        background: rgba(0, 0, 0, 0.08);
+      }
+
+      #zhixu-boot-splash .zhixuBootTopLeft,
+      #zhixu-boot-splash .zhixuBootTopCenter,
+      #zhixu-boot-splash .zhixuBootTopRight {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      #zhixu-boot-splash .zhixuBootTopRight {
+        justify-content: flex-end;
+      }
+
+      #zhixu-boot-splash .zhixuBootBody {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        min-height: 0;
+      }
+
+      #zhixu-boot-splash .zhixuBootSidebar {
+        border-right: 1px solid rgba(0, 0, 0, 0.08);
+        background: rgba(245, 245, 245, 0.75);
+        padding: 12px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      #zhixu-boot-splash .zhixuBootMain {
+        position: relative;
+        background: #ffffff;
+        display: grid;
+        place-items: center;
+        padding: 20px;
+      }
+
+      #zhixu-boot-splash .zhixuBootCard {
+        width: min(520px, calc(100vw - 32px));
+        border-radius: 14px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        background: rgba(255, 255, 255, 0.88);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
+        padding: 18px 16px 16px;
+      }
+
+      #zhixu-boot-splash .zhixuBootBrand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      #zhixu-boot-splash .zhixuBootLogo {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #2f6feb, #6ea8ff);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+      }
+
+      #zhixu-boot-splash .zhixuBootTitle {
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+        color: rgba(0, 0, 0, 0.88);
+      }
+
+      #zhixu-boot-splash .zhixuBootSubtitle {
+        margin-top: 2px;
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.55);
+      }
+
+      #zhixu-boot-splash .zhixuBootProgress {
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.06);
+        overflow: hidden;
+      }
+
+      #zhixu-boot-splash .zhixuBootProgressBar {
+        height: 100%;
+        width: 45%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, rgba(47, 111, 235, 0.25), rgba(47, 111, 235, 0.85), rgba(47, 111, 235, 0.25));
+        background-size: 200% 100%;
+        animation: zhixuBootSlide 1.15s ease-in-out infinite;
+      }
+
+      #zhixu-boot-splash .zhixuBootStatusbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 10px;
+        background: rgba(245, 245, 245, 0.75);
+        border-top: 1px solid rgba(0, 0, 0, 0.08);
+        color: rgba(0, 0, 0, 0.6);
+        font-size: 12px;
+      }
+
+      #zhixu-boot-splash .zhixuBootPill {
+        height: 12px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.08);
+      }
+
+      #zhixu-boot-splash .zhixuBootPill.pulse {
+        animation: zhixuBootPulse 1.15s ease-in-out infinite;
+      }
+
+      #zhixu-boot-splash .zhixuBootRow {
+        height: 12px;
+        border-radius: 6px;
+        background: rgba(0, 0, 0, 0.08);
+      }
+
+      #zhixu-boot-splash .zhixuBootRow.pulse {
+        animation: zhixuBootPulse 1.15s ease-in-out infinite;
+      }
+
+      @keyframes zhixuBootPulse {
+        0%,
+        100% {
+          opacity: 0.45;
+        }
+        50% {
+          opacity: 0.95;
+        }
+      }
+
+      @keyframes zhixuBootSlide {
+        0% {
+          background-position: 0% 0%;
+          transform: translateX(-20%);
+        }
+        50% {
+          background-position: 100% 0%;
+          transform: translateX(15%);
+        }
+        100% {
+          background-position: 0% 0%;
+          transform: translateX(-20%);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #zhixu-boot-splash[data-hidden="true"] {
+          transition: none;
+        }
+        #zhixu-boot-splash .zhixuBootPill.pulse,
+        #zhixu-boot-splash .zhixuBootRow.pulse,
+        #zhixu-boot-splash .zhixuBootProgressBar {
+          animation: none;
+        }
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-CxEKrGUY.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-BviKkQXJ.css">
   </head>
   <body>
+    <div id="zhixu-boot-splash" role="status" aria-live="polite" aria-label="Zhixu 启动中">
+      <div class="zhixuBootTopbar">
+        <div class="zhixuBootTopLeft">
+          <div class="zhixuBootPill pulse" style="width: 34px; height: 34px; border-radius: 10px"></div>
+          <div class="zhixuBootPill pulse" style="width: 160px"></div>
+        </div>
+        <div class="zhixuBootTopCenter">
+          <div class="zhixuBootPill pulse" style="width: 110px"></div>
+          <div class="zhixuBootPill pulse" style="width: 92px"></div>
+          <div class="zhixuBootPill pulse" style="width: 76px"></div>
+        </div>
+        <div class="zhixuBootTopRight">
+          <div class="zhixuBootPill pulse" style="width: 26px; height: 26px; border-radius: 8px"></div>
+          <div class="zhixuBootPill pulse" style="width: 26px; height: 26px; border-radius: 8px"></div>
+          <div class="zhixuBootPill pulse" style="width: 26px; height: 26px; border-radius: 8px"></div>
+        </div>
+      </div>
+
+      <div class="zhixuBootBody">
+        <div class="zhixuBootSidebar" aria-hidden="true">
+          <div class="zhixuBootRow pulse" style="width: 72%"></div>
+          <div class="zhixuBootRow pulse" style="width: 86%"></div>
+          <div class="zhixuBootRow pulse" style="width: 64%"></div>
+          <div class="zhixuBootRow pulse" style="width: 78%"></div>
+          <div class="zhixuBootRow pulse" style="width: 58%"></div>
+          <div class="zhixuBootRow pulse" style="width: 83%"></div>
+          <div class="zhixuBootRow pulse" style="width: 69%"></div>
+          <div class="zhixuBootRow pulse" style="width: 76%"></div>
+          <div class="zhixuBootRow pulse" style="width: 61%"></div>
+        </div>
+
+        <div class="zhixuBootMain">
+          <div class="zhixuBootCard">
+            <div class="zhixuBootBrand">
+              <div class="zhixuBootLogo" aria-hidden="true"></div>
+              <div>
+                <div class="zhixuBootTitle">Zhixu</div>
+                <div id="zhixu-boot-step" class="zhixuBootSubtitle">启动中…</div>
+              </div>
+            </div>
+            <div class="zhixuBootProgress" aria-hidden="true">
+              <div class="zhixuBootProgressBar"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="zhixuBootStatusbar" aria-hidden="true">
+        <div>正在加载界面…</div>
+        <div class="zhixuBootPill pulse" style="width: 84px"></div>
+      </div>
+    </div>
+
+    <script>
+      try {
+        performance.mark("shell:visible");
+      } catch (_) {}
+    </script>
+
     <div id="root"></div>
   </body>
 </html>
