@@ -172,11 +172,9 @@ export function App() {
   const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const isDetached = useMemo(() => urlParams.get("view") === "tab", [urlParams]);
   const initialVaultParam = useMemo(() => urlParams.get("vaultRoot"), [urlParams]);
-  const openerWindowLabel = useMemo(() => urlParams.get("opener"), [urlParams]);
   const transferId = useMemo(() => urlParams.get("transferId"), [urlParams]);
   const draggingTabPathRef = useRef<string | null>(null);
-  const transferAckedRef = useRef(false);
-  const pendingTransfersRef = useRef<Map<string, { payload: TabTransferPayload; sourceTabPath: string }>>(new Map());
+  const draggingTransferIdRef = useRef<string | null>(null);
 
   const [vaultRoot, setVaultRootState] = useState<string | null>(null);
   const [persisted, setPersisted] = useState<PersistedState>({ lastVault: null, recentVaults: [] });
@@ -194,9 +192,13 @@ export function App() {
   const [editorMode, setEditorMode] = useState<MarkdownEditorMode>("live");
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
-  const newTabIdRef = useRef(2);
-  const [tabs, setTabs] = useState<Tab[]>(() => [makeNewTab(1)]);
-  const [activePath, setActivePath] = useState<string | null>(() => "__newtab__1");
+  const newTabIdRef = useRef(isDetached && transferId ? 1 : 2);
+  const [tabs, setTabs] = useState<Tab[]>(() => (isDetached && transferId ? [] : [makeNewTab(1)]));
+  const [activePath, setActivePath] = useState<string | null>(() => (isDetached && transferId ? null : "__newtab__1"));
+  const tabsRef = useRef<Tab[]>(tabs);
+  useEffect(() => {
+    tabsRef.current = tabs;
+  }, [tabs]);
   const activeTab = useMemo(() => tabs.find((t) => t.path === activePath) ?? null, [tabs, activePath]);
   const tabCount = Math.max(1, tabs.length);
   const tabsDensity = tabCount >= 14 ? "separators" : tabCount >= 8 ? "dense" : "normal";
@@ -227,11 +229,65 @@ export function App() {
     return formatPathForDisplay(a) === formatPathForDisplay(b);
   }, []);
 
-  const resetForVault = useCallback(async (root: string) => {
+  const transferStorageKey = useCallback((id: string) => `zhixu.desktop.tabTransfer:${id}`, []);
+
+  const writeTabTransfer = useCallback(
+    (id: string, payload: TabTransferPayload): boolean => {
+      try {
+        localStorage.setItem(transferStorageKey(id), JSON.stringify(payload));
+        return true;
+      } catch (e) {
+        console.error(e);
+        return false;
+      }
+    },
+    [transferStorageKey],
+  );
+
+  const readTabTransfer = useCallback(
+    (id: string): TabTransferPayload | null => {
+      try {
+        const raw = localStorage.getItem(transferStorageKey(id));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as Partial<TabTransferPayload> | null;
+        if (!parsed || typeof parsed !== "object") return null;
+        if (!parsed.tab || typeof parsed.tab !== "object") return null;
+        if (typeof (parsed.tab as any).path !== "string") return null;
+        return {
+          tab: parsed.tab as Tab,
+          vaultRoot: typeof parsed.vaultRoot === "string" || parsed.vaultRoot === null ? parsed.vaultRoot : null,
+          sourceWindowLabel: typeof parsed.sourceWindowLabel === "string" || parsed.sourceWindowLabel === null ? parsed.sourceWindowLabel : null,
+        };
+      } catch (e) {
+        console.error(e);
+        return null;
+      }
+    },
+    [transferStorageKey],
+  );
+
+  const clearTabTransfer = useCallback(
+    (id: string) => {
+      try {
+        localStorage.removeItem(transferStorageKey(id));
+      } catch (e) {
+        console.error(e);
+      }
+    },
+    [transferStorageKey],
+  );
+
+  const resetForVault = useCallback(async (root: string, options?: { createNewTab?: boolean }) => {
     setVaultRootState(root);
-    const tab = makeNewTab(newTabIdRef.current++);
-    setTabs([tab]);
-    setActivePath(tab.path);
+    const createNewTab = options?.createNewTab ?? true;
+    if (createNewTab) {
+      const tab = makeNewTab(newTabIdRef.current++);
+      setTabs([tab]);
+      setActivePath(tab.path);
+    } else {
+      setTabs([]);
+      setActivePath(null);
+    }
     setSelectedDir("");
     setDirCache({});
     setExpanded({});
@@ -248,23 +304,18 @@ export function App() {
         if (initialVaultParam && !sameVaultRoot(vaultRoot, initialVaultParam)) {
           const resolved = await setVaultRoot(initialVaultParam);
           if (cancelled) return;
-          await resetForVault(resolved);
+          await resetForVault(resolved, { createNewTab: !(isDetached && transferId) });
           if (cancelled) return;
           setPersisted(await getPersistedState());
         }
       } catch (e) {
         console.error(e);
-      } finally {
-        if (cancelled) return;
-        if (openerWindowLabel && transferId) {
-          await emitTo(openerWindowLabel, "zhixu:tab-window-ready", { transferId, windowLabel: appWindow.label });
-        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [appWindow.label, initialVaultParam, isDetached, openerWindowLabel, resetForVault, sameVaultRoot, transferId, vaultRoot]);
+  }, [initialVaultParam, isDetached, resetForVault, sameVaultRoot, transferId, vaultRoot]);
 
   const openFolder = useCallback(async (): Promise<string | null> => {
     try {
@@ -768,7 +819,7 @@ export function App() {
       try {
         if (payload.vaultRoot && !sameVaultRoot(payload.vaultRoot, vaultRoot)) {
           const resolved = await setVaultRoot(payload.vaultRoot);
-          await resetForVault(resolved);
+          await resetForVault(resolved, { createNewTab: false });
           setPersisted(await getPersistedState());
         }
       } catch (e) {
@@ -801,54 +852,82 @@ export function App() {
     [appWindow.label, resetForVault, sameVaultRoot, vaultRoot],
   );
 
-  const readTabTransferPayload = useCallback((ev: React.DragEvent): TabTransferPayload | null => {
-    const raw = ev.dataTransfer.getData("application/x-zhixu-tab");
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw) as Partial<TabTransferPayload> | null;
-      if (!parsed || typeof parsed !== "object") return null;
-      if (!parsed.tab || typeof parsed.tab !== "object") return null;
-      if (typeof (parsed.tab as any).path !== "string") return null;
-      return {
-        tab: parsed.tab as Tab,
-        vaultRoot: typeof parsed.vaultRoot === "string" || parsed.vaultRoot === null ? parsed.vaultRoot : null,
-        sourceWindowLabel: typeof parsed.sourceWindowLabel === "string" || parsed.sourceWindowLabel === null ? parsed.sourceWindowLabel : null,
-      };
-    } catch {
-      return null;
-    }
-  }, []);
+  const readTabTransferFromEvent = useCallback(
+    (ev: React.DragEvent): { id: string; payload: TabTransferPayload } | null => {
+      const raw =
+        ev.dataTransfer.getData("application/x-zhixu-tab-transfer") ||
+        ev.dataTransfer.getData("text/plain") ||
+        ev.dataTransfer.getData("application/x-zhixu-tab");
+      if (!raw) return null;
 
-  const moveTabToNewWindow = useCallback(
-    async (path: string) => {
-      const tab = tabs.find((t) => t.path === path);
-      if (!tab) return;
+      let id = raw.trim();
+      const prefix = "zhixu-tab-transfer:";
+      if (id.startsWith(prefix)) id = id.slice(prefix.length).trim();
+      if (!id) return null;
+
+      const payload = readTabTransfer(id);
+      if (!payload) return null;
+
+      return { id, payload };
+    },
+    [readTabTransfer],
+  );
+
+  useEffect(() => {
+    if (!isDetached) return;
+    if (!transferId) return;
+    const payload = readTabTransfer(transferId);
+    if (!payload) return;
+    void (async () => {
       try {
-        const nextTransferId = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-        const label = `tab-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-        pendingTransfersRef.current.set(nextTransferId, { payload: { tab, vaultRoot, sourceWindowLabel: null }, sourceTabPath: path });
+        await applyTabTransfer(payload);
+      } finally {
+        clearTabTransfer(transferId);
+      }
+    })();
+  }, [applyTabTransfer, clearTabTransfer, isDetached, readTabTransfer, transferId]);
+
+  const openTabTransferWindow = useCallback(
+    async (payload: { transferId: string; title: string; vaultRoot: string | null }) => {
+      const label = `tab-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+      try {
         const url = new URL(window.location.href);
         url.searchParams.set("view", "tab");
-        if (vaultRoot) url.searchParams.set("vaultRoot", vaultRoot);
-        url.searchParams.set("opener", appWindow.label);
-        url.searchParams.set("transferId", nextTransferId);
+        url.searchParams.set("transferId", payload.transferId);
+        if (payload.vaultRoot) url.searchParams.set("vaultRoot", payload.vaultRoot);
         const win = new WebviewWindow(label, {
           url: url.toString(),
-          title: tab.name,
+          title: payload.title,
           width: 980,
           height: 720,
           decorations: false,
         });
         void win.once("tauri://error", async (e) => {
-          pendingTransfersRef.current.delete(nextTransferId);
+          clearTabTransfer(payload.transferId);
           await message(String(e), { title: "无法新建窗口", kind: "error" });
         });
       } catch (e) {
+        clearTabTransfer(payload.transferId);
         console.error(e);
         await message(String(e), { title: "无法新建窗口", kind: "error" });
       }
     },
-    [appWindow.label, tabs, vaultRoot],
+    [clearTabTransfer],
+  );
+
+  const moveTabToNewWindow = useCallback(
+    async (path: string) => {
+      const tab = tabs.find((t) => t.path === path);
+      if (!tab) return;
+      const nextTransferId = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+      const ok = writeTabTransfer(nextTransferId, { tab, vaultRoot, sourceWindowLabel: appWindow.label });
+      if (!ok) {
+        await message("无法保存要转移的标签页数据，请重试。", { title: "移动到新窗口失败", kind: "error" });
+        return;
+      }
+      await openTabTransferWindow({ transferId: nextTransferId, title: tab.name, vaultRoot });
+    },
+    [appWindow.label, openTabTransferWindow, tabs, vaultRoot, writeTabTransfer],
   );
 
   const onAppKeyDown = useCallback(
@@ -905,36 +984,6 @@ export function App() {
   );
 
   useEffect(() => {
-    let unlistenReady: null | (() => void) = null;
-    let unlistenAck: null | (() => void) = null;
-
-    void (async () => {
-      unlistenReady = await appWindow.listen<{ transferId: string; windowLabel: string }>("zhixu:tab-window-ready", async (event) => {
-        const id = event.payload?.transferId;
-        const targetLabel = event.payload?.windowLabel;
-        if (!id || !targetLabel) return;
-        const pending = pendingTransfersRef.current.get(id);
-        if (!pending) return;
-        await emitTo<TabTransferPayload>(targetLabel, "zhixu:tab-transfer", pending.payload);
-      });
-
-      unlistenAck = await appWindow.listen<{ transferId: string }>("zhixu:tab-transfer-ack", (event) => {
-        const id = event.payload?.transferId;
-        if (!id) return;
-        const pending = pendingTransfersRef.current.get(id);
-        if (!pending) return;
-        pendingTransfersRef.current.delete(id);
-        removeTabSilently(pending.sourceTabPath);
-      });
-    })();
-
-    return () => {
-      unlistenReady?.();
-      unlistenAck?.();
-    };
-  }, [appWindow, removeTabSilently]);
-
-  useEffect(() => {
     window.addEventListener("keydown", onAppKeyDown, true);
     return () => window.removeEventListener("keydown", onAppKeyDown, true);
   }, [onAppKeyDown]);
@@ -955,10 +1004,6 @@ export function App() {
     void (async () => {
       unlistenTransfer = await appWindow.listen<TabTransferPayload>("zhixu:tab-transfer", async (event) => {
         await applyTabTransfer(event.payload);
-        if (!transferAckedRef.current && openerWindowLabel && transferId) {
-          transferAckedRef.current = true;
-          await emitTo(openerWindowLabel, "zhixu:tab-transfer-ack", { transferId });
-        }
       });
 
       unlistenRemove = await appWindow.listen<{ path: string }>("zhixu:tab-remove", (event) => {
@@ -970,7 +1015,7 @@ export function App() {
       unlistenTransfer?.();
       unlistenRemove?.();
     };
-  }, [appWindow, applyTabTransfer, openerWindowLabel, removeTabSilently, transferId]);
+  }, [appWindow, applyTabTransfer, removeTabSilently]);
 
   useEffect(() => {
     if (!vaultRoot) {
@@ -1081,7 +1126,21 @@ export function App() {
   );
 
   return (
-    <div className={`appShell${isDetached ? " detached" : ""}${sidebarOpen ? "" : " sidebarClosed"}`}>
+    <div
+      className={`appShell${isDetached ? " detached" : ""}${sidebarOpen ? "" : " sidebarClosed"}`}
+      onDragOver={(e) => {
+        // Allow dropping a tab anywhere inside the window.
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+      }}
+      onDrop={(e) => {
+        const transfer = readTabTransferFromEvent(e);
+        if (!transfer) return;
+        e.preventDefault();
+        clearTabTransfer(transfer.id);
+        void applyTabTransfer(transfer.payload, { insertIndex: tabsRef.current.length });
+      }}
+    >
       <span
         ref={tabContextAnchorRef}
         style={{ position: "fixed", left: tabContextPoint.x, top: tabContextPoint.y, width: 1, height: 1, pointerEvents: "none" }}
@@ -1120,15 +1179,16 @@ export function App() {
             style={{ ["--tab-count" as any]: tabCount } as React.CSSProperties}
             role="tablist"
             onDragOver={(e) => {
-              if (!readTabTransferPayload(e)) return;
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
             }}
             onDrop={(e) => {
-              const payload = readTabTransferPayload(e);
-              if (!payload) return;
+              const transfer = readTabTransferFromEvent(e);
+              if (!transfer) return;
               e.preventDefault();
-              void applyTabTransfer(payload, { insertIndex: tabs.length });
+              e.stopPropagation();
+              clearTabTransfer(transfer.id);
+              void applyTabTransfer(transfer.payload, { insertIndex: tabs.length });
             }}
             aria-label="标签页"
           >
@@ -1144,33 +1204,39 @@ export function App() {
                 onContextMenu={(e) => openTabContextMenu(e, t.path)}
                 draggable
                 onDragStart={(e) => {
-                  const payload: TabTransferPayload = { tab: t, vaultRoot, sourceWindowLabel: appWindow.label };
-                  e.dataTransfer.setData("application/x-zhixu-tab", JSON.stringify(payload));
-                  e.dataTransfer.setData("text/plain", t.path);
+                  const transferId = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+                  const ok = writeTabTransfer(transferId, { tab: t, vaultRoot, sourceWindowLabel: appWindow.label });
+                  if (!ok) return;
+                  e.dataTransfer.setData("application/x-zhixu-tab-transfer", transferId);
+                  e.dataTransfer.setData("text/plain", `zhixu-tab-transfer:${transferId}`);
                   e.dataTransfer.effectAllowed = "move";
                   draggingTabPathRef.current = t.path;
+                  draggingTransferIdRef.current = transferId;
                 }}
                 onDragEnd={(e) => {
+                  const id = draggingTransferIdRef.current;
                   const path = draggingTabPathRef.current;
+                  draggingTransferIdRef.current = null;
                   draggingTabPathRef.current = null;
-                  // If user drops outside any drop target, create a detached window.
-                  // This matches the expected "drag tab out to new window" behavior.
-                  if (!path) return;
+                  if (!id || !path) return;
                   if (e.dataTransfer.dropEffect !== "none") return;
-                  void moveTabToNewWindow(path);
+                  window.setTimeout(() => {
+                    const pending = readTabTransfer(id);
+                    if (!pending) return;
+                    void openTabTransferWindow({ transferId: id, title: pending.tab.name, vaultRoot: pending.vaultRoot });
+                  }, 0);
                 }}
                 onDragOver={(e) => {
-                  if (!readTabTransferPayload(e)) return;
                   e.preventDefault();
                   e.dataTransfer.dropEffect = "move";
                 }}
                 onDrop={(e) => {
-                  const payload = readTabTransferPayload(e);
-                  if (!payload) return;
+                  const transfer = readTabTransferFromEvent(e);
+                  if (!transfer) return;
                   e.preventDefault();
                   e.stopPropagation();
-                  draggingTabPathRef.current = null;
-                  void applyTabTransfer(payload, { insertIndex: index });
+                  clearTabTransfer(transfer.id);
+                  void applyTabTransfer(transfer.payload, { insertIndex: index });
                 }}
               >
                 <div className="tabInner">
