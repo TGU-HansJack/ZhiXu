@@ -209,6 +209,7 @@ export function App() {
   const [tabs, setTabs] = useState<Tab[]>(() => (isDetached && transferId ? [] : [makeNewTab(1)]));
   const [activePath, setActivePath] = useState<string | null>(() => (isDetached && transferId ? null : "__newtab__1"));
   const tabsRef = useRef<Tab[]>(tabs);
+  const latestTextByPathRef = useRef<Map<string, string>>(new Map());
   const [tabInsertIndicator, setTabInsertIndicator] = useState<{ index: number; left: number } | null>(null);
   const [recentlyInsertedPath, setRecentlyInsertedPath] = useState<string | null>(null);
   useEffect(() => {
@@ -494,18 +495,23 @@ export function App() {
   }, [pushRecentFile]);
 
   const saveActive = useCallback(async () => {
-    if (!activeTab || !activeTab.dirty) return;
+    if (!activeTab) return;
     if (savingRef.current) return;
     savingRef.current = true;
     try {
       if (activeTab.kind === "text") {
-        await writeTextFile(activeTab.path, activeTab.content);
+        const latest = latestTextByPathRef.current.get(activeTab.path);
+        const content = latest ?? activeTab.content;
+        if (content === activeTab.savedContent) return;
+
+        await writeTextFile(activeTab.path, content);
         setTabs((prev) =>
           prev.map((t) =>
-            t.path === activeTab.path && t.kind === "text" ? { ...t, savedContent: activeTab.content, dirty: false } : t,
+            t.path === activeTab.path && t.kind === "text" ? { ...t, savedContent: content, dirty: false } : t,
           ),
         );
       } else if (activeTab.kind === "drawing") {
+        if (!activeTab.dirty) return;
         if (!activeTab.doc) return;
         await writeDrawDocument(activeTab.path, activeTab.doc);
         setTabs((prev) =>
@@ -1960,6 +1966,7 @@ export function App() {
                 mode={editorMode}
                 onKeyDownCapture={onAppKeyDown}
                 onChange={(next) => {
+                  latestTextByPathRef.current.set(activeTab.path, next);
                   setTabs((prev) =>
                     prev.map((t) => {
                       if (t.path !== activeTab.path) return t;

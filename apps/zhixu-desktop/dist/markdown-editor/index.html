@@ -29,7 +29,15 @@
       };
       window.__setTheme = (json) => { window.__payload.themeJson = json; window.__scheduleApply(); };
       window.__setFontSize = (px) => { window.__payload.fontSizePx = Number(px) || 16; window.__scheduleApply(); };
-      window.__setMode = (mode) => { window.__payload.mode = mode === "source" ? "source" : "live"; window.__scheduleApply(); };
+      window.__setMode = (mode) => {
+        // Switching mode might remove live-preview widgets. Ensure any focused inputs flush their value first.
+        try {
+          const el = document.activeElement;
+          if (el && typeof el.blur === "function") el.blur();
+        } catch (_) {}
+        window.__payload.mode = mode === "source" ? "source" : "live";
+        window.__scheduleApply();
+      };
       window.__setPlaceholder = (s) => { window.__payload.placeholder = s || ""; window.__scheduleApply(); };
       window.__setShowLineNumbers = (v) => { window.__payload.showLineNumbers = !!v; window.__scheduleApply(); };
       window.__setShowProperties = (v) => { window.__payload.showProperties = (v !== false); window.__scheduleApply(); };
@@ -44,6 +52,54 @@
         window.__payload.selEnd = Number(selEnd) || window.__payload.selStart;
         window.__scheduleApply();
       };
+
+      // Keep __payload in sync with editor changes inside the iframe.
+      // Otherwise __apply() (triggered by mode/theme/etc) can overwrite the live doc with stale __payload.text.
+      (() => {
+        let current = null;
+
+        function wrapApi(api) {
+          if (!api || typeof api !== "object") return api;
+          try {
+            if (api.__zhixuWrapped) return api;
+            Object.defineProperty(api, "__zhixuWrapped", { value: true });
+          } catch (_) {}
+
+          const origDocChanged = api.docChanged;
+          const origSelChanged = api.selectionChanged;
+
+          if (typeof origDocChanged === "function") {
+            api.docChanged = function (text, selStart, selEnd) {
+              try {
+                window.__payload.text = text || "";
+                window.__payload.selStart = Number(selStart) || 0;
+                window.__payload.selEnd = Number(selEnd) || window.__payload.selStart;
+              } catch (_) {}
+              return origDocChanged.apply(this, arguments);
+            };
+          }
+          if (typeof origSelChanged === "function") {
+            api.selectionChanged = function (selStart, selEnd) {
+              try {
+                window.__payload.selStart = Number(selStart) || 0;
+                window.__payload.selEnd = Number(selEnd) || window.__payload.selStart;
+              } catch (_) {}
+              return origSelChanged.apply(this, arguments);
+            };
+          }
+          return api;
+        }
+
+        Object.defineProperty(window, "ZhixuEditor", {
+          configurable: true,
+          get() {
+            return current;
+          },
+          set(v) {
+            current = wrapApi(v);
+          },
+        });
+      })();
     </script>
 
     <script>

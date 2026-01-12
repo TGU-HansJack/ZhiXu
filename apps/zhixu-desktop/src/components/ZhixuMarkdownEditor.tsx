@@ -76,7 +76,33 @@ export function ZhixuMarkdownEditor({
     const iframe = iframeRef.current;
     if (!iframe) return;
 
-    const handleKeyDown = (ev: KeyboardEvent) => callbacksRef.current.onKeyDownCapture?.(ev);
+    const handleKeyDown = (ev: KeyboardEvent) => {
+      const mod = ev.ctrlKey || ev.metaKey;
+      const key = (ev.key || "").toLowerCase();
+
+      if (mod && key === "s") {
+        try {
+          const win = winRef.current;
+          const el = win?.document?.activeElement as HTMLElement | null;
+          if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA") && typeof (el as any).blur === "function") el.blur();
+        } catch (_) {}
+
+        try {
+          ev.preventDefault();
+          ev.stopPropagation();
+        } catch (_) {}
+
+        // Allow blur-triggered commits (frontmatter widgets) to run before the app save handler.
+        try {
+          winRef.current?.setTimeout(() => callbacksRef.current.onKeyDownCapture?.(ev), 0);
+        } catch (_) {
+          callbacksRef.current.onKeyDownCapture?.(ev);
+        }
+        return;
+      }
+
+      callbacksRef.current.onKeyDownCapture?.(ev);
+    };
 
     const attach = (win: EditorWindow) => {
       cleanupRef.current?.();
