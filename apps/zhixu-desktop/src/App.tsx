@@ -1,9 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { emitTo } from "@tauri-apps/api/event";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { message } from "@tauri-apps/plugin-dialog";
 import { CodeMirrorEditor, type CodeMirrorSelection } from "./components/CodeMirrorEditor";
 import { ZhixuDrawEditor } from "./components/ZhixuDrawEditor";
 import { ZhixuMarkdownEditor, type MarkdownEditorMode } from "./components/ZhixuMarkdownEditor";
 import { FileTree, type TreeNode } from "./components/FileTree";
+import { Popover } from "./components/Popover";
 import { Tooltip, type TooltipPlacement } from "./components/Tooltip";
 import {
   IconCalendar,
@@ -12,6 +16,8 @@ import {
   IconFolderPlus,
   IconFolderPlusLucide,
   IconLucideBrush,
+  IconLucidePictureInPicture,
+  IconLucidePin,
   IconMaximize,
   IconMinimize,
   IconPlus,
@@ -53,6 +59,7 @@ type NewTab = {
   path: string;
   name: string;
   kind: "newtab";
+  locked: boolean;
   content: string;
   savedContent: string;
   dirty: false;
@@ -63,6 +70,7 @@ type TextTab = {
   path: string;
   name: string;
   kind: "text";
+  locked: boolean;
   content: string;
   savedContent: string;
   dirty: boolean;
@@ -73,6 +81,7 @@ type BinaryTab = {
   path: string;
   name: string;
   kind: "binary";
+  locked: boolean;
   content: string;
   savedContent: string;
   dirty: false;
@@ -83,6 +92,7 @@ type DrawingTab = {
   path: string;
   name: string;
   kind: "drawing";
+  locked: boolean;
   doc: DrawDocument | null;
   savedDoc: DrawDocument | null;
   dirty: boolean;
@@ -92,12 +102,19 @@ type DrawingTab = {
 
 type Tab = NewTab | TextTab | BinaryTab | DrawingTab;
 
+type TabTransferPayload = {
+  tab: Tab;
+  vaultRoot: string | null;
+  sourceWindowLabel: string | null;
+};
+
 function makeNewTab(id: number): Tab {
   const path = `__newtab__${id}`;
   return {
     path,
     name: "新标签页",
     kind: "newtab",
+    locked: false,
     content: "",
     savedContent: "",
     dirty: false,
@@ -152,6 +169,10 @@ function IconButton({
 
 export function App() {
   const appWindow = useMemo(() => getCurrentWindow(), []);
+  const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const isDetached = useMemo(() => urlParams.get("view") === "tab", [urlParams]);
+  const initialVaultParam = useMemo(() => urlParams.get("vaultRoot"), [urlParams]);
+  const draggingTabPathRef = useRef<string | null>(null);
 
   const [vaultRoot, setVaultRootState] = useState<string | null>(null);
   const [persisted, setPersisted] = useState<PersistedState>({ lastVault: null, recentVaults: [] });
@@ -164,7 +185,7 @@ export function App() {
   const [selectedDir, setSelectedDir] = useState<string>("");
 
   const [activity, setActivity] = useState<Activity>("space");
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => !isDetached);
 
   const [editorMode, setEditorMode] = useState<MarkdownEditorMode>("live");
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -175,6 +196,12 @@ export function App() {
   const activeTab = useMemo(() => tabs.find((t) => t.path === activePath) ?? null, [tabs, activePath]);
   const tabCount = Math.max(1, tabs.length);
   const tabsDensity = tabCount >= 14 ? "separators" : tabCount >= 8 ? "dense" : "normal";
+
+  const tabContextAnchorRef = useRef<HTMLSpanElement | null>(null);
+  const [tabContextOpen, setTabContextOpen] = useState(false);
+  const [tabContextPath, setTabContextPath] = useState<string | null>(null);
+  const [tabContextPoint, setTabContextPoint] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const tabContextTab = useMemo(() => (tabContextPath ? tabs.find((t) => t.path === tabContextPath) ?? null : null), [tabContextPath, tabs]);
 
   const savingRef = useRef(false);
 
@@ -202,6 +229,19 @@ export function App() {
     const entries = sortEntries(await listDir(""));
     setDirCache({ "": entries });
   }, []);
+
+  useEffect(() => {
+    if (!initialVaultParam) return;
+    void (async () => {
+      try {
+        const resolved = await setVaultRoot(initialVaultParam);
+        await resetForVault(resolved);
+        setPersisted(await getPersistedState());
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+  }, [initialVaultParam, resetForVault]);
 
   const openFolder = useCallback(async (): Promise<string | null> => {
     try {
@@ -293,13 +333,24 @@ export function App() {
       return [
         ...prev,
         textFile
-          ? { path, name: tabName, kind: "text", content: "", savedContent: "", dirty: false, selection: { anchor: 0, head: 0 } }
+          ? { path, name: tabName, kind: "text", locked: false, content: "", savedContent: "", dirty: false, selection: { anchor: 0, head: 0 } }
           : drawFile
-            ? { path, name: tabName, kind: "drawing", doc: null, savedDoc: null, dirty: false, viewMode: "writing", selection: { anchor: 0, head: 0 } }
+            ? {
+                path,
+                name: tabName,
+                kind: "drawing",
+                locked: false,
+                doc: null,
+                savedDoc: null,
+                dirty: false,
+                viewMode: "writing",
+                selection: { anchor: 0, head: 0 },
+              }
             : {
                 path,
                 name: tabName,
                 kind: "binary",
+                locked: false,
                 content: binaryPlaceholder,
                 savedContent: binaryPlaceholder,
                 dirty: false,
@@ -518,6 +569,7 @@ export function App() {
               path: next,
               name: nextName,
               kind: "drawing",
+              locked: t.locked,
               doc: t.kind === "drawing" ? t.doc : null,
               savedDoc: t.kind === "drawing" ? t.savedDoc : null,
               dirty: t.kind === "drawing" ? t.dirty : false,
@@ -530,6 +582,7 @@ export function App() {
               path: next,
               name: nextName,
               kind: "binary",
+              locked: t.locked,
               content: nextBinaryPlaceholder,
               savedContent: nextBinaryPlaceholder,
               dirty: false,
@@ -540,6 +593,7 @@ export function App() {
             path: next,
             name: nextName,
             kind: "text",
+            locked: t.locked,
             content: t.kind === "text" ? t.content : "",
             savedContent: t.kind === "text" ? t.savedContent : "",
             dirty: t.kind === "text" ? t.dirty : false,
@@ -589,6 +643,10 @@ export function App() {
   const closeTab = useCallback(
     (path: string) => {
       const tab = tabs.find((t) => t.path === path);
+      if (tab?.locked) {
+        void message("该标签页已锁定，请先点击图钉解锁后再关闭。", { title: "标签页已锁定", kind: "info" });
+        return;
+      }
       if (tab?.dirty) {
         const ok = window.confirm(`该标签页有未保存的更改，确定关闭？\n\n${tab.path}`);
         if (!ok) return;
@@ -604,6 +662,170 @@ export function App() {
       if (activePath === path) setActivePath(remaining[remaining.length - 1]!.path);
     },
     [activePath, tabs],
+  );
+
+  const removeTabSilently = useCallback((path: string) => {
+    setTabs((prev) => {
+      const remaining = prev.filter((t) => t.path !== path);
+      if (remaining.length === 0) {
+        const next = makeNewTab(newTabIdRef.current++);
+        setActivePath(next.path);
+        return [next];
+      }
+      setActivePath((prevActive) => (prevActive === path ? remaining[remaining.length - 1]!.path : prevActive));
+      return remaining;
+    });
+  }, []);
+
+  const closeManyTabs = useCallback(
+    (toClose: string[], confirmLabel: string) => {
+      if (toClose.length === 0) return;
+      const locked = tabs.filter((t) => toClose.includes(t.path) && t.locked);
+      if (locked.length) {
+        void message(`已跳过 ${locked.length} 个锁定标签页（需先解锁才能关闭）。`, { title: "标签页已锁定", kind: "info" });
+        toClose = toClose.filter((p) => !locked.some((t) => t.path === p));
+      }
+      if (toClose.length === 0) return;
+      const dirty = tabs.filter((t) => toClose.includes(t.path) && t.dirty);
+      if (dirty.length) {
+        const preview = dirty
+          .slice(0, 5)
+          .map((t) => t.path)
+          .join("\n");
+        const more = dirty.length > 5 ? `\n...（还有 ${dirty.length - 5} 个）` : "";
+        const ok = window.confirm(`${confirmLabel}（其中 ${dirty.length} 个有未保存更改），确定继续？\n\n${preview}${more}`);
+        if (!ok) return;
+      }
+      const remaining = tabs.filter((t) => !toClose.includes(t.path));
+      if (remaining.length === 0) {
+        const next = makeNewTab(newTabIdRef.current++);
+        setTabs([next]);
+        setActivePath(next.path);
+        return;
+      }
+      setTabs(remaining);
+      if (activePath && toClose.includes(activePath)) setActivePath(remaining[remaining.length - 1]!.path);
+    },
+    [activePath, tabs],
+  );
+
+  const closeOtherTabs = useCallback(
+    (keepPath: string) => closeManyTabs(tabs.filter((t) => t.path !== keepPath).map((t) => t.path), "关闭其他标签页"),
+    [closeManyTabs, tabs],
+  );
+
+  const closeRightTabs = useCallback(
+    (keepPath: string) => {
+      const index = tabs.findIndex((t) => t.path === keepPath);
+      if (index < 0) return;
+      closeManyTabs(tabs.slice(index + 1).map((t) => t.path), "关闭右侧标签页");
+    },
+    [closeManyTabs, tabs],
+  );
+
+  const closeAllTabs = useCallback(() => closeManyTabs(tabs.map((t) => t.path), "全部关闭"), [closeManyTabs, tabs]);
+
+  const openTabContextMenu = useCallback((ev: React.MouseEvent, path: string) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    setActivePath(path);
+    setTabContextPath(path);
+    setTabContextPoint({ x: ev.clientX, y: ev.clientY });
+    setTabContextOpen(true);
+  }, []);
+
+  const closeTabContextMenu = useCallback(() => setTabContextOpen(false), []);
+
+  const toggleTabLock = useCallback((path: string, next?: boolean) => {
+    setTabs((prev) => prev.map((t) => (t.path === path ? { ...t, locked: next ?? !t.locked } : t)));
+  }, []);
+
+  const applyTabTransfer = useCallback(
+    async (payload: TabTransferPayload, options?: { insertIndex?: number }) => {
+      try {
+        if (payload.vaultRoot && payload.vaultRoot !== vaultRoot) {
+          const resolved = await setVaultRoot(payload.vaultRoot);
+          await resetForVault(resolved);
+          setPersisted(await getPersistedState());
+        }
+      } catch (e) {
+        console.error(e);
+      }
+
+      const insertIndex = options?.insertIndex;
+      setTabs((prev) => {
+        const fromIndex = prev.findIndex((t) => t.path === payload.tab.path);
+        const sameWindow = payload.sourceWindowLabel === appWindow.label;
+        if (sameWindow && fromIndex >= 0) {
+          const tab = prev[fromIndex]!;
+          const without = prev.filter((t) => t.path !== payload.tab.path);
+          const clamped = insertIndex == null ? without.length : Math.max(0, Math.min(insertIndex, without.length));
+          const adjusted = insertIndex != null && fromIndex < insertIndex ? Math.max(0, clamped - 1) : clamped;
+          return [...without.slice(0, adjusted), tab, ...without.slice(adjusted)];
+        }
+
+        const without = prev.filter((t) => t.path !== payload.tab.path);
+        const at = insertIndex == null ? without.length : Math.max(0, Math.min(insertIndex, without.length));
+        return [...without.slice(0, at), payload.tab, ...without.slice(at)];
+      });
+
+      setActivePath(payload.tab.path);
+
+      if (payload.sourceWindowLabel && payload.sourceWindowLabel !== appWindow.label) {
+        await emitTo(payload.sourceWindowLabel, "zhixu:tab-remove", { path: payload.tab.path });
+      }
+    },
+    [appWindow.label, resetForVault, vaultRoot],
+  );
+
+  const readTabTransferPayload = useCallback((ev: React.DragEvent): TabTransferPayload | null => {
+    const raw = ev.dataTransfer.getData("application/x-zhixu-tab");
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as Partial<TabTransferPayload> | null;
+      if (!parsed || typeof parsed !== "object") return null;
+      if (!parsed.tab || typeof parsed.tab !== "object") return null;
+      if (typeof (parsed.tab as any).path !== "string") return null;
+      return {
+        tab: parsed.tab as Tab,
+        vaultRoot: typeof parsed.vaultRoot === "string" || parsed.vaultRoot === null ? parsed.vaultRoot : null,
+        sourceWindowLabel: typeof parsed.sourceWindowLabel === "string" || parsed.sourceWindowLabel === null ? parsed.sourceWindowLabel : null,
+      };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const moveTabToNewWindow = useCallback(
+    async (path: string) => {
+      const tab = tabs.find((t) => t.path === path);
+      if (!tab) return;
+      try {
+        const label = `tab-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+        const url = new URL(window.location.href);
+        url.searchParams.set("view", "tab");
+        if (vaultRoot) url.searchParams.set("vaultRoot", vaultRoot);
+        const win = new WebviewWindow(label, {
+          url: url.toString(),
+          title: tab.name,
+          width: 980,
+          height: 720,
+          decorations: false,
+        });
+        void win.once("tauri://created", async () => {
+          await win.emit<TabTransferPayload>("zhixu:tab-transfer", {
+            tab,
+            vaultRoot,
+            sourceWindowLabel: null,
+          });
+          removeTabSilently(path);
+        });
+      } catch (e) {
+        console.error(e);
+        await message(String(e), { title: "无法新建窗口", kind: "error" });
+      }
+    },
+    [removeTabSilently, tabs, vaultRoot],
   );
 
   const onAppKeyDown = useCallback(
@@ -673,6 +895,59 @@ export function App() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!vaultRoot) return;
+    void (async () => {
+      try {
+        const wins = await WebviewWindow.getAll();
+        for (const w of wins) {
+          if (w.label === appWindow.label) continue;
+          await emitTo(w.label, "zhixu:vault-set", { vaultRoot });
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+  }, [appWindow.label, vaultRoot]);
+
+  useEffect(() => {
+    let unlisten: null | (() => void) = null;
+    void (async () => {
+      unlisten = await appWindow.listen<{ vaultRoot: string }>("zhixu:vault-set", async (event) => {
+        const nextRoot = event.payload?.vaultRoot;
+        if (!nextRoot) return;
+        if (nextRoot === vaultRoot) return;
+        try {
+          const resolved = await setVaultRoot(nextRoot);
+          await resetForVault(resolved);
+          setPersisted(await getPersistedState());
+        } catch (e) {
+          console.error(e);
+        }
+      });
+    })();
+    return () => unlisten?.();
+  }, [appWindow, resetForVault, vaultRoot]);
+
+  useEffect(() => {
+    let unlistenTransfer: null | (() => void) = null;
+    let unlistenRemove: null | (() => void) = null;
+    void (async () => {
+      unlistenTransfer = await appWindow.listen<TabTransferPayload>("zhixu:tab-transfer", async (event) => {
+        await applyTabTransfer(event.payload);
+      });
+
+      unlistenRemove = await appWindow.listen<{ path: string }>("zhixu:tab-remove", (event) => {
+        removeTabSilently(event.payload.path);
+      });
+    })();
+
+    return () => {
+      unlistenTransfer?.();
+      unlistenRemove?.();
+    };
+  }, [appWindow, applyTabTransfer, removeTabSilently]);
 
   useEffect(() => {
     if (!vaultRoot) {
@@ -783,7 +1058,12 @@ export function App() {
   );
 
   return (
-    <div className={`appShell${sidebarOpen ? "" : " sidebarClosed"}`}>
+    <div className={`appShell${isDetached ? " detached" : ""}${sidebarOpen ? "" : " sidebarClosed"}`}>
+      <span
+        ref={tabContextAnchorRef}
+        style={{ position: "fixed", left: tabContextPoint.x, top: tabContextPoint.y, width: 1, height: 1, pointerEvents: "none" }}
+        aria-hidden="true"
+      />
       {/* 菜单栏（Menubar）：展开/收起固定按钮、主侧栏顶部按钮、标签页、窗口按钮 */}
       <div className="topbar menubar" onMouseDown={startDraggingIfAllowed}>
         <div className="menubarLeft">
@@ -816,9 +1096,20 @@ export function App() {
             data-density={tabsDensity}
             style={{ ["--tab-count" as any]: tabCount } as React.CSSProperties}
             role="tablist"
+            onDragOver={(e) => {
+              if (!readTabTransferPayload(e)) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+            }}
+            onDrop={(e) => {
+              const payload = readTabTransferPayload(e);
+              if (!payload) return;
+              e.preventDefault();
+              void applyTabTransfer(payload, { insertIndex: tabs.length });
+            }}
             aria-label="标签页"
           >
-            {tabs.map((t) => (
+            {tabs.map((t, index) => (
               <div
                 key={t.path}
                 className={`tab${t.path === activePath ? " active" : ""}`}
@@ -827,6 +1118,37 @@ export function App() {
                 data-dirty={t.dirty ? "true" : "false"}
                 data-no-drag="true"
                 onClick={() => setActivePath(t.path)}
+                onContextMenu={(e) => openTabContextMenu(e, t.path)}
+                draggable
+                onDragStart={(e) => {
+                  const payload: TabTransferPayload = { tab: t, vaultRoot, sourceWindowLabel: appWindow.label };
+                  e.dataTransfer.setData("application/x-zhixu-tab", JSON.stringify(payload));
+                  e.dataTransfer.setData("text/plain", t.path);
+                  e.dataTransfer.effectAllowed = "move";
+                  draggingTabPathRef.current = t.path;
+                }}
+                onDragEnd={(e) => {
+                  const path = draggingTabPathRef.current;
+                  draggingTabPathRef.current = null;
+                  // If user drops outside any drop target, create a detached window.
+                  // This matches the expected "drag tab out to new window" behavior.
+                  if (!path) return;
+                  if (e.dataTransfer.dropEffect !== "none") return;
+                  void moveTabToNewWindow(path);
+                }}
+                onDragOver={(e) => {
+                  if (!readTabTransferPayload(e)) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(e) => {
+                  const payload = readTabTransferPayload(e);
+                  if (!payload) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  draggingTabPathRef.current = null;
+                  void applyTabTransfer(payload, { insertIndex: index });
+                }}
               >
                 <div className="tabInner">
                   <Tooltip label={t.kind === "newtab" ? "新标签页" : t.path} placement="bottom">
@@ -834,21 +1156,31 @@ export function App() {
                   </Tooltip>
                   <button
                     type="button"
-                    className="tabClose"
-                    aria-label="关闭标签"
+                    className={`tabClose${t.locked ? " locked" : ""}`}
+                    aria-label={t.locked ? "解锁标签页" : "关闭标签页"}
                     data-no-drag="true"
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (t.locked) {
+                        toggleTabLock(t.path, false);
+                        return;
+                      }
                       closeTab(t.path);
                     }}
                   >
-                    <Tooltip label="关闭标签" placement="bottom">
-                      <span className="tabCloseGlyph" aria-hidden="true">
-                        <span className="tabCloseDot" />
-                        <span className="tabCloseX">
-                          <IconClose size={14} />
+                    <Tooltip label={t.locked ? "解锁" : "关闭"} placement="bottom">
+                      {t.locked ? (
+                        <span className="tabCloseGlyph" aria-hidden="true">
+                          <IconLucidePin size={14} />
                         </span>
-                      </span>
+                      ) : (
+                        <span className="tabCloseGlyph" aria-hidden="true">
+                          <span className="tabCloseDot" />
+                          <span className="tabCloseX">
+                            <IconClose size={14} />
+                          </span>
+                        </span>
+                      )}
                     </Tooltip>
                   </button>
                 </div>
@@ -877,6 +1209,101 @@ export function App() {
         </div>
 
         {/* 最大化/最小化/关闭按钮 */}
+        <Popover
+          open={tabContextOpen}
+          anchorEl={tabContextAnchorRef.current}
+          placement="bottom-start"
+          onClose={closeTabContextMenu}
+          className="tabContextMenu"
+        >
+          <div className="menu">
+            <button
+              type="button"
+              className="menuItem"
+              onClick={() => {
+                if (tabContextPath) closeTab(tabContextPath);
+                closeTabContextMenu();
+              }}
+            >
+              <span className="menuIcon" aria-hidden="true">
+                <IconClose size={16} />
+              </span>
+              <span className="menuLabel">关闭</span>
+            </button>
+            <button
+              type="button"
+              className="menuItem"
+              onClick={() => {
+                if (tabContextPath) closeOtherTabs(tabContextPath);
+                closeTabContextMenu();
+              }}
+            >
+              <span className="menuIcon" aria-hidden="true">
+                <IconClose size={16} />
+              </span>
+              <span className="menuLabel">关闭其他标签页</span>
+            </button>
+            <button
+              type="button"
+              className="menuItem"
+              onClick={() => {
+                if (tabContextPath) closeRightTabs(tabContextPath);
+                closeTabContextMenu();
+              }}
+            >
+              <span className="menuIcon" aria-hidden="true">
+                <IconClose size={16} />
+              </span>
+              <span className="menuLabel">关闭右侧标签页</span>
+            </button>
+            <button
+              type="button"
+              className="menuItem"
+              onClick={() => {
+                closeAllTabs();
+                closeTabContextMenu();
+              }}
+            >
+              <span className="menuIcon" aria-hidden="true">
+                <IconClose size={16} />
+              </span>
+              <span className="menuLabel">全部关闭</span>
+            </button>
+
+            <div className="menuSeparator" role="separator" />
+
+            <button
+              type="button"
+              className="menuItem"
+              onClick={() => {
+                if (tabContextPath) toggleTabLock(tabContextPath);
+                closeTabContextMenu();
+              }}
+              disabled={!tabContextPath}
+            >
+              <span className="menuIcon" aria-hidden="true">
+                <IconLucidePin size={16} />
+              </span>
+              <span className="menuLabel">{tabContextTab?.locked ? "解锁" : "锁定"}</span>
+            </button>
+
+            <button
+              type="button"
+              className="menuItem"
+              onClick={() => {
+                if (tabContextPath) void moveTabToNewWindow(tabContextPath);
+                closeTabContextMenu();
+              }}
+              disabled={!tabContextPath}
+            >
+              <span className="menuIcon" aria-hidden="true">
+                <IconLucidePictureInPicture size={16} />
+              </span>
+              <span className="menuLabel">移动到新窗口</span>
+            </button>
+          </div>
+        </Popover>
+
         <div className="menubarWindowControls">
           <IconButton title="最小化" tooltipPlacement="bottom" onClick={() => void appWindow.minimize()} className="winBtn">
             <IconMinimize size={16} />

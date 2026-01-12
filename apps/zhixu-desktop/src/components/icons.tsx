@@ -119,6 +119,14 @@ export function IconLucideBrush(props: IconProps) {
   return <MaskIcon {...props} file="/icons/lucide-brush.svg" />;
 }
 
+export function IconLucidePin(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/lucide-pin.svg" />;
+}
+
+export function IconLucidePictureInPicture(props: IconProps) {
+  return <MaskIcon {...props} file="/icons/lucide-picture-in-picture.svg" />;
+}
+
 export function IconLucideHighlighter(props: IconProps) {
   return <MaskIcon {...props} file="/icons/lucide-highlighter.svg" />;
 }
