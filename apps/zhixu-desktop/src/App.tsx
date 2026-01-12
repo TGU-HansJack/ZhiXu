@@ -172,7 +172,11 @@ export function App() {
   const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const isDetached = useMemo(() => urlParams.get("view") === "tab", [urlParams]);
   const initialVaultParam = useMemo(() => urlParams.get("vaultRoot"), [urlParams]);
+  const openerWindowLabel = useMemo(() => urlParams.get("opener"), [urlParams]);
+  const transferId = useMemo(() => urlParams.get("transferId"), [urlParams]);
   const draggingTabPathRef = useRef<string | null>(null);
+  const transferAckedRef = useRef(false);
+  const pendingTransfersRef = useRef<Map<string, { payload: TabTransferPayload; sourceTabPath: string }>>(new Map());
 
   const [vaultRoot, setVaultRootState] = useState<string | null>(null);
   const [persisted, setPersisted] = useState<PersistedState>({ lastVault: null, recentVaults: [] });
@@ -217,6 +221,12 @@ export function App() {
   const filePickerSeqRef = useRef(0);
   const filePickerInputRef = useRef<HTMLInputElement | null>(null);
 
+  const sameVaultRoot = useCallback((a: string | null, b: string | null) => {
+    if (!a && !b) return true;
+    if (!a || !b) return false;
+    return formatPathForDisplay(a) === formatPathForDisplay(b);
+  }, []);
+
   const resetForVault = useCallback(async (root: string) => {
     setVaultRootState(root);
     const tab = makeNewTab(newTabIdRef.current++);
@@ -231,17 +241,30 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!initialVaultParam) return;
+    if (!isDetached) return;
+    let cancelled = false;
     void (async () => {
       try {
-        const resolved = await setVaultRoot(initialVaultParam);
-        await resetForVault(resolved);
-        setPersisted(await getPersistedState());
+        if (initialVaultParam && !sameVaultRoot(vaultRoot, initialVaultParam)) {
+          const resolved = await setVaultRoot(initialVaultParam);
+          if (cancelled) return;
+          await resetForVault(resolved);
+          if (cancelled) return;
+          setPersisted(await getPersistedState());
+        }
       } catch (e) {
         console.error(e);
+      } finally {
+        if (cancelled) return;
+        if (openerWindowLabel && transferId) {
+          await emitTo(openerWindowLabel, "zhixu:tab-window-ready", { transferId, windowLabel: appWindow.label });
+        }
       }
     })();
-  }, [initialVaultParam, resetForVault]);
+    return () => {
+      cancelled = true;
+    };
+  }, [appWindow.label, initialVaultParam, isDetached, openerWindowLabel, resetForVault, sameVaultRoot, transferId, vaultRoot]);
 
   const openFolder = useCallback(async (): Promise<string | null> => {
     try {
@@ -743,7 +766,7 @@ export function App() {
   const applyTabTransfer = useCallback(
     async (payload: TabTransferPayload, options?: { insertIndex?: number }) => {
       try {
-        if (payload.vaultRoot && payload.vaultRoot !== vaultRoot) {
+        if (payload.vaultRoot && !sameVaultRoot(payload.vaultRoot, vaultRoot)) {
           const resolved = await setVaultRoot(payload.vaultRoot);
           await resetForVault(resolved);
           setPersisted(await getPersistedState());
@@ -775,7 +798,7 @@ export function App() {
         await emitTo(payload.sourceWindowLabel, "zhixu:tab-remove", { path: payload.tab.path });
       }
     },
-    [appWindow.label, resetForVault, vaultRoot],
+    [appWindow.label, resetForVault, sameVaultRoot, vaultRoot],
   );
 
   const readTabTransferPayload = useCallback((ev: React.DragEvent): TabTransferPayload | null => {
@@ -801,10 +824,14 @@ export function App() {
       const tab = tabs.find((t) => t.path === path);
       if (!tab) return;
       try {
+        const nextTransferId = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
         const label = `tab-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+        pendingTransfersRef.current.set(nextTransferId, { payload: { tab, vaultRoot, sourceWindowLabel: null }, sourceTabPath: path });
         const url = new URL(window.location.href);
         url.searchParams.set("view", "tab");
         if (vaultRoot) url.searchParams.set("vaultRoot", vaultRoot);
+        url.searchParams.set("opener", appWindow.label);
+        url.searchParams.set("transferId", nextTransferId);
         const win = new WebviewWindow(label, {
           url: url.toString(),
           title: tab.name,
@@ -812,20 +839,16 @@ export function App() {
           height: 720,
           decorations: false,
         });
-        void win.once("tauri://created", async () => {
-          await win.emit<TabTransferPayload>("zhixu:tab-transfer", {
-            tab,
-            vaultRoot,
-            sourceWindowLabel: null,
-          });
-          removeTabSilently(path);
+        void win.once("tauri://error", async (e) => {
+          pendingTransfersRef.current.delete(nextTransferId);
+          await message(String(e), { title: "无法新建窗口", kind: "error" });
         });
       } catch (e) {
         console.error(e);
         await message(String(e), { title: "无法新建窗口", kind: "error" });
       }
     },
-    [removeTabSilently, tabs, vaultRoot],
+    [appWindow.label, tabs, vaultRoot],
   );
 
   const onAppKeyDown = useCallback(
@@ -882,6 +905,36 @@ export function App() {
   );
 
   useEffect(() => {
+    let unlistenReady: null | (() => void) = null;
+    let unlistenAck: null | (() => void) = null;
+
+    void (async () => {
+      unlistenReady = await appWindow.listen<{ transferId: string; windowLabel: string }>("zhixu:tab-window-ready", async (event) => {
+        const id = event.payload?.transferId;
+        const targetLabel = event.payload?.windowLabel;
+        if (!id || !targetLabel) return;
+        const pending = pendingTransfersRef.current.get(id);
+        if (!pending) return;
+        await emitTo<TabTransferPayload>(targetLabel, "zhixu:tab-transfer", pending.payload);
+      });
+
+      unlistenAck = await appWindow.listen<{ transferId: string }>("zhixu:tab-transfer-ack", (event) => {
+        const id = event.payload?.transferId;
+        if (!id) return;
+        const pending = pendingTransfersRef.current.get(id);
+        if (!pending) return;
+        pendingTransfersRef.current.delete(id);
+        removeTabSilently(pending.sourceTabPath);
+      });
+    })();
+
+    return () => {
+      unlistenReady?.();
+      unlistenAck?.();
+    };
+  }, [appWindow, removeTabSilently]);
+
+  useEffect(() => {
     window.addEventListener("keydown", onAppKeyDown, true);
     return () => window.removeEventListener("keydown", onAppKeyDown, true);
   }, [onAppKeyDown]);
@@ -897,45 +950,15 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!vaultRoot) return;
-    void (async () => {
-      try {
-        const wins = await WebviewWindow.getAll();
-        for (const w of wins) {
-          if (w.label === appWindow.label) continue;
-          await emitTo(w.label, "zhixu:vault-set", { vaultRoot });
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    })();
-  }, [appWindow.label, vaultRoot]);
-
-  useEffect(() => {
-    let unlisten: null | (() => void) = null;
-    void (async () => {
-      unlisten = await appWindow.listen<{ vaultRoot: string }>("zhixu:vault-set", async (event) => {
-        const nextRoot = event.payload?.vaultRoot;
-        if (!nextRoot) return;
-        if (nextRoot === vaultRoot) return;
-        try {
-          const resolved = await setVaultRoot(nextRoot);
-          await resetForVault(resolved);
-          setPersisted(await getPersistedState());
-        } catch (e) {
-          console.error(e);
-        }
-      });
-    })();
-    return () => unlisten?.();
-  }, [appWindow, resetForVault, vaultRoot]);
-
-  useEffect(() => {
     let unlistenTransfer: null | (() => void) = null;
     let unlistenRemove: null | (() => void) = null;
     void (async () => {
       unlistenTransfer = await appWindow.listen<TabTransferPayload>("zhixu:tab-transfer", async (event) => {
         await applyTabTransfer(event.payload);
+        if (!transferAckedRef.current && openerWindowLabel && transferId) {
+          transferAckedRef.current = true;
+          await emitTo(openerWindowLabel, "zhixu:tab-transfer-ack", { transferId });
+        }
       });
 
       unlistenRemove = await appWindow.listen<{ path: string }>("zhixu:tab-remove", (event) => {
@@ -947,7 +970,7 @@ export function App() {
       unlistenTransfer?.();
       unlistenRemove?.();
     };
-  }, [appWindow, applyTabTransfer, removeTabSilently]);
+  }, [appWindow, applyTabTransfer, openerWindowLabel, removeTabSilently, transferId]);
 
   useEffect(() => {
     if (!vaultRoot) {
