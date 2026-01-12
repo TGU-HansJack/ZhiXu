@@ -1,11 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cursorPosition, getCurrentWindow } from "@tauri-apps/api/window";
 import { emitTo } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { message } from "@tauri-apps/plugin-dialog";
-import { CodeMirrorEditor, type CodeMirrorSelection } from "./components/CodeMirrorEditor";
-import { ZhixuDrawEditor } from "./components/ZhixuDrawEditor";
-import { ZhixuMarkdownEditor, type MarkdownEditorMode } from "./components/ZhixuMarkdownEditor";
+import type { CodeMirrorSelection } from "./components/CodeMirrorEditor";
+import type { MarkdownEditorMode } from "./components/ZhixuMarkdownEditor";
 import { FileTree, type TreeNode } from "./components/FileTree";
 import { Popover } from "./components/Popover";
 import { Tooltip, type TooltipPlacement } from "./components/Tooltip";
@@ -60,6 +59,18 @@ import {
   startStatsReporter,
 } from "./lib/perf";
 import type { DrawDocument, DrawViewMode } from "./draw/types";
+
+const LazyCodeMirrorEditor = React.lazy(() =>
+  import("./components/CodeMirrorEditor").then((m) => ({ default: m.CodeMirrorEditor })),
+) as React.LazyExoticComponent<typeof import("./components/CodeMirrorEditor").CodeMirrorEditor>;
+
+const LazyZhixuDrawEditor = React.lazy(() =>
+  import("./components/ZhixuDrawEditor").then((m) => ({ default: m.ZhixuDrawEditor })),
+) as React.LazyExoticComponent<typeof import("./components/ZhixuDrawEditor").ZhixuDrawEditor>;
+
+const LazyZhixuMarkdownEditor = React.lazy(() =>
+  import("./components/ZhixuMarkdownEditor").then((m) => ({ default: m.ZhixuMarkdownEditor })),
+) as React.LazyExoticComponent<typeof import("./components/ZhixuMarkdownEditor").ZhixuMarkdownEditor>;
 
 type Activity = "space" | "tasks" | "calendar" | "quadrant" | "workshop" | "search";
 
@@ -2012,67 +2023,73 @@ export function App() {
                 </div>
               </div>
             ) : activeTab.kind === "text" ? (
-              <ZhixuMarkdownEditor
-                value={activeTab.content}
-                selection={activeTab.selection}
-                placeholder={editorPlaceholder}
-                mode={editorMode}
-                onKeyDownCapture={onAppKeyDown}
-                onChange={(next) => {
-                  trackEditorInputToFrame({ path: activeTab.path, mode: editorMode });
-                  latestTextByPathRef.current.set(activeTab.path, next);
-                  setTabs((prev) =>
-                    prev.map((t) => {
-                      if (t.path !== activeTab.path) return t;
-                      if (t.kind !== "text") return t;
-                      if (t.content === next) return t;
-                      return { ...t, content: next, dirty: next !== t.savedContent };
-                    }),
-                  );
-                }}
-                onSelectionChange={(nextSel) => {
-                  setTabs((prev) =>
-                    prev.map((t) => {
-                      if (t.path !== activeTab.path) return t;
-                      return { ...t, selection: nextSel };
-                    }),
-                  );
-                }}
-              />
+              <Suspense fallback={<div className="emptyState">加载编辑器…</div>}>
+                <LazyZhixuMarkdownEditor
+                  value={activeTab.content}
+                  selection={activeTab.selection}
+                  placeholder={editorPlaceholder}
+                  mode={editorMode}
+                  onKeyDownCapture={onAppKeyDown}
+                  onChange={(next) => {
+                    trackEditorInputToFrame({ path: activeTab.path, mode: editorMode });
+                    latestTextByPathRef.current.set(activeTab.path, next);
+                    setTabs((prev) =>
+                      prev.map((t) => {
+                        if (t.path !== activeTab.path) return t;
+                        if (t.kind !== "text") return t;
+                        if (t.content === next) return t;
+                        return { ...t, content: next, dirty: next !== t.savedContent };
+                      }),
+                    );
+                  }}
+                  onSelectionChange={(nextSel) => {
+                    setTabs((prev) =>
+                      prev.map((t) => {
+                        if (t.path !== activeTab.path) return t;
+                        return { ...t, selection: nextSel };
+                      }),
+                    );
+                  }}
+                />
+              </Suspense>
             ) : activeTab.kind === "drawing" ? (
-              <ZhixuDrawEditor
-                key={activeTab.path}
-                path={activeTab.path}
-                doc={activeTab.doc}
-                savedDoc={activeTab.savedDoc}
-                dirty={activeTab.dirty}
-                viewMode={activeTab.viewMode}
-                onBack={() => closeTab(activeTab.path)}
-                onSave={() => void saveActive()}
-                onDeleteFile={() => void deleteActive()}
-                onOpenFile={(path) => void openFile(path)}
-                onUpdate={(patch) => {
-                  setTabs((prev) =>
-                    prev.map((t) => (t.path === activeTab.path && t.kind === "drawing" ? { ...t, ...patch } : t)),
-                  );
-                }}
-              />
+              <Suspense fallback={<div className="emptyState">加载画布编辑器…</div>}>
+                <LazyZhixuDrawEditor
+                  key={activeTab.path}
+                  path={activeTab.path}
+                  doc={activeTab.doc}
+                  savedDoc={activeTab.savedDoc}
+                  dirty={activeTab.dirty}
+                  viewMode={activeTab.viewMode}
+                  onBack={() => closeTab(activeTab.path)}
+                  onSave={() => void saveActive()}
+                  onDeleteFile={() => void deleteActive()}
+                  onOpenFile={(path) => void openFile(path)}
+                  onUpdate={(patch) => {
+                    setTabs((prev) =>
+                      prev.map((t) => (t.path === activeTab.path && t.kind === "drawing" ? { ...t, ...patch } : t)),
+                    );
+                  }}
+                />
+              </Suspense>
             ) : (
-              <CodeMirrorEditor
-                value={activeTab.content}
-                selection={activeTab.selection}
-                placeholder={editorPlaceholder}
-                readOnly={true}
-                onChange={() => {}}
-                onSelectionChange={(nextSel) => {
-                  setTabs((prev) =>
-                    prev.map((t) => {
-                      if (t.path !== activeTab.path) return t;
-                      return { ...t, selection: nextSel };
-                    }),
-                  );
-                }}
-              />
+              <Suspense fallback={<div className="emptyState">加载预览…</div>}>
+                <LazyCodeMirrorEditor
+                  value={activeTab.content}
+                  selection={activeTab.selection}
+                  placeholder={editorPlaceholder}
+                  readOnly={true}
+                  onChange={() => {}}
+                  onSelectionChange={(nextSel) => {
+                    setTabs((prev) =>
+                      prev.map((t) => {
+                        if (t.path !== activeTab.path) return t;
+                        return { ...t, selection: nextSel };
+                      }),
+                    );
+                  }}
+                />
+              </Suspense>
             )
           ) : (
             <div className="emptyState">

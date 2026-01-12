@@ -1,3 +1,5 @@
+import { installDevConsoleFilters } from "./devConsoleFilters";
+
 type Percentiles = {
   p50Ms: number | null;
   p95Ms: number | null;
@@ -169,8 +171,10 @@ export function initDevPerfLogging(): void {
   window.__ZHIXU_DEV_PERF__ = { enabled: true, startedAtMs: performance.now(), flags: {} };
   devPerfMark("zhixu:boot:init");
 
+  installDevConsoleFilters();
+
   try {
-    console.log(`${LOG_PREFIX} enabled`, { mode: import.meta.env.MODE, timeOrigin: performance.timeOrigin });
+    console.log(`${LOG_PREFIX} enabled (mode=${import.meta.env.MODE})`);
   } catch (_) {}
 
   installLongTaskObserver();
@@ -227,7 +231,7 @@ export function logStartupSummary(context?: string, extra?: Record<string, unkno
 
   try {
     console.groupCollapsed(`${LOG_PREFIX} startup${context ? ` (${context})` : ""}`);
-    console.table(base);
+    console.log(base);
     if (extra) console.debug(`${LOG_PREFIX} extra`, extra);
     console.groupEnd();
   } catch (_) {
