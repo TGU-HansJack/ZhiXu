@@ -207,7 +207,7 @@ fun SettingsScreen(
 
                     HorizontalDivider(color = dividerColor)
                     SettingsRow(
-                        iconRes = Ionicons.PricetagsOutline,
+                        iconRes = Ionicons.Sparkles,
                         title = stringResource(R.string.settings_pro_title),
                         subtitle = proSubtitle,
                         onClick = { showProDialog = true },
@@ -1185,38 +1185,6 @@ private fun ProSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             item { Spacer(modifier = Modifier.height(12.dp)) }
-            item { SettingsSectionTitle(text = stringResource(R.string.settings_pro_title)) }
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = MaterialTheme.shapes.extraLarge,
-                ) {
-                    ListItem(
-                        modifier = Modifier.fillMaxWidth(),
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(Ionicons.PricetagsOutline),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        },
-                        headlineContent = { Text(stringResource(R.string.settings_pro_enable_title)) },
-                        supportingContent = { Text(stringResource(R.string.settings_pro_enable_subtitle), maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                        trailingContent = {
-                            ZhixuSwitch(
-                                checked = isProEnabled,
-                                onCheckedChange = { checked -> scope.launch { proPrefs.setProEnabled(checked) } },
-                            )
-                        },
-                    )
-                }
-            }
-
-            item { Spacer(modifier = Modifier.height(14.dp)) }
-
-            item { SettingsSectionTitle(text = stringResource(R.string.pro_payment_section_title)) }
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -1333,6 +1301,77 @@ private fun ProSettingsScreen(
                                 onCheckedChange = { checked -> scope.launch { proPrefs.setProEnabled(checked) } },
                             )
                         }
+                    }
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(14.dp)) }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        ListItem(
+                            modifier = Modifier.fillMaxWidth(),
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_hero_sparkles),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            headlineContent = { Text(stringResource(R.string.pro_feature_ai_title)) },
+                            supportingContent = { Text(stringResource(R.string.pro_feature_ai_desc), maxLines = 3, overflow = TextOverflow.Ellipsis) },
+                        )
+
+                        HorizontalDivider(color = dividerColor)
+                        ListItem(
+                            modifier = Modifier.fillMaxWidth(),
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(Ionicons.ExtensionPuzzleOutline),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            headlineContent = { Text(stringResource(R.string.pro_feature_workshop_title)) },
+                            supportingContent = { Text(stringResource(R.string.pro_feature_workshop_desc), maxLines = 3, overflow = TextOverflow.Ellipsis) },
+                        )
+
+                        HorizontalDivider(color = dividerColor)
+                        ListItem(
+                            modifier = Modifier.fillMaxWidth(),
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_lucide_cloud_sync),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            headlineContent = { Text(stringResource(R.string.pro_feature_sync_title)) },
+                            supportingContent = { Text(stringResource(R.string.pro_feature_sync_desc), maxLines = 3, overflow = TextOverflow.Ellipsis) },
+                        )
+
+                        HorizontalDivider(color = dividerColor)
+                        ListItem(
+                            modifier = Modifier.fillMaxWidth(),
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_lucide_brush),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            headlineContent = { Text(stringResource(R.string.pro_feature_drawing_title)) },
+                            supportingContent = { Text(stringResource(R.string.pro_feature_drawing_desc), maxLines = 3, overflow = TextOverflow.Ellipsis) },
+                        )
                     }
                 }
             }

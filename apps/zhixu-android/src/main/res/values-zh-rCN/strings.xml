@@ -488,6 +488,14 @@
     <string name="pro_payment_alipay">支付宝</string>
     <string name="pro_payment_wechat">微信支付</string>
     <string name="pro_payment_code_content_desc">付款码</string>
+    <string name="pro_feature_ai_title">AI对接功能</string>
+    <string name="pro_feature_ai_desc">可以设置后调用AI在文档/任务/绘图/录音等场景。</string>
+    <string name="pro_feature_workshop_title">创意工坊</string>
+    <string name="pro_feature_workshop_desc">官方会持续对接官方、第三方的插件，供用户使用。</string>
+    <string name="pro_feature_sync_title">官方同步</string>
+    <string name="pro_feature_sync_desc">多端同步、端对端加密。</string>
+    <string name="pro_feature_drawing_title">自研绘图</string>
+    <string name="pro_feature_drawing_desc">官方自研绘图功能、多端支持、技术支持。</string>
     <string name="settings_about_subtitle">版本、更新与链接</string>
     <string name="settings_workshop_subtitle">插件、脚本与配置</string>
     <string name="settings_sync_subtitle">同步配置与日志</string>

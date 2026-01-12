@@ -32,6 +32,7 @@ object Ionicons {
     @DrawableRes val SunnyOutline: Int = R.drawable.ic_ion_sunny_outline
     @DrawableRes val FlagOutline: Int = R.drawable.ic_ion_flag_outline
     @DrawableRes val PricetagsOutline: Int = R.drawable.ic_ion_pricetags_outline
+    @DrawableRes val Sparkles: Int = R.drawable.ic_lucide_sparkles
     @DrawableRes val CopyOutline: Int = R.drawable.ic_ion_copy_outline
     @DrawableRes val ShareSocialOutline: Int = R.drawable.ic_ion_share_social_outline
     @DrawableRes val TrashOutline: Int = R.drawable.ic_ion_trash_outline

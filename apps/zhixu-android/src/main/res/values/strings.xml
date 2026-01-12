@@ -511,6 +511,14 @@
     <string name="pro_payment_alipay">Alipay</string>
     <string name="pro_payment_wechat">WeChat Pay</string>
     <string name="pro_payment_code_content_desc">Payment code</string>
+    <string name="pro_feature_ai_title">AI integration</string>
+    <string name="pro_feature_ai_desc">Configure and call AI in documents, tasks, drawing, recordings, and more.</string>
+    <string name="pro_feature_workshop_title">Workshop</string>
+    <string name="pro_feature_workshop_desc">Official plugins and third‑party extensions, continuously updated.</string>
+    <string name="pro_feature_sync_title">Official sync</string>
+    <string name="pro_feature_sync_desc">Multi-device sync with end-to-end encryption.</string>
+    <string name="pro_feature_drawing_title">Drawing</string>
+    <string name="pro_feature_drawing_desc">Official drawing tool with multi-platform support.</string>
     <string name="settings_about_subtitle">Version, updates and links</string>
     <string name="settings_workshop_subtitle">Plugins, scripts and configs</string>
     <string name="settings_sync_subtitle">Sync settings and logs</string>
