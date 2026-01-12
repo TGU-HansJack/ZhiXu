@@ -208,6 +208,9 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    window.__zhixuBoot?.log("$ app: mounted");
+    window.__zhixuBoot?.step("Ready");
+
     const splash = document.getElementById("zhixu-boot-splash");
     if (splash && splash.getAttribute("data-hidden") !== "true") {
       splash.setAttribute("data-hidden", "true");
