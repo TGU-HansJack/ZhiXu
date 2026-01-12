@@ -22,8 +22,11 @@ export default defineConfig({
       "@codemirror/view",
       "@codemirror/commands",
       "@codemirror/lang-markdown",
+      "pdf-lib",
+      "@pdf-lib/standard-fonts",
+      "@pdf-lib/upng",
+      "pako",
     ],
-    exclude: ["pdf-lib"],
     holdUntilCrawlEnd: false,
   },
   server: {
