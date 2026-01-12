@@ -721,7 +721,7 @@ if(__fmInfo){
 	      wrap.appendChild(btn);
 	      return wrap;
 	    }
-	    ignoreEvent(){ return !1; }
+	    ignoreEvent(){ return !0; }
 	  }
 	  function cbLangId(raw){
 	    let s=(raw==null?"":String(raw)).trim().toLowerCase();
