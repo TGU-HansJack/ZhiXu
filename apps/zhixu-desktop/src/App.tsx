@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { cursorPosition, getCurrentWindow } from "@tauri-apps/api/window";
 import { emitTo } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { message } from "@tauri-apps/plugin-dialog";
@@ -175,6 +175,7 @@ export function App() {
   const transferId = useMemo(() => urlParams.get("transferId"), [urlParams]);
   const draggingTabPathRef = useRef<string | null>(null);
   const draggingTransferIdRef = useRef<string | null>(null);
+  const transferCleanupByPathRef = useRef<Map<string, string>>(new Map());
 
   const [vaultRoot, setVaultRootState] = useState<string | null>(null);
   const [persisted, setPersisted] = useState<PersistedState>({ lastVault: null, recentVaults: [] });
@@ -198,7 +199,23 @@ export function App() {
   const tabsRef = useRef<Tab[]>(tabs);
   useEffect(() => {
     tabsRef.current = tabs;
+    let maxNewTabId = 0;
+    for (const t of tabs) {
+      if (!t.path.startsWith("__newtab__")) continue;
+      const raw = t.path.slice("__newtab__".length);
+      const parsed = Number.parseInt(raw, 10);
+      if (!Number.isFinite(parsed)) continue;
+      if (parsed > maxNewTabId) maxNewTabId = parsed;
+    }
+    if (maxNewTabId + 1 > newTabIdRef.current) newTabIdRef.current = maxNewTabId + 1;
   }, [tabs]);
+  const detachedHadTabRef = useRef(false);
+  useEffect(() => {
+    if (tabs.length > 0) detachedHadTabRef.current = true;
+    if (!isDetached) return;
+    if (!detachedHadTabRef.current) return;
+    if (tabs.length === 0) void appWindow.close();
+  }, [appWindow, isDetached, tabs.length]);
   const activeTab = useMemo(() => tabs.find((t) => t.path === activePath) ?? null, [tabs, activePath]);
   const tabCount = Math.max(1, tabs.length);
   const tabsDensity = tabCount >= 14 ? "separators" : tabCount >= 8 ? "dense" : "normal";
@@ -727,6 +744,11 @@ export function App() {
       }
       const remaining = tabs.filter((t) => t.path !== path);
       if (remaining.length === 0) {
+        if (isDetached) {
+          setTabs([]);
+          setActivePath(null);
+          return;
+        }
         const next = makeNewTab(newTabIdRef.current++);
         setTabs([next]);
         setActivePath(next.path);
@@ -735,13 +757,17 @@ export function App() {
       setTabs(remaining);
       if (activePath === path) setActivePath(remaining[remaining.length - 1]!.path);
     },
-    [activePath, tabs],
+    [activePath, isDetached, tabs],
   );
 
   const removeTabSilently = useCallback((path: string) => {
     setTabs((prev) => {
       const remaining = prev.filter((t) => t.path !== path);
       if (remaining.length === 0) {
+        if (isDetached) {
+          setActivePath(null);
+          return [];
+        }
         const next = makeNewTab(newTabIdRef.current++);
         setActivePath(next.path);
         return [next];
@@ -749,7 +775,7 @@ export function App() {
       setActivePath((prevActive) => (prevActive === path ? remaining[remaining.length - 1]!.path : prevActive));
       return remaining;
     });
-  }, []);
+  }, [isDetached]);
 
   const closeManyTabs = useCallback(
     (toClose: string[], confirmLabel: string) => {
@@ -772,6 +798,11 @@ export function App() {
       }
       const remaining = tabs.filter((t) => !toClose.includes(t.path));
       if (remaining.length === 0) {
+        if (isDetached) {
+          setTabs([]);
+          setActivePath(null);
+          return;
+        }
         const next = makeNewTab(newTabIdRef.current++);
         setTabs([next]);
         setActivePath(next.path);
@@ -780,7 +811,7 @@ export function App() {
       setTabs(remaining);
       if (activePath && toClose.includes(activePath)) setActivePath(remaining[remaining.length - 1]!.path);
     },
-    [activePath, tabs],
+    [activePath, isDetached, tabs],
   );
 
   const closeOtherTabs = useCallback(
@@ -886,6 +917,32 @@ export function App() {
       }
     })();
   }, [applyTabTransfer, clearTabTransfer, isDetached, readTabTransfer, transferId]);
+
+  const findOtherWindowUnderCursorLabel = useCallback(async (): Promise<string | null> => {
+    try {
+      const point = await cursorPosition();
+      const windows = await WebviewWindow.getAll();
+      let best: { label: string; area: number } | null = null;
+
+      for (const w of windows) {
+        if (w.label === appWindow.label) continue;
+        const [pos, size] = await Promise.all([w.outerPosition(), w.outerSize()]);
+        const inside =
+          point.x >= pos.x &&
+          point.y >= pos.y &&
+          point.x <= pos.x + size.width &&
+          point.y <= pos.y + size.height;
+        if (!inside) continue;
+        const area = Math.max(1, size.width) * Math.max(1, size.height);
+        if (!best || area < best.area) best = { label: w.label, area };
+      }
+
+      return best?.label ?? null;
+    } catch (e) {
+      console.error(e);
+      return null;
+    }
+  }, [appWindow.label]);
 
   const openTabTransferWindow = useCallback(
     async (payload: { transferId: string; title: string; vaultRoot: string | null }) => {
@@ -1007,7 +1064,13 @@ export function App() {
       });
 
       unlistenRemove = await appWindow.listen<{ path: string }>("zhixu:tab-remove", (event) => {
-        removeTabSilently(event.payload.path);
+        const path = event.payload.path;
+        const transferId = transferCleanupByPathRef.current.get(path);
+        if (transferId) {
+          transferCleanupByPathRef.current.delete(path);
+          clearTabTransfer(transferId);
+        }
+        removeTabSilently(path);
       });
     })();
 
@@ -1015,7 +1078,7 @@ export function App() {
       unlistenTransfer?.();
       unlistenRemove?.();
     };
-  }, [appWindow, applyTabTransfer, removeTabSilently]);
+  }, [appWindow, applyTabTransfer, clearTabTransfer, removeTabSilently]);
 
   useEffect(() => {
     if (!vaultRoot) {
@@ -1220,11 +1283,24 @@ export function App() {
                   draggingTabPathRef.current = null;
                   if (!id || !path) return;
                   if (e.dataTransfer.dropEffect !== "none") return;
-                  window.setTimeout(() => {
+                  void (async () => {
                     const pending = readTabTransfer(id);
                     if (!pending) return;
-                    void openTabTransferWindow({ transferId: id, title: pending.tab.name, vaultRoot: pending.vaultRoot });
-                  }, 0);
+
+                    const targetLabel = await findOtherWindowUnderCursorLabel();
+                    if (targetLabel) {
+                      try {
+                        transferCleanupByPathRef.current.set(path, id);
+                        await emitTo<TabTransferPayload>(targetLabel, "zhixu:tab-transfer", pending);
+                        return;
+                      } catch (err) {
+                        console.error(err);
+                      }
+                    }
+
+                    transferCleanupByPathRef.current.set(path, id);
+                    await openTabTransferWindow({ transferId: id, title: pending.tab.name, vaultRoot: pending.vaultRoot });
+                  })();
                 }}
                 onDragOver={(e) => {
                   e.preventDefault();
