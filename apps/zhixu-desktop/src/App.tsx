@@ -1,4 +1,4 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cursorPosition, getCurrentWindow } from "@tauri-apps/api/window";
 import { emitTo } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -55,8 +55,10 @@ import {
   devPerfMark,
   initDevPerfLogging,
   isDevPerfEnabled,
-  recordDurationMs,
+  recordSpanMs,
+  runDevPerfOnce,
   startStatsReporter,
+  withDevPerfSpan,
 } from "./lib/perf";
 import type { DrawDocument, DrawViewMode } from "./draw/types";
 
@@ -200,10 +202,15 @@ export function App() {
   const initialVaultParam = useMemo(() => urlParams.get("vaultRoot"), [urlParams]);
   const transferId = useMemo(() => urlParams.get("transferId"), [urlParams]);
 
+  useLayoutEffect(() => {
+    if (!isDevPerfEnabled()) return;
+    runDevPerfOnce("mark:zhixu:app:layout", () => devPerfMark("zhixu:app:layout"));
+  }, []);
+
   useEffect(() => {
     if (!isDevPerfEnabled()) return;
     initDevPerfLogging();
-    devPerfMark("zhixu:app:mounted");
+    runDevPerfOnce("mark:zhixu:app:mounted", () => devPerfMark("zhixu:app:mounted"));
   }, []);
 
   useEffect(() => {
@@ -216,6 +223,7 @@ export function App() {
       startStatsReporter("md-editor:iframe-load", { label: "Markdown编辑器：iframe加载", minNewSamples: 1 }),
       startStatsReporter("startup:getPersistedState", { label: "启动：getPersistedState", minNewSamples: 1 }),
       startStatsReporter("startup:lcp", { label: "启动：LCP", minNewSamples: 1 }),
+      startStatsReporter("vault:setVaultRoot", { label: "vault:setVaultRoot", minNewSamples: 1 }),
     ];
     return () => {
       for (const fn of cleanups) fn();
@@ -374,7 +382,7 @@ export function App() {
     setLoadingDir({});
     const t0 = isDevPerfEnabled() ? performance.now() : 0;
     const entries = sortEntries(await listDir(""));
-    if (t0) recordDurationMs("vault:listDir", performance.now() - t0, { dir: "", ctx: "resetForVault" });
+    if (t0) recordSpanMs("vault:listDir", t0, performance.now() - t0, { dir: "", ctx: "resetForVault" });
     setDirCache({ "": entries });
   }, []);
 
@@ -384,7 +392,7 @@ export function App() {
     void (async () => {
       try {
         if (initialVaultParam && !sameVaultRoot(vaultRoot, initialVaultParam)) {
-          const resolved = await setVaultRoot(initialVaultParam);
+          const resolved = await withDevPerfSpan("vault:setVaultRoot", () => setVaultRoot(initialVaultParam), { ctx: "initialVaultParam" });
           if (cancelled) return;
           await resetForVault(resolved, { createNewTab: !(isDetached && transferId) });
           if (cancelled) return;
@@ -415,7 +423,7 @@ export function App() {
   const openRecent = useCallback(
     async (root: string) => {
       try {
-        const resolved = await setVaultRoot(root);
+        const resolved = await withDevPerfSpan("vault:setVaultRoot", () => setVaultRoot(root), { ctx: "openRecent" });
         await resetForVault(resolved);
         setPersisted(await getPersistedState());
         setVaultPickerOpen(false);
@@ -431,7 +439,7 @@ export function App() {
     try {
       const t0 = isDevPerfEnabled() ? performance.now() : 0;
       const entries = sortEntries(await listDir(path));
-      if (t0) recordDurationMs("vault:listDir", performance.now() - t0, { dir: path, ctx: "reloadDir" });
+      if (t0) recordSpanMs("vault:listDir", t0, performance.now() - t0, { dir: path, ctx: "reloadDir" });
       setDirCache((m) => ({ ...m, [path]: entries }));
     } catch (e) {
       console.error(e);
@@ -449,7 +457,7 @@ export function App() {
       try {
         const t0 = isDevPerfEnabled() ? performance.now() : 0;
         const entries = sortEntries(await listDir(path));
-        if (t0) recordDurationMs("vault:listDir", performance.now() - t0, { dir: path, ctx: "toggleDir" });
+        if (t0) recordSpanMs("vault:listDir", t0, performance.now() - t0, { dir: path, ctx: "toggleDir" });
         setDirCache((m) => ({ ...m, [path]: entries }));
       } finally {
         setLoadingDir((m) => ({ ...m, [path]: false }));
@@ -523,7 +531,7 @@ export function App() {
       try {
         const t0 = isDevPerfEnabled() ? performance.now() : 0;
         const content = await readTextFile(path);
-        if (t0) recordDurationMs("vault:readTextFile", performance.now() - t0, { path, chars: content.length });
+        if (t0) recordSpanMs("vault:readTextFile", t0, performance.now() - t0, { path, chars: content.length, ctx: "openFile" });
         setTabs((prev) =>
           prev.map((t) =>
             t.path === path && t.kind === "text" ? { ...t, content, savedContent: content, dirty: false } : t,
@@ -539,7 +547,7 @@ export function App() {
       try {
         const t0 = isDevPerfEnabled() ? performance.now() : 0;
         const doc = await readDrawDocument(path);
-        if (t0) recordDurationMs("vault:readDrawDocument", performance.now() - t0, { path });
+        if (t0) recordSpanMs("vault:readDrawDocument", t0, performance.now() - t0, { path, ctx: "openFile" });
         setTabs((prev) =>
           prev.map((t) => (t.path === path && t.kind === "drawing" ? { ...t, doc, savedDoc: doc, dirty: false } : t)),
         );
@@ -561,7 +569,7 @@ export function App() {
 
         const t0 = isDevPerfEnabled() ? performance.now() : 0;
         await writeTextFile(activeTab.path, content);
-        if (t0) recordDurationMs("vault:writeTextFile", performance.now() - t0, { path: activeTab.path, chars: content.length });
+        if (t0) recordSpanMs("vault:writeTextFile", t0, performance.now() - t0, { path: activeTab.path, chars: content.length, ctx: "saveActive" });
         setTabs((prev) =>
           prev.map((t) =>
             t.path === activeTab.path && t.kind === "text" ? { ...t, savedContent: content, dirty: false } : t,
@@ -572,7 +580,7 @@ export function App() {
         if (!activeTab.doc) return;
         const t0 = isDevPerfEnabled() ? performance.now() : 0;
         await writeDrawDocument(activeTab.path, activeTab.doc);
-        if (t0) recordDurationMs("vault:writeDrawDocument", performance.now() - t0, { path: activeTab.path });
+        if (t0) recordSpanMs("vault:writeDrawDocument", t0, performance.now() - t0, { path: activeTab.path, ctx: "saveActive" });
         setTabs((prev) =>
           prev.map((t) =>
             t.path === activeTab.path && t.kind === "drawing" ? { ...t, savedDoc: activeTab.doc, dirty: false } : t,
@@ -678,7 +686,7 @@ export function App() {
         if (seq !== filePickerSeqRef.current) return;
       }
       if (seq !== filePickerSeqRef.current) return;
-      if (perfT0) recordDurationMs("filePicker:buildAllFiles", performance.now() - perfT0, { files: out.length });
+      if (perfT0) recordSpanMs("filePicker:buildAllFiles", perfT0, performance.now() - perfT0, { files: out.length });
       setAllFiles(out);
     } finally {
       if (seq === filePickerSeqRef.current) setFilePickerLoading(false);
@@ -1021,7 +1029,7 @@ export function App() {
       try {
         const nextRoot = payload.vaultRoot;
         if (nextRoot && !sameVaultRoot(nextRoot, vaultRoot)) {
-          const resolved = await setVaultRoot(nextRoot);
+          const resolved = await withDevPerfSpan("vault:setVaultRoot", () => setVaultRoot(nextRoot), { ctx: "tabTransfer" });
           await resetForVault(resolved, { createNewTab: false, keepTabs: true });
           setPersisted(await getPersistedState());
         }
@@ -1300,7 +1308,7 @@ export function App() {
       try {
         const t0 = isDevPerfEnabled() ? performance.now() : 0;
         const next = await getPersistedState();
-        if (t0) recordDurationMs("startup:getPersistedState", performance.now() - t0);
+        if (t0) recordSpanMs("startup:getPersistedState", t0, performance.now() - t0);
         setPersisted(next);
       } catch (e) {
         console.error(e);

@@ -8,8 +8,16 @@ import "./styles.css";
 initDevPerfLogging();
 devPerfMark("zhixu:boot:main.tsx");
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+const rootEl = document.getElementById("root")!;
+devPerfMark("zhixu:react:got-root-el");
+
+const root = ReactDOM.createRoot(rootEl);
+devPerfMark("zhixu:react:createRoot");
+
+devPerfMark("zhixu:react:render-call");
+root.render(
   <React.StrictMode>
     <App />
   </React.StrictMode>,
 );
+devPerfMark("zhixu:react:render-return");
