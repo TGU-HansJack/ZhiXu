@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:dev:fast": "tauri dev -c src-tauri/tauri.external-dev.conf.json"
+    "tauri:dev:fast": "tauri dev -c src-tauri/tauri.external-dev.conf.json",
+    "tauri:build:exe": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-exe.ps1",
+    "tauri:build:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable.ps1"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.0",
