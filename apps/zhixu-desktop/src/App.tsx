@@ -128,6 +128,13 @@ function formatPathForDisplay(p: string): string {
   return p;
 }
 
+function normalizeVaultRoot(p: string): string {
+  const display = formatPathForDisplay(p).replaceAll("/", "\\");
+  let trimmed = display;
+  while (trimmed.length > 3 && (trimmed.endsWith("\\") || trimmed.endsWith("/"))) trimmed = trimmed.slice(0, -1);
+  return trimmed.toLowerCase();
+}
+
 function sortEntries(entries: VaultEntry[]): VaultEntry[] {
   return [...entries].sort((a, b) => {
     if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
@@ -176,6 +183,11 @@ export function App() {
   const draggingTabPathRef = useRef<string | null>(null);
   const draggingTransferIdRef = useRef<string | null>(null);
   const transferCleanupByPathRef = useRef<Map<string, string>>(new Map());
+  const dragBroadcastTimerRef = useRef<number | null>(null);
+  const dragBroadcastTargetLabelRef = useRef<string | null>(null);
+  const tabStripRef = useRef<HTMLDivElement | null>(null);
+  const tabElByPathRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const dragPreviewElRef = useRef<HTMLDivElement | null>(null);
 
   const [vaultRoot, setVaultRootState] = useState<string | null>(null);
   const [persisted, setPersisted] = useState<PersistedState>({ lastVault: null, recentVaults: [] });
@@ -197,6 +209,8 @@ export function App() {
   const [tabs, setTabs] = useState<Tab[]>(() => (isDetached && transferId ? [] : [makeNewTab(1)]));
   const [activePath, setActivePath] = useState<string | null>(() => (isDetached && transferId ? null : "__newtab__1"));
   const tabsRef = useRef<Tab[]>(tabs);
+  const [tabInsertIndicator, setTabInsertIndicator] = useState<{ index: number; left: number } | null>(null);
+  const [recentlyInsertedPath, setRecentlyInsertedPath] = useState<string | null>(null);
   useEffect(() => {
     tabsRef.current = tabs;
     let maxNewTabId = 0;
@@ -243,7 +257,7 @@ export function App() {
   const sameVaultRoot = useCallback((a: string | null, b: string | null) => {
     if (!a && !b) return true;
     if (!a || !b) return false;
-    return formatPathForDisplay(a) === formatPathForDisplay(b);
+    return normalizeVaultRoot(a) === normalizeVaultRoot(b);
   }, []);
 
   const transferStorageKey = useCallback((id: string) => `zhixu.desktop.tabTransfer:${id}`, []);
@@ -294,16 +308,19 @@ export function App() {
     [transferStorageKey],
   );
 
-  const resetForVault = useCallback(async (root: string, options?: { createNewTab?: boolean }) => {
+  const resetForVault = useCallback(async (root: string, options?: { createNewTab?: boolean; keepTabs?: boolean }) => {
     setVaultRootState(root);
+    const keepTabs = options?.keepTabs ?? false;
     const createNewTab = options?.createNewTab ?? true;
-    if (createNewTab) {
-      const tab = makeNewTab(newTabIdRef.current++);
-      setTabs([tab]);
-      setActivePath(tab.path);
-    } else {
-      setTabs([]);
-      setActivePath(null);
+    if (!keepTabs) {
+      if (createNewTab) {
+        const tab = makeNewTab(newTabIdRef.current++);
+        setTabs([tab]);
+        setActivePath(tab.path);
+      } else {
+        setTabs([]);
+        setActivePath(null);
+      }
     }
     setSelectedDir("");
     setDirCache({});
@@ -845,12 +862,100 @@ export function App() {
     setTabs((prev) => prev.map((t) => (t.path === path ? { ...t, locked: next ?? !t.locked } : t)));
   }, []);
 
+  const cleanupDragPreview = useCallback(() => {
+    const el = dragPreviewElRef.current;
+    dragPreviewElRef.current = null;
+    if (!el) return;
+    el.remove();
+  }, []);
+
+  const setTabDragImage = useCallback(
+    (ev: React.DragEvent, title: string) => {
+      try {
+        cleanupDragPreview();
+        const el = document.createElement("div");
+        el.className = "tabDragPreview";
+        const label = document.createElement("div");
+        label.className = "tabDragPreviewLabel";
+        label.textContent = title;
+        el.appendChild(label);
+        document.body.appendChild(el);
+        dragPreviewElRef.current = el;
+        const rect = el.getBoundingClientRect();
+        ev.dataTransfer.setDragImage(el, Math.round(rect.width / 2), Math.round(rect.height / 2));
+      } catch (e) {
+        console.error(e);
+      }
+    },
+    [cleanupDragPreview],
+  );
+
+  const computeTabInsertFromClientPoint = useCallback((clientX: number, clientY: number) => {
+    const host = tabStripRef.current;
+    if (!host) return null;
+    const hostRect = host.getBoundingClientRect();
+    if (clientY < hostRect.top || clientY > hostRect.bottom) return null;
+
+    const currentTabs = tabsRef.current;
+    if (!currentTabs.length) return { index: 0, left: 0 };
+
+    const tabRects: Array<DOMRect | null> = currentTabs.map(
+      (t) => tabElByPathRef.current.get(t.path)?.getBoundingClientRect() ?? null,
+    );
+
+    let index = currentTabs.length;
+    for (let i = 0; i < currentTabs.length; i++) {
+      const rect = tabRects[i];
+      if (!rect) continue;
+      const center = rect.left + rect.width / 2;
+      if (clientX < center) {
+        index = i;
+        break;
+      }
+    }
+
+    let targetRect: DOMRect | null = null;
+    if (index === 0) {
+      for (const r of tabRects) {
+        if (r) {
+          targetRect = r;
+          break;
+        }
+      }
+      if (!targetRect) return null;
+      return { index, left: targetRect.left - hostRect.left };
+    }
+
+    if (index === currentTabs.length) {
+      for (let i = tabRects.length - 1; i >= 0; i--) {
+        const r = tabRects[i];
+        if (r) {
+          targetRect = r;
+          break;
+        }
+      }
+      if (!targetRect) return null;
+      return { index, left: targetRect.right - hostRect.left };
+    }
+
+    targetRect = tabRects[index];
+    if (!targetRect) return null;
+    return { index, left: targetRect.left - hostRect.left };
+  }, []);
+
+  useEffect(() => {
+    if (!recentlyInsertedPath) return;
+    const id = window.setTimeout(() => setRecentlyInsertedPath(null), 260);
+    return () => window.clearTimeout(id);
+  }, [recentlyInsertedPath]);
+
   const applyTabTransfer = useCallback(
     async (payload: TabTransferPayload, options?: { insertIndex?: number }) => {
       try {
-        if (payload.vaultRoot && !sameVaultRoot(payload.vaultRoot, vaultRoot)) {
+        const needsVaultSwitch = payload.vaultRoot && !sameVaultRoot(payload.vaultRoot, vaultRoot);
+        if (needsVaultSwitch) {
           const resolved = await setVaultRoot(payload.vaultRoot);
-          await resetForVault(resolved, { createNewTab: false });
+          await resetForVault(resolved, { createNewTab: false, keepTabs: true });
           setPersisted(await getPersistedState());
         }
       } catch (e) {
@@ -875,6 +980,7 @@ export function App() {
       });
 
       setActivePath(payload.tab.path);
+      setRecentlyInsertedPath(payload.tab.path);
 
       if (payload.sourceWindowLabel && payload.sourceWindowLabel !== appWindow.label) {
         await emitTo(payload.sourceWindowLabel, "zhixu:tab-remove", { path: payload.tab.path });
@@ -943,6 +1049,83 @@ export function App() {
       return null;
     }
   }, [appWindow.label]);
+
+  const stopTabDragBroadcast = useCallback(async (transferId: string) => {
+    const timerId = dragBroadcastTimerRef.current;
+    dragBroadcastTimerRef.current = null;
+    if (timerId != null) window.clearInterval(timerId);
+
+    const last = dragBroadcastTargetLabelRef.current;
+    dragBroadcastTargetLabelRef.current = null;
+    if (!last) return;
+    try {
+      await emitTo(last, "zhixu:tab-drag-leave", { transferId });
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const startTabDragBroadcast = useCallback(
+    (transferId: string) => {
+      const timerId = dragBroadcastTimerRef.current;
+      if (timerId != null) window.clearInterval(timerId);
+      dragBroadcastTimerRef.current = null;
+
+      dragBroadcastTargetLabelRef.current = null;
+
+      let busy = false;
+      dragBroadcastTimerRef.current = window.setInterval(() => {
+        if (busy) return;
+        busy = true;
+        void (async () => {
+          try {
+            const targetLabel = await findOtherWindowUnderCursorLabel();
+            const prev = dragBroadcastTargetLabelRef.current;
+            if (prev && prev !== targetLabel) {
+              try {
+                await emitTo(prev, "zhixu:tab-drag-leave", { transferId });
+              } catch (e) {
+                console.error(e);
+              }
+            }
+            dragBroadcastTargetLabelRef.current = targetLabel;
+            if (targetLabel) {
+              try {
+                await emitTo(targetLabel, "zhixu:tab-drag-over", { transferId });
+              } catch (e) {
+                console.error(e);
+              }
+            }
+          } finally {
+            busy = false;
+          }
+        })();
+      }, 70);
+    },
+    [findOtherWindowUnderCursorLabel],
+  );
+
+  const isCursorInsideAppWindow = useCallback(async (): Promise<boolean> => {
+    try {
+      const point = await cursorPosition();
+      const [pos, size] = await Promise.all([appWindow.outerPosition(), appWindow.outerSize()]);
+      return (
+        point.x >= pos.x &&
+        point.y >= pos.y &&
+        point.x <= pos.x + size.width &&
+        point.y <= pos.y + size.height
+      );
+    } catch (e) {
+      console.error(e);
+      return true;
+    }
+  }, [appWindow]);
+
+  const getClientCursorPosition = useCallback(async (): Promise<{ x: number; y: number }> => {
+    const point = await cursorPosition();
+    const [pos, scale] = await Promise.all([appWindow.outerPosition(), appWindow.scaleFactor()]);
+    return { x: (point.x - pos.x) / scale, y: (point.y - pos.y) / scale };
+  }, [appWindow]);
 
   const openTabTransferWindow = useCallback(
     async (payload: { transferId: string; title: string; vaultRoot: string | null }) => {
@@ -1058,8 +1241,24 @@ export function App() {
   useEffect(() => {
     let unlistenTransfer: null | (() => void) = null;
     let unlistenRemove: null | (() => void) = null;
+    let unlistenRemoteDragOver: null | (() => void) = null;
+    let unlistenRemoteDragLeave: null | (() => void) = null;
+    const remoteDragTransferIdRef = { current: null as string | null };
+    const remoteDragHideTimerRef = { current: null as number | null };
     void (async () => {
       unlistenTransfer = await appWindow.listen<TabTransferPayload>("zhixu:tab-transfer", async (event) => {
+        try {
+          const p = await getClientCursorPosition();
+          const insert = computeTabInsertFromClientPoint(p.x, p.y);
+          if (insert) {
+            setTabInsertIndicator(insert);
+            window.setTimeout(() => setTabInsertIndicator(null), 220);
+            await applyTabTransfer(event.payload, { insertIndex: insert.index });
+            return;
+          }
+        } catch (e) {
+          console.error(e);
+        }
         await applyTabTransfer(event.payload);
       });
 
@@ -1072,13 +1271,44 @@ export function App() {
         }
         removeTabSilently(path);
       });
+
+      unlistenRemoteDragOver = await appWindow.listen<{ transferId: string }>("zhixu:tab-drag-over", async (event) => {
+        try {
+          remoteDragTransferIdRef.current = event.payload.transferId;
+          if (remoteDragHideTimerRef.current != null) window.clearTimeout(remoteDragHideTimerRef.current);
+          const p = await getClientCursorPosition();
+          const insert = computeTabInsertFromClientPoint(p.x, p.y);
+          if (insert) setTabInsertIndicator(insert);
+          remoteDragHideTimerRef.current = window.setTimeout(() => {
+            if (remoteDragTransferIdRef.current === event.payload.transferId) {
+              remoteDragTransferIdRef.current = null;
+              setTabInsertIndicator(null);
+            }
+          }, 160);
+        } catch (e) {
+          console.error(e);
+        }
+      });
+
+      unlistenRemoteDragLeave = await appWindow.listen<{ transferId: string }>("zhixu:tab-drag-leave", (event) => {
+        if (remoteDragTransferIdRef.current !== event.payload.transferId) return;
+        remoteDragTransferIdRef.current = null;
+        if (remoteDragHideTimerRef.current != null) window.clearTimeout(remoteDragHideTimerRef.current);
+        remoteDragHideTimerRef.current = null;
+        setTabInsertIndicator(null);
+      });
     })();
 
     return () => {
       unlistenTransfer?.();
       unlistenRemove?.();
+      unlistenRemoteDragOver?.();
+      unlistenRemoteDragLeave?.();
+      const timerId = dragBroadcastTimerRef.current;
+      dragBroadcastTimerRef.current = null;
+      if (timerId != null) window.clearInterval(timerId);
     };
-  }, [appWindow, applyTabTransfer, clearTabTransfer, removeTabSilently]);
+  }, [appWindow, applyTabTransfer, clearTabTransfer, computeTabInsertFromClientPoint, getClientCursorPosition, removeTabSilently]);
 
   useEffect(() => {
     if (!vaultRoot) {
@@ -1238,12 +1468,22 @@ export function App() {
         <div className="menubarTabs">
           <div
             className="tabs"
+            ref={tabStripRef}
             data-density={tabsDensity}
             style={{ ["--tab-count" as any]: tabCount } as React.CSSProperties}
             role="tablist"
             onDragOver={(e) => {
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
+              const transfer = readTabTransferFromEvent(e);
+              if (!transfer && !draggingTabPathRef.current) return;
+              const insert = computeTabInsertFromClientPoint(e.clientX, e.clientY);
+              if (insert) setTabInsertIndicator(insert);
+            }}
+            onDragLeave={(e) => {
+              const next = e.relatedTarget as Node | null;
+              if (next && e.currentTarget.contains(next)) return;
+              setTabInsertIndicator(null);
             }}
             onDrop={(e) => {
               const transfer = readTabTransferFromEvent(e);
@@ -1251,18 +1491,30 @@ export function App() {
               e.preventDefault();
               e.stopPropagation();
               clearTabTransfer(transfer.id);
-              void applyTabTransfer(transfer.payload, { insertIndex: tabs.length });
+              const insertIndex = tabInsertIndicator?.index ?? tabs.length;
+              setTabInsertIndicator(null);
+              void applyTabTransfer(transfer.payload, { insertIndex });
             }}
             aria-label="标签页"
           >
+            <div
+              className={`tabInsertIndicator${tabInsertIndicator ? " visible" : ""}`}
+              aria-hidden="true"
+              style={tabInsertIndicator ? ({ left: tabInsertIndicator.left } as React.CSSProperties) : undefined}
+            />
             {tabs.map((t, index) => (
               <div
                 key={t.path}
                 className={`tab${t.path === activePath ? " active" : ""}`}
+                ref={(el) => {
+                  if (el) tabElByPathRef.current.set(t.path, el);
+                  else tabElByPathRef.current.delete(t.path);
+                }}
                 role="tab"
                 aria-selected={t.path === activePath}
                 data-dirty={t.dirty ? "true" : "false"}
                 data-no-drag="true"
+                data-inserted={t.path === recentlyInsertedPath ? "true" : "false"}
                 onClick={() => setActivePath(t.path)}
                 onContextMenu={(e) => openTabContextMenu(e, t.path)}
                 draggable
@@ -1275,17 +1527,28 @@ export function App() {
                   e.dataTransfer.effectAllowed = "move";
                   draggingTabPathRef.current = t.path;
                   draggingTransferIdRef.current = transferId;
+                  setTabDragImage(e, t.name);
+                  startTabDragBroadcast(transferId);
                 }}
                 onDragEnd={(e) => {
                   const id = draggingTransferIdRef.current;
                   const path = draggingTabPathRef.current;
                   draggingTransferIdRef.current = null;
                   draggingTabPathRef.current = null;
+                  cleanupDragPreview();
+                  setTabInsertIndicator(null);
                   if (!id || !path) return;
+                  void stopTabDragBroadcast(id);
                   if (e.dataTransfer.dropEffect !== "none") return;
                   void (async () => {
                     const pending = readTabTransfer(id);
                     if (!pending) return;
+
+                    const inside = await isCursorInsideAppWindow();
+                    if (inside) {
+                      clearTabTransfer(id);
+                      return;
+                    }
 
                     const targetLabel = await findOtherWindowUnderCursorLabel();
                     if (targetLabel) {
@@ -1301,18 +1564,6 @@ export function App() {
                     transferCleanupByPathRef.current.set(path, id);
                     await openTabTransferWindow({ transferId: id, title: pending.tab.name, vaultRoot: pending.vaultRoot });
                   })();
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                }}
-                onDrop={(e) => {
-                  const transfer = readTabTransferFromEvent(e);
-                  if (!transfer) return;
-                  e.preventDefault();
-                  e.stopPropagation();
-                  clearTabTransfer(transfer.id);
-                  void applyTabTransfer(transfer.payload, { insertIndex: index });
                 }}
               >
                 <div className="tabInner">

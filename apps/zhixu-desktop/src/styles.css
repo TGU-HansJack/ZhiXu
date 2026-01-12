@@ -611,6 +611,7 @@ input {
   --tab-gap-base: 48px;
   --tab-gap-max: 8px;
   display: flex;
+  position: relative;
   align-items: stretch;
   gap: 0;
   overflow-x: hidden;
@@ -630,6 +631,26 @@ input {
 
 .tabs[data-density="separators"] {
   gap: 0;
+}
+
+.tabInsertIndicator {
+  position: absolute;
+  top: 50%;
+  transform: translate(-1px, -50%);
+  width: 2px;
+  height: 22px;
+  background: rgba(47, 111, 235, 0.85);
+  border-radius: 1px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 4;
+  transition:
+    left 110ms ease-out,
+    opacity 90ms ease-out;
+}
+
+.tabInsertIndicator.visible {
+  opacity: 1;
 }
 
 .tab {
@@ -726,6 +747,21 @@ input {
 
 .tab:hover {
   color: var(--text);
+}
+
+.tab[data-inserted="true"] .tabInner {
+  animation: tabInsertPop 180ms ease-out;
+}
+
+@keyframes tabInsertPop {
+  from {
+    transform: translateY(-6px) scale(0.98);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
 }
 
 .tab:not(.active):hover .tabInner::after {
@@ -894,6 +930,28 @@ input {
 .tab[data-dirty="true"]:hover .tabCloseX,
 .tab[data-dirty="true"]:focus-within .tabCloseX {
   display: inline-flex;
+}
+
+.tabDragPreview {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  max-width: 220px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 4px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  color: var(--text);
+  font-size: 13px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.tabDragPreviewLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .uiIcon {
