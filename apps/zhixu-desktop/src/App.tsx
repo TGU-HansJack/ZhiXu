@@ -51,6 +51,14 @@ import {
   type PersistedState,
   type VaultEntry,
 } from "./lib/vaultApi";
+import {
+  createRafLatencyTracker,
+  devPerfMark,
+  initDevPerfLogging,
+  isDevPerfEnabled,
+  recordDurationMs,
+  startStatsReporter,
+} from "./lib/perf";
 import type { DrawDocument, DrawViewMode } from "./draw/types";
 
 type Activity = "space" | "tasks" | "calendar" | "quadrant" | "workshop" | "search";
@@ -180,6 +188,28 @@ export function App() {
   const isDetached = useMemo(() => urlParams.get("view") === "tab", [urlParams]);
   const initialVaultParam = useMemo(() => urlParams.get("vaultRoot"), [urlParams]);
   const transferId = useMemo(() => urlParams.get("transferId"), [urlParams]);
+
+  useEffect(() => {
+    if (!isDevPerfEnabled()) return;
+    initDevPerfLogging();
+    devPerfMark("zhixu:app:mounted");
+  }, []);
+
+  useEffect(() => {
+    if (!isDevPerfEnabled()) return;
+    const cleanups = [
+      startStatsReporter("editor:input->frame", { label: "编辑：输入 -> 下一帧", minNewSamples: 20 }),
+      startStatsReporter("vault:listDir", { label: "文件树：listDir", minNewSamples: 1 }),
+      startStatsReporter("vault:readTextFile", { label: "打开文件：readTextFile", minNewSamples: 1 }),
+      startStatsReporter("vault:writeTextFile", { label: "保存：writeTextFile", minNewSamples: 1 }),
+      startStatsReporter("md-editor:iframe-load", { label: "Markdown编辑器：iframe加载", minNewSamples: 1 }),
+      startStatsReporter("startup:getPersistedState", { label: "启动：getPersistedState", minNewSamples: 1 }),
+      startStatsReporter("startup:lcp", { label: "启动：LCP", minNewSamples: 1 }),
+    ];
+    return () => {
+      for (const fn of cleanups) fn();
+    };
+  }, []);
   const draggingTabPathRef = useRef<string | null>(null);
   const draggingTransferIdRef = useRef<string | null>(null);
   const transferCleanupByPathRef = useRef<Map<string, string>>(new Map());
@@ -210,6 +240,10 @@ export function App() {
   const [activePath, setActivePath] = useState<string | null>(() => (isDetached && transferId ? null : "__newtab__1"));
   const tabsRef = useRef<Tab[]>(tabs);
   const latestTextByPathRef = useRef<Map<string, string>>(new Map());
+  const trackEditorInputToFrame = useMemo(
+    () => createRafLatencyTracker("editor:input->frame", { label: "编辑：输入 -> 下一帧" }),
+    [],
+  );
   const [tabInsertIndicator, setTabInsertIndicator] = useState<{ index: number; left: number } | null>(null);
   const [recentlyInsertedPath, setRecentlyInsertedPath] = useState<string | null>(null);
   useEffect(() => {
@@ -327,7 +361,9 @@ export function App() {
     setDirCache({});
     setExpanded({});
     setLoadingDir({});
+    const t0 = isDevPerfEnabled() ? performance.now() : 0;
     const entries = sortEntries(await listDir(""));
+    if (t0) recordDurationMs("vault:listDir", performance.now() - t0, { dir: "", ctx: "resetForVault" });
     setDirCache({ "": entries });
   }, []);
 
@@ -382,7 +418,9 @@ export function App() {
 
   const reloadDir = useCallback(async (path: string) => {
     try {
+      const t0 = isDevPerfEnabled() ? performance.now() : 0;
       const entries = sortEntries(await listDir(path));
+      if (t0) recordDurationMs("vault:listDir", performance.now() - t0, { dir: path, ctx: "reloadDir" });
       setDirCache((m) => ({ ...m, [path]: entries }));
     } catch (e) {
       console.error(e);
@@ -398,7 +436,9 @@ export function App() {
       if (dirCache[path]) return;
       setLoadingDir((m) => ({ ...m, [path]: true }));
       try {
+        const t0 = isDevPerfEnabled() ? performance.now() : 0;
         const entries = sortEntries(await listDir(path));
+        if (t0) recordDurationMs("vault:listDir", performance.now() - t0, { dir: path, ctx: "toggleDir" });
         setDirCache((m) => ({ ...m, [path]: entries }));
       } finally {
         setLoadingDir((m) => ({ ...m, [path]: false }));
@@ -470,7 +510,9 @@ export function App() {
 
     if (textFile) {
       try {
+        const t0 = isDevPerfEnabled() ? performance.now() : 0;
         const content = await readTextFile(path);
+        if (t0) recordDurationMs("vault:readTextFile", performance.now() - t0, { path, chars: content.length });
         setTabs((prev) =>
           prev.map((t) =>
             t.path === path && t.kind === "text" ? { ...t, content, savedContent: content, dirty: false } : t,
@@ -484,7 +526,9 @@ export function App() {
 
     if (drawFile) {
       try {
+        const t0 = isDevPerfEnabled() ? performance.now() : 0;
         const doc = await readDrawDocument(path);
+        if (t0) recordDurationMs("vault:readDrawDocument", performance.now() - t0, { path });
         setTabs((prev) =>
           prev.map((t) => (t.path === path && t.kind === "drawing" ? { ...t, doc, savedDoc: doc, dirty: false } : t)),
         );
@@ -504,7 +548,9 @@ export function App() {
         const content = latest ?? activeTab.content;
         if (content === activeTab.savedContent) return;
 
+        const t0 = isDevPerfEnabled() ? performance.now() : 0;
         await writeTextFile(activeTab.path, content);
+        if (t0) recordDurationMs("vault:writeTextFile", performance.now() - t0, { path: activeTab.path, chars: content.length });
         setTabs((prev) =>
           prev.map((t) =>
             t.path === activeTab.path && t.kind === "text" ? { ...t, savedContent: content, dirty: false } : t,
@@ -513,7 +559,9 @@ export function App() {
       } else if (activeTab.kind === "drawing") {
         if (!activeTab.dirty) return;
         if (!activeTab.doc) return;
+        const t0 = isDevPerfEnabled() ? performance.now() : 0;
         await writeDrawDocument(activeTab.path, activeTab.doc);
+        if (t0) recordDurationMs("vault:writeDrawDocument", performance.now() - t0, { path: activeTab.path });
         setTabs((prev) =>
           prev.map((t) =>
             t.path === activeTab.path && t.kind === "drawing" ? { ...t, savedDoc: activeTab.doc, dirty: false } : t,
@@ -604,6 +652,7 @@ export function App() {
 
   const buildAllFiles = useCallback(async () => {
     const seq = ++filePickerSeqRef.current;
+    const perfT0 = isDevPerfEnabled() ? performance.now() : 0;
     setFilePickerLoading(true);
     try {
       const out: string[] = [];
@@ -618,6 +667,7 @@ export function App() {
         if (seq !== filePickerSeqRef.current) return;
       }
       if (seq !== filePickerSeqRef.current) return;
+      if (perfT0) recordDurationMs("filePicker:buildAllFiles", performance.now() - perfT0, { files: out.length });
       setAllFiles(out);
     } finally {
       if (seq === filePickerSeqRef.current) setFilePickerLoading(false);
@@ -958,9 +1008,9 @@ export function App() {
   const applyTabTransfer = useCallback(
     async (payload: TabTransferPayload, options?: { insertIndex?: number }) => {
       try {
-        const needsVaultSwitch = payload.vaultRoot && !sameVaultRoot(payload.vaultRoot, vaultRoot);
-        if (needsVaultSwitch) {
-          const resolved = await setVaultRoot(payload.vaultRoot);
+        const nextRoot = payload.vaultRoot;
+        if (nextRoot && !sameVaultRoot(nextRoot, vaultRoot)) {
+          const resolved = await setVaultRoot(nextRoot);
           await resetForVault(resolved, { createNewTab: false, keepTabs: true });
           setPersisted(await getPersistedState());
         }
@@ -1237,7 +1287,10 @@ export function App() {
   useEffect(() => {
     void (async () => {
       try {
-        setPersisted(await getPersistedState());
+        const t0 = isDevPerfEnabled() ? performance.now() : 0;
+        const next = await getPersistedState();
+        if (t0) recordDurationMs("startup:getPersistedState", performance.now() - t0);
+        setPersisted(next);
       } catch (e) {
         console.error(e);
       }
@@ -1966,6 +2019,7 @@ export function App() {
                 mode={editorMode}
                 onKeyDownCapture={onAppKeyDown}
                 onChange={(next) => {
+                  trackEditorInputToFrame({ path: activeTab.path, mode: editorMode });
                   latestTextByPathRef.current.set(activeTab.path, next);
                   setTabs((prev) =>
                     prev.map((t) => {

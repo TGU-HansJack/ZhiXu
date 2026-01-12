@@ -104,6 +104,161 @@
 
     <script>
       (() => {
+        const params = new URLSearchParams(location.search);
+        const enabled = params.get("perf") === "1" || params.get("perf") === "true";
+        if (!enabled) return;
+
+        const PREFIX = "[zhixu-perf][md-editor]";
+        const round1 = (n) => Math.round(n * 10) / 10;
+
+        function percentile(sorted, p) {
+          if (!sorted.length) return null;
+          const idx = Math.max(0, Math.min(1, p)) * (sorted.length - 1);
+          const lo = Math.floor(idx);
+          const hi = Math.ceil(idx);
+          if (lo === hi) return sorted[lo];
+          const w = idx - lo;
+          return sorted[lo] * (1 - w) + sorted[hi] * w;
+        }
+
+        function createRollingStats(maxSamples) {
+          const max = Math.max(20, Number(maxSamples) || 200);
+          const samples = [];
+          let count = 0;
+          let sum = 0;
+          let min = Infinity;
+          let maxSeen = 0;
+
+          return {
+            add(ms) {
+              const v = Number(ms);
+              if (!Number.isFinite(v)) return;
+              const vv = Math.max(0, v);
+              count += 1;
+              sum += vv;
+              min = Math.min(min, vv);
+              maxSeen = Math.max(maxSeen, vv);
+              samples.push(vv);
+              if (samples.length > max) samples.splice(0, samples.length - max);
+            },
+            snapshot() {
+              if (!count) return { count: 0, avgMs: null, minMs: null, p50Ms: null, p95Ms: null, maxMs: null };
+              const sorted = samples.slice().sort((a, b) => a - b);
+              return {
+                count,
+                avgMs: round1(sum / count),
+                minMs: Number.isFinite(min) ? round1(min) : null,
+                p50Ms: round1(percentile(sorted, 0.5)),
+                p95Ms: round1(percentile(sorted, 0.95)),
+                maxMs: Number.isFinite(maxSeen) ? round1(maxSeen) : null,
+              };
+            },
+          };
+        }
+
+        const stats = {
+          inputToFrame: createRollingStats(200),
+          apply: createRollingStats(100),
+        };
+
+        try {
+          window.__ZHIXU_PERF_MD__ = {
+            enabled: true,
+            stats,
+            snapshot() {
+              return { inputToFrame: stats.inputToFrame.snapshot(), apply: stats.apply.snapshot() };
+            },
+          };
+        } catch (_) {}
+
+        try {
+          console.log(`${PREFIX} enabled`, { href: location.href, timeOrigin: performance.timeOrigin });
+        } catch (_) {}
+
+        try {
+          const obs = new PerformanceObserver((list) => {
+            for (const e of list.getEntries()) {
+              if (e.duration < 80) continue;
+              try {
+                console.debug(`${PREFIX} longtask ${round1(e.duration)}ms`, { startTimeMs: round1(e.startTime), name: e.name });
+              } catch (_) {}
+            }
+          });
+          obs.observe({ type: "longtask", buffered: true });
+        } catch (_) {}
+
+        // Input -> next frame (rough proxy for "editing responsiveness").
+        let inputPending = false;
+        let lastInputAt = 0;
+        document.addEventListener(
+          "input",
+          () => {
+            lastInputAt = performance.now();
+            if (inputPending) return;
+            inputPending = true;
+            requestAnimationFrame(() => {
+              inputPending = false;
+              const dt = performance.now() - lastInputAt;
+              stats.inputToFrame.add(dt);
+              if (dt >= 80) {
+                try {
+                  console.debug(`${PREFIX} slow input->frame ${round1(dt)}ms`);
+                } catch (_) {}
+              }
+            });
+          },
+          true,
+        );
+
+        // Wrap __apply() to measure payload apply cost (mode/theme/doc changes).
+        (() => {
+          let current = null;
+          Object.defineProperty(window, "__apply", {
+            configurable: true,
+            get() {
+              return current;
+            },
+            set(fn) {
+              if (typeof fn !== "function") {
+                current = fn;
+                return;
+              }
+              current = function () {
+                const t0 = performance.now();
+                try {
+                  return fn.apply(this, arguments);
+                } finally {
+                  const dt = performance.now() - t0;
+                  stats.apply.add(dt);
+                  if (dt >= 80) {
+                    try {
+                      console.debug(`${PREFIX} slow __apply ${round1(dt)}ms`, { mode: window.__payload?.mode });
+                    } catch (_) {}
+                  }
+                }
+              };
+            },
+          });
+        })();
+
+        // Periodic summary (keeps console readable vs per-keystroke logs).
+        let lastInputCount = 0;
+        let lastApplyCount = 0;
+        setInterval(() => {
+          try {
+            const inputSnap = stats.inputToFrame.snapshot();
+            const applySnap = stats.apply.snapshot();
+            if (inputSnap.count === lastInputCount && applySnap.count === lastApplyCount) return;
+            lastInputCount = inputSnap.count;
+            lastApplyCount = applySnap.count;
+            console.debug(`${PREFIX} stats`, { inputToFrame: inputSnap, apply: applySnap });
+          } catch (_) {}
+        }, 5000);
+      })();
+    </script>
+
+    <script>
+      (() => {
         const queue = [];
         function ensureEl() {
           let el = document.getElementById("__fatal");

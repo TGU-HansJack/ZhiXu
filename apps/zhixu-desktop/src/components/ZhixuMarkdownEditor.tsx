@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import type { CodeMirrorSelection } from "./CodeMirrorEditor";
+import { isDevPerfEnabled, recordDurationMs } from "../lib/perf";
 
 export type MarkdownEditorMode = "live" | "source";
 
@@ -72,9 +73,15 @@ export function ZhixuMarkdownEditor({
     return JSON.stringify(theme);
   }, []);
 
+  const iframeSrc = useMemo(() => {
+    const base = "/markdown-editor/index.html";
+    return isDevPerfEnabled() ? `${base}?perf=1` : base;
+  }, []);
+
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
+    const loadStart = isDevPerfEnabled() ? performance.now() : 0;
 
     const handleKeyDown = (ev: KeyboardEvent) => {
       const mod = ev.ctrlKey || ev.metaKey;
@@ -140,6 +147,8 @@ export function ZhixuMarkdownEditor({
       win.__setDoc?.(latest.value, latest.selection.anchor, latest.selection.head);
       lastEditorValueRef.current = latest.value;
       lastEditorSelRef.current = latest.selection;
+
+      if (loadStart) recordDurationMs("md-editor:iframe-load", performance.now() - loadStart, { src: iframeSrc });
     };
 
     iframe.addEventListener("load", onLoad);
@@ -178,5 +187,5 @@ export function ZhixuMarkdownEditor({
     lastEditorSelRef.current = selection;
   }, [selection.anchor, selection.head, value]);
 
-  return <iframe ref={iframeRef} className="mdEditorFrame" src="/markdown-editor/index.html" title="Markdown Editor" />;
+  return <iframe ref={iframeRef} className="mdEditorFrame" src={iframeSrc} title="Markdown Editor" />;
 }
