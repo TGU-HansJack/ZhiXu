@@ -43,7 +43,7 @@ pub enum DrawElementDto {
         color_argb: i32,
         width: f32,
         alpha: f32,
-        points: Vec<[f32; 2]>,
+        points: Vec<Vec<f32>>,
     },
     Shape {
         id: String,
@@ -75,7 +75,7 @@ struct MetaJsonPageRef {
 pub fn blank_document(now_ms: i64) -> DrawDocumentDto {
     DrawDocumentDto {
         meta: DrawMetaDto {
-            format_version: 1,
+            format_version: 2,
             created_at_ms: now_ms,
             modified_at_ms: now_ms,
             page_order: vec![page_file_name(0)],
@@ -280,7 +280,7 @@ fn parse_page(bytes: &[u8], _file: &str) -> Result<DrawPageDto, String> {
                 let width = el_obj.get("width").and_then(|x| x.as_f64()).unwrap_or(3.0) as f32;
                 let alpha = el_obj.get("alpha").and_then(|x| x.as_f64()).unwrap_or(1.0) as f32;
                 let points_arr = el_obj.get("points").and_then(|x| x.as_array()).cloned().unwrap_or_default();
-                let mut points: Vec<[f32; 2]> = Vec::with_capacity(points_arr.len());
+                let mut points: Vec<Vec<f32>> = Vec::with_capacity(points_arr.len());
                 for p in points_arr {
                     let pair = match p.as_array() {
                         Some(a) if a.len() >= 2 => a,
@@ -288,7 +288,20 @@ fn parse_page(bytes: &[u8], _file: &str) -> Result<DrawPageDto, String> {
                     };
                     let x = pair[0].as_f64().unwrap_or(0.0) as f32;
                     let y = pair[1].as_f64().unwrap_or(0.0) as f32;
-                    points.push([x, y]);
+
+                    if pair.len() >= 6 {
+                        let rx = pair[2].as_f64().unwrap_or(0.0) as f32;
+                        let ry = pair[3].as_f64().unwrap_or(0.0) as f32;
+                        let rot = pair[4].as_f64().unwrap_or(0.0) as f32;
+                        let a = pair[5].as_f64().unwrap_or(alpha as f64) as f32;
+                        points.push(vec![x, y, rx.abs().max(0.03), ry.abs().max(0.03), rot, a.clamp(0.0, 1.0)]);
+                    } else if pair.len() >= 4 {
+                        let w = pair[2].as_f64().unwrap_or(width as f64) as f32;
+                        let a = pair[3].as_f64().unwrap_or(alpha as f64) as f32;
+                        points.push(vec![x, y, w.max(0.2), a.clamp(0.0, 1.0)]);
+                    } else {
+                        points.push(vec![x, y]);
+                    }
                 }
                 page.elements.push(DrawElementDto::Stroke {
                     id,

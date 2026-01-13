@@ -4,8 +4,12 @@ import type {
   DrawPage,
   DrawPenStyle,
   DrawPoint,
+  DrawPressureCurve,
+  DrawPressureMapping,
   DrawShapeMode,
   DrawStrokeTool,
+  DrawStrokePoint,
+  DrawTiltMapping,
   DrawToolId,
   DrawViewMode,
 } from "./types";
@@ -22,9 +26,7 @@ export type PreviewShape = {
 export type PreviewStroke = {
   tool: DrawStrokeTool;
   colorArgb: number;
-  width: number;
-  alpha: number;
-  points: DrawPoint[];
+  points: DrawStrokePoint[];
 };
 
 export class DrawViewport {
@@ -55,6 +57,14 @@ export class DrawEditorModel {
   highlighterColorArgb = 0xff000000 | 0;
   highlighterWidth = 18;
   highlighterAlpha = 0.35;
+
+  pressureEnabled = true;
+  pressureMapping: DrawPressureMapping = "both";
+  pressureCurve: DrawPressureCurve = "linear";
+  pressureCurveGamma = 1;
+
+  tiltEnabled = false;
+  tiltMapping: DrawTiltMapping = "shading";
 
   shapeColorArgb = 0xff000000 | 0;
   shapeWidth = 3;
@@ -160,14 +170,24 @@ export class DrawEditorModel {
     const oldH = page.height;
     if (oldW <= 1 || oldH <= 1) return;
 
-    const rotate = (p: DrawPoint): DrawPoint => [oldH - p[1], p[0]];
+    const rotatePoint = (p: DrawPoint): DrawPoint => [oldH - p[1], p[0]];
+    const rotateStrokePoint = (p: DrawStrokePoint): DrawStrokePoint => {
+      const next = p.slice() as DrawStrokePoint;
+      next[0] = oldH - p[1];
+      next[1] = p[0];
+      if (next.length >= 6) {
+        const rot = Number.isFinite(next[4]) ? next[4]! : 0;
+        next[4] = rot + Math.PI / 2;
+      }
+      return next;
+    };
 
     for (const el of page.elements) {
       if (el.type === "stroke") {
-        el.points = el.points.map(rotate);
+        el.points = el.points.map(rotateStrokePoint);
       } else {
-        el.start = rotate(el.start);
-        el.end = rotate(el.end);
+        el.start = rotatePoint(el.start);
+        el.end = rotatePoint(el.end);
       }
     }
     page.width = oldH;

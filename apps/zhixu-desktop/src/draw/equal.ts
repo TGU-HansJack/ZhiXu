@@ -1,9 +1,14 @@
 import type { DrawElement } from "./types";
 
-function pointsEqual(a: readonly [number, number][], b: readonly [number, number][]): boolean {
+function pointsEqual(a: readonly number[][], b: readonly number[][]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
-    if (a[i]![0] !== b[i]![0] || a[i]![1] !== b[i]![1]) return false;
+    const pa = a[i]!;
+    const pb = b[i]!;
+    if (pa.length !== pb.length) return false;
+    for (let j = 0; j < pa.length; j++) {
+      if (pa[j] !== pb[j]) return false;
+    }
   }
   return true;
 }
@@ -37,4 +42,3 @@ export function elementsEqual(a: readonly DrawElement[], b: readonly DrawElement
   }
   return true;
 }
-

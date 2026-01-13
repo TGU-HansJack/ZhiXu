@@ -1,4 +1,4 @@
-import type { DrawElement, DrawPoint, DrawStrokeElement } from "./types";
+import type { DrawElement, DrawPoint, DrawStrokeElement, DrawStrokePoint } from "./types";
 import type { DrawEditorModel, PreviewStroke } from "./editorModel";
 import { distanceSquared, lerp, pointInPolygon } from "./geometry";
 import { newElementId } from "./id";
@@ -8,6 +8,11 @@ export type ToolPointerEvent = {
   viewDelta: DrawPoint;
   pagePosition: DrawPoint;
   pageDelta: DrawPoint;
+  pointerType: string;
+  pressure: number;
+  tiltX: number;
+  tiltY: number;
+  twist: number;
 };
 
 export interface DrawToolMachine {
@@ -51,12 +56,15 @@ export class PenToolMachine implements DrawToolMachine {
     const page = editor.currentPageOrNull();
     if (!page) return;
     const rawPagePos = editor.viewport.viewToPage(e.viewPosition);
+    const isPen = e.pointerType === "pen";
 
     if (isInPage(page.width, page.height, rawPagePos)) {
       editor.previewStroke = null;
       const strokeId = this.activeStrokeId;
       if (!strokeId) {
         const newStrokeId = newElementId();
+        const firstPoint = computePenStrokePoint(editor, clampToPage(page.width, page.height, rawPagePos), e, isPen);
+        if (firstPoint.length > 2) editor.doc.meta.formatVersion = Math.max(2, editor.doc.meta.formatVersion || 1);
         page.elements.push({
           type: "stroke",
           id: newStrokeId,
@@ -64,7 +72,7 @@ export class PenToolMachine implements DrawToolMachine {
           colorArgb: editor.currentPenColorArgb,
           width: editor.currentPenWidth,
           alpha: 1,
-          points: [clampToPage(page.width, page.height, rawPagePos)],
+          points: [firstPoint],
         });
         this.pendingStrokeIds.push(newStrokeId);
         this.activeStrokeId = newStrokeId;
@@ -73,7 +81,7 @@ export class PenToolMachine implements DrawToolMachine {
 
       const stroke = findLastStrokeById(page.elements, strokeId);
       if (!stroke) return;
-      stroke.points.push(clampToPage(page.width, page.height, rawPagePos));
+      stroke.points.push(computePenStrokePoint(editor, clampToPage(page.width, page.height, rawPagePos), e, isPen));
       return;
     }
 
@@ -81,10 +89,8 @@ export class PenToolMachine implements DrawToolMachine {
     pushPreviewPoint(editor, {
       tool: "pen",
       colorArgb: editor.currentPenColorArgb,
-      width: editor.currentPenWidth,
-      alpha: 1,
       points: [],
-    }, rawPagePos);
+    }, computePenPreviewPoint(editor, rawPagePos, e, isPen));
   }
 
   private markPendingStrokesComplete(_editor: DrawEditorModel) {
@@ -162,8 +168,6 @@ export class HighlighterToolMachine implements DrawToolMachine {
     pushPreviewPoint(editor, {
       tool: "highlighter",
       colorArgb: editor.highlighterColorArgb,
-      width: editor.highlighterWidth,
-      alpha: editor.highlighterAlpha,
       points: [],
     }, rawPagePos);
   }
@@ -380,14 +384,9 @@ function clampToPage(pageWidth: number, pageHeight: number, point: DrawPoint): D
   return [Math.min(w, Math.max(0, point[0])), Math.min(h, Math.max(0, point[1]))];
 }
 
-function pushPreviewPoint(editor: DrawEditorModel, hint: PreviewStroke, point: DrawPoint) {
+function pushPreviewPoint(editor: DrawEditorModel, hint: PreviewStroke, point: DrawStrokePoint) {
   const preview = editor.previewStroke;
-  const canReuse =
-    preview &&
-    preview.tool === hint.tool &&
-    preview.colorArgb === hint.colorArgb &&
-    preview.width === hint.width &&
-    preview.alpha === hint.alpha;
+  const canReuse = preview && preview.tool === hint.tool && preview.colorArgb === hint.colorArgb;
 
   if (!canReuse) {
     editor.previewStroke = { ...hint, points: [point] };
@@ -396,10 +395,10 @@ function pushPreviewPoint(editor: DrawEditorModel, hint: PreviewStroke, point: D
   preview.points.push(point);
 }
 
-function clipStrokePoints(points: DrawPoint[], eraser: DrawPoint, radiusSquared: number): DrawPoint[][] {
+function clipStrokePoints(points: DrawStrokePoint[], eraser: DrawPoint, radiusSquared: number): DrawStrokePoint[][] {
   if (!points.length) return [];
-  const out: DrawPoint[][] = [];
-  let current: DrawPoint[] | null = null;
+  const out: DrawStrokePoint[][] = [];
+  let current: DrawStrokePoint[] | null = null;
 
   const flush = () => {
     if (current && current.length) out.push(current);
@@ -426,4 +425,77 @@ function findLastStrokeById(elements: DrawElement[], id: string): DrawStrokeElem
     if (el?.type === "stroke" && el.id === id) return el;
   }
   return null;
+}
+
+function clamp01(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  return Math.min(1, Math.max(0, v));
+}
+
+function pressureStrength(editor: DrawEditorModel, pressure: number): number {
+  const p = clamp01(pressure);
+  const curve = editor.pressureCurve;
+  if (curve === "linear") return p;
+  if (curve === "soft") return Math.pow(p, 0.6);
+  if (curve === "hard") return Math.pow(p, 1.8);
+  const gamma = Number.isFinite(editor.pressureCurveGamma) ? editor.pressureCurveGamma : 1;
+  return Math.pow(p, Math.min(3, Math.max(0.2, gamma)));
+}
+
+function tiltStrength(tiltX: number, tiltY: number): number {
+  const tx = Number.isFinite(tiltX) ? tiltX : 0;
+  const ty = Number.isFinite(tiltY) ? tiltY : 0;
+  return clamp01(Math.hypot(tx, ty) / 90);
+}
+
+function computePenStrokePoint(editor: DrawEditorModel, posInPage: DrawPoint, e: ToolPointerEvent, isPen: boolean): DrawStrokePoint {
+  const baseWidth = Math.max(0.2, editor.currentPenWidth);
+  const baseAlpha = 1;
+
+  const applyPressure = isPen && editor.pressureEnabled;
+  const applyTilt = isPen && editor.tiltEnabled;
+
+  const strength = applyPressure ? pressureStrength(editor, e.pressure) : 1;
+  const mapping = editor.pressureMapping;
+  const minWidthFactor = 0.2;
+  const minAlphaFactor = 0.15;
+
+  let width = baseWidth;
+  let alpha = baseAlpha;
+
+  if (applyPressure) {
+    if (mapping === "width" || mapping === "both") width = baseWidth * (minWidthFactor + (1 - minWidthFactor) * strength);
+    if (mapping === "opacity" || mapping === "both") alpha = baseAlpha * (minAlphaFactor + (1 - minAlphaFactor) * strength);
+  }
+
+  const t = applyTilt ? tiltStrength(e.tiltX, e.tiltY) : 0;
+  if (applyTilt && editor.tiltMapping === "width") {
+    width *= 1 + t * 1.2;
+  }
+
+  const canUseFlatBrush = applyTilt && (editor.tiltMapping === "angle" || editor.tiltMapping === "shading") && t >= 0.12;
+  if (canUseFlatBrush) {
+    const angle = Math.atan2(e.tiltY || 0, e.tiltX || 0);
+    const r = Math.max(0.05, width / 2);
+    const baseRatio = 0.35;
+    let rx = r;
+    let ry = r * baseRatio;
+    if (editor.tiltMapping === "shading") {
+      rx = r * (1 + t * 1.5);
+      ry = Math.max(0.03, r * (1 - t * 0.7));
+    }
+    return [posInPage[0], posInPage[1], rx, ry, angle, clamp01(alpha)];
+  }
+
+  if (applyPressure || (applyTilt && editor.tiltMapping === "width")) {
+    return [posInPage[0], posInPage[1], Math.max(0.2, width), clamp01(alpha)];
+  }
+
+  return [posInPage[0], posInPage[1]];
+}
+
+function computePenPreviewPoint(editor: DrawEditorModel, rawPos: DrawPoint, e: ToolPointerEvent, isPen: boolean): DrawStrokePoint {
+  const strokePoint = computePenStrokePoint(editor, [rawPos[0], rawPos[1]], e, isPen);
+  if (strokePoint.length > 2) return strokePoint;
+  return [rawPos[0], rawPos[1], Math.max(0.2, editor.currentPenWidth), 1];
 }

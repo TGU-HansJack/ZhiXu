@@ -1,4 +1,4 @@
-import type { DrawDocument, DrawElement, DrawPage } from "./types";
+import type { DrawDocument, DrawElement, DrawPage, DrawStrokePoint } from "./types";
 
 export function cloneElements(elements: DrawElement[]): DrawElement[] {
   return elements.map((el) => {
@@ -10,7 +10,7 @@ export function cloneElements(elements: DrawElement[]): DrawElement[] {
         colorArgb: el.colorArgb,
         width: el.width,
         alpha: el.alpha,
-        points: el.points.map((p) => [p[0], p[1]] as [number, number]),
+        points: el.points.map((p) => p.slice() as DrawStrokePoint),
       };
     }
     return {

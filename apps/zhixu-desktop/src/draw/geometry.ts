@@ -1,17 +1,17 @@
-import type { DrawPoint } from "./types";
+import type { DrawPoint, DrawPointLike } from "./types";
 
-export function distanceSquared(a: DrawPoint, b: DrawPoint): number {
+export function distanceSquared(a: DrawPointLike, b: DrawPointLike): number {
   const dx = a[0] - b[0];
   const dy = a[1] - b[1];
   return dx * dx + dy * dy;
 }
 
-export function lerp(a: DrawPoint, b: DrawPoint, t: number): DrawPoint {
+export function lerp(a: DrawPointLike, b: DrawPointLike, t: number): DrawPoint {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 }
 
 // Ray casting algorithm.
-export function pointInPolygon(point: DrawPoint, polygon: DrawPoint[]): boolean {
+export function pointInPolygon(point: DrawPointLike, polygon: DrawPointLike[]): boolean {
   const x = point[0];
   const y = point[1];
   let inside = false;
@@ -28,7 +28,7 @@ export function pointInPolygon(point: DrawPoint, polygon: DrawPoint[]): boolean 
 
 export type DrawRect = { left: number; top: number; right: number; bottom: number };
 
-export function rectFromPoints(a: DrawPoint, b: DrawPoint): DrawRect {
+export function rectFromPoints(a: DrawPointLike, b: DrawPointLike): DrawRect {
   return {
     left: Math.min(a[0], b[0]),
     right: Math.max(a[0], b[0]),
@@ -36,4 +36,3 @@ export function rectFromPoints(a: DrawPoint, b: DrawPoint): DrawRect {
     bottom: Math.max(a[1], b[1]),
   };
 }
-

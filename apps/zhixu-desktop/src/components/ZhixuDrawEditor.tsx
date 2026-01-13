@@ -2,7 +2,18 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { PDFDocument } from "pdf-lib";
-import type { DrawDocument, DrawElement, DrawPage, DrawPoint, DrawToolId, DrawViewMode } from "../draw/types";
+import type {
+  DrawDocument,
+  DrawElement,
+  DrawPage,
+  DrawPoint,
+  DrawPressureCurve,
+  DrawPressureMapping,
+  DrawStrokePoint,
+  DrawTiltMapping,
+  DrawToolId,
+  DrawViewMode,
+} from "../draw/types";
 import { cloneDocument } from "../draw/clone";
 import { documentContentEqual } from "../draw/contentEqual";
 import { elementBounds } from "../draw/bounds";
@@ -93,6 +104,215 @@ function spanOf(a: DrawPoint, b: DrawPoint): number {
 function isPenEraser(ev: PointerEvent): boolean {
   if (ev.pointerType !== "pen") return false;
   return (ev.buttons & 32) !== 0 || ev.button === 5;
+}
+
+function clamp01(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  return Math.min(1, Math.max(0, v));
+}
+
+function toolPointerExtras(ev: PointerEvent): Pick<ToolPointerEvent, "pointerType" | "pressure" | "tiltX" | "tiltY" | "twist"> {
+  const pointerType = ev.pointerType || "mouse";
+  const isPen = pointerType === "pen";
+  const pressure = isPen ? clamp01(ev.pressure) : 1;
+  const tiltX = isPen && Number.isFinite(ev.tiltX) ? ev.tiltX : 0;
+  const tiltY = isPen && Number.isFinite(ev.tiltY) ? ev.tiltY : 0;
+  const twist = isPen && "twist" in ev && Number.isFinite((ev as PointerEvent).twist) ? (ev as PointerEvent).twist : 0;
+  return { pointerType, pressure, tiltX, tiltY, twist };
+}
+
+function drawStrokePoints(
+  ctx: CanvasRenderingContext2D,
+  points: readonly DrawStrokePoint[],
+  colorArgb: number,
+  fallbackWidth: number,
+  fallbackAlpha: number,
+) {
+  if (!points.length) return;
+
+  const baseColor = argbToRgba(colorArgb, 1);
+  const baseWidth = Math.max(0.2, fallbackWidth);
+  const baseAlpha = clamp01(fallbackAlpha);
+
+  let hasRoundStyle = false;
+  let hasFlatStyle = false;
+  for (const p of points) {
+    if (p.length >= 6) {
+      hasFlatStyle = true;
+      break;
+    }
+    if (p.length >= 4) hasRoundStyle = true;
+  }
+
+  ctx.save();
+  ctx.fillStyle = baseColor;
+  ctx.strokeStyle = baseColor;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  if (!hasRoundStyle && !hasFlatStyle) {
+    ctx.globalAlpha = baseAlpha;
+    if (points.length === 1) {
+      const p = points[0]!;
+      ctx.beginPath();
+      ctx.arc(p[0], p[1], baseWidth / 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.lineWidth = baseWidth;
+      ctx.beginPath();
+      ctx.moveTo(points[0]![0], points[0]![1]);
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i]![0], points[i]![1]);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (hasFlatStyle) {
+    const pointStyle = (p: DrawStrokePoint) => {
+      const x = p[0];
+      const y = p[1];
+      if (p.length >= 6) {
+        const rx = Number.isFinite(p[2]) ? Math.max(0.03, Math.abs(p[2]!)) : baseWidth / 2;
+        const ry = Number.isFinite(p[3]) ? Math.max(0.03, Math.abs(p[3]!)) : baseWidth / 2;
+        const rot = Number.isFinite(p[4]) ? p[4]! : 0;
+        const alpha = Number.isFinite(p[5]) ? clamp01(p[5]!) : baseAlpha;
+        return { x, y, rx, ry, rot, alpha };
+      }
+      const w = p.length >= 4 && Number.isFinite(p[2]) ? Math.max(0.2, p[2]!) : baseWidth;
+      const a = p.length >= 4 && Number.isFinite(p[3]) ? clamp01(p[3]!) : baseAlpha;
+      return { x, y, rx: w / 2, ry: w / 2, rot: 0, alpha: a };
+    };
+
+    const stamp = (x: number, y: number, rx: number, ry: number, rot: number, alpha: number) => {
+      ctx.save();
+      ctx.globalAlpha = clamp01(alpha);
+      ctx.translate(x, y);
+      if (rot) ctx.rotate(rot);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    };
+
+    if (points.length === 1) {
+      const p0 = pointStyle(points[0]!);
+      stamp(p0.x, p0.y, p0.rx, p0.ry, p0.rot, p0.alpha);
+      ctx.restore();
+      return;
+    }
+
+    let prev = pointStyle(points[0]!);
+    stamp(prev.x, prev.y, prev.rx, prev.ry, prev.rot, prev.alpha);
+
+    for (let i = 1; i < points.length; i++) {
+      const next = pointStyle(points[i]!);
+      const dx = next.x - prev.x;
+      const dy = next.y - prev.y;
+      const dist = Math.hypot(dx, dy);
+      const step = Math.max(0.5, Math.min(prev.rx, prev.ry, next.rx, next.ry) * 0.6);
+      const n = Math.max(1, Math.ceil(dist / step));
+      for (let j = 1; j <= n; j++) {
+        const t = j / n;
+        stamp(
+          prev.x + dx * t,
+          prev.y + dy * t,
+          prev.rx + (next.rx - prev.rx) * t,
+          prev.ry + (next.ry - prev.ry) * t,
+          prev.rot + (next.rot - prev.rot) * t,
+          prev.alpha + (next.alpha - prev.alpha) * t,
+        );
+      }
+      prev = next;
+    }
+
+    ctx.restore();
+    return;
+  }
+
+  const pointStyle = (p: DrawStrokePoint) => {
+    const w = p.length >= 4 && Number.isFinite(p[2]) ? Math.max(0.2, p[2]!) : baseWidth;
+    const a = p.length >= 4 && Number.isFinite(p[3]) ? clamp01(p[3]!) : baseAlpha;
+    return { w, a };
+  };
+
+  if (points.length === 1) {
+    const p = points[0]!;
+    const s = pointStyle(p);
+    ctx.globalAlpha = s.a;
+    ctx.beginPath();
+    ctx.arc(p[0], p[1], s.w / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  let prev = points[0]!;
+  let prevStyle = pointStyle(prev);
+  for (let i = 1; i < points.length; i++) {
+    const next = points[i]!;
+    const nextStyle = pointStyle(next);
+    const w = (prevStyle.w + nextStyle.w) / 2;
+    const a = (prevStyle.a + nextStyle.a) / 2;
+    ctx.globalAlpha = a;
+    ctx.lineWidth = w;
+    ctx.beginPath();
+    ctx.moveTo(prev[0], prev[1]);
+    ctx.lineTo(next[0], next[1]);
+    ctx.stroke();
+    prev = next;
+    prevStyle = nextStyle;
+  }
+
+  ctx.restore();
+}
+
+const DRAW_INK_SETTINGS_KEY = "zhixu.draw.inkSettings.v1";
+
+type PersistedInkSettings = {
+  pressureEnabled?: boolean;
+  pressureMapping?: DrawPressureMapping;
+  pressureCurve?: DrawPressureCurve;
+  pressureCurveGamma?: number;
+  tiltEnabled?: boolean;
+  tiltMapping?: DrawTiltMapping;
+};
+
+function parseInkSettings(raw: unknown): PersistedInkSettings | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const out: PersistedInkSettings = {};
+  if (typeof o.pressureEnabled === "boolean") out.pressureEnabled = o.pressureEnabled;
+  if (o.pressureMapping === "width" || o.pressureMapping === "opacity" || o.pressureMapping === "both") {
+    out.pressureMapping = o.pressureMapping;
+  }
+  if (o.pressureCurve === "linear" || o.pressureCurve === "soft" || o.pressureCurve === "hard" || o.pressureCurve === "custom") {
+    out.pressureCurve = o.pressureCurve;
+  }
+  if (typeof o.pressureCurveGamma === "number" && Number.isFinite(o.pressureCurveGamma)) {
+    out.pressureCurveGamma = o.pressureCurveGamma;
+  }
+  if (typeof o.tiltEnabled === "boolean") out.tiltEnabled = o.tiltEnabled;
+  if (o.tiltMapping === "width" || o.tiltMapping === "angle" || o.tiltMapping === "shading") {
+    out.tiltMapping = o.tiltMapping;
+  }
+  return out;
+}
+
+function loadInkSettings(): PersistedInkSettings | null {
+  try {
+    const raw = localStorage.getItem(DRAW_INK_SETTINGS_KEY);
+    if (!raw) return null;
+    return parseInkSettings(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function saveInkSettings(settings: PersistedInkSettings) {
+  try {
+    localStorage.setItem(DRAW_INK_SETTINGS_KEY, JSON.stringify(settings));
+  } catch {}
 }
 
 function DrawToolbarButton({
@@ -360,26 +580,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
       const selectionColor = "rgba(47,111,235,0.9)";
       for (const el of page.elements) {
         if (el.type === "stroke") {
-          const alpha = Math.min(1, Math.max(0, el.alpha));
-          const color = argbToRgba(el.colorArgb, alpha);
-          if (el.points.length === 1) {
-            const p = el.points[0]!;
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.arc(p[0], p[1], Math.max(0.1, el.width) / 2, 0, Math.PI * 2);
-            ctx.fill();
-          } else if (el.points.length >= 2) {
-            ctx.strokeStyle = color;
-            ctx.lineWidth = Math.max(0.2, el.width);
-            ctx.lineCap = "round";
-            ctx.lineJoin = "round";
-            ctx.beginPath();
-            ctx.moveTo(el.points[0]![0], el.points[0]![1]);
-            for (let i = 1; i < el.points.length; i++) {
-              ctx.lineTo(el.points[i]![0], el.points[i]![1]);
-            }
-            ctx.stroke();
-          }
+          drawStrokePoints(ctx, el.points, el.colorArgb, el.width, el.alpha);
         } else {
           const alpha = Math.min(1, Math.max(0, el.alpha));
           const color = argbToRgba(el.colorArgb, alpha);
@@ -475,28 +676,11 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
 
       if (editor.previewStroke && editor.previewStroke.points.length) {
         const preview = editor.previewStroke;
-        const color = argbToRgba(preview.colorArgb, Math.min(1, Math.max(0, preview.alpha)));
-        const w = Math.max(0.2, preview.width);
-        ctx.save();
-        ctx.strokeStyle = color;
-        ctx.fillStyle = color;
-        ctx.lineWidth = w;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        if (preview.points.length === 1) {
-          const p = preview.points[0]!;
-          ctx.beginPath();
-          ctx.arc(p[0], p[1], w / 2, 0, Math.PI * 2);
-          ctx.fill();
-        } else {
-          ctx.beginPath();
-          ctx.moveTo(preview.points[0]![0], preview.points[0]![1]);
-          for (let i = 1; i < preview.points.length; i++) {
-            ctx.lineTo(preview.points[i]![0], preview.points[i]![1]);
-          }
-          ctx.stroke();
-        }
-        ctx.restore();
+        const fallback =
+          preview.tool === "highlighter"
+            ? { width: editor.highlighterWidth, alpha: editor.highlighterAlpha }
+            : { width: editor.currentPenWidth, alpha: 1 };
+        drawStrokePoints(ctx, preview.points, preview.colorArgb, fallback.width, fallback.alpha);
       }
 
       ctx.restore();
@@ -678,6 +862,17 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
     const editor = new DrawEditorModel(cloneDocument(doc));
     editor.ensureHasAtLeastOnePage();
     editor.viewMode = viewMode;
+
+    const ink = loadInkSettings();
+    if (ink) {
+      if (typeof ink.pressureEnabled === "boolean") editor.pressureEnabled = ink.pressureEnabled;
+      if (ink.pressureMapping) editor.pressureMapping = ink.pressureMapping;
+      if (ink.pressureCurve) editor.pressureCurve = ink.pressureCurve;
+      if (typeof ink.pressureCurveGamma === "number") editor.pressureCurveGamma = Math.min(3, Math.max(0.2, ink.pressureCurveGamma));
+      if (typeof ink.tiltEnabled === "boolean") editor.tiltEnabled = ink.tiltEnabled;
+      if (ink.tiltMapping) editor.tiltMapping = ink.tiltMapping;
+    }
+
     editorRef.current = editor;
     historiesRef.current = {};
     didInitViewportRef.current = false;
@@ -769,11 +964,13 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
       input.activePointerId = ev.pointerId;
       input.lastViewPos = viewPos;
       input.lastPagePos = clampToPage(editor, editor.viewport.viewToPage(viewPos));
+      const native = ev.nativeEvent as PointerEvent;
       const toolEvent: ToolPointerEvent = {
         viewPosition: viewPos,
         viewDelta: [0, 0],
         pagePosition: input.lastPagePos,
         pageDelta: [0, 0],
+        ...toolPointerExtras(native),
       };
       pickedTool.onDown(editor, toolEvent);
       requestCanvasRender();
@@ -839,7 +1036,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
         const pagePos = clampToPage(editor, editor.viewport.viewToPage(sampleViewPos));
         const pageDelta: DrawPoint = [pagePos[0] - input.lastPagePos[0], pagePos[1] - input.lastPagePos[1]];
 
-        input.activeTool.onMove(editor, { viewPosition: sampleViewPos, viewDelta, pagePosition: pagePos, pageDelta });
+        input.activeTool.onMove(editor, { viewPosition: sampleViewPos, viewDelta, pagePosition: pagePos, pageDelta, ...toolPointerExtras(sample) });
         input.lastViewPos = sampleViewPos;
         input.lastPagePos = pagePos;
       }
@@ -882,7 +1079,8 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
       const viewDelta: DrawPoint = [viewPos[0] - input.lastViewPos[0], viewPos[1] - input.lastViewPos[1]];
       const pagePos = clampToPage(editor, editor.viewport.viewToPage(viewPos));
       const pageDelta: DrawPoint = [pagePos[0] - input.lastPagePos[0], pagePos[1] - input.lastPagePos[1]];
-      const toolEvent: ToolPointerEvent = { viewPosition: viewPos, viewDelta, pagePosition: pagePos, pageDelta };
+      const native = ev.nativeEvent as PointerEvent;
+      const toolEvent: ToolPointerEvent = { viewPosition: viewPos, viewDelta, pagePosition: pagePos, pageDelta, ...toolPointerExtras(native) };
 
       if (kind === "cancel") {
         tool.onCancel(editor);
@@ -1088,26 +1286,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
 
     for (const el of page.elements) {
       if (el.type === "stroke") {
-        const alpha = Math.min(1, Math.max(0, el.alpha));
-        const color = argbToRgba(el.colorArgb, alpha);
-        if (el.points.length === 1) {
-          const p = el.points[0]!;
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.arc(p[0], p[1], Math.max(0.1, el.width) / 2, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (el.points.length >= 2) {
-          ctx.strokeStyle = color;
-          ctx.lineWidth = Math.max(0.2, el.width);
-          ctx.lineCap = "round";
-          ctx.lineJoin = "round";
-          ctx.beginPath();
-          ctx.moveTo(el.points[0]![0], el.points[0]![1]);
-          for (let i = 1; i < el.points.length; i++) {
-            ctx.lineTo(el.points[i]![0], el.points[i]![1]);
-          }
-          ctx.stroke();
-        }
+        drawStrokePoints(ctx, el.points, el.colorArgb, el.width, el.alpha);
       } else {
         const alpha = Math.min(1, Math.max(0, el.alpha));
         const color = argbToRgba(el.colorArgb, alpha);
@@ -1400,18 +1579,283 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
           ) : null}
 
           {editor.toolId === "pen" ? (
-            <DrawLabeledSlider
-              label="线条粗细"
-              value={editor.currentPenWidth}
-              min={0.5}
-              max={18}
-              step={0.1}
-              formatValue={(v) => v.toFixed(1)}
-              onChange={(v) => {
-                editor.currentPenWidth = v;
-                forceUiTick((n) => n + 1);
-              }}
-            />
+            <>
+              <DrawLabeledSlider
+                label="线条粗细"
+                value={editor.currentPenWidth}
+                min={0.5}
+                max={18}
+                step={0.1}
+                formatValue={(v) => v.toFixed(1)}
+                onChange={(v) => {
+                  editor.currentPenWidth = v;
+                  forceUiTick((n) => n + 1);
+                }}
+              />
+
+              <div className="drawPopoverDivider" />
+
+              <div className="drawPopoverSectionTitle">压感</div>
+              <button
+                type="button"
+                className="drawPopoverItem"
+                onClick={() => {
+                  editor.pressureEnabled = !editor.pressureEnabled;
+                  saveInkSettings({
+                    pressureEnabled: editor.pressureEnabled,
+                    pressureMapping: editor.pressureMapping,
+                    pressureCurve: editor.pressureCurve,
+                    pressureCurveGamma: editor.pressureCurveGamma,
+                    tiltEnabled: editor.tiltEnabled,
+                    tiltMapping: editor.tiltMapping,
+                  });
+                  forceUiTick((n) => n + 1);
+                }}
+                data-no-drag="true"
+              >
+                <span>启用压感</span>
+                {editor.pressureEnabled ? <IconCheckmark size={18} /> : null}
+              </button>
+
+              <div className="drawPopoverSubTitle">压感映射</div>
+              <div className="drawModeChips" data-no-drag="true">
+                <button
+                  type="button"
+                  className={`drawModeChip${editor.pressureMapping === "width" ? " active" : ""}`}
+                  onClick={() => {
+                    editor.pressureMapping = "width";
+                    saveInkSettings({
+                      pressureEnabled: editor.pressureEnabled,
+                      pressureMapping: editor.pressureMapping,
+                      pressureCurve: editor.pressureCurve,
+                      pressureCurveGamma: editor.pressureCurveGamma,
+                      tiltEnabled: editor.tiltEnabled,
+                      tiltMapping: editor.tiltMapping,
+                    });
+                    forceUiTick((n) => n + 1);
+                  }}
+                >
+                  压力 → 笔宽
+                </button>
+                <button
+                  type="button"
+                  className={`drawModeChip${editor.pressureMapping === "opacity" ? " active" : ""}`}
+                  onClick={() => {
+                    editor.pressureMapping = "opacity";
+                    saveInkSettings({
+                      pressureEnabled: editor.pressureEnabled,
+                      pressureMapping: editor.pressureMapping,
+                      pressureCurve: editor.pressureCurve,
+                      pressureCurveGamma: editor.pressureCurveGamma,
+                      tiltEnabled: editor.tiltEnabled,
+                      tiltMapping: editor.tiltMapping,
+                    });
+                    forceUiTick((n) => n + 1);
+                  }}
+                >
+                  压力 → 不透明度
+                </button>
+                <button
+                  type="button"
+                  className={`drawModeChip${editor.pressureMapping === "both" ? " active" : ""}`}
+                  onClick={() => {
+                    editor.pressureMapping = "both";
+                    saveInkSettings({
+                      pressureEnabled: editor.pressureEnabled,
+                      pressureMapping: editor.pressureMapping,
+                      pressureCurve: editor.pressureCurve,
+                      pressureCurveGamma: editor.pressureCurveGamma,
+                      tiltEnabled: editor.tiltEnabled,
+                      tiltMapping: editor.tiltMapping,
+                    });
+                    forceUiTick((n) => n + 1);
+                  }}
+                >
+                  压力 → 笔宽 + 不透明度
+                </button>
+              </div>
+
+              <div className="drawPopoverSubTitle">压感曲线</div>
+              <div className="drawModeChips" data-no-drag="true">
+                <button
+                  type="button"
+                  className={`drawModeChip${editor.pressureCurve === "linear" ? " active" : ""}`}
+                  onClick={() => {
+                    editor.pressureCurve = "linear";
+                    saveInkSettings({
+                      pressureEnabled: editor.pressureEnabled,
+                      pressureMapping: editor.pressureMapping,
+                      pressureCurve: editor.pressureCurve,
+                      pressureCurveGamma: editor.pressureCurveGamma,
+                      tiltEnabled: editor.tiltEnabled,
+                      tiltMapping: editor.tiltMapping,
+                    });
+                    forceUiTick((n) => n + 1);
+                  }}
+                >
+                  线性
+                </button>
+                <button
+                  type="button"
+                  className={`drawModeChip${editor.pressureCurve === "soft" ? " active" : ""}`}
+                  onClick={() => {
+                    editor.pressureCurve = "soft";
+                    saveInkSettings({
+                      pressureEnabled: editor.pressureEnabled,
+                      pressureMapping: editor.pressureMapping,
+                      pressureCurve: editor.pressureCurve,
+                      pressureCurveGamma: editor.pressureCurveGamma,
+                      tiltEnabled: editor.tiltEnabled,
+                      tiltMapping: editor.tiltMapping,
+                    });
+                    forceUiTick((n) => n + 1);
+                  }}
+                >
+                  软
+                </button>
+                <button
+                  type="button"
+                  className={`drawModeChip${editor.pressureCurve === "hard" ? " active" : ""}`}
+                  onClick={() => {
+                    editor.pressureCurve = "hard";
+                    saveInkSettings({
+                      pressureEnabled: editor.pressureEnabled,
+                      pressureMapping: editor.pressureMapping,
+                      pressureCurve: editor.pressureCurve,
+                      pressureCurveGamma: editor.pressureCurveGamma,
+                      tiltEnabled: editor.tiltEnabled,
+                      tiltMapping: editor.tiltMapping,
+                    });
+                    forceUiTick((n) => n + 1);
+                  }}
+                >
+                  硬
+                </button>
+                <button
+                  type="button"
+                  className={`drawModeChip${editor.pressureCurve === "custom" ? " active" : ""}`}
+                  onClick={() => {
+                    editor.pressureCurve = "custom";
+                    saveInkSettings({
+                      pressureEnabled: editor.pressureEnabled,
+                      pressureMapping: editor.pressureMapping,
+                      pressureCurve: editor.pressureCurve,
+                      pressureCurveGamma: editor.pressureCurveGamma,
+                      tiltEnabled: editor.tiltEnabled,
+                      tiltMapping: editor.tiltMapping,
+                    });
+                    forceUiTick((n) => n + 1);
+                  }}
+                >
+                  自定义
+                </button>
+              </div>
+
+              {editor.pressureCurve === "custom" ? (
+                <DrawLabeledSlider
+                  label="曲线指数"
+                  value={editor.pressureCurveGamma}
+                  min={0.2}
+                  max={3}
+                  step={0.05}
+                  formatValue={(v) => v.toFixed(2)}
+                  onChange={(v) => {
+                    editor.pressureCurveGamma = v;
+                    saveInkSettings({
+                      pressureEnabled: editor.pressureEnabled,
+                      pressureMapping: editor.pressureMapping,
+                      pressureCurve: editor.pressureCurve,
+                      pressureCurveGamma: editor.pressureCurveGamma,
+                      tiltEnabled: editor.tiltEnabled,
+                      tiltMapping: editor.tiltMapping,
+                    });
+                    forceUiTick((n) => n + 1);
+                  }}
+                />
+              ) : null}
+
+              <div className="drawPopoverDivider" />
+
+              <div className="drawPopoverSectionTitle">倾斜（Tilt）</div>
+              <button
+                type="button"
+                className="drawPopoverItem"
+                onClick={() => {
+                  editor.tiltEnabled = !editor.tiltEnabled;
+                  saveInkSettings({
+                    pressureEnabled: editor.pressureEnabled,
+                    pressureMapping: editor.pressureMapping,
+                    pressureCurve: editor.pressureCurve,
+                    pressureCurveGamma: editor.pressureCurveGamma,
+                    tiltEnabled: editor.tiltEnabled,
+                    tiltMapping: editor.tiltMapping,
+                  });
+                  forceUiTick((n) => n + 1);
+                }}
+                data-no-drag="true"
+              >
+                <span>启用倾斜</span>
+                {editor.tiltEnabled ? <IconCheckmark size={18} /> : null}
+              </button>
+
+              <div className="drawPopoverSubTitle">倾斜映射</div>
+              <div className="drawModeChips" data-no-drag="true">
+                <button
+                  type="button"
+                  className={`drawModeChip${editor.tiltMapping === "width" ? " active" : ""}`}
+                  onClick={() => {
+                    editor.tiltMapping = "width";
+                    saveInkSettings({
+                      pressureEnabled: editor.pressureEnabled,
+                      pressureMapping: editor.pressureMapping,
+                      pressureCurve: editor.pressureCurve,
+                      pressureCurveGamma: editor.pressureCurveGamma,
+                      tiltEnabled: editor.tiltEnabled,
+                      tiltMapping: editor.tiltMapping,
+                    });
+                    forceUiTick((n) => n + 1);
+                  }}
+                >
+                  倾斜 → 笔宽
+                </button>
+                <button
+                  type="button"
+                  className={`drawModeChip${editor.tiltMapping === "angle" ? " active" : ""}`}
+                  onClick={() => {
+                    editor.tiltMapping = "angle";
+                    saveInkSettings({
+                      pressureEnabled: editor.pressureEnabled,
+                      pressureMapping: editor.pressureMapping,
+                      pressureCurve: editor.pressureCurve,
+                      pressureCurveGamma: editor.pressureCurveGamma,
+                      tiltEnabled: editor.tiltEnabled,
+                      tiltMapping: editor.tiltMapping,
+                    });
+                    forceUiTick((n) => n + 1);
+                  }}
+                >
+                  倾斜 → 笔刷角度
+                </button>
+                <button
+                  type="button"
+                  className={`drawModeChip${editor.tiltMapping === "shading" ? " active" : ""}`}
+                  onClick={() => {
+                    editor.tiltMapping = "shading";
+                    saveInkSettings({
+                      pressureEnabled: editor.pressureEnabled,
+                      pressureMapping: editor.pressureMapping,
+                      pressureCurve: editor.pressureCurve,
+                      pressureCurveGamma: editor.pressureCurveGamma,
+                      tiltEnabled: editor.tiltEnabled,
+                      tiltMapping: editor.tiltMapping,
+                    });
+                    forceUiTick((n) => n + 1);
+                  }}
+                >
+                  倾斜 → 阴影 / 扁平刷
+                </button>
+              </div>
+            </>
           ) : editor.toolId === "shape" ? (
             <DrawLabeledSlider
               label="线条粗细"

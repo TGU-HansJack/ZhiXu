@@ -8,7 +8,17 @@ export type DrawViewMode = "writing" | "reading";
 
 export type DrawPoint = [number, number];
 
+export type DrawPointLike = readonly [number, number, ...number[]];
+
+export type DrawStrokePoint = [number, number, ...number[]];
+
 export type DrawStrokeTool = "pen" | "highlighter" | "shape";
+
+export type DrawPressureMapping = "width" | "opacity" | "both";
+
+export type DrawPressureCurve = "linear" | "soft" | "hard" | "custom";
+
+export type DrawTiltMapping = "width" | "angle" | "shading";
 
 export type DrawMeta = {
   formatVersion: number;
@@ -24,7 +34,7 @@ export type DrawStrokeElement = {
   colorArgb: number;
   width: number;
   alpha: number;
-  points: DrawPoint[];
+  points: DrawStrokePoint[];
 };
 
 export type DrawShapeElement = {
@@ -52,4 +62,3 @@ export type DrawDocument = {
   meta: DrawMeta;
   pages: DrawPage[];
 };
-
