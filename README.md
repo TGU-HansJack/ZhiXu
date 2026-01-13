@@ -91,6 +91,18 @@ npm run tauri dev
 
 > 需要 Rust 工具链与 Tauri 环境依赖（详见 Tauri 官方文档）。
 
+## 打包 exe/portable 包
+安装版 exe：在 ZhiXu/apps/zhixu-desktop 运行
+```
+npm run tauri:build:exe
+```
+产物在 `ZhiXu\apps\zhixu-desktop\src-tauri\target\release\bundle\nsis`
+Portable：运行
+```
+npm run tauri:build:portable
+```
+产物在 `ZhiXu\apps\zhixu-desktop\src-tauri\target\release`（内含 Zhixu.exe）
+
 ## 文档
 
 - Desktop 规划：`docs/desktop-tauri-plan.md`
