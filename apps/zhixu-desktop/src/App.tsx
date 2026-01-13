@@ -7,7 +7,7 @@ import type { CodeMirrorSelection } from "./components/CodeMirrorEditor";
 import type { MarkdownEditorMode } from "./components/ZhixuMarkdownEditor";
 import { FileTree, type TreeNode } from "./components/FileTree";
 import { Popover } from "./components/Popover";
-import { SettingsModal } from "./components/SettingsModal";
+import { SettingsModal, type SettingsSectionId } from "./components/SettingsModal";
 import { Tooltip, type TooltipPlacement } from "./components/Tooltip";
 import {
   IconCalendar,
@@ -19,6 +19,8 @@ import {
   IconLucideCircleUserRound,
   IconLucidePictureInPicture,
   IconLucidePin,
+  IconLucideRefreshCw,
+  IconLucideRefreshCwOff,
   IconLucideSettings,
   IconMaximize,
   IconMinimize,
@@ -27,7 +29,6 @@ import {
   IconRefresh,
   IconRename,
   IconSave,
-  IconSearch,
   IconSidebarClose,
   IconSidebarOpen,
   IconSpace,
@@ -77,7 +78,7 @@ const LazyZhixuMarkdownEditor = React.lazy(() =>
   import("./components/ZhixuMarkdownEditor").then((m) => ({ default: m.ZhixuMarkdownEditor })),
 ) as React.LazyExoticComponent<typeof import("./components/ZhixuMarkdownEditor").ZhixuMarkdownEditor>;
 
-type Activity = "space" | "tasks" | "calendar" | "quadrant" | "workshop" | "search";
+type Activity = "space" | "tasks" | "calendar" | "quadrant" | "workshop";
 
 type NewTab = {
   path: string;
@@ -259,6 +260,23 @@ export function App() {
   const vaultPickerRef = useRef<HTMLDivElement | null>(null);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialSection, setSettingsInitialSection] = useState<SettingsSectionId>("pro");
+  const [cloudSyncEnabled, setCloudSyncEnabled] = useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem("zhixu:cloudSyncEnabled");
+      if (raw == null) return false;
+      return JSON.parse(raw) === true;
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("zhixu:cloudSyncEnabled", JSON.stringify(cloudSyncEnabled));
+    } catch {
+      // ignore
+    }
+  }, [cloudSyncEnabled]);
   const [dirCache, setDirCache] = useState<Record<string, VaultEntry[]>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [loadingDir, setLoadingDir] = useState<Record<string, boolean>>({});
@@ -1554,14 +1572,11 @@ export function App() {
           >
             {sidebarOpen ? <IconSidebarClose size={22} /> : <IconSidebarOpen size={22} />}
           </IconButton>
-          {/* 主侧栏顶部按钮：空间、搜索 */}
+          {/* 主侧栏顶部按钮：空间 */}
           {sidebarOpen ? (
             <>
               <IconButton title="空间" tooltipPlacement="bottom" active={activity === "space"} onClick={() => openActivity("space")}>
                 <IconSpace />
-              </IconButton>
-              <IconButton title="搜索" tooltipPlacement="bottom" active={activity === "search"} onClick={() => openActivity("search")}>
-                <IconSearch />
               </IconButton>
             </>
           ) : null}
@@ -1885,15 +1900,6 @@ export function App() {
           >
             <IconWorkshop />
           </IconButton>
-          <IconButton
-            title="搜索"
-            tooltipPlacement="right"
-            active={activity === "search"}
-            onClick={() => openActivity("search")}
-            className="abBtn"
-          >
-            <IconSearch />
-          </IconButton>
 
           <div className="abSpacer" aria-hidden="true" />
 
@@ -1911,6 +1917,7 @@ export function App() {
             tooltipPlacement="right"
             onClick={() => {
               setAccountMenuOpen(false);
+              setSettingsInitialSection("pro");
               setSettingsOpen(true);
             }}
             className="abBtn"
@@ -1934,7 +1941,15 @@ export function App() {
               <span className="menuLabel">账号信息</span>
             </button>
 
-            <button type="button" className="menuItem" onClick={() => setAccountMenuOpen(false)}>
+            <button
+              type="button"
+              className="menuItem"
+              onClick={() => {
+                setAccountMenuOpen(false);
+                setSettingsInitialSection("sync");
+                setSettingsOpen(true);
+              }}
+            >
               <span className="menuIcon" aria-hidden="true">
                 <IconRefresh size={16} />
               </span>
@@ -1955,9 +1970,9 @@ export function App() {
         {sidebarOpen ? (
           /* 主侧栏（点击打开的侧栏） */
           <div className="sidebar mainSidebar">
-            <div className="sidebarHeader">
+            <div className={`sidebarHeader${activity === "space" ? " spaceHeader" : ""}`}>
               <div className="sidebarHeaderLeft">
-                {activity === "space" ? (
+                {false ? (
                   <div className="vaultPicker" ref={vaultPickerRef}>
                     <Tooltip label={vaultRoot ? formatPathForDisplay(vaultRoot) : ""} placement="right">
                       <button
@@ -2034,9 +2049,9 @@ export function App() {
                         ? "日历"
                         : activity === "quadrant"
                           ? "象限"
-                          : activity === "workshop"
-                            ? "工坊"
-                            : "搜索"}
+                        : activity === "workshop"
+                          ? "工坊"
+                          : ""}
                   </div>
                 )}
               </div>
@@ -2082,6 +2097,103 @@ export function App() {
             ) : (
               <div className="emptyState">敬请期待。</div>
             )}
+
+            {activity === "space" ? (
+              <div className="sidebarFooter">
+                <div className="vaultPicker" ref={vaultPickerRef}>
+                  <button
+                    type="button"
+                    className="vaultPickerBtn"
+                    data-no-drag="true"
+                    onClick={() => {
+                      if (!vaultRoot) {
+                        void openFolder();
+                        return;
+                      }
+                      setVaultPickerOpen((v) => !v);
+                    }}
+                    aria-haspopup="dialog"
+                    aria-expanded={vaultPickerOpen}
+                  >
+                    <span className="vaultPickerIcon" aria-hidden="true">
+                      <IconChevronsUpDown size={18} />
+                    </span>
+                    <span className="vaultPickerLabel">{rootLabel}</span>
+                  </button>
+
+                  {vaultPickerOpen ? (
+                    <div className="vaultPickerMenu" role="dialog" aria-label="选择库">
+                      <div className="vaultPickerList" role="list">
+                        {vaultOptions.map((p) => {
+                          const isActive = p === vaultRoot;
+                          const name = basename(p);
+                          return (
+                            <Tooltip
+                              key={p}
+                              label=""
+                              placement="right"
+                              boundarySelector=".sidebar.mainSidebar"
+                              gap={8}
+                            >
+                              <button
+                                type="button"
+                                className={`vaultPickerItem${isActive ? " active" : ""}`}
+                                onClick={() => {
+                                  if (isActive) return;
+                                  void openRecent(p);
+                                }}
+                              >
+                                <span className="vaultPickerItemText">
+                                  <span className="vaultPickerItemName">{name}</span>
+                                </span>
+                                <span className="vaultPickerCheck" aria-hidden="true">
+                                  {isActive ? "✓" : ""}
+                                </span>
+                              </button>
+                            </Tooltip>
+                          );
+                        })}
+                      </div>
+                      <div className="vaultPickerFooter">
+                        <button
+                          type="button"
+                          className="vaultPickerAdd"
+                          onClick={() => {
+                            setVaultPickerOpen(false);
+                            void openFolder();
+                          }}
+                        >
+                          <span className="vaultPickerAddIcon" aria-hidden="true">
+                            <IconFolderPlusLucide size={18} />
+                          </span>
+                          添加新库
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                <Tooltip
+                  label={cloudSyncEnabled ? "云同步：已开启" : "云同步：未开启"}
+                  placement="right"
+                  boundarySelector=".sidebar.mainSidebar"
+                  gap={8}
+                >
+                  <button
+                    type="button"
+                    className={`iconBtn sidebarSyncBtn${cloudSyncEnabled ? "" : " off"}`}
+                    data-no-drag="true"
+                    onClick={() => {
+                      setSettingsInitialSection("sync");
+                      setSettingsOpen(true);
+                    }}
+                    aria-label={cloudSyncEnabled ? "云同步已开启" : "云同步未开启"}
+                  >
+                    {cloudSyncEnabled ? <IconLucideRefreshCw size={20} /> : <IconLucideRefreshCwOff size={20} />}
+                  </button>
+                </Tooltip>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -2232,7 +2344,11 @@ export function App() {
               </button>
             </div>
             <div className="settingsModalContent">
-              <SettingsModal />
+              <SettingsModal
+                initialSection={settingsInitialSection}
+                cloudSyncEnabled={cloudSyncEnabled}
+                onCloudSyncEnabledChange={setCloudSyncEnabled}
+              />
             </div>
           </div>
         </div>

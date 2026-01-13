@@ -440,7 +440,19 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 10px 8px;
+  padding: 4px 10px;
+}
+
+.sidebarHeader.spaceHeader {
+  justify-content: center;
+}
+
+.sidebarHeader.spaceHeader .sidebarHeaderLeft {
+  display: none;
+}
+
+.sidebarHeader.spaceHeader .sidebarActions {
+  justify-content: center;
 }
 
 .sidebarHeaderLeft {
@@ -465,6 +477,32 @@ input {
   padding: 0 10px 8px;
 }
 
+.sidebarFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 10px;
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+  flex: 0 0 auto;
+  background: var(--panel);
+}
+
+.sidebarFooter .vaultPicker {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sidebarFooter .vaultPickerMenu {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.sidebarSyncBtn.off {
+  color: var(--danger);
+}
+
 .vaultPicker {
   position: relative;
 }
@@ -477,7 +515,7 @@ input {
   background: #f8f8f8;
   border: none;
   color: var(--text);
-  padding: 5px 8px;
+  padding: 4px 8px;
   border-radius: var(--radius);
   cursor: pointer;
   font-size: 12px;
@@ -512,7 +550,7 @@ input {
 .vaultPickerMenu {
   position: absolute;
   left: 0;
-  width: 100px;
+  width: 160px;
   max-width: calc(100vw - 24px);
   top: calc(100% + 6px);
   z-index: 10;

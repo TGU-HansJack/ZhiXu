@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
-type SettingsSectionId = "pro" | "sync" | "editor" | "ui" | "ai" | "about" | "logs";
+export type SettingsSectionId = "pro" | "sync" | "editor" | "ui" | "ai" | "about" | "logs";
 
 type SettingsSection = {
   id: SettingsSectionId;
@@ -11,7 +11,7 @@ type SettingsSection = {
 const SECTIONS: SettingsSection[] = [
   { id: "pro", label: "知序 PRO", description: "订阅与高级功能管理。" },
   { id: "sync", label: "同步", description: "同步与设备间数据一致性设置。" },
-  { id: "editor", label: "编辑器", description: "编辑体验、自动保存与默认行为。" },
+  { id: "editor", label: "编辑器", description: "编辑体验、自动保存与默认行为设置。" },
   { id: "ui", label: "用户界面", description: "主题、布局与显示相关设置。" },
   { id: "ai", label: "AI", description: "AI 功能入口与偏好设置。" },
   { id: "about", label: "关于", description: "版本信息与相关链接。" },
@@ -51,13 +51,22 @@ function SettingsRow({
   );
 }
 
-export function SettingsModal() {
-  const [active, setActive] = useState<SettingsSectionId>("pro");
+type Props = {
+  initialSection?: SettingsSectionId;
+  cloudSyncEnabled: boolean;
+  onCloudSyncEnabledChange: (next: boolean) => void;
+};
 
-  const [autoSync, setAutoSync] = useState(true);
+export function SettingsModal({ initialSection = "pro", cloudSyncEnabled, onCloudSyncEnabledChange }: Props) {
+  const [active, setActive] = useState<SettingsSectionId>(initialSection);
+
   const [aiEnabled, setAiEnabled] = useState(false);
   const [compactMode, setCompactMode] = useState(false);
   const [autoSave, setAutoSave] = useState(true);
+
+  useEffect(() => {
+    setActive(initialSection);
+  }, [initialSection]);
 
   const activeSection = useMemo(() => SECTIONS.find((s) => s.id === active) ?? SECTIONS[0], [active]);
 
@@ -112,9 +121,9 @@ export function SettingsModal() {
           {active === "sync" ? (
             <div className="settingsCard">
               <SettingsRow
-                title="自动同步"
-                description="在内容变更后自动触发同步。"
-                control={<Toggle checked={autoSync} onChange={setAutoSync} />}
+                title="云同步"
+                description="开启或关闭跨端云同步能力。"
+                control={<Toggle checked={cloudSyncEnabled} onChange={onCloudSyncEnabledChange} />}
               />
               <SettingsRow
                 title="同步策略"
