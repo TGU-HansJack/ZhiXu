@@ -8,6 +8,8 @@ type Props = {
   label: string;
   placement?: TooltipPlacement;
   asChild?: boolean;
+  boundarySelector?: string;
+  gap?: number;
   children: React.ReactElement;
 };
 
@@ -61,7 +63,14 @@ function anchorPoint(rect: DOMRect, placement: ResolvedPlacement) {
   }
 }
 
-export function Tooltip({ label, placement = "auto", asChild = true, children }: Props) {
+function anchorPointWithBoundary(hostRect: DOMRect, placement: ResolvedPlacement, boundaryRect: DOMRect | null) {
+  if (!boundaryRect) return anchorPoint(hostRect, placement);
+  if (placement === "right") return { x: boundaryRect.right, y: hostRect.top + hostRect.height / 2 };
+  if (placement === "left") return { x: boundaryRect.left, y: hostRect.top + hostRect.height / 2 };
+  return anchorPoint(hostRect, placement);
+}
+
+export function Tooltip({ label, placement = "auto", asChild = true, boundarySelector, gap, children }: Props) {
   const enabled = Boolean(label);
   const tooltipId = useId();
   const hostRef = useRef<HTMLElement | null>(null);
@@ -73,11 +82,16 @@ export function Tooltip({ label, placement = "auto", asChild = true, children }:
   const ensurePlacement = useCallback(() => {
     const host = hostRef.current;
     if (!host) return;
-    const rect = host.getBoundingClientRect();
-    const nextPlacement: ResolvedPlacement = placement === "auto" ? resolveAutoPlacement(rect) : placement;
+    const hostRect = host.getBoundingClientRect();
+    const nextPlacement: ResolvedPlacement = placement === "auto" ? resolveAutoPlacement(hostRect) : placement;
     setResolvedPlacement(nextPlacement);
-    setAnchor(anchorPoint(rect, nextPlacement));
-  }, [placement]);
+
+    const boundaryRect =
+      boundarySelector && nextPlacement !== "top" && nextPlacement !== "bottom"
+        ? (host.closest(boundarySelector)?.getBoundingClientRect() ?? null)
+        : null;
+    setAnchor(anchorPointWithBoundary(hostRect, nextPlacement, boundaryRect));
+  }, [placement, boundarySelector]);
 
   const child = React.Children.only(children);
   const childRef = (child as { ref?: React.Ref<HTMLElement> }).ref;
@@ -133,7 +147,13 @@ export function Tooltip({ label, placement = "auto", asChild = true, children }:
               role="tooltip"
               className="tooltipBubble"
               data-placement={resolvedPlacement}
-              style={{ left: anchor.x, top: anchor.y }}
+              style={
+                ({
+                  left: anchor.x,
+                  top: anchor.y,
+                  ...(gap != null ? { ["--tooltip-gap" as any]: `${gap}px` } : null),
+                }) as React.CSSProperties
+              }
             >
               {label}
             </span>,

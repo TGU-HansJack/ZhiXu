@@ -26,7 +26,7 @@ export function FileTree({ rootLabel, nodes, activePath, onToggleDir, onOpenFile
         <span className="icon" aria-hidden="true">
           <IconFolder size={16} />
         </span>
-        <Tooltip label={rootLabel} placement="right">
+        <Tooltip label={rootLabel} placement="right" boundarySelector=".sidebar.mainSidebar" gap={8}>
           <span className="label">{rootLabel}</span>
         </Tooltip>
       </div>
@@ -60,7 +60,7 @@ export function FileTree({ rootLabel, nodes, activePath, onToggleDir, onOpenFile
             <span className="icon" aria-hidden="true">
               {node.isDir ? <IconFolder size={16} /> : <IconDocument size={16} />}
             </span>
-            <Tooltip label={node.path} placement="right">
+            <Tooltip label={node.path} placement="right" boundarySelector=".sidebar.mainSidebar" gap={8}>
               <span className="label">{displayName}</span>
             </Tooltip>
             {typeLabel ? (
