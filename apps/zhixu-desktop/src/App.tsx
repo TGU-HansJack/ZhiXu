@@ -253,6 +253,7 @@ export function App() {
   const tabStripRef = useRef<HTMLDivElement | null>(null);
   const tabElByPathRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const dragPreviewElRef = useRef<HTMLDivElement | null>(null);
+  const appShellRef = useRef<HTMLDivElement | null>(null);
 
   const [vaultRoot, setVaultRootState] = useState<string | null>(null);
   const [persisted, setPersisted] = useState<PersistedState>({ lastVault: null, recentVaults: [] });
@@ -284,6 +285,87 @@ export function App() {
 
   const [activity, setActivity] = useState<Activity>("space");
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => !isDetached);
+
+  const [mainSidebarWidth, setMainSidebarWidth] = useState<number>(280);
+  const mainSidebarWidthRef = useRef(mainSidebarWidth);
+  const defaultMainSidebarWidthRef = useRef(mainSidebarWidth);
+
+  const sidebarResizeSessionRef = useRef<{ startClientX: number; startWidth: number } | null>(null);
+  const [sidebarResizing, setSidebarResizing] = useState(false);
+  const [sidebarResizeHover, setSidebarResizeHover] = useState(false);
+  const sidebarResizeActive = sidebarOpen && (sidebarResizing || sidebarResizeHover);
+
+  useEffect(() => {
+    mainSidebarWidthRef.current = mainSidebarWidth;
+  }, [mainSidebarWidth]);
+
+  useEffect(() => {
+    document.body.classList.toggle("sidebarResizing", sidebarResizing);
+    return () => document.body.classList.remove("sidebarResizing");
+  }, [sidebarResizing]);
+
+  useEffect(() => {
+    if (sidebarOpen) return;
+    setSidebarResizing(false);
+    setSidebarResizeHover(false);
+    sidebarResizeSessionRef.current = null;
+  }, [sidebarOpen]);
+
+  const onSidebarResizerPointerDown = useCallback(
+    (ev: React.PointerEvent<HTMLDivElement>) => {
+      if (!sidebarOpen) return;
+      if (ev.button !== 0) return;
+
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      ev.currentTarget.setPointerCapture(ev.pointerId);
+      sidebarResizeSessionRef.current = { startClientX: ev.clientX, startWidth: mainSidebarWidthRef.current };
+      setSidebarResizing(true);
+    },
+    [sidebarOpen],
+  );
+
+  const onSidebarResizerPointerMove = useCallback(
+    (ev: React.PointerEvent<HTMLDivElement>) => {
+      const session = sidebarResizeSessionRef.current;
+      if (!sidebarResizing || !session) return;
+
+      const baseWidth = defaultMainSidebarWidthRef.current;
+      const minWidth = baseWidth * 0.8;
+      const maxWidth = baseWidth * 1.5;
+      const closeThreshold = minWidth * 0.5;
+
+      const delta = ev.clientX - session.startClientX;
+      const raw = session.startWidth + delta;
+
+      if (raw <= closeThreshold) {
+        setSidebarOpen(false);
+        setSidebarResizing(false);
+        setSidebarResizeHover(false);
+        sidebarResizeSessionRef.current = null;
+        return;
+      }
+
+      const next = Math.min(maxWidth, Math.max(minWidth, raw));
+      if (next === mainSidebarWidthRef.current) return;
+      mainSidebarWidthRef.current = next;
+      setMainSidebarWidth(next);
+    },
+    [sidebarResizing],
+  );
+
+  const onSidebarResizerPointerUp = useCallback(() => {
+    if (!sidebarResizing) return;
+    setSidebarResizing(false);
+    sidebarResizeSessionRef.current = null;
+  }, [sidebarResizing]);
+
+  const onSidebarResizerPointerCancel = useCallback(() => {
+    if (!sidebarResizing) return;
+    setSidebarResizing(false);
+    sidebarResizeSessionRef.current = null;
+  }, [sidebarResizing]);
 
   const [editorMode, setEditorMode] = useState<MarkdownEditorMode>("live");
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -1541,7 +1623,11 @@ export function App() {
 
   return (
     <div
-      className={`appShell${isDetached ? " detached" : ""}${sidebarOpen ? "" : " sidebarClosed"}`}
+      ref={appShellRef}
+      className={`appShell${isDetached ? " detached" : ""}${sidebarOpen ? "" : " sidebarClosed"}${
+        sidebarResizeActive ? " sidebarResizeActive" : ""
+      }`}
+      style={{ ["--mainSidebarWidth" as any]: `${isDetached || !sidebarOpen ? 0 : mainSidebarWidth}px` } as React.CSSProperties}
       onDragOver={(e) => {
         // Allow dropping a tab anywhere inside the window.
         e.preventDefault();
@@ -2194,6 +2280,20 @@ export function App() {
                 </Tooltip>
               </div>
             ) : null}
+
+            <div
+              className="sidebarResizer"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize sidebar"
+              data-no-drag="true"
+              onPointerDown={onSidebarResizerPointerDown}
+              onPointerMove={onSidebarResizerPointerMove}
+              onPointerUp={onSidebarResizerPointerUp}
+              onPointerCancel={onSidebarResizerPointerCancel}
+              onPointerEnter={() => setSidebarResizeHover(true)}
+              onPointerLeave={() => setSidebarResizeHover(false)}
+            />
           </div>
         ) : null}
 

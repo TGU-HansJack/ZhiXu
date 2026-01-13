@@ -8,6 +8,7 @@
   --text: rgba(0, 0, 0, 0.88);
   --muted: rgba(0, 0, 0, 0.55);
   --accent: #2f6feb;
+  --cursor-col-resize-blue: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%232f6feb'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='m18%208%204%204-4%204'/%3E%3Cpath%20d='M2%2012h20'/%3E%3Cpath%20d='m6%208-4%204%204%204'/%3E%3C/svg%3E") 12 12, col-resize;
   --danger: #d92c2c;
   --radius: 4px;
   --shadow: rgba(0, 0, 0, 0.06);
@@ -25,6 +26,15 @@ body {
   background: var(--bg);
   color: var(--text);
   overflow: hidden;
+}
+
+body.sidebarResizing {
+  cursor: var(--cursor-col-resize-blue, col-resize) !important;
+  user-select: none;
+}
+
+body.sidebarResizing * {
+  cursor: inherit !important;
 }
 
 #root {
@@ -59,7 +69,6 @@ input {
 
 .appShell.sidebarClosed .menubarLeft {
   padding: 0 6px;
-  border-right: none;
 }
 
 .appShell.detached {
@@ -69,6 +78,14 @@ input {
 
 .appShell.detached .menubarLeft {
   display: none;
+}
+
+.appShell.sidebarResizeActive .sidebar.mainSidebar {
+  border-right-color: var(--accent);
+}
+
+.appShell.sidebarResizeActive .menubarLeft {
+  border-right-color: var(--accent);
 }
 
 .topbar {
@@ -102,7 +119,7 @@ input {
   gap: 6px;
   z-index: 1;
   padding: 0 10px;
-  border-right: 1px solid var(--border);
+  border-right: 2px solid var(--border);
   grid-column: 1;
 }
 
@@ -426,13 +443,24 @@ input {
   z-index: 2;
   grid-column: 2;
   background: var(--panel);
-  border-right: 1px solid var(--border);
+  border-right: 2px solid var(--border);
   display: flex;
   flex-direction: column;
   min-width: 220px;
   min-height: 0;
   overflow: hidden;
   backdrop-filter: blur(14px);
+}
+
+.sidebarResizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  z-index: 4;
+  cursor: var(--cursor-col-resize-blue, col-resize);
+  touch-action: none;
 }
 
 .sidebarHeader {
