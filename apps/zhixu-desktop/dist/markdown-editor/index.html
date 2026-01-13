@@ -260,7 +260,12 @@
     <script>
       (() => {
         const queue = [];
+        const params = new URLSearchParams(location.search);
+        const fatalOverlayParam = (params.get("fatalOverlay") ?? "").toLowerCase();
+        const showOverlay = fatalOverlayParam === "1" || fatalOverlayParam === "true";
+
         function ensureEl() {
+          if (!showOverlay) return null;
           let el = document.getElementById("__fatal");
           if (el) return el;
           el = document.createElement("pre");
@@ -283,8 +288,20 @@
                   : err && err.message
                     ? err.message
                     : String(err);
-            queue.push("[" + new Date().toISOString() + "] " + title + "\n" + msg + "\n");
+            const entry = "[" + new Date().toISOString() + "] " + title + "\n" + msg + "\n";
+            queue.push(entry);
+            if (queue.length > 30) queue.splice(0, queue.length - 30);
+
+            try {
+              console.error(entry);
+            } catch (_) {}
+
+            try {
+              window.__fatalQueue = queue;
+            } catch (_) {}
+
             const el = ensureEl();
+            if (!el) return;
             el.textContent = queue.join("\n");
             el.style.display = "block";
           } catch (_) {}
