@@ -1,7 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
-export type PopoverPlacement = "bottom-start" | "bottom" | "bottom-end" | "top-start" | "top" | "top-end";
+export type PopoverPlacement =
+  | "bottom-start"
+  | "bottom"
+  | "bottom-end"
+  | "top-start"
+  | "top"
+  | "top-end"
+  | "right-start"
+  | "right"
+  | "right-end"
+  | "left-start"
+  | "left"
+  | "left-end";
 
 type Props = {
   open: boolean;
@@ -28,6 +40,18 @@ function anchorPoint(rect: DOMRect, placement: PopoverPlacement) {
       return { x: xCenter, y: rect.top, placement };
     case "top-end":
       return { x: rect.right, y: rect.top, placement };
+    case "right-start":
+      return { x: rect.right, y: rect.top, placement };
+    case "right":
+      return { x: rect.right, y: yCenter, placement };
+    case "right-end":
+      return { x: rect.right, y: rect.bottom, placement };
+    case "left-start":
+      return { x: rect.left, y: rect.top, placement };
+    case "left":
+      return { x: rect.left, y: yCenter, placement };
+    case "left-end":
+      return { x: rect.left, y: rect.bottom, placement };
   }
 }
 
@@ -83,4 +107,3 @@ export function Popover({ open, anchorEl, placement = "bottom", onClose, classNa
     portalRoot,
   );
 }
-

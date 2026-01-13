@@ -7,6 +7,7 @@ import type { CodeMirrorSelection } from "./components/CodeMirrorEditor";
 import type { MarkdownEditorMode } from "./components/ZhixuMarkdownEditor";
 import { FileTree, type TreeNode } from "./components/FileTree";
 import { Popover } from "./components/Popover";
+import { SettingsModal } from "./components/SettingsModal";
 import { Tooltip, type TooltipPlacement } from "./components/Tooltip";
 import {
   IconCalendar,
@@ -15,8 +16,10 @@ import {
   IconFolderPlus,
   IconFolderPlusLucide,
   IconLucideBrush,
+  IconLucideCircleUserRound,
   IconLucidePictureInPicture,
   IconLucidePin,
+  IconLucideSettings,
   IconMaximize,
   IconMinimize,
   IconPlus,
@@ -169,6 +172,7 @@ function IconButton({
   active,
   disabled,
   className,
+  buttonRef,
   onClick,
   children,
 }: React.PropsWithChildren<{
@@ -177,6 +181,7 @@ function IconButton({
   active?: boolean;
   disabled?: boolean;
   className?: string;
+  buttonRef?: React.Ref<HTMLButtonElement>;
   onClick?: () => void;
 }>) {
   return (
@@ -185,6 +190,7 @@ function IconButton({
         className={`iconBtn${active ? " active" : ""}${className ? ` ${className}` : ""}`}
         aria-label={title}
         data-no-drag="true"
+        ref={buttonRef}
         onClick={onClick}
         disabled={disabled}
         type="button"
@@ -252,6 +258,7 @@ export function App() {
   const [vaultPickerOpen, setVaultPickerOpen] = useState(false);
   const vaultPickerRef = useRef<HTMLDivElement | null>(null);
 
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [dirCache, setDirCache] = useState<Record<string, VaultEntry[]>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [loadingDir, setLoadingDir] = useState<Record<string, boolean>>({});
@@ -302,6 +309,9 @@ export function App() {
   const [tabContextPath, setTabContextPath] = useState<string | null>(null);
   const [tabContextPoint, setTabContextPoint] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const tabContextTab = useMemo(() => (tabContextPath ? tabs.find((t) => t.path === tabContextPath) ?? null : null), [tabContextPath, tabs]);
+
+  const accountMenuAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   const savingRef = useRef(false);
 
@@ -1257,6 +1267,12 @@ export function App() {
   const onAppKeyDown = useCallback(
     (ev: KeyboardEvent) => {
       if (ev.key === "Escape") {
+        if (settingsOpen) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          setSettingsOpen(false);
+          return;
+        }
         if (shortcutsOpen) {
           ev.preventDefault();
           ev.stopPropagation();
@@ -1304,7 +1320,7 @@ export function App() {
         setShortcutsOpen((v) => !v);
       }
     },
-    [createUntitledInRoot, openFilePicker, saveActive, shortcutsOpen, vaultPickerOpen],
+    [createUntitledInRoot, openFilePicker, saveActive, settingsOpen, shortcutsOpen, vaultPickerOpen],
   );
 
   useEffect(() => {
@@ -1878,7 +1894,63 @@ export function App() {
           >
             <IconSearch />
           </IconButton>
+
+          <div className="abSpacer" aria-hidden="true" />
+
+          <IconButton
+            title="账号管理"
+            tooltipPlacement="right"
+            buttonRef={accountMenuAnchorRef}
+            onClick={() => setAccountMenuOpen((v) => !v)}
+            className="abBtn"
+          >
+            <IconLucideCircleUserRound size={20} />
+          </IconButton>
+          <IconButton
+            title="设置"
+            tooltipPlacement="right"
+            onClick={() => {
+              setAccountMenuOpen(false);
+              setSettingsOpen(true);
+            }}
+            className="abBtn"
+          >
+            <IconLucideSettings size={20} />
+          </IconButton>
         </div>
+
+        <Popover
+          open={accountMenuOpen}
+          anchorEl={accountMenuAnchorRef.current}
+          placement="right-end"
+          onClose={() => setAccountMenuOpen(false)}
+          className="tabContextMenu accountMenu"
+        >
+          <div className="menu">
+            <button type="button" className="menuItem" onClick={() => setAccountMenuOpen(false)}>
+              <span className="menuIcon" aria-hidden="true">
+                <IconLucideCircleUserRound size={16} />
+              </span>
+              <span className="menuLabel">账号信息</span>
+            </button>
+
+            <button type="button" className="menuItem" onClick={() => setAccountMenuOpen(false)}>
+              <span className="menuIcon" aria-hidden="true">
+                <IconRefresh size={16} />
+              </span>
+              <span className="menuLabel">同步配置</span>
+            </button>
+
+            <div className="menuSeparator" role="separator" />
+
+            <button type="button" className="menuItem" onClick={() => setAccountMenuOpen(false)}>
+              <span className="menuIcon" aria-hidden="true">
+                <IconClose size={16} />
+              </span>
+              <span className="menuLabel">注销</span>
+            </button>
+          </div>
+        </Popover>
 
         {sidebarOpen ? (
           /* 主侧栏（点击打开的侧栏） */
@@ -2140,6 +2212,31 @@ export function App() {
           <div className="statusPill">{activeTab?.dirty ? "未保存" : "已保存"}</div>
         </div>
       </div>
+
+      {settingsOpen ? (
+        <div
+          className="modalBackdrop noDrag settingsBackdrop"
+          data-no-drag="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setSettingsOpen(false);
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="设置"
+        >
+          <div className="modalPanel settingsModal" data-no-drag="true">
+            <div className="modalHeader">
+              <div className="modalTitle">设置</div>
+              <button className="iconBtn" type="button" data-no-drag="true" aria-label="关闭" onClick={() => setSettingsOpen(false)}>
+                <IconClose size={16} />
+              </button>
+            </div>
+            <div className="settingsModalContent">
+              <SettingsModal />
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {shortcutsOpen ? (
         <div
