@@ -11,28 +11,18 @@ export type TreeNode = VaultEntry & {
 };
 
 type Props = {
-  rootLabel: string;
   nodes: TreeNode[];
   activePath: string | null;
   onToggleDir: (path: string) => void;
   onOpenFile: (path: string) => void;
 };
 
-export function FileTree({ rootLabel, nodes, activePath, onToggleDir, onOpenFile }: Props) {
+export function FileTree({ nodes, activePath, onToggleDir, onOpenFile }: Props) {
   return (
     <div className="tree" role="tree" aria-label="文件列表">
-      <div className="treeRow" style={{ paddingLeft: 6 }} role="treeitem" aria-level={1}>
-        <span className="twisty" />
-        <span className="icon" aria-hidden="true">
-          <IconFolder size={16} />
-        </span>
-        <Tooltip label={rootLabel} placement="right" boundarySelector=".sidebar.mainSidebar" gap={8}>
-          <span className="label">{rootLabel}</span>
-        </Tooltip>
-      </div>
       {nodes.map((node) => {
         const isActive = activePath === node.path;
-        const pad = 12 + node.depth * 14;
+        const pad = 6 + node.depth * 14;
         const displayName = node.isDir ? node.name : stripExtension(node.name);
         const typeLabel = node.isDir ? null : getFileTypeLabel(node.name);
         return (
@@ -41,7 +31,7 @@ export function FileTree({ rootLabel, nodes, activePath, onToggleDir, onOpenFile
             className={`treeRow${isActive ? " active" : ""}`}
             style={{ paddingLeft: pad }}
             role="treeitem"
-            aria-level={node.depth + 2}
+            aria-level={node.depth + 1}
             aria-expanded={node.isDir ? Boolean(node.expanded) : undefined}
             onClick={() => {
               if (node.isDir) onToggleDir(node.path);

@@ -2170,7 +2170,6 @@ export function App() {
               vaultRoot ? (
                 <>
                   <FileTree
-                    rootLabel={rootLabel}
                     nodes={flattenedNodes}
                     activePath={activePath}
                     onToggleDir={toggleDir}
