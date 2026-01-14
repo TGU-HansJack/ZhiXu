@@ -14,7 +14,6 @@ import { WorkshopSidebar } from "./components/WorkshopSidebar";
 import { SettingsModal, type SettingsSectionId } from "./components/SettingsModal";
 import { Tooltip, type TooltipPlacement } from "./components/Tooltip";
 import {
-  IconCalendar,
   IconChevronsUpDown,
   IconClose,
   IconFolderPlus,
@@ -29,20 +28,19 @@ import {
   IconMaximize,
   IconMinimize,
   IconPlus,
-  IconQuadrant,
   IconRefresh,
   IconRename,
   IconSave,
   IconSidebarClose,
   IconSidebarOpen,
   IconSpace,
-  IconTasks,
   IconTrash,
   IconWorkshop,
 } from "./components/icons";
 import { basename, dirname, join } from "./lib/path";
 import { getFileTypeLabel, isTextFile, isZhixuDrawFile, stripExtension } from "./lib/fileType";
 import type { InstalledPlugin, PluginIndexItem } from "./lib/plugins/types";
+import { runInstalledPluginAction } from "./lib/plugins/runtime";
 import { fetchOfficialIndex, listInstalledPlugins } from "./lib/plugins/workshop";
 import { logout as officialLogout, me as officialMe } from "./lib/sync/officialClient";
 import {
@@ -91,7 +89,8 @@ const LazyZhixuMarkdownEditor = React.lazy(() =>
   import("./components/ZhixuMarkdownEditor").then((m) => ({ default: m.ZhixuMarkdownEditor })),
 ) as React.LazyExoticComponent<typeof import("./components/ZhixuMarkdownEditor").ZhixuMarkdownEditor>;
 
-type Activity = "space" | "tasks" | "calendar" | "quadrant" | "workshop";
+type PluginActivityId = `plugin:${string}:${string}`;
+type Activity = "space" | "workshop" | PluginActivityId;
 
 type NewTab = {
   path: string;
@@ -188,6 +187,10 @@ function IconButton({
   className,
   buttonRef,
   onClick,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
   children,
 }: React.PropsWithChildren<{
   title: string;
@@ -196,7 +199,11 @@ function IconButton({
   disabled?: boolean;
   className?: string;
   buttonRef?: React.Ref<HTMLButtonElement>;
-  onClick?: () => void;
+  onClick?: React.MouseEventHandler<HTMLButtonElement>;
+  onPointerDown?: React.PointerEventHandler<HTMLButtonElement>;
+  onPointerMove?: React.PointerEventHandler<HTMLButtonElement>;
+  onPointerUp?: React.PointerEventHandler<HTMLButtonElement>;
+  onPointerCancel?: React.PointerEventHandler<HTMLButtonElement>;
 }>) {
   return (
     <Tooltip label={title} placement={tooltipPlacement}>
@@ -206,6 +213,10 @@ function IconButton({
         data-no-drag="true"
         ref={buttonRef}
         onClick={onClick}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
         disabled={disabled}
         type="button"
       >
@@ -213,6 +224,92 @@ function IconButton({
       </button>
     </Tooltip>
   );
+}
+
+function normalizePluginPlace(place: string | undefined): string {
+  return String(place || "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("-", "")
+    .replaceAll("_", "");
+}
+
+function parsePluginActivityId(id: string): { pluginId: string; actionId: string } | null {
+  const raw = String(id || "");
+  if (!raw.startsWith("plugin:")) return null;
+  const parts = raw.split(":");
+  if (parts.length < 3) return null;
+  const pluginId = parts[1] || "";
+  const actionId = parts.slice(2).join(":");
+  if (!pluginId || !actionId) return null;
+  return { pluginId, actionId };
+}
+
+function escapeHtml(text: string): string {
+  return String(text || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function getRootCssVar(name: string, fallback: string): string {
+  try {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function buildPluginSidebarSrcDoc(opts: { title: string; html: string; bg: string; text: string; muted: string; accent: string; border: string }) {
+  const title = escapeHtml(opts.title || "Plugin");
+  const html = String(opts.html || "");
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <style>
+      :root {
+        --bg: ${opts.bg};
+        --text: ${opts.text};
+        --muted: ${opts.muted};
+        --accent: ${opts.accent};
+        --border: ${opts.border};
+        color-scheme: light dark;
+      }
+      html, body {
+        height: 100%;
+        margin: 0;
+        background: transparent;
+        color: var(--text);
+        font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      }
+      body { padding: 10px; box-sizing: border-box; }
+      a { color: var(--accent); }
+      pre, code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      pre { white-space: pre-wrap; word-break: break-word; }
+      hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
+    </style>
+  </head>
+  <body>
+    ${html}
+  </body>
+</html>`;
+}
+
+function PluginIcon({ icon, fallback }: { icon?: string; fallback?: string }) {
+  const raw = String(icon || "").trim();
+  if (raw && raw.includes("<svg")) {
+    return <span className="pluginSvgIcon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: raw }} />;
+  }
+  if (raw) return <span className="pluginTextIcon" aria-hidden="true">{raw.slice(0, 1)}</span>;
+  if (fallback) return <span className="pluginTextIcon" aria-hidden="true">{fallback.slice(0, 1)}</span>;
+  return null;
 }
 
 export function App() {
@@ -428,8 +525,8 @@ export function App() {
   const [workshopOfficial, setWorkshopOfficial] = useState<PluginIndexItem[]>([]);
   const [workshopOfficialLoading, setWorkshopOfficialLoading] = useState(false);
   const [workshopOfficialError, setWorkshopOfficialError] = useState<string | null>(null);
-  const [workshopInstalled, setWorkshopInstalled] = useState<InstalledPlugin[]>([]);
-  const [workshopInstalledLoading, setWorkshopInstalledLoading] = useState(false);
+  const [installedPlugins, setInstalledPlugins] = useState<InstalledPlugin[]>([]);
+  const [installedPluginsLoading, setInstalledPluginsLoading] = useState(false);
 
   const editWorkshopBaseUrl = useCallback(() => {
     const next = window.prompt("官方插件源（Base URL）", workshopBaseUrl);
@@ -438,6 +535,29 @@ export function App() {
     if (!clean) return;
     setWorkshopBaseUrl(clean);
   }, [workshopBaseUrl]);
+
+  const reloadInstalledPlugins = useCallback(() => {
+    if (!vaultRoot) {
+      setInstalledPlugins([]);
+      setInstalledPluginsLoading(false);
+      return;
+    }
+    setInstalledPluginsLoading(true);
+    void (async () => {
+      try {
+        const next = await listInstalledPlugins(vaultRoot);
+        setInstalledPlugins(next);
+      } catch {
+        setInstalledPlugins([]);
+      } finally {
+        setInstalledPluginsLoading(false);
+      }
+    })();
+  }, [vaultRoot]);
+
+  useEffect(() => {
+    reloadInstalledPlugins();
+  }, [reloadInstalledPlugins]);
 
   const reloadWorkshop = useCallback(() => {
     setWorkshopOfficialLoading(true);
@@ -452,25 +572,8 @@ export function App() {
         setWorkshopOfficialLoading(false);
       }
     })();
-
-    if (!vaultRoot) {
-      setWorkshopInstalled([]);
-      setWorkshopInstalledLoading(false);
-      return;
-    }
-
-    setWorkshopInstalledLoading(true);
-    void (async () => {
-      try {
-        const next = await listInstalledPlugins(vaultRoot);
-        setWorkshopInstalled(next);
-      } catch {
-        setWorkshopInstalled([]);
-      } finally {
-        setWorkshopInstalledLoading(false);
-      }
-    })();
-  }, [vaultRoot, workshopBaseUrl]);
+    reloadInstalledPlugins();
+  }, [reloadInstalledPlugins, workshopBaseUrl]);
   const [dirCache, setDirCache] = useState<Record<string, VaultEntry[]>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [loadingDir, setLoadingDir] = useState<Record<string, boolean>>({});
@@ -478,6 +581,498 @@ export function App() {
 
   const [activity, setActivity] = useState<Activity>("space");
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => !isDetached);
+
+  const pluginSidebarViews = useMemo(() => {
+    const out: Array<{
+      activityId: PluginActivityId;
+      pluginId: string;
+      actionId: string;
+      label: string;
+      icon?: string;
+      ringIndex?: number;
+    }> = [];
+
+    for (const p of installedPlugins) {
+      if (!p.enabled) continue;
+      for (const a of p.manifest.actions || []) {
+        const place = normalizePluginPlace(a.place);
+        if (place !== "mainsidebar" && place !== "sidebar") continue;
+        const actionId = String(a.id || "").trim();
+        if (!actionId) continue;
+        const label = String(a.label || a.id || p.manifest.name || p.manifest.id || "Plugin").trim();
+        out.push({
+          activityId: `plugin:${p.manifest.id}:${actionId}`,
+          pluginId: p.manifest.id,
+          actionId,
+          label,
+          icon: a.icon,
+          ringIndex: a.ringIndex,
+        });
+      }
+    }
+
+    out.sort((a, b) => {
+      const ai = Number.isFinite(a.ringIndex) ? Number(a.ringIndex) : 0;
+      const bi = Number.isFinite(b.ringIndex) ? Number(b.ringIndex) : 0;
+      if (ai !== bi) return ai - bi;
+      return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" });
+    });
+
+    return out;
+  }, [installedPlugins]);
+
+  const pluginSidebarViewsByActivityId = useMemo(() => {
+    const m = new Map<string, (typeof pluginSidebarViews)[number]>();
+    for (const v of pluginSidebarViews) m.set(v.activityId, v);
+    return m;
+  }, [pluginSidebarViews]);
+
+  const pluginFunctionActions = useMemo(() => {
+    const out: Array<{
+      id: string;
+      pluginId: string;
+      actionId: string;
+      label: string;
+      icon?: string;
+      ringIndex?: number;
+    }> = [];
+
+    for (const p of installedPlugins) {
+      if (!p.enabled) continue;
+      for (const a of p.manifest.actions || []) {
+        const place = normalizePluginPlace(a.place);
+        if (place !== "functionarea" && place !== "activitybar") continue;
+        const actionId = String(a.id || "").trim();
+        if (!actionId) continue;
+        const label = String(a.label || a.id || p.manifest.name || p.manifest.id || "Plugin").trim();
+        out.push({
+          id: `action:${p.manifest.id}:${actionId}`,
+          pluginId: p.manifest.id,
+          actionId,
+          label,
+          icon: a.icon,
+          ringIndex: a.ringIndex,
+        });
+      }
+    }
+
+    out.sort((a, b) => {
+      const ai = Number.isFinite(a.ringIndex) ? Number(a.ringIndex) : 0;
+      const bi = Number.isFinite(b.ringIndex) ? Number(b.ringIndex) : 0;
+      if (ai !== bi) return ai - bi;
+      return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" });
+    });
+
+    return out;
+  }, [installedPlugins]);
+
+  const runPluginAction = useCallback(
+    (pluginId: string, actionId: string) => {
+      if (!vaultRoot) return;
+      const plugin = installedPlugins.find((p) => p.enabled && p.manifest.id === pluginId);
+      if (!plugin) return;
+      void runInstalledPluginAction({ vaultRoot, plugin, actionId }).catch((e) => console.error(e));
+    },
+    [installedPlugins, vaultRoot],
+  );
+
+  const sidebarTitle = useMemo(() => {
+    if (activity === "workshop") return "工坊";
+    const v = pluginSidebarViewsByActivityId.get(activity);
+    if (v) return v.label;
+    return "";
+  }, [activity, pluginSidebarViewsByActivityId]);
+
+  const pluginSidebarTheme = useMemo(() => {
+    return {
+      bg: getRootCssVar("--panel", "rgba(245, 245, 245, 0.75)"),
+      text: getRootCssVar("--text", "rgba(0, 0, 0, 0.88)"),
+      muted: getRootCssVar("--muted", "rgba(0, 0, 0, 0.55)"),
+      accent: getRootCssVar("--accent", "#2f6feb"),
+      border: getRootCssVar("--border", "rgba(0, 0, 0, 0.08)"),
+    };
+  }, []);
+
+  const [pluginSidebarState, setPluginSidebarState] = useState<{
+    activityId: PluginActivityId;
+    title: string;
+    html: string;
+    loading: boolean;
+    error: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    const v = pluginSidebarViewsByActivityId.get(activity);
+    if (!v) {
+      setPluginSidebarState(null);
+      return;
+    }
+
+    if (!vaultRoot) {
+      setPluginSidebarState({
+        activityId: v.activityId,
+        title: v.label,
+        html: "",
+        loading: false,
+        error: "请先选择一个库（Vault）。",
+      });
+      return;
+    }
+
+    const plugin = installedPlugins.find((p) => p.enabled && p.manifest.id === v.pluginId);
+    if (!plugin) {
+      setActivity("space");
+      return;
+    }
+
+    let cancelled = false;
+    setPluginSidebarState({ activityId: v.activityId, title: v.label, html: "", loading: true, error: null });
+    void (async () => {
+      try {
+        const { result } = await runInstalledPluginAction({ vaultRoot, plugin, actionId: v.actionId });
+        if (cancelled) return;
+
+        let title = v.label;
+        let html = "";
+
+        if (result && typeof result === "object") {
+          const anyRes = result as any;
+          if (typeof anyRes.title === "string" && anyRes.title.trim()) title = anyRes.title.trim();
+          if (typeof anyRes.html === "string") html = anyRes.html;
+          else if (typeof anyRes.message === "string" && anyRes.message.trim()) html = `<pre>${escapeHtml(anyRes.message)}</pre>`;
+        } else if (typeof result === "string") {
+          const trimmed = result.trim();
+          html = trimmed.startsWith("<") ? result : `<pre>${escapeHtml(result)}</pre>`;
+        }
+
+        if (!html.trim()) html = `<div style="color: var(--muted);">暂无内容</div>`;
+        setPluginSidebarState({ activityId: v.activityId, title, html, loading: false, error: null });
+      } catch (e) {
+        if (cancelled) return;
+        setPluginSidebarState({
+          activityId: v.activityId,
+          title: v.label,
+          html: "",
+          loading: false,
+          error: String(e instanceof Error ? e.message : e),
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activity, installedPlugins, pluginSidebarViewsByActivityId, vaultRoot]);
+
+  const pluginSidebarSrcDoc = useMemo(() => {
+    const state = pluginSidebarState;
+    if (!state || state.loading || state.error) return "";
+    return buildPluginSidebarSrcDoc({ title: state.title, html: state.html, ...pluginSidebarTheme });
+  }, [pluginSidebarState, pluginSidebarTheme]);
+
+  type FunctionAreaItem =
+    | {
+        id: string;
+        kind: "activity";
+        title: string;
+        activityId: Activity;
+        active: boolean;
+        disabled?: boolean;
+        icon: React.ReactNode;
+      }
+    | {
+        id: string;
+        kind: "action";
+        title: string;
+        pluginId: string;
+        actionId: string;
+        disabled?: boolean;
+        icon: React.ReactNode;
+      };
+
+  const functionAreaItems = useMemo<FunctionAreaItem[]>(() => {
+    const items: FunctionAreaItem[] = [];
+
+    items.push({
+      id: "space",
+      kind: "activity",
+      title: "空间",
+      activityId: "space",
+      active: activity === "space",
+      icon: <IconSpace />,
+    });
+
+    for (const v of pluginSidebarViews) {
+      items.push({
+        id: v.activityId,
+        kind: "activity",
+        title: v.label,
+        activityId: v.activityId,
+        active: activity === v.activityId,
+        disabled: !vaultRoot,
+        icon: <PluginIcon icon={v.icon} fallback={v.label} />,
+      });
+    }
+
+    for (const a of pluginFunctionActions) {
+      items.push({
+        id: a.id,
+        kind: "action",
+        title: a.label,
+        pluginId: a.pluginId,
+        actionId: a.actionId,
+        disabled: !vaultRoot,
+        icon: <PluginIcon icon={a.icon} fallback={a.label} />,
+      });
+    }
+
+    items.push({
+      id: "workshop",
+      kind: "activity",
+      title: "工坊",
+      activityId: "workshop",
+      active: activity === "workshop",
+      icon: <IconWorkshop />,
+    });
+
+    return items;
+  }, [activity, pluginFunctionActions, pluginSidebarViews, vaultRoot]);
+
+  function arrayEqual(a: string[], b: string[]): boolean {
+    if (a === b) return true;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
+  const functionAreaOrderStorageKey = "zhixu:functionAreaOrder";
+  const [functionAreaOrder, setFunctionAreaOrder] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(functionAreaOrderStorageKey);
+      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+      if (Array.isArray(parsed) && parsed.every((v) => typeof v === "string")) return parsed as string[];
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(functionAreaOrderStorageKey, JSON.stringify(functionAreaOrder));
+    } catch {
+      // ignore
+    }
+  }, [functionAreaOrder]);
+
+  useEffect(() => {
+    const ids = functionAreaItems.map((i) => i.id);
+    setFunctionAreaOrder((prev) => {
+      const filtered = prev.filter((id) => ids.includes(id));
+      const missing = ids.filter((id) => !filtered.includes(id));
+      const next = [...filtered, ...missing];
+      return arrayEqual(prev, next) ? prev : next;
+    });
+  }, [functionAreaItems]);
+
+  const functionAreaRef = useRef<HTMLDivElement | null>(null);
+  const functionAreaBtnByIdRef = useRef<Map<string, HTMLButtonElement>>(new Map());
+
+  const orderedFunctionAreaItems = useMemo(() => {
+    const byId = new Map<string, FunctionAreaItem>();
+    for (const it of functionAreaItems) byId.set(it.id, it);
+
+    const orderedIds: string[] = [];
+    for (const id of functionAreaOrder) {
+      if (byId.has(id)) orderedIds.push(id);
+    }
+    for (const it of functionAreaItems) {
+      if (!orderedIds.includes(it.id)) orderedIds.push(it.id);
+    }
+
+    return orderedIds.map((id) => byId.get(id)!).filter(Boolean);
+  }, [functionAreaItems, functionAreaOrder]);
+
+  const orderedFunctionAreaIdsRef = useRef<string[]>([]);
+  useEffect(() => {
+    orderedFunctionAreaIdsRef.current = orderedFunctionAreaItems.map((it) => it.id);
+  }, [orderedFunctionAreaItems]);
+
+  const [functionAreaDraggingId, setFunctionAreaDraggingId] = useState<string | null>(null);
+  const [functionAreaInsertIndicator, setFunctionAreaInsertIndicator] = useState<{ index: number; top: number } | null>(null);
+  const functionAreaInsertIndicatorRef = useRef<typeof functionAreaInsertIndicator>(null);
+  useEffect(() => {
+    functionAreaInsertIndicatorRef.current = functionAreaInsertIndicator;
+  }, [functionAreaInsertIndicator]);
+
+  const functionAreaDragSessionRef = useRef<{
+    id: string;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    timer: number | null;
+    started: boolean;
+    el: HTMLButtonElement;
+  } | null>(null);
+
+  const suppressClickIdRef = useRef<string | null>(null);
+  const suppressClickTimerRef = useRef<number | null>(null);
+
+  const clearFunctionAreaDrag = useCallback(() => {
+    const s = functionAreaDragSessionRef.current;
+    functionAreaDragSessionRef.current = null;
+    if (s?.timer) window.clearTimeout(s.timer);
+    setFunctionAreaDraggingId(null);
+    setFunctionAreaInsertIndicator(null);
+  }, []);
+
+  const computeFunctionAreaInsert = useCallback((clientY: number) => {
+    const host = functionAreaRef.current;
+    if (!host) return null;
+    const hostRect = host.getBoundingClientRect();
+
+    const session = functionAreaDragSessionRef.current;
+    const dragId = session?.started ? session.id : null;
+    if (!dragId) return null;
+
+    const ids = orderedFunctionAreaIdsRef.current.filter((id) => id !== dragId);
+    if (!ids.length) return { index: 0, top: Math.max(0, clientY - hostRect.top) };
+
+    let index = ids.length;
+    for (let i = 0; i < ids.length; i++) {
+      const rect = functionAreaBtnByIdRef.current.get(ids[i])?.getBoundingClientRect();
+      if (!rect) continue;
+      const center = rect.top + rect.height / 2;
+      if (clientY < center) {
+        index = i;
+        break;
+      }
+    }
+
+    let top: number | null = null;
+    if (index === 0) {
+      for (const id of ids) {
+        const rect = functionAreaBtnByIdRef.current.get(id)?.getBoundingClientRect();
+        if (rect) {
+          top = rect.top - hostRect.top;
+          break;
+        }
+      }
+    } else if (index >= ids.length) {
+      for (let i = ids.length - 1; i >= 0; i--) {
+        const rect = functionAreaBtnByIdRef.current.get(ids[i])?.getBoundingClientRect();
+        if (rect) {
+          top = rect.bottom - hostRect.top;
+          break;
+        }
+      }
+    } else {
+      const rect = functionAreaBtnByIdRef.current.get(ids[index])?.getBoundingClientRect();
+      if (rect) top = rect.top - hostRect.top;
+    }
+
+    if (top == null) return null;
+    return { index, top: Math.max(0, top) };
+  }, []);
+
+  const onFunctionAreaItemPointerDown = useCallback(
+    (id: string, ev: React.PointerEvent<HTMLButtonElement>) => {
+      if (ev.button !== 0) return;
+      const el = ev.currentTarget;
+
+      clearFunctionAreaDrag();
+
+      const pointerId = ev.pointerId;
+      const startX = ev.clientX;
+      const startY = ev.clientY;
+
+      const session = { id, pointerId, startX, startY, timer: null as number | null, started: false, el };
+      session.timer = window.setTimeout(() => {
+        const s = functionAreaDragSessionRef.current;
+        if (!s || s.id !== id || s.pointerId !== pointerId) return;
+        s.started = true;
+        suppressClickIdRef.current = id;
+        if (suppressClickTimerRef.current) window.clearTimeout(suppressClickTimerRef.current);
+        suppressClickTimerRef.current = window.setTimeout(() => {
+          if (suppressClickIdRef.current === id) suppressClickIdRef.current = null;
+        }, 650);
+
+        try {
+          s.el.setPointerCapture(pointerId);
+        } catch {
+          // ignore
+        }
+        setFunctionAreaDraggingId(id);
+        const insert = computeFunctionAreaInsert(startY);
+        if (insert) setFunctionAreaInsertIndicator(insert);
+      }, 220);
+
+      functionAreaDragSessionRef.current = session;
+    },
+    [clearFunctionAreaDrag, computeFunctionAreaInsert],
+  );
+
+  const onFunctionAreaItemPointerMove = useCallback(
+    (ev: React.PointerEvent<HTMLButtonElement>) => {
+      const s = functionAreaDragSessionRef.current;
+      if (!s) return;
+      if (ev.pointerId !== s.pointerId) return;
+
+      if (!s.started) {
+        const dx = ev.clientX - s.startX;
+        const dy = ev.clientY - s.startY;
+        if (Math.hypot(dx, dy) > 6) {
+          if (s.timer) window.clearTimeout(s.timer);
+          functionAreaDragSessionRef.current = null;
+        }
+        return;
+      }
+
+      try {
+        ev.preventDefault();
+      } catch {
+        // ignore
+      }
+
+      const insert = computeFunctionAreaInsert(ev.clientY);
+      if (insert) setFunctionAreaInsertIndicator(insert);
+    },
+    [computeFunctionAreaInsert],
+  );
+
+  const onFunctionAreaItemPointerUp = useCallback((ev: React.PointerEvent<HTMLButtonElement>) => {
+    const s = functionAreaDragSessionRef.current;
+    if (!s) return;
+    if (ev.pointerId !== s.pointerId) return;
+    if (s.timer) window.clearTimeout(s.timer);
+    s.timer = null;
+
+    if (s.started) {
+      const insert = functionAreaInsertIndicatorRef.current;
+      const current = orderedFunctionAreaIdsRef.current;
+      const dragId = s.id;
+      const remaining = current.filter((x) => x !== dragId);
+      const insertIndexRaw = insert?.index ?? remaining.length;
+      const insertIndex = Math.max(0, Math.min(remaining.length, insertIndexRaw));
+      const next = [...remaining.slice(0, insertIndex), dragId, ...remaining.slice(insertIndex)];
+      setFunctionAreaOrder((prev) => (arrayEqual(prev, next) ? prev : next));
+    }
+
+    try {
+      s.el.releasePointerCapture(s.pointerId);
+    } catch {
+      // ignore
+    }
+
+    clearFunctionAreaDrag();
+  }, [clearFunctionAreaDrag]);
+
+  const onFunctionAreaItemPointerCancel = useCallback((ev: React.PointerEvent<HTMLButtonElement>) => {
+    const s = functionAreaDragSessionRef.current;
+    if (!s) return;
+    if (ev.pointerId !== s.pointerId) return;
+    clearFunctionAreaDrag();
+  }, [clearFunctionAreaDrag]);
 
   useEffect(() => {
     if (activity !== "workshop") return;
@@ -2259,52 +2854,60 @@ export function App() {
 
       <div className={`workbench${sidebarOpen ? "" : " sidebarClosed"}`}>
         {/* 功能区（左边按钮边框区） */}
-        <div className="activitybar functionArea noDrag" role="navigation" aria-label="功能区">
-          <IconButton
-            title="空间"
-            tooltipPlacement="right"
-            active={activity === "space"}
-            onClick={() => openActivity("space")}
-            className="abBtn"
-          >
-            <IconSpace />
-          </IconButton>
-          <IconButton
-            title="任务"
-            tooltipPlacement="right"
-            active={activity === "tasks"}
-            onClick={() => openActivity("tasks")}
-            className="abBtn"
-          >
-            <IconTasks />
-          </IconButton>
-          <IconButton
-            title="日历"
-            tooltipPlacement="right"
-            active={activity === "calendar"}
-            onClick={() => openActivity("calendar")}
-            className="abBtn"
-          >
-            <IconCalendar />
-          </IconButton>
-          <IconButton
-            title="象限"
-            tooltipPlacement="right"
-            active={activity === "quadrant"}
-            onClick={() => openActivity("quadrant")}
-            className="abBtn"
-          >
-            <IconQuadrant />
-          </IconButton>
-          <IconButton
-            title="工坊"
-            tooltipPlacement="right"
-            active={activity === "workshop"}
-            onClick={() => openActivity("workshop")}
-            className="abBtn"
-          >
-            <IconWorkshop />
-          </IconButton>
+        <div
+          className={`activitybar functionArea noDrag${functionAreaDraggingId ? " abDragging" : ""}`}
+          role="navigation"
+          aria-label="功能区"
+          ref={functionAreaRef}
+        >
+          <div
+            className={`abInsertIndicator${functionAreaInsertIndicator ? " visible" : ""}`}
+            aria-hidden="true"
+            style={
+              functionAreaInsertIndicator ? ({ top: functionAreaInsertIndicator.top } as React.CSSProperties) : undefined
+            }
+          />
+          {orderedFunctionAreaItems.map((it) => {
+            const isDragging = functionAreaDraggingId === it.id;
+            return (
+              <IconButton
+                key={it.id}
+                title={it.title}
+                tooltipPlacement="right"
+                active={it.kind === "activity" ? it.active : false}
+                disabled={it.disabled}
+                className={`abBtn abDraggable${isDragging ? " dragging" : ""}`}
+                buttonRef={(node) => {
+                  const m = functionAreaBtnByIdRef.current;
+                  if (node) m.set(it.id, node);
+                  else m.delete(it.id);
+                }}
+                onClick={(ev) => {
+                  if (suppressClickIdRef.current === it.id) {
+                    suppressClickIdRef.current = null;
+                    if (suppressClickTimerRef.current) window.clearTimeout(suppressClickTimerRef.current);
+                    suppressClickTimerRef.current = null;
+                    try {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                    } catch {
+                      // ignore
+                    }
+                    return;
+                  }
+
+                  if (it.kind === "activity") openActivity(it.activityId);
+                  else runPluginAction(it.pluginId, it.actionId);
+                }}
+                onPointerDown={(ev) => onFunctionAreaItemPointerDown(it.id, ev)}
+                onPointerMove={onFunctionAreaItemPointerMove}
+                onPointerUp={onFunctionAreaItemPointerUp}
+                onPointerCancel={onFunctionAreaItemPointerCancel}
+              >
+                {it.icon}
+              </IconButton>
+            );
+          })}
 
           <div className="abSpacer" aria-hidden="true" />
 
@@ -2467,15 +3070,7 @@ export function App() {
                   </div>
                 ) : (
                   <div className="sidebarTitle">
-                    {activity === "tasks"
-                      ? "任务"
-                      : activity === "calendar"
-                        ? "日历"
-                        : activity === "quadrant"
-                          ? "象限"
-                        : activity === "workshop"
-                          ? "工坊"
-                          : ""}
+                    {sidebarTitle}
                   </div>
                 )}
               </div>
@@ -2526,13 +3121,30 @@ export function App() {
                 official={workshopOfficial}
                 officialLoading={workshopOfficialLoading}
                 officialError={workshopOfficialError}
-                installed={workshopInstalled}
-                installedLoading={workshopInstalledLoading}
+                installed={installedPlugins}
+                installedLoading={installedPluginsLoading}
                 selectedId={workshopSelectedId}
                 onSelect={(id) => setWorkshopSelectedId(id)}
                 onRefresh={reloadWorkshop}
                 onEditBaseUrl={editWorkshopBaseUrl}
               />
+            ) : pluginSidebarViewsByActivityId.has(activity) ? (
+              pluginSidebarState && pluginSidebarState.activityId === activity ? (
+                pluginSidebarState.loading ? (
+                  <div className="emptyState">正在加载…</div>
+                ) : pluginSidebarState.error ? (
+                  <div className="emptyState error">{pluginSidebarState.error}</div>
+                ) : (
+                  <iframe
+                    className="pluginSidebarFrame"
+                    title={pluginSidebarState.title || "Plugin"}
+                    sandbox="allow-scripts"
+                    srcDoc={pluginSidebarSrcDoc}
+                  />
+                )
+              ) : (
+                <div className="emptyState">正在加载…</div>
+              )
             ) : (
               <div className="emptyState">敬请期待。</div>
             )}
@@ -2657,7 +3269,7 @@ export function App() {
               baseUrl={workshopBaseUrl}
               selectedId={workshopSelectedId}
               official={workshopOfficial}
-              installed={workshopInstalled}
+              installed={installedPlugins}
               onInstalledReload={reloadWorkshop}
             />
           ) : activeTab ? (

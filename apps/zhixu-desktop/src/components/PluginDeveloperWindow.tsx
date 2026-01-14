@@ -56,6 +56,45 @@ export function PluginDeveloperWindow({ onClose }: Props) {
 }`}</code>
           </pre>
 
+          <h3 className="pluginDevH3">功能区 / 主侧栏（UI）</h3>
+          <div className="pluginDevNote">
+            通过在 <code>actions</code> 中声明 <code>place</code> + <code>icon</code>，插件可以把按钮图标添加到左侧“功能区”，并支持在主侧栏显示内容。
+          </div>
+          <pre className="pluginDevPre">
+            <code>{`{
+  "actions": [
+    {
+      "id": "myPanel",
+      "label": "我的面板",
+      "place": "mainSidebar",
+      "icon": "<svg ...></svg>",
+      "ringIndex": 20
+    },
+    {
+      "id": "quickAction",
+      "label": "一键操作",
+      "place": "functionArea",
+      "icon": "<svg ...></svg>",
+      "ringIndex": 30
+    }
+  ]
+}`}</code>
+          </pre>
+          <ul className="pluginDevList">
+            <li>
+              <code>place: "mainSidebar"</code>：显示为功能区图标，点击后打开主侧栏，并执行对应 action 获取内容。
+            </li>
+            <li>
+              <code>place: "functionArea"</code>：显示为功能区图标，点击后直接执行 action。
+            </li>
+            <li>
+              <code>icon</code>：建议传入一段 <code>&lt;svg ... stroke="currentColor" ...&gt;</code> 字符串。
+            </li>
+            <li>
+              <code>ringIndex</code>：默认排序（用户也可在功能区长按拖拽重新排序）。
+            </li>
+          </ul>
+
           <h3 className="pluginDevH3">入口文件（CommonJS）</h3>
           <div className="pluginDevNote">桌面端 actions 支持 async（返回 Promise）。</div>
           <pre className="pluginDevPre">
@@ -67,6 +106,18 @@ export function PluginDeveloperWindow({ onClose }: Props) {
 module.exports = {
   actions: { hello },
 };`}</code>
+          </pre>
+          <div className="pluginDevNote">
+            当 action 用于 <code>place: "mainSidebar"</code> 时，可返回 <code>&#123; title, html &#125;</code> 来渲染侧栏内容：
+          </div>
+          <pre className="pluginDevPre">
+            <code>{`async function myPanel(ctx, api) {
+  const entries = await api.vault.listDir(".");
+  const html = "<h3>Vault</h3><pre>" + entries.map(e => e.name).join("\\n") + "</pre>";
+  return { title: ctx.plugin.name, html };
+}
+
+module.exports = { actions: { myPanel } };`}</code>
           </pre>
 
           <h3 className="pluginDevH3">context（ctx）</h3>
@@ -119,4 +170,3 @@ module.exports = {
     </div>
   );
 }
-

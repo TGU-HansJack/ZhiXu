@@ -34,6 +34,8 @@ export type PluginActionResult =
   | {
       ok?: boolean;
       message?: string;
+      title?: string;
+      html?: string;
     }
   | null
   | undefined;
@@ -142,4 +144,3 @@ export async function runInstalledPluginAction(opts: {
   const result = (await Promise.resolve(res)) as PluginActionResult;
   return { manifest: opts.plugin.manifest, result };
 }
-

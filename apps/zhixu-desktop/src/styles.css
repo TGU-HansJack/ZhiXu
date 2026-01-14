@@ -161,6 +161,28 @@ input {
   cursor: pointer;
 }
 
+.pluginSvgIcon,
+.pluginTextIcon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.pluginSvgIcon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.pluginTextIcon {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
 .iconBtn.sidebarToggleBtn {
   width: 34px;
   height: 34px;
@@ -434,6 +456,41 @@ input {
   border-radius: var(--radius);
 }
 
+.abDraggable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.activitybar.abDragging .abDraggable {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.abDraggable.dragging {
+  opacity: 0.6;
+}
+
+.abInsertIndicator {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 999px;
+  opacity: 0;
+  transform: scaleX(0.9);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.abInsertIndicator.visible {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
 .abSpacer {
   flex: 1 1 auto;
 }
@@ -450,6 +507,15 @@ input {
   min-height: 0;
   overflow: hidden;
   backdrop-filter: blur(14px);
+}
+
+.pluginSidebarFrame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--panel);
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .sidebarResizer {
