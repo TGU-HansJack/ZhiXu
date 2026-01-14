@@ -201,14 +201,37 @@ function shouldIgnorePath(relPath, ignorePrefixes) {
 
 async function loadCache(api, cachePath) {
   try {
-    const raw = await api.vault.readText(cachePath);
-    const obj = JSON.parse(raw);
+    const bytes = await api.vault.readBytes(cachePath);
+    const raw = decodeUtf8(bytes);
+    const obj = JSON.parse(String(raw || ''));
     if (!obj || typeof obj !== 'object') throw new Error('bad cache');
     if (obj.version !== 1) throw new Error('bad cache version');
     if (!obj.files || typeof obj.files !== 'object') throw new Error('bad cache files');
     return obj;
   } catch {
     return { version: 1, files: {} };
+  }
+}
+
+function decodeUtf8(bytes) {
+  try {
+    return new TextDecoder().decode(bytes);
+  } catch {
+    let out = '';
+    const arr = bytes && bytes.length != null ? bytes : [];
+    for (let i = 0; i < arr.length; i++) out += String.fromCharCode(arr[i] & 0xff);
+    return out;
+  }
+}
+
+function encodeUtf8(text) {
+  try {
+    return new TextEncoder().encode(String(text || ''));
+  } catch {
+    const s = String(text || '');
+    const out = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i) & 0xff;
+    return out;
   }
 }
 
@@ -256,7 +279,7 @@ async function buildTaskIndex(ctx, api) {
   }
 
   if (changed) {
-    await api.vault.writeText(cachePath, JSON.stringify(cache, null, 2));
+    await api.vault.writeBytes(cachePath, encodeUtf8(JSON.stringify(cache, null, 2)));
   }
 
   const all = [];
@@ -535,4 +558,3 @@ module.exports = {
     clearCache,
   },
 };
-

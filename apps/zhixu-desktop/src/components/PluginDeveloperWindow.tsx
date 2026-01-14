@@ -119,6 +119,19 @@ module.exports = {
 
 module.exports = { actions: { myPanel } };`}</code>
           </pre>
+          <div className="pluginDevNote">
+            同时也可以返回 <code>editorTitle</code> / <code>editorHtml</code>，宿主会以新标签页形式打开（用于“编辑区”/“主内容区”展示）：
+          </div>
+          <pre className="pluginDevPre">
+            <code>{`async function myPanel(ctx, api) {
+  return {
+    title: "侧栏标题",
+    html: "<div>侧栏内容</div>",
+    editorTitle: "待办",
+    editorHtml: "<div>日历 / 四象限</div>",
+  };
+}`}</code>
+          </pre>
 
           <h3 className="pluginDevH3">context（ctx）</h3>
           <ul className="pluginDevList">

@@ -137,7 +137,19 @@ type DrawingTab = {
   selection: CodeMirrorSelection;
 };
 
-type Tab = NewTab | TextTab | BinaryTab | DrawingTab;
+type PluginTab = {
+  path: string;
+  name: string;
+  kind: "plugin";
+  locked: boolean;
+  pluginId: string;
+  actionId: string;
+  html: string;
+  dirty: false;
+  selection: CodeMirrorSelection;
+};
+
+type Tab = NewTab | TextTab | BinaryTab | DrawingTab | PluginTab;
 
 type TabTransferPayload = {
   tab: Tab;
@@ -881,20 +893,7 @@ export function App() {
     });
   }, [pluginSidebarState, pluginSidebarTheme]);
 
-  const pluginEditorSrcDoc = useMemo(() => {
-    const state = pluginSidebarState;
-    if (!state || state.loading || state.error) return "";
-    const editorHtml = String(state.editorHtml || "");
-    if (!editorHtml.trim()) return "";
-    const title = String(state.editorTitle || state.title || "Plugin");
-    return buildPluginSidebarSrcDoc({
-      title,
-      html: editorHtml,
-      pluginId: state.pluginId,
-      viewActionId: state.actionId,
-      ...pluginSidebarTheme,
-    });
-  }, [pluginSidebarState, pluginSidebarTheme]);
+  const pluginTabFrameRef = useRef<HTMLIFrameElement | null>(null);
 
   const pluginSidebarFrameRef = useRef<HTMLIFrameElement | null>(null);
   const openFileRef = useRef<(path: string, opts?: { lineIndex?: number | null }) => Promise<void> | void>(() => {});
@@ -905,6 +904,7 @@ export function App() {
   vaultRootRef.current = vaultRoot;
   const pluginSidebarStateRef = useRef<typeof pluginSidebarState>(null);
   pluginSidebarStateRef.current = pluginSidebarState;
+  const activeTabRef = useRef<Tab | null>(null);
 
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
@@ -914,7 +914,8 @@ export function App() {
 
       const source = ev.source as Window | null;
       const sidebarWin = pluginSidebarFrameRef.current?.contentWindow ?? null;
-      if (!source || source !== sidebarWin) return;
+      const tabWin = pluginTabFrameRef.current?.contentWindow ?? null;
+      if (!source || (source !== sidebarWin && source !== tabWin)) return;
       const src = source;
 
       const requestId = String(msg.id || "");
@@ -932,8 +933,11 @@ export function App() {
         }
       }
 
-      const state = pluginSidebarStateRef.current;
-      if (!state || state.pluginId !== pluginId) {
+      const sidebarState = pluginSidebarStateRef.current;
+      const tab = activeTabRef.current;
+      const expectedPluginId =
+        src === sidebarWin ? (sidebarState?.pluginId ?? null) : tab && tab.kind === "plugin" ? tab.pluginId : null;
+      if (!expectedPluginId || expectedPluginId !== pluginId) {
         respond(false, { error: "Plugin context mismatch" });
         return;
       }
@@ -1377,6 +1381,7 @@ export function App() {
   const [editorMode, setEditorMode] = useState<MarkdownEditorMode>("live");
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [pluginDevOpen, setPluginDevOpen] = useState(false);
+  const [pendingPluginTabOpen, setPendingPluginTabOpen] = useState<PluginActivityId | null>(null);
 
   const newTabIdRef = useRef(isDetached && transferId ? 1 : 2);
   const [tabs, setTabs] = useState<Tab[]>(() => (isDetached && transferId ? [] : [makeNewTab(1)]));
@@ -1409,6 +1414,7 @@ export function App() {
     if (tabs.length === 0) void appWindow.close();
   }, [appWindow, isDetached, tabs.length]);
   const activeTab = useMemo(() => tabs.find((t) => t.path === activePath) ?? null, [tabs, activePath]);
+  activeTabRef.current = activeTab;
   const tabCount = Math.max(1, tabs.length);
   const tabsDensity = tabCount >= 14 ? "separators" : tabCount >= 8 ? "dense" : "normal";
 
@@ -1987,6 +1993,7 @@ export function App() {
 
   const renameActive = useCallback(async () => {
     if (!activeTab) return;
+    if (activeTab.kind === "plugin" || activeTab.kind === "newtab") return;
     const next = window.prompt("重命名为（库内相对路径）：", activeTab.path);
     if (!next || next === activeTab.path) return;
 
@@ -2065,6 +2072,8 @@ export function App() {
 
   const deleteActive = useCallback(async () => {
     if (!activePath) return;
+    const tab = tabs.find((t) => t.path === activePath) ?? null;
+    if (tab?.kind === "plugin" || tab?.kind === "newtab") return;
     const ok = window.confirm(`确认删除？\n\n${activePath}`);
     if (!ok) return;
     try {
@@ -2076,7 +2085,7 @@ export function App() {
       console.error(e);
       window.alert(String(e));
     }
-  }, [activePath, reloadDir]);
+  }, [activePath, reloadDir, tabs]);
 
   const closeTab = useCallback(
     (path: string) => {
@@ -2753,9 +2762,73 @@ export function App() {
     return "";
   }, [vaultRoot, activeTab]);
 
+  const pluginTabPath = useCallback((pluginId: string, actionId: string) => {
+    return `__plugin__:${pluginId}:${actionId}`;
+  }, []);
+
+  const openPluginTab = useCallback(
+    (opts: { pluginId: string; actionId: string; title: string; html: string }) => {
+      const pluginId = String(opts.pluginId || "").trim();
+      const actionId = String(opts.actionId || "").trim();
+      if (!pluginId || !actionId) return;
+      const tabPath = pluginTabPath(pluginId, actionId);
+      const name = String(opts.title || "").trim() || "插件";
+      const html = String(opts.html || "");
+
+      setTabs((prev) => {
+        const existing = prev.find((t) => t.path === tabPath);
+        if (existing && existing.kind === "plugin") {
+          return prev.map((t) => (t.path === tabPath && t.kind === "plugin" ? { ...t, name, html } : t));
+        }
+        return [
+          ...prev,
+          {
+            path: tabPath,
+            name,
+            kind: "plugin",
+            locked: false,
+            pluginId,
+            actionId,
+            html,
+            dirty: false,
+            selection: { anchor: 0, head: 0 },
+          } satisfies PluginTab,
+        ];
+      });
+      setActivePath(tabPath);
+    },
+    [pluginTabPath],
+  );
+
+  useEffect(() => {
+    const state = pluginSidebarState;
+    if (!pendingPluginTabOpen) return;
+    if (!state) return;
+    if (pendingPluginTabOpen !== state.activityId) return;
+
+    if (state.error) {
+      setPendingPluginTabOpen(null);
+      return;
+    }
+    if (state.loading) return;
+
+    const title = String(state.editorTitle || state.title || "").trim();
+    const html = String(state.editorHtml || state.html || "").trim();
+    if (html) openPluginTab({ pluginId: state.pluginId, actionId: state.actionId, title: title || "插件", html });
+    setPendingPluginTabOpen(null);
+  }, [openPluginTab, pendingPluginTabOpen, pluginSidebarState]);
+
   const openActivity = useCallback((next: Activity) => {
+    const parsed = parsePluginActivityId(next);
+    if (parsed) {
+      setActivity(next);
+      setSidebarOpen(true);
+      setPendingPluginTabOpen(next as PluginActivityId);
+      return;
+    }
     setActivity(next);
     setSidebarOpen(true);
+    setPendingPluginTabOpen(null);
   }, []);
 
   const startDraggingIfAllowed = useCallback(
@@ -3532,6 +3605,20 @@ export function App() {
                   </button>
                 </div>
               </div>
+            ) : activeTab.kind === "plugin" ? (
+              <iframe
+                className="pluginTabFrame"
+                title={activeTab.name || "Plugin"}
+                sandbox="allow-scripts"
+                ref={pluginTabFrameRef}
+                srcDoc={buildPluginSidebarSrcDoc({
+                  title: activeTab.name || "Plugin",
+                  html: activeTab.html || "",
+                  pluginId: activeTab.pluginId,
+                  viewActionId: activeTab.actionId,
+                  ...pluginSidebarTheme,
+                })}
+              />
             ) : activeTab.kind === "text" ? (
               <Suspense fallback={<div className="emptyState">加载编辑器…</div>}>
                 <LazyZhixuMarkdownEditor
@@ -3618,13 +3705,6 @@ export function App() {
                 />
               </Suspense>
             )
-          ) : pluginSidebarState && pluginSidebarState.activityId === activity && pluginEditorSrcDoc ? (
-            <iframe
-              className="pluginEditorFrame"
-              title={pluginSidebarState?.editorTitle || pluginSidebarState?.title || "Plugin"}
-              sandbox="allow-scripts"
-              srcDoc={pluginEditorSrcDoc}
-            />
           ) : (
             <div className="emptyState">
               从主侧栏打开一个 Markdown 或绘图（.zhixu）文件。使用 <span className="kbd">Ctrl+S</span> 保存，<span className="kbd">Ctrl+E</span>{" "}
@@ -3636,20 +3716,27 @@ export function App() {
 
       {/* 状态栏：重命名/删除/保存/文件名称等 */}
       <div className="statusbar statusBar noDrag">
-        <div className="statusLeft">{activeTab ? activeTab.path : "未打开文件"}</div>
+        <div className="statusLeft">
+          {activeTab ? (activeTab.kind === "plugin" ? `插件：${activeTab.name}` : activeTab.path) : "未打开文件"}
+        </div>
         <div className="statusRight">
           {activeTab?.kind === "text" ? <div className="statusPill">{editorMode === "live" ? "实时预览" : "源码模式"}</div> : null}
           <IconButton title="保存" tooltipPlacement="top" onClick={() => void saveActive()} disabled={!activeTab?.dirty}>
             <IconSave size={16} />
           </IconButton>
-          <IconButton title="重命名" tooltipPlacement="top" onClick={() => void renameActive()} disabled={!activeTab}>
+          <IconButton
+            title="重命名"
+            tooltipPlacement="top"
+            onClick={() => void renameActive()}
+            disabled={!activeTab || activeTab.kind === "newtab" || activeTab.kind === "plugin"}
+          >
             <IconRename size={16} />
           </IconButton>
           <IconButton
             title="删除"
             tooltipPlacement="top"
             onClick={() => void deleteActive()}
-            disabled={!activePath}
+            disabled={!activePath || activeTab?.kind === "newtab" || activeTab?.kind === "plugin"}
             className="danger"
           >
             <IconTrash size={16} />
