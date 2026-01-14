@@ -17,6 +17,12 @@
         bottomInsetPx: 0,
         showLineNumbers: false,
         showProperties: true,
+        readableLineLength: false,
+        strictLineBreaks: false,
+        foldHeadings: true,
+        foldIndent: true,
+        showIndentGuides: false,
+        textAlignRight: false,
       };
       window.__applyQueued = false;
       window.__scheduleApply = () => {
@@ -24,8 +30,26 @@
         window.__applyQueued = true;
         setTimeout(() => {
           window.__applyQueued = false;
-          if (window.__apply) window.__apply();
+          try {
+            if (window.__apply) window.__apply();
+          } catch (_) {}
+          try {
+            if (window.__applyExtras) window.__applyExtras();
+          } catch (_) {}
         }, 0);
+      };
+      window.__applyExtras = () => {
+        try {
+          const payload = window.__payload || {};
+          const editor = document.querySelector("#editor .cm-editor");
+          if (!editor || !editor.classList) return;
+          editor.classList.toggle("cm-readable-line-length", !!payload.readableLineLength);
+          editor.classList.toggle("cm-strict-line-breaks", !!payload.strictLineBreaks);
+          editor.classList.toggle("cm-fold-headings", !!payload.foldHeadings);
+          editor.classList.toggle("cm-fold-indent", !!payload.foldIndent);
+          editor.classList.toggle("cm-show-indent-guides", !!payload.showIndentGuides);
+          editor.classList.toggle("cm-text-align-right", !!payload.textAlignRight);
+        } catch (_) {}
       };
       window.__setTheme = (json) => { window.__payload.themeJson = json; window.__scheduleApply(); };
       window.__setFontSize = (px) => { window.__payload.fontSizePx = Number(px) || 16; window.__scheduleApply(); };
@@ -41,6 +65,12 @@
       window.__setPlaceholder = (s) => { window.__payload.placeholder = s || ""; window.__scheduleApply(); };
       window.__setShowLineNumbers = (v) => { window.__payload.showLineNumbers = !!v; window.__scheduleApply(); };
       window.__setShowProperties = (v) => { window.__payload.showProperties = (v !== false); window.__scheduleApply(); };
+      window.__setReadableLineLength = (v) => { window.__payload.readableLineLength = !!v; window.__scheduleApply(); };
+      window.__setStrictLineBreaks = (v) => { window.__payload.strictLineBreaks = !!v; window.__scheduleApply(); };
+      window.__setFoldHeadings = (v) => { window.__payload.foldHeadings = !!v; window.__scheduleApply(); };
+      window.__setFoldIndent = (v) => { window.__payload.foldIndent = !!v; window.__scheduleApply(); };
+      window.__setShowIndentGuides = (v) => { window.__payload.showIndentGuides = !!v; window.__scheduleApply(); };
+      window.__setTextAlignRight = (v) => { window.__payload.textAlignRight = !!v; window.__scheduleApply(); };
       window.__setBottomInset = (px) => {
         const v = Math.max(0, Number(px) || 0);
         window.__payload.bottomInsetPx = v;
@@ -501,6 +531,33 @@
         font-variant-numeric: tabular-nums;
         user-select: none;
         pointer-events: none;
+      }
+
+      /* Readable line length (limit visible text width). */
+      #editor .cm-editor.cm-readable-line-length .cm-content {
+        max-width: 72ch;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      /* Indent guides (approximate, based on character width). */
+      #editor .cm-editor.cm-show-indent-guides .cm-content {
+        background-image: repeating-linear-gradient(
+          to right,
+          rgba(127, 127, 127, 0.12) 0,
+          rgba(127, 127, 127, 0.12) 1px,
+          transparent 1px,
+          transparent 2ch
+        );
+        background-size: 2ch 100%;
+        background-position: 2ch 0;
+        background-origin: content-box;
+        background-clip: content-box;
+      }
+
+      /* Default text alignment. */
+      #editor .cm-editor.cm-text-align-right .cm-content {
+        text-align: right;
       }
 
       /* Caret (cursor): make it blue and thicker in both live/source modes. */

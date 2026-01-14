@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import type { OfficialAuthState } from "./AuthModal";
 import { logout } from "../lib/sync/officialClient";
 import { syncOfficialVault, type OfficialVaultSyncSummary } from "../lib/sync/officialSyncEngine";
+import type { EditorDisplaySettings } from "../lib/editorDisplaySettings";
 
 export type SettingsSectionId = "pro" | "sync" | "editor" | "ui" | "ai" | "about" | "logs";
 
@@ -14,7 +15,7 @@ type SettingsSection = {
 const SECTIONS: SettingsSection[] = [
   { id: "pro", label: "知序 PRO", description: "订阅与高级功能管理。" },
   { id: "sync", label: "同步", description: "同步与设备间数据一致性设置。" },
-  { id: "editor", label: "编辑器", description: "编辑体验、自动保存与默认行为设置。" },
+  { id: "editor", label: "编辑器", description: "编辑体验与默认行为设置。" },
   { id: "ui", label: "用户界面", description: "主题、布局与显示相关设置。" },
   { id: "ai", label: "AI", description: "AI 功能入口与偏好设置。" },
   { id: "about", label: "关于", description: "版本信息与相关链接。" },
@@ -54,11 +55,40 @@ function SettingsRow({
   );
 }
 
+function SettingsSelect({ className, children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <div className="selectWrap" data-no-drag="true">
+      <select {...props} className={`select${className ? ` ${className}` : ""}`} data-no-drag="true">
+        {children}
+      </select>
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="selectIcon lucide lucide-chevrons-up-down-icon lucide-chevrons-up-down"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path d="m7 15 5 5 5-5" />
+        <path d="m7 9 5-5 5 5" />
+      </svg>
+    </div>
+  );
+}
+
 type Props = {
   initialSection?: SettingsSectionId;
   cloudSyncEnabled: boolean;
   onCloudSyncEnabledChange: (next: boolean) => void;
   vaultRoot: string | null;
+  editorDisplaySettings: EditorDisplaySettings;
+  onEditorDisplaySettingsChange: (next: EditorDisplaySettings) => void;
   officialBaseUrl: string;
   onOfficialBaseUrlChange: (next: string) => void;
   officialAuth: OfficialAuthState | null;
@@ -71,6 +101,8 @@ export function SettingsModal({
   cloudSyncEnabled,
   onCloudSyncEnabledChange,
   vaultRoot,
+  editorDisplaySettings,
+  onEditorDisplaySettingsChange,
   officialBaseUrl,
   onOfficialBaseUrlChange,
   officialAuth,
@@ -81,7 +113,6 @@ export function SettingsModal({
 
   const [aiEnabled, setAiEnabled] = useState(false);
   const [compactMode, setCompactMode] = useState(false);
-  const [autoSave, setAutoSave] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncSummary, setSyncSummary] = useState<OfficialVaultSyncSummary | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -93,6 +124,10 @@ export function SettingsModal({
   }, [initialSection]);
 
   const activeSection = useMemo(() => SECTIONS.find((s) => s.id === active) ?? SECTIONS[0], [active]);
+
+  const updateEditorDisplaySettings = (patch: Partial<EditorDisplaySettings>) => {
+    onEditorDisplaySettingsChange({ ...editorDisplaySettings, ...patch });
+  };
 
   const runSyncNow = async () => {
     if (syncing) return;
@@ -284,23 +319,110 @@ export function SettingsModal({
           ) : null}
 
           {active === "editor" ? (
-            <div className="settingsCard">
-              <SettingsRow
-                title="自动保存"
-                description="编辑内容时自动保存到本地库。"
-                control={<Toggle checked={autoSave} onChange={setAutoSave} />}
-              />
-              <SettingsRow
-                title="默认模式"
-                description="选择打开 Markdown 的默认编辑模式。"
-                control={
-                  <select className="select" data-no-drag="true" defaultValue="live">
-                    <option value="live">所见即所得</option>
-                    <option value="source">源码</option>
-                  </select>
-                }
-              />
-            </div>
+            <>
+              <div className="settingsCard">
+                <SettingsRow
+                  title="默认模式"
+                  description="选择打开 Markdown 的默认编辑模式。"
+                  control={
+                    <SettingsSelect defaultValue="live">
+                      <option value="live">所见即所得</option>
+                      <option value="source">源码</option>
+                    </SettingsSelect>
+                  }
+                />
+              </div>
+
+              <div className="settingsCard">
+                <SettingsRow
+                  title="缩减栏宽"
+                  description="开启后将限制每行字数，使屏幕显示的内容减少，但使较长的段落更具可读性。"
+                  control={
+                    <Toggle
+                      checked={editorDisplaySettings.readableLineLength}
+                      onChange={(next) => updateEditorDisplaySettings({ readableLineLength: next })}
+                    />
+                  }
+                />
+                <SettingsRow
+                  title="严格换行"
+                  description="开启后，根据 Markdown 标准，单个换行符在预览模式下不再生效。"
+                  control={
+                    <Toggle
+                      checked={editorDisplaySettings.strictLineBreaks}
+                      onChange={(next) => updateEditorDisplaySettings({ strictLineBreaks: next })}
+                    />
+                  }
+                />
+                <SettingsRow
+                  title="笔记属性"
+                  description='选择笔记属性在编辑器中的显示方式。选择“源码”可以以 YAML 格式显示笔记属性。'
+                  control={
+                    <SettingsSelect
+                      value={editorDisplaySettings.notePropertiesDisplay}
+                      onChange={(e) =>
+                        updateEditorDisplaySettings({
+                          notePropertiesDisplay: e.target.value === "source" ? "source" : "show",
+                        })
+                      }
+                    >
+                      <option value="show">显示</option>
+                      <option value="source">源码</option>
+                    </SettingsSelect>
+                  }
+                />
+                <SettingsRow
+                  title="折叠标题"
+                  description="开启后可以将正文内容折叠到标题行。"
+                  control={
+                    <Toggle
+                      checked={editorDisplaySettings.foldHeadings}
+                      onChange={(next) => updateEditorDisplaySettings({ foldHeadings: next })}
+                    />
+                  }
+                />
+                <SettingsRow
+                  title="折叠缩进"
+                  description="开启后可以将缩进内容（如列表）折叠起来。"
+                  control={
+                    <Toggle
+                      checked={editorDisplaySettings.foldIndent}
+                      onChange={(next) => updateEditorDisplaySettings({ foldIndent: next })}
+                    />
+                  }
+                />
+                <SettingsRow
+                  title="显示行号"
+                  description="在左侧显示行号。"
+                  control={
+                    <Toggle
+                      checked={editorDisplaySettings.showLineNumbers}
+                      onChange={(next) => updateEditorDisplaySettings({ showLineNumbers: next })}
+                    />
+                  }
+                />
+                <SettingsRow
+                  title="显示缩进参考线"
+                  description="在缩进的行之间显示参考线。"
+                  control={
+                    <Toggle
+                      checked={editorDisplaySettings.showIndentGuides}
+                      onChange={(next) => updateEditorDisplaySettings({ showIndentGuides: next })}
+                    />
+                  }
+                />
+                <SettingsRow
+                  title="文本右对齐"
+                  description="将文本的默认水平对齐方式修改为右对齐。"
+                  control={
+                    <Toggle
+                      checked={editorDisplaySettings.textAlignRight}
+                      onChange={(next) => updateEditorDisplaySettings({ textAlignRight: next })}
+                    />
+                  }
+                />
+              </div>
+            </>
           ) : null}
 
           {active === "ui" ? (
@@ -309,10 +431,10 @@ export function SettingsModal({
                 title="主题"
                 description="选择浅色/深色主题（当前仅样式预览）。"
                 control={
-                  <select className="select" data-no-drag="true" defaultValue="light">
+                  <SettingsSelect defaultValue="light">
                     <option value="light">浅色</option>
                     <option value="dark">深色</option>
-                  </select>
+                  </SettingsSelect>
                 }
               />
               <SettingsRow
@@ -334,10 +456,10 @@ export function SettingsModal({
                 title="默认模型"
                 description="选择用于对话与写作辅助的模型。"
                 control={
-                  <select className="select" data-no-drag="true" defaultValue="default">
+                  <SettingsSelect defaultValue="default">
                     <option value="default">默认</option>
                     <option value="custom">自定义</option>
-                  </select>
+                  </SettingsSelect>
                 }
               />
             </div>

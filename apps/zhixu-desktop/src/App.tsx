@@ -46,6 +46,12 @@ import type { InstalledPlugin, PluginIndexItem } from "./lib/plugins/types";
 import { fetchOfficialIndex, listInstalledPlugins } from "./lib/plugins/workshop";
 import { logout as officialLogout, me as officialMe } from "./lib/sync/officialClient";
 import {
+  DEFAULT_EDITOR_DISPLAY_SETTINGS,
+  loadEditorDisplaySettings,
+  saveEditorDisplaySettings,
+  type EditorDisplaySettings,
+} from "./lib/editorDisplaySettings";
+import {
   createDir,
   createFile,
   deleteEntry,
@@ -269,6 +275,16 @@ export function App() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState<SettingsSectionId>("pro");
+  const [editorDisplaySettings, setEditorDisplaySettings] = useState<EditorDisplaySettings>(() => {
+    try {
+      return loadEditorDisplaySettings();
+    } catch {
+      return { ...DEFAULT_EDITOR_DISPLAY_SETTINGS };
+    }
+  });
+  useEffect(() => {
+    saveEditorDisplaySettings(editorDisplaySettings);
+  }, [editorDisplaySettings]);
   const [cloudSyncEnabled, setCloudSyncEnabled] = useState<boolean>(() => {
     try {
       const raw = localStorage.getItem("zhixu:cloudSyncEnabled");
@@ -2568,6 +2584,7 @@ export function App() {
                   selection={activeTab.selection}
                   placeholder={editorPlaceholder}
                   mode={editorMode}
+                  displaySettings={editorDisplaySettings}
                   onKeyDownCapture={onAppKeyDown}
                   onChange={(next) => {
                     trackEditorInputToFrame({ path: activeTab.path, mode: editorMode });
@@ -2687,6 +2704,8 @@ export function App() {
                 cloudSyncEnabled={cloudSyncEnabled}
                 onCloudSyncEnabledChange={handleCloudSyncEnabledChange}
                 vaultRoot={vaultRoot}
+                editorDisplaySettings={editorDisplaySettings}
+                onEditorDisplaySettingsChange={setEditorDisplaySettings}
                 officialBaseUrl={officialSyncBaseUrl}
                 onOfficialBaseUrlChange={setOfficialSyncBaseUrl}
                 officialAuth={officialAuth}

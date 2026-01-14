@@ -687,12 +687,32 @@ input {
 }
 
 .select {
-  width: 100%;
+  width: 120px;
   background: rgba(255, 255, 255, 0.6);
   border: 1px solid var(--border);
   color: var(--text);
-  padding: 6px 10px;
+  font-size: 13px;
+  padding: 6px 32px 6px 10px;
   border-radius: var(--radius);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+}
+
+.selectWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.selectIcon {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
 }
 
 .select:focus {
