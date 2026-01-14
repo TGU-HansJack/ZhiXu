@@ -1068,6 +1068,14 @@
       /* Front matter (properties) */
       .cm-lp-fm { display: inline-block; width: 100%; margin: 0 0 8px; border-top: 0; border-bottom: 0; overflow: hidden; color: var(--onSurface); font-size: calc(var(--editorFontSize) - 2px); }
       .cm-lp-fm-list { width: 100%; }
+      .cm-lp-fm-list::before {
+        content: "笔记属性";
+        display: block;
+        padding: 6px 8px 4px calc(8px + 28px + 6px);
+        color: rgba(127, 127, 127, 0.92);
+        font-weight: 520;
+        user-select: none;
+      }
       .cm-lp-fm-row {
         display: grid;
         grid-template-columns: 28px minmax(90px, 1fr) 2fr;
@@ -1107,28 +1115,33 @@
         color: var(--primary);
         user-select: none;
         border-bottom: 0 !important;
+        padding: 0 !important;
       }
       .cm-lp-fm-add-row:hover { background: transparent; }
       .cm-lp-fm-add-btn {
         all: unset;
         grid-column: 1 / -1;
-        display: flex;
+        display: grid;
+        grid-template-columns: 28px 1fr;
+        column-gap: 6px;
         align-items: center;
-        gap: 6px;
+        justify-self: stretch;
+        box-sizing: border-box;
         cursor: pointer;
-        padding: 2px 0;
+        padding: 4px 8px;
       }
       .cm-lp-fm-add-icon {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 18px;
-        height: 18px;
+        justify-self: start;
+        width: 24px;
+        height: 24px;
         color: var(--primary);
       }
       .cm-lp-fm-add-icon svg {
-        width: 18px;
-        height: 18px;
+        width: 16px;
+        height: 16px;
         display: block;
       }
       .cm-lp-fm-type-btn {
@@ -1225,30 +1238,42 @@
       .cm-lp-fm-menu {
         position: fixed;
         z-index: 2147483646;
-        min-width: 170px;
-        padding: 6px;
+        min-width: 180px;
+        max-width: min(360px, 92vw);
+        max-height: min(70vh, 560px);
+        overflow: auto;
+        padding: 4px;
         border: 1px solid var(--outline);
-        border-radius: 12px;
+        border-radius: 4px;
         background: var(--surface);
-        box-shadow: none;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
         box-sizing: border-box;
-        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
       }
       .cm-lp-fm-menu-item {
-        all: unset;
+        appearance: none;
         display: flex;
         align-items: center;
         gap: 10px;
         width: 100%;
-        padding: 8px 10px;
-        border-radius: 10px;
+        text-align: left;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--onSurface);
+        padding: 6px 8px;
         cursor: pointer;
         box-sizing: border-box;
+        font: 13px/1.2 var(--editorFont);
       }
       .cm-lp-fm-menu-item:hover { background: rgba(127, 127, 127, 0.08); }
-      .cm-lp-fm-menu-item ion-icon { width: 18px; height: 18px; color: var(--primary); }
-      .cm-lp-fm-menu-icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; color: var(--primary); flex: 0 0 auto; }
-      .cm-lp-fm-menu-icon svg { width: 18px; height: 18px; display: block; }
+      .cm-lp-fm-menu-item:active { background: rgba(127, 127, 127, 0.12); }
+      .cm-lp-fm-menu-item-delete { color: rgba(217, 44, 44, 0.96); }
+      .cm-lp-fm-menu-item ion-icon { width: 16px; height: 16px; color: currentColor; opacity: 0.92; }
+      .cm-lp-fm-menu-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; color: currentColor; opacity: 0.92; flex: 0 0 auto; }
+      .cm-lp-fm-menu-icon svg { width: 16px; height: 16px; display: block; }
     </style>
   </head>
   <body>
@@ -1938,6 +1963,36 @@
         }
         window.addEventListener("scroll", hideTooltip, true);
         window.addEventListener("resize", hideTooltip);
+      })();
+    </script>
+    <script>
+      // Replace the frontmatter "add property" icon with Lucide plus, and keep it aligned with property type icons.
+      (() => {
+        const PLUS_SVG =
+          '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus-icon lucide-plus"><path d="M5 12h14"/><path d="M12 5v14"/></svg>';
+
+        function upgrade(root) {
+          const scope = root && root.querySelectorAll ? root : document;
+          const icons = scope.querySelectorAll(".cm-lp-fm-add-icon");
+          for (const el of icons) {
+            if (!el || el.dataset.zhixuPlusIcon === "1") continue;
+            el.innerHTML = PLUS_SVG;
+            el.dataset.zhixuPlusIcon = "1";
+          }
+        }
+
+        upgrade(document);
+
+        try {
+          const obs = new MutationObserver((mutations) => {
+            for (const m of mutations) {
+              for (const n of m.addedNodes || []) {
+                if (n && n.nodeType === 1) upgrade(n);
+              }
+            }
+          });
+          obs.observe(document.documentElement, { childList: true, subtree: true });
+        } catch (_) {}
       })();
     </script>
     <script>
