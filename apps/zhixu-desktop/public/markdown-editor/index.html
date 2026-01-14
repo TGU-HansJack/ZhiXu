@@ -526,24 +526,16 @@
       }
 
       /* Caret (cursor): make it blue and thicker in both live/source modes. */
-      #editor .cm-editor,
-      #editor .cm-editor .cm-content,
       #editor .cm-lp-fm-input {
         caret-color: var(--primary) !important;
       }
-      /* Hide the native caret in the main editor; we draw our own thicker caret overlay. */
+      /* Hide the native caret in the main editor; we draw our own caret overlay. */
       #editor .cm-editor .cm-content {
         caret-color: transparent !important;
       }
-      #editor .cm-editor .cm-cursor,
-      #editor .cm-editor .cm-dropCursor,
-      #editor .cm-editor.cm-focused .cm-cursor,
-      #editor .cm-editor.cm-focused .cm-dropCursor {
-        border-left: 0 !important;
-        width: 3px !important;
-        background: var(--primary) !important;
-        margin-left: -1px !important;
-        box-shadow: 0 0 0 0.5px var(--primary) !important;
+      /* Hide CodeMirror's cursor; use #zhixuCaret for a stable thickness across subpixels. */
+      #editor .cm-editor .cm-cursor {
+        display: none !important;
       }
       #zhixuCaret {
         position: fixed;
@@ -863,7 +855,7 @@
       onerror="window.__showFatal && window.__showFatal('script load failed', this.src)"
     ></script>
     <script>
-      // Android WebView's native caret is often not width-stylable. Draw a custom caret overlay instead.
+      // Draw a custom caret overlay for consistent thickness/styling.
       (function () {
         var caretEl = null;
         var raf = 0;
@@ -1067,7 +1059,11 @@
               showing = true;
               touchCaret("show");
             }
-            el.style.left = rect.left + "px";
+            var dpr = window.devicePixelRatio || 1;
+            var snap = function (v) {
+              return Math.round(v * dpr) / dpr;
+            };
+            var left = snap(rect.left);
             var h = Math.max(18, rect.height);
             var top = rect.top;
             if (rect.kind === "line" || rect.kind === "content") {
@@ -1075,8 +1071,10 @@
               h = Math.max(16, h - 4);
               top = top + 2;
             }
-            el.style.top = top + "px";
-            el.style.height = h + "px";
+            el.style.left = left + "px";
+            el.style.top = snap(top) + "px";
+            el.style.width = snap(2) + "px";
+            el.style.height = snap(h) + "px";
           } catch (_) {
             hide();
           }
