@@ -18,6 +18,7 @@
         showLineNumbers: false,
         showProperties: true,
         readableLineLength: false,
+        wheelBoost: 1.0,
         headerPath: "",
         canGoBack: false,
         canGoForward: false,
@@ -74,6 +75,10 @@
       window.__setShowLineNumbers = (v) => { window.__payload.showLineNumbers = !!v; window.__scheduleApply(); };
       window.__setShowProperties = (v) => { window.__payload.showProperties = (v !== false); window.__scheduleApply(); };
       window.__setReadableLineLength = (v) => { window.__payload.readableLineLength = !!v; window.__scheduleApply(); };
+      window.__setWheelBoost = (v) => {
+        const n = Number(v);
+        window.__payload.wheelBoost = Number.isFinite(n) && n > 0 ? n : 1.5;
+      };
       window.__setHeaderPath = (path) => { window.__payload.headerPath = path || ""; window.__scheduleHeaderApply(); };
       window.__setNavState = (canGoBack, canGoForward) => {
         window.__payload.canGoBack = !!canGoBack;
@@ -1901,6 +1906,87 @@
         }
         window.addEventListener("scroll", hideTooltip, true);
         window.addEventListener("resize", hideTooltip);
+      })();
+    </script>
+    <script>
+      // Boost mouse-wheel scrolling speed inside the CodeMirror scroller (desktop UX).
+      (() => {
+        const root = document.getElementById("editor");
+        if (!root) return;
+
+        function getBoost() {
+          try {
+            const v = window.__payload && Number(window.__payload.wheelBoost);
+            return Number.isFinite(v) && v > 0 ? v : 1.6;
+          } catch (_) {
+            return 1.6;
+          }
+        }
+
+        function findScroller(target) {
+          try {
+            const t = target && target.nodeType === 1 ? target : target && target.parentElement;
+            const el = t && t.closest ? t.closest(".cm-scroller") : null;
+            if (el && root.contains(el)) return el;
+          } catch (_) {}
+          try {
+            return root.querySelector(".cm-scroller");
+          } catch (_) {
+            return null;
+          }
+        }
+
+        function isLikelyTrackpad(ev) {
+          // Trackpads usually emit many small wheel deltas; keep native inertial scrolling.
+          try {
+            if (ev.deltaMode !== 0) return false;
+            const absY = Math.abs(ev.deltaY || 0);
+            const absX = Math.abs(ev.deltaX || 0);
+            return absY < 12 && absX < 12;
+          } catch (_) {
+            return false;
+          }
+        }
+
+        root.addEventListener(
+          "wheel",
+          (ev) => {
+            if (!ev) return;
+            if (ev.defaultPrevented) return;
+            if (ev.ctrlKey || ev.metaKey) return;
+
+            const scroller = findScroller(ev.target);
+            if (!scroller) return;
+            if (isLikelyTrackpad(ev)) return;
+
+            const boost = getBoost();
+            if (boost === 1) return;
+
+            let dx = Number(ev.deltaX) || 0;
+            let dy = Number(ev.deltaY) || 0;
+            if (!dx && !dy) return;
+
+            // Shift+wheel often maps vertical delta to horizontal intent.
+            if (ev.shiftKey && !dx && dy) {
+              dx = dy;
+              dy = 0;
+            }
+
+            if (ev.deltaMode === 1) {
+              const lhRaw = getComputedStyle(scroller).lineHeight || "";
+              const lh = Number.parseFloat(lhRaw) || 16;
+              dx *= lh;
+              dy *= lh;
+            } else if (ev.deltaMode === 2) {
+              dx *= scroller.clientWidth;
+              dy *= scroller.clientHeight;
+            }
+
+            ev.preventDefault();
+            scroller.scrollBy({ left: dx * boost, top: dy * boost, behavior: "auto" });
+          },
+          { passive: false, capture: true },
+        );
       })();
     </script>
     <script
