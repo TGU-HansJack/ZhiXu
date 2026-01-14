@@ -18,8 +18,13 @@
         showLineNumbers: false,
         showProperties: true,
         readableLineLength: false,
+        headerPath: "",
+        canGoBack: false,
+        canGoForward: false,
+        showBacklinksInTab: false,
       };
       window.__applyQueued = false;
+      window.__headerApplyQueued = false;
       window.__scheduleApply = () => {
         if (window.__applyQueued) return;
         window.__applyQueued = true;
@@ -33,12 +38,25 @@
           } catch (_) {}
         }, 0);
       };
+      window.__scheduleHeaderApply = () => {
+        if (window.__headerApplyQueued) return;
+        window.__headerApplyQueued = true;
+        setTimeout(() => {
+          window.__headerApplyQueued = false;
+          try {
+            if (window.__applyHeader) window.__applyHeader();
+          } catch (_) {}
+        }, 0);
+      };
       window.__applyExtras = () => {
         try {
           const payload = window.__payload || {};
           const editor = document.getElementById("editor");
           if (!editor || !editor.classList) return;
           editor.classList.toggle("cm-readable-line-length", !!payload.readableLineLength);
+        } catch (_) {}
+        try {
+          if (window.__applyHeader) window.__applyHeader();
         } catch (_) {}
       };
       window.__setTheme = (json) => { window.__payload.themeJson = json; window.__scheduleApply(); };
@@ -56,6 +74,13 @@
       window.__setShowLineNumbers = (v) => { window.__payload.showLineNumbers = !!v; window.__scheduleApply(); };
       window.__setShowProperties = (v) => { window.__payload.showProperties = (v !== false); window.__scheduleApply(); };
       window.__setReadableLineLength = (v) => { window.__payload.readableLineLength = !!v; window.__scheduleApply(); };
+      window.__setHeaderPath = (path) => { window.__payload.headerPath = path || ""; window.__scheduleHeaderApply(); };
+      window.__setNavState = (canGoBack, canGoForward) => {
+        window.__payload.canGoBack = !!canGoBack;
+        window.__payload.canGoForward = !!canGoForward;
+        window.__scheduleHeaderApply();
+      };
+      window.__setShowBacklinksInTab = (v) => { window.__payload.showBacklinksInTab = !!v; window.__scheduleHeaderApply(); };
       window.__setBottomInset = (px) => {
         const v = Math.max(0, Number(px) || 0);
         window.__payload.bottomInsetPx = v;
@@ -161,6 +186,25 @@
           window.__payload.selEnd = end;
         }
         window.__scheduleApply();
+      };
+      window.__emitHeaderAction = (action, detail, ev) => {
+        const info = {
+          action: String(action || ""),
+          detail: detail && typeof detail === "object" ? detail : {},
+          ctrlKey: !!(ev && (ev.ctrlKey || ev.metaKey)),
+          shiftKey: !!(ev && ev.shiftKey),
+          altKey: !!(ev && ev.altKey),
+        };
+        try {
+          if (typeof window.__onHeaderAction === "function") return window.__onHeaderAction(info);
+        } catch (_) {}
+        try {
+          const api = window.ZhixuEditor;
+          if (api && typeof api.headerAction === "function") return api.headerAction(info);
+        } catch (_) {}
+        try {
+          if (window.parent && window.parent !== window) window.parent.postMessage({ type: "zhixu-md-editor-header", ...info }, "*");
+        } catch (_) {}
       };
 
       // Keep __payload in sync with editor changes inside the iframe.
@@ -552,8 +596,155 @@
         --inlineCodeFg: var(--onSurface);
       }
       html, body { margin: 0; padding: 0; height: 100%; background: var(--surface); color: var(--onSurface); }
-      body { overflow: hidden; }
-      #editor { height: 100%; }
+      body { overflow: hidden; display: flex; flex-direction: column; }
+      #zhixuEditorHeader { flex: 0 0 auto; }
+      #editor { flex: 1 1 auto; min-height: 0; }
+
+      /* Editor header (similar to .workshopEditorHeader / .drawToolbar in app UI) */
+      .zhixuEditorHeader {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--outline);
+        background: var(--surface);
+        color: var(--onSurface);
+        font-family: var(--editorFont);
+        user-select: none;
+      }
+      .zhixuEditorHeaderLeft,
+      .zhixuEditorHeaderRight {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 0 0 auto;
+      }
+      .zhixuEditorHeaderCenter {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .zhixuHeaderBtn {
+        appearance: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--outline);
+        border-radius: 10px;
+        background: rgba(127, 127, 127, 0.06);
+        color: var(--onSurface);
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        cursor: pointer;
+        line-height: 1;
+      }
+      .zhixuHeaderBtn:hover { background: rgba(127, 127, 127, 0.12); }
+      .zhixuHeaderBtn:active { background: rgba(127, 127, 127, 0.16); }
+      .zhixuHeaderBtn:disabled { opacity: 0.42; cursor: not-allowed; }
+      .zhixuHeaderBtn svg { width: 20px; height: 20px; display: block; }
+
+      .zhixuBreadcrumb {
+        max-width: 100%;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        overflow: auto;
+        white-space: nowrap;
+      }
+      .zhixuBreadcrumbFolders {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .zhixuCrumb {
+        appearance: none;
+        border: none;
+        background: transparent;
+        color: var(--onSurface);
+        font: 13px/1.2 var(--editorFont);
+        padding: 6px 8px;
+        border-radius: 10px;
+        cursor: pointer;
+        min-width: 0;
+      }
+      .zhixuCrumb:hover { background: rgba(127, 127, 127, 0.10); }
+      .zhixuCrumb:active { background: rgba(127, 127, 127, 0.14); }
+      .zhixuCrumbFile { font-weight: 650; }
+      .zhixuCrumbSep {
+        opacity: 0.55;
+        padding: 0 2px;
+        font: 13px/1.2 var(--editorFont);
+        user-select: none;
+      }
+      .zhixuBreadcrumbPlaceholder {
+        opacity: 0.6;
+        font: 13px/1.2 var(--editorFont);
+        padding: 6px 8px;
+      }
+      .zhixuFileRenameInput {
+        font: 13px/1.2 var(--editorFont);
+        padding: 7px 10px;
+        border: 1px solid var(--outline);
+        border-radius: 10px;
+        background: var(--surface);
+        color: var(--onSurface);
+        outline: none;
+        width: min(360px, 60vw);
+      }
+      .zhixuFileRenameInput:focus {
+        border-color: rgba(47, 111, 235, 0.65);
+        box-shadow: 0 0 0 2px rgba(47, 111, 235, 0.14);
+      }
+
+      .zhixuHeaderMenuWrap { position: relative; }
+      .zhixuHeaderMenu {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        z-index: 2147483646;
+        min-width: 240px;
+        max-width: min(360px, 92vw);
+        max-height: min(70vh, 560px);
+        overflow: auto;
+        padding: 6px;
+        border: 1px solid var(--outline);
+        border-radius: 12px;
+        background: var(--surface);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+      }
+      .zhixuMenuItem {
+        appearance: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        text-align: left;
+        border: none;
+        border-radius: 10px;
+        background: transparent;
+        color: var(--onSurface);
+        padding: 9px 10px;
+        cursor: pointer;
+        font: 13px/1.2 var(--editorFont);
+      }
+      .zhixuMenuItem:hover { background: rgba(127, 127, 127, 0.08); }
+      .zhixuMenuItem:active { background: rgba(127, 127, 127, 0.12); }
+      .zhixuMenuItemDanger { color: rgba(217, 44, 44, 0.96); }
+      .zhixuMenuDivider {
+        height: 1px;
+        margin: 6px 4px;
+        background: var(--outline);
+        opacity: 0.7;
+      }
+      .zhixuMenuCheck {
+        margin-left: auto;
+        opacity: 0.85;
+        font-weight: 750;
+      }
 
       /* Boot marker (shows even if editor fails) */
       #__plainBoot {
@@ -944,7 +1135,447 @@
     </style>
   </head>
   <body>
+    <div id="zhixuEditorHeader" class="workshopEditorHeader zhixuEditorHeader" role="toolbar" aria-label="Editor header">
+      <div class="zhixuEditorHeaderLeft">
+        <button id="zhixuHeaderBack" class="zhixuHeaderBtn" type="button" aria-label="后退" title="后退">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left-icon lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        </button>
+        <button id="zhixuHeaderForward" class="zhixuHeaderBtn" type="button" aria-label="前进" title="前进">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right-icon lucide-arrow-right"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </button>
+      </div>
+
+      <div class="zhixuEditorHeaderCenter">
+        <div id="zhixuBreadcrumb" class="zhixuBreadcrumb" aria-label="路径">
+          <div id="zhixuBreadcrumbFolders" class="zhixuBreadcrumbFolders"></div>
+          <span id="zhixuBreadcrumbSep" class="zhixuCrumbSep" hidden>/</span>
+          <button id="zhixuBreadcrumbFile" class="zhixuCrumb zhixuCrumbFile" type="button" hidden></button>
+          <input id="zhixuFileRenameInput" class="zhixuFileRenameInput" type="text" spellcheck="false" hidden />
+          <span id="zhixuBreadcrumbPlaceholder" class="zhixuBreadcrumbPlaceholder"> </span>
+        </div>
+      </div>
+
+      <div class="zhixuEditorHeaderRight">
+        <button id="zhixuHeaderModeToggle" class="zhixuHeaderBtn" type="button" aria-label="切换视图">
+          <span id="zhixuModeIconBook" aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-open-icon lucide-book-open"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+          </span>
+          <span id="zhixuModeIconPen" aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pen-line-icon lucide-pen-line"><path d="M13 21h8"/><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>
+          </span>
+        </button>
+
+        <div class="zhixuHeaderMenuWrap">
+          <button id="zhixuHeaderMoreBtn" class="zhixuHeaderBtn" type="button" aria-label="更多选项" title="更多选项">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ellipsis-vertical-icon lucide-ellipsis-vertical"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+          </button>
+          <div id="zhixuHeaderMenu" class="zhixuHeaderMenu" hidden>
+            <button type="button" class="zhixuMenuItem" data-action="toggleBacklinksInTab">
+              在标签页中显示反向链接
+              <span class="zhixuMenuCheck" data-check="backlinks" hidden>✓</span>
+            </button>
+            <div class="zhixuMenuDivider"></div>
+            <button type="button" class="zhixuMenuItem" data-action="setMode" data-mode="live">
+              阅读视图
+              <span class="zhixuMenuCheck" data-check="mode-live" hidden>✓</span>
+            </button>
+            <button type="button" class="zhixuMenuItem" data-action="setMode" data-mode="source">
+              源码模式
+              <span class="zhixuMenuCheck" data-check="mode-source" hidden>✓</span>
+            </button>
+            <div class="zhixuMenuDivider"></div>
+            <button type="button" class="zhixuMenuItem" data-action="splitHorizontal">左右分屏</button>
+            <button type="button" class="zhixuMenuItem" data-action="splitVertical">上下分屏</button>
+            <button type="button" class="zhixuMenuItem" data-action="openInNewWindow">在新窗口中打开</button>
+            <div class="zhixuMenuDivider"></div>
+            <button type="button" class="zhixuMenuItem" data-action="rename">重命名</button>
+            <button type="button" class="zhixuMenuItem" data-action="moveTo">将文件移动到......</button>
+            <button type="button" class="zhixuMenuItem" data-action="favorite">收藏</button>
+            <button type="button" class="zhixuMenuItem" data-action="mergeTo">将该笔记合并到......</button>
+            <button type="button" class="zhixuMenuItem" data-action="addProperties">增加笔记属性</button>
+            <button type="button" class="zhixuMenuItem" data-action="exportPdf">导出为 PDF</button>
+            <div class="zhixuMenuDivider"></div>
+            <button type="button" class="zhixuMenuItem" data-action="find">查找......</button>
+            <button type="button" class="zhixuMenuItem" data-action="replace">替换......</button>
+            <div class="zhixuMenuDivider"></div>
+            <button type="button" class="zhixuMenuItem" data-action="copyObsidianUri">复制 Obsidian URI</button>
+            <button type="button" class="zhixuMenuItem" data-action="copyPath">Copy path</button>
+            <button type="button" class="zhixuMenuItem" data-action="copyRelativePath">Copy relative path</button>
+            <div class="zhixuMenuDivider"></div>
+            <button type="button" class="zhixuMenuItem" data-action="versionHistory">打开版本历史</button>
+            <button type="button" class="zhixuMenuItem" data-action="openNoteActions">打开当前笔记的......</button>
+            <div class="zhixuMenuDivider"></div>
+            <button type="button" class="zhixuMenuItem" data-action="openWithDefaultApp">使用默认应用打开</button>
+            <button type="button" class="zhixuMenuItem" data-action="revealInFileManager">在系统资源管理器中显示</button>
+            <button type="button" class="zhixuMenuItem" data-action="revealInFileList">在文件列表中显示当前文件</button>
+            <div class="zhixuMenuDivider"></div>
+            <button type="button" class="zhixuMenuItem zhixuMenuItemDanger" data-action="deleteFile">删除文件</button>
+            <div class="zhixuMenuDivider"></div>
+            <button type="button" class="zhixuMenuItem" data-action="newDrawing">新建绘图文件</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="editor"></div>
+    <script>
+      (() => {
+        const backBtn = document.getElementById("zhixuHeaderBack");
+        const forwardBtn = document.getElementById("zhixuHeaderForward");
+        const foldersEl = document.getElementById("zhixuBreadcrumbFolders");
+        const sepEl = document.getElementById("zhixuBreadcrumbSep");
+        const fileBtn = document.getElementById("zhixuBreadcrumbFile");
+        const renameInput = document.getElementById("zhixuFileRenameInput");
+        const placeholderEl = document.getElementById("zhixuBreadcrumbPlaceholder");
+        const modeBtn = document.getElementById("zhixuHeaderModeToggle");
+        const bookIcon = document.getElementById("zhixuModeIconBook");
+        const penIcon = document.getElementById("zhixuModeIconPen");
+        const moreBtn = document.getElementById("zhixuHeaderMoreBtn");
+        const menu = document.getElementById("zhixuHeaderMenu");
+
+        if (!foldersEl || !fileBtn || !renameInput) return;
+
+        let isRenaming = false;
+        let last = { headerPath: null, mode: null, canGoBack: null, canGoForward: null, showBacklinksInTab: null, isRenaming: null };
+        let lastParts = [];
+
+        function getPayload() {
+          return window.__payload || {};
+        }
+
+        // Optional: allow passing a path via URL (useful for dev preview/testing).
+        try {
+          const p = getPayload();
+          if (!p.headerPath) {
+            const pathParam = new URLSearchParams(location.search).get("path");
+            if (pathParam) p.headerPath = pathParam;
+          }
+        } catch (_) {}
+
+        function normalizePath(raw) {
+          const s = String(raw || "").trim().replace(/\\/g, "/");
+          const cleaned = s.replace(/^\/+/, "").replace(/\/+$/, "").replace(/\/+/g, "/");
+          const parts = cleaned ? cleaned.split("/").filter(Boolean) : [];
+          return { cleaned, parts };
+        }
+
+        function setMenuOpen(open) {
+          if (!menu || !moreBtn) return;
+          menu.hidden = !open;
+          try {
+            moreBtn.setAttribute("aria-expanded", open ? "true" : "false");
+          } catch (_) {}
+        }
+
+        function isMenuOpen() {
+          return !!menu && !menu.hidden;
+        }
+
+        function renderFolders(folderParts) {
+          foldersEl.textContent = "";
+          for (let i = 0; i < folderParts.length; i++) {
+            const name = folderParts[i];
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "zhixuCrumb";
+            btn.textContent = name;
+            btn.dataset.kind = "folder";
+            btn.dataset.path = folderParts.slice(0, i + 1).join("/");
+            foldersEl.appendChild(btn);
+
+            if (i !== folderParts.length - 1) {
+              const sep = document.createElement("span");
+              sep.className = "zhixuCrumbSep";
+              sep.textContent = "/";
+              foldersEl.appendChild(sep);
+            }
+          }
+        }
+
+        function setCheck(name, checked) {
+          if (!menu) return;
+          const el = menu.querySelector(`[data-check=\"${name}\"]`);
+          if (!el) return;
+          el.hidden = !checked;
+        }
+
+        function applyHeader() {
+          try {
+            const p = getPayload();
+            const canBack = !!p.canGoBack;
+            const canForward = !!p.canGoForward;
+            if (backBtn) backBtn.disabled = !canBack;
+            if (forwardBtn) forwardBtn.disabled = !canForward;
+
+            const mode = p.mode === "source" ? "source" : "live";
+            const currentView = mode === "source" ? "编辑视图" : "阅读视图";
+            const nextView = mode === "source" ? "阅读视图" : "编辑视图";
+            const nextMode = mode === "source" ? "live" : "source";
+
+            if (modeBtn) {
+              modeBtn.dataset.nextMode = nextMode;
+              modeBtn.title = `该标签页处于${currentView}中\n点击此处切换至${nextView}\nCtrl+单击以在新标签页中打开`;
+            }
+            if (bookIcon) bookIcon.hidden = nextMode !== "live";
+            if (penIcon) penIcon.hidden = nextMode !== "source";
+
+            const headerPath = String(p.headerPath || "").trim();
+            const showBacklinksInTab = !!p.showBacklinksInTab;
+
+            if (
+              headerPath !== last.headerPath ||
+              mode !== last.mode ||
+              canBack !== last.canGoBack ||
+              canForward !== last.canGoForward ||
+              showBacklinksInTab !== last.showBacklinksInTab ||
+              isRenaming !== last.isRenaming
+            ) {
+              const { parts } = normalizePath(headerPath);
+              lastParts = parts;
+
+              const folders = parts.length > 1 ? parts.slice(0, -1) : [];
+              const file = parts.length ? parts[parts.length - 1] : "";
+
+              renderFolders(folders);
+
+              if (sepEl) sepEl.hidden = folders.length === 0 || (!file && !isRenaming);
+
+              if (!isRenaming) {
+                fileBtn.hidden = !file;
+                fileBtn.textContent = file || "";
+              }
+
+              if (placeholderEl) placeholderEl.hidden = !!file || folders.length > 0 || isRenaming;
+
+              setCheck("backlinks", showBacklinksInTab);
+              setCheck("mode-live", mode === "live");
+              setCheck("mode-source", mode === "source");
+
+              last = { headerPath, mode, canGoBack: canBack, canGoForward: canForward, showBacklinksInTab, isRenaming };
+            }
+          } catch (_) {}
+        }
+
+        window.__applyHeader = applyHeader;
+
+        function emit(action, detail, ev) {
+          try {
+            if (typeof window.__emitHeaderAction === "function") window.__emitHeaderAction(action, detail, ev);
+          } catch (_) {}
+        }
+
+        function enterRename() {
+          if (isRenaming) return;
+          const p = getPayload();
+          const headerPath = String(p.headerPath || "").trim();
+          const { parts } = normalizePath(headerPath);
+          const currentName = parts.length ? parts[parts.length - 1] : fileBtn.textContent || "";
+          if (!currentName) return;
+
+          isRenaming = true;
+          try { setMenuOpen(false); } catch (_) {}
+
+          fileBtn.hidden = true;
+          if (sepEl) sepEl.hidden = parts.length <= 1;
+          if (placeholderEl) placeholderEl.hidden = true;
+          renameInput.hidden = false;
+          renameInput.value = currentName;
+          try {
+            renameInput.focus();
+            renameInput.select();
+          } catch (_) {}
+        }
+
+        function exitRename(commit, ev) {
+          if (!isRenaming) return;
+          const nextName = String(renameInput.value || "").trim();
+
+          renameInput.hidden = true;
+          fileBtn.hidden = false;
+          isRenaming = false;
+
+          if (!nextName) {
+            applyHeader();
+            return;
+          }
+
+          const currentName = fileBtn.textContent || "";
+          if (nextName !== currentName) {
+            // Optimistically update the headerPath; host can overwrite by calling __setHeaderPath again.
+            if (lastParts && lastParts.length) {
+              const parts = lastParts.slice(0);
+              parts[parts.length - 1] = nextName;
+              try {
+                window.__payload.headerPath = parts.join("/");
+              } catch (_) {}
+            }
+            fileBtn.textContent = nextName;
+            emit("renameFile", { name: nextName }, ev || null);
+          }
+
+          applyHeader();
+        }
+
+        // Left nav buttons.
+        if (backBtn) {
+          backBtn.addEventListener("click", (ev) => {
+            try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
+            emit("navigateBack", {}, ev);
+          });
+        }
+        if (forwardBtn) {
+          forwardBtn.addEventListener("click", (ev) => {
+            try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
+            emit("navigateForward", {}, ev);
+          });
+        }
+
+        // Breadcrumb clicks.
+        foldersEl.addEventListener("click", (ev) => {
+          const t = ev.target;
+          const btn = t && t.closest ? t.closest("button[data-kind=\"folder\"]") : null;
+          if (!btn) return;
+          try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
+          const path = btn.dataset.path || "";
+          emit("revealFolder", { path }, ev);
+        });
+        fileBtn.addEventListener("click", (ev) => {
+          try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
+          enterRename();
+        });
+
+        // Rename input.
+        renameInput.addEventListener("keydown", (ev) => {
+          try { ev.stopPropagation(); } catch (_) {}
+          if (ev.key === "Enter") {
+            try { ev.preventDefault(); } catch (_) {}
+            exitRename(true, ev);
+          } else if (ev.key === "Escape") {
+            try { ev.preventDefault(); } catch (_) {}
+            // Cancel.
+            renameInput.hidden = true;
+            isRenaming = false;
+            applyHeader();
+            try { document.getElementById("editor")?.focus?.(); } catch (_) {}
+          }
+        });
+        renameInput.addEventListener("blur", (ev) => exitRename(true, ev));
+
+        // Mode toggle.
+        if (modeBtn) {
+          modeBtn.addEventListener("click", (ev) => {
+            try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
+            const p = getPayload();
+            const mode = p.mode === "source" ? "source" : "live";
+            const nextMode = mode === "source" ? "live" : "source";
+            const openInNewTab = !!(ev.ctrlKey || ev.metaKey);
+
+            emit("toggleMode", { from: mode, to: nextMode, openInNewTab }, ev);
+            if (!openInNewTab && typeof window.__setMode === "function") window.__setMode(nextMode);
+            setMenuOpen(false);
+          });
+        }
+
+        // Menu open/close + actions.
+        if (moreBtn && menu) {
+          moreBtn.addEventListener("click", (ev) => {
+            try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
+            setMenuOpen(!isMenuOpen());
+          });
+          document.addEventListener(
+            "pointerdown",
+            (ev) => {
+              if (!isMenuOpen()) return;
+              const target = ev.target;
+              if (menu.contains(target) || moreBtn.contains(target)) return;
+              setMenuOpen(false);
+            },
+            true,
+          );
+          document.addEventListener(
+            "keydown",
+            (ev) => {
+              if (!isMenuOpen()) return;
+              if (ev.key === "Escape") setMenuOpen(false);
+            },
+            true,
+          );
+
+          async function copyText(text) {
+            const s = String(text || "");
+            try {
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(s);
+                return true;
+              }
+            } catch (_) {}
+            try {
+              const ta = document.createElement("textarea");
+              ta.value = s;
+              ta.setAttribute("readonly", "true");
+              ta.style.position = "fixed";
+              ta.style.opacity = "0";
+              ta.style.left = "-9999px";
+              ta.style.top = "0";
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand("copy");
+              document.body.removeChild(ta);
+              return true;
+            } catch (_) {}
+            return false;
+          }
+
+          menu.addEventListener("click", (ev) => {
+            const t = ev.target;
+            const item = t && t.closest ? t.closest("button[data-action]") : null;
+            if (!item) return;
+            try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
+
+            const action = item.dataset.action || "";
+            const openInNewTab = !!(ev.ctrlKey || ev.metaKey);
+
+            if (action === "setMode") {
+              const targetMode = item.dataset.mode === "source" ? "source" : "live";
+              emit("setMode", { mode: targetMode, openInNewTab }, ev);
+              if (!openInNewTab && typeof window.__setMode === "function") window.__setMode(targetMode);
+              setMenuOpen(false);
+              return;
+            }
+
+            if (action === "toggleBacklinksInTab") {
+              const next = !getPayload().showBacklinksInTab;
+              try { window.__payload.showBacklinksInTab = next; } catch (_) {}
+              emit("toggleBacklinksInTab", { enabled: next }, ev);
+              applyHeader();
+              setMenuOpen(false);
+              return;
+            }
+
+            if (action === "rename") {
+              setMenuOpen(false);
+              enterRename();
+              return;
+            }
+
+            if (action === "copyPath" || action === "copyRelativePath") {
+              const headerPath = String(getPayload().headerPath || "");
+              copyText(headerPath);
+              emit(action, { text: headerPath }, ev);
+              setMenuOpen(false);
+              return;
+            }
+
+            emit(action, {}, ev);
+            setMenuOpen(false);
+          });
+        }
+
+        // Initial paint.
+        try { applyHeader(); } catch (_) {}
+        try { if (typeof window.__scheduleHeaderApply === "function") window.__scheduleHeaderApply(); } catch (_) {}
+      })();
+    </script>
     <script
       src="./codemirror.bundle.js"
       onerror="window.__showFatal && window.__showFatal('script load failed', this.src)"
