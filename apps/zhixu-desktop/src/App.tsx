@@ -875,6 +875,29 @@ export function App() {
     }
   }, [pushRecentFile]);
 
+  const revealFolderInSidebar = useCallback(
+    async (path: string) => {
+      if (!vaultRoot) return;
+      const norm = String(path || "")
+        .replace(/\\/g, "/")
+        .replace(/^\/+/, "")
+        .replace(/\/+$/, "");
+
+      setActivity("space");
+      setSidebarOpen(true);
+      setSelectedDir(norm);
+
+      if (!norm) return;
+      const parts = norm.split("/").filter(Boolean);
+      let current = "";
+      for (const part of parts) {
+        current = current ? `${current}/${part}` : part;
+        if (!expanded[current]) await toggleDir(current);
+      }
+    },
+    [expanded, toggleDir, vaultRoot],
+  );
+
   const saveActive = useCallback(async () => {
     if (!activeTab) return;
     if (savingRef.current) return;
@@ -1047,6 +1070,91 @@ export function App() {
       window.alert(String(e));
     }
   }, [vaultRoot, selectedDir, reloadDir]);
+
+  const renameTabPath = useCallback(
+    async (oldPath: string, next: string): Promise<boolean> => {
+      if (!next || next === oldPath) return true;
+
+      const nextFileName = basename(next);
+      const nextName = stripExtension(nextFileName);
+      const nextText = isTextFile(nextFileName);
+      const nextDraw = isZhixuDrawFile(nextFileName);
+      const nextBinaryLabel = getFileTypeLabel(nextFileName) ?? "文件";
+      const nextBinaryPlaceholder = `该文件类型暂不支持在应用内打开：${nextBinaryLabel}\n\n路径：${next}`;
+
+      try {
+        await renameEntry(oldPath, next);
+        setTabs((prev) =>
+          prev.map((t) => {
+            if (t.path !== oldPath) return t;
+            if (nextDraw) {
+              return {
+                path: next,
+                name: nextName,
+                kind: "drawing",
+                locked: t.locked,
+                doc: t.kind === "drawing" ? t.doc : null,
+                savedDoc: t.kind === "drawing" ? t.savedDoc : null,
+                dirty: t.kind === "drawing" ? t.dirty : false,
+                viewMode: t.kind === "drawing" ? t.viewMode : "writing",
+                selection: { anchor: 0, head: 0 },
+              };
+            }
+            if (!nextText) {
+              return {
+                path: next,
+                name: nextName,
+                kind: "binary",
+                locked: t.locked,
+                content: nextBinaryPlaceholder,
+                savedContent: nextBinaryPlaceholder,
+                dirty: false,
+                selection: { anchor: 0, head: 0 },
+              };
+            }
+            return {
+              path: next,
+              name: nextName,
+              kind: "text",
+              locked: t.locked,
+              content: t.kind === "text" ? t.content : "",
+              savedContent: t.kind === "text" ? t.savedContent : "",
+              dirty: t.kind === "text" ? t.dirty : false,
+              selection: { anchor: 0, head: 0 },
+            };
+          }),
+        );
+        setActivePath((prev) => (prev === oldPath ? next : prev));
+        await reloadDir(dirname(oldPath));
+        await reloadDir(dirname(next));
+        if (nextText) {
+          try {
+            const content = await readTextFile(next);
+            setTabs((prev) =>
+              prev.map((t) => (t.path === next && t.kind === "text" ? { ...t, content, savedContent: content, dirty: false } : t)),
+            );
+          } catch (e) {
+            console.error(e);
+          }
+        } else if (nextDraw) {
+          try {
+            const doc = await readDrawDocument(next);
+            setTabs((prev) =>
+              prev.map((t) => (t.path === next && t.kind === "drawing" ? { ...t, doc, savedDoc: doc, dirty: false } : t)),
+            );
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        return true;
+      } catch (e) {
+        console.error(e);
+        window.alert(String(e));
+        return false;
+      }
+    },
+    [reloadDir],
+  );
 
   const renameActive = useCallback(async () => {
     if (!activeTab) return;
@@ -2580,11 +2688,27 @@ export function App() {
             ) : activeTab.kind === "text" ? (
               <Suspense fallback={<div className="emptyState">加载编辑器…</div>}>
                 <LazyZhixuMarkdownEditor
+                  path={activeTab.path}
                   value={activeTab.content}
                   selection={activeTab.selection}
                   placeholder={editorPlaceholder}
                   mode={editorMode}
                   displaySettings={editorDisplaySettings}
+                  onHeaderAction={(info) => {
+                    if (!activeTab) return;
+                    if (info.action === "revealFolder") {
+                      const folder = typeof info.detail.path === "string" ? info.detail.path : "";
+                      void revealFolderInSidebar(folder);
+                      return;
+                    }
+                    if (info.action === "renameFile") {
+                      const nextName = typeof info.detail.name === "string" ? info.detail.name : "";
+                      const fileName = basename(nextName);
+                      if (!fileName) return false;
+                      const nextPath = join(dirname(activeTab.path), fileName);
+                      return renameTabPath(activeTab.path, nextPath);
+                    }
+                  }}
                   onKeyDownCapture={onAppKeyDown}
                   onChange={(next) => {
                     trackEditorInputToFrame({ path: activeTab.path, mode: editorMode });

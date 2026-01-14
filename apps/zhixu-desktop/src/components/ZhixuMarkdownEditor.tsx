@@ -5,7 +5,18 @@ import type { EditorDisplaySettings } from "../lib/editorDisplaySettings";
 
 export type MarkdownEditorMode = "live" | "source";
 
+export type EditorHeaderActionInfo = {
+  action: string;
+  detail: Record<string, unknown>;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+};
+
+export type EditorHeaderActionHandler = (info: EditorHeaderActionInfo) => void | boolean | Promise<void | boolean>;
+
 type Props = {
+  path: string;
   value: string;
   selection: CodeMirrorSelection;
   placeholder?: string;
@@ -14,6 +25,7 @@ type Props = {
   onChange: (next: string) => void;
   onSelectionChange?: (next: CodeMirrorSelection) => void;
   onKeyDownCapture?: (ev: KeyboardEvent) => void;
+  onHeaderAction?: EditorHeaderActionHandler;
 };
 
 type EditorTheme = {
@@ -31,7 +43,9 @@ type EditorWindow = Window & {
   __setShowLineNumbers?: (v: boolean) => void;
   __setShowProperties?: (v: boolean) => void;
   __setReadableLineLength?: (v: boolean) => void;
+  __setHeaderPath?: (path: string) => void;
   __setDoc?: (text: string, selStart: number, selEnd: number) => void;
+  __onHeaderAction?: (info: EditorHeaderActionInfo) => void;
   ZhixuEditor?: {
     docChanged?: (text: string, selStart: number, selEnd: number) => void;
     selectionChanged?: (selStart: number, selEnd: number) => void;
@@ -48,6 +62,7 @@ function getRootCssVar(name: string, fallback: string): string {
 }
 
 export function ZhixuMarkdownEditor({
+  path,
   value,
   selection,
   placeholder,
@@ -56,18 +71,19 @@ export function ZhixuMarkdownEditor({
   onChange,
   onSelectionChange,
   onKeyDownCapture,
+  onHeaderAction,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const winRef = useRef<EditorWindow | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
-  const callbacksRef = useRef({ onChange, onSelectionChange, onKeyDownCapture });
-  callbacksRef.current = { onChange, onSelectionChange, onKeyDownCapture };
+  const callbacksRef = useRef({ onChange, onSelectionChange, onKeyDownCapture, onHeaderAction });
+  callbacksRef.current = { onChange, onSelectionChange, onKeyDownCapture, onHeaderAction };
 
   const lastEditorValueRef = useRef<string | null>(null);
   const lastEditorSelRef = useRef<CodeMirrorSelection | null>(null);
 
-  const latestRef = useRef({ value, selection, placeholder, mode, displaySettings });
-  latestRef.current = { value, selection, placeholder, mode, displaySettings };
+  const latestRef = useRef({ path, value, selection, placeholder, mode, displaySettings });
+  latestRef.current = { path, value, selection, placeholder, mode, displaySettings };
 
   const themeJson = useMemo(() => {
     const theme: EditorTheme = {
@@ -135,9 +151,43 @@ export function ZhixuMarkdownEditor({
         },
       };
 
+      win.__onHeaderAction = (info) => {
+        try {
+          const action = String(info?.action ?? "");
+          const handler = callbacksRef.current.onHeaderAction;
+          if (!handler) return;
+          const res = handler({
+            action,
+            detail: (info?.detail && typeof info.detail === "object" ? (info.detail as Record<string, unknown>) : {}) ?? {},
+            ctrlKey: Boolean(info?.ctrlKey),
+            shiftKey: Boolean(info?.shiftKey),
+            altKey: Boolean(info?.altKey),
+          });
+
+          if (action !== "renameFile") return;
+          const isThenable = res && typeof (res as Promise<unknown>).then === "function";
+          if (isThenable) {
+            void (res as Promise<void | boolean>)
+              .then((ok) => {
+                if (ok === false) win.__setHeaderPath?.(latestRef.current.path);
+              })
+              .catch(() => win.__setHeaderPath?.(latestRef.current.path));
+          } else if (res === false) {
+            win.__setHeaderPath?.(latestRef.current.path);
+          }
+        } catch (_) {
+          try {
+            win.__setHeaderPath?.(latestRef.current.path);
+          } catch (_) {}
+        }
+      };
+
       win.addEventListener("keydown", handleKeyDown, true);
       cleanupRef.current = () => {
         win.removeEventListener("keydown", handleKeyDown, true);
+        try {
+          delete win.__onHeaderAction;
+        } catch (_) {}
       };
     };
 
@@ -148,6 +198,7 @@ export function ZhixuMarkdownEditor({
 
       win.__setTheme?.(themeJson);
       const latest = latestRef.current;
+      win.__setHeaderPath?.(latest.path);
       win.__setPlaceholder?.(latest.placeholder ?? "");
       win.__setMode?.(latest.mode);
       win.__setShowLineNumbers?.(latest.displaySettings.showLineNumbers);
@@ -176,6 +227,12 @@ export function ZhixuMarkdownEditor({
     if (!win) return;
     win.__setMode?.(mode);
   }, [mode]);
+
+  useEffect(() => {
+    const win = winRef.current;
+    if (!win) return;
+    win.__setHeaderPath?.(path);
+  }, [path]);
 
   useEffect(() => {
     const win = winRef.current;
