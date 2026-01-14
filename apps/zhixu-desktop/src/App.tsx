@@ -6,7 +6,10 @@ import { message } from "@tauri-apps/plugin-dialog";
 import type { CodeMirrorSelection } from "./components/CodeMirrorEditor";
 import type { MarkdownEditorMode } from "./components/ZhixuMarkdownEditor";
 import { FileTree, type TreeNode } from "./components/FileTree";
+import { PluginDeveloperWindow } from "./components/PluginDeveloperWindow";
 import { Popover } from "./components/Popover";
+import { WorkshopEditor } from "./components/WorkshopEditor";
+import { WorkshopSidebar } from "./components/WorkshopSidebar";
 import { SettingsModal, type SettingsSectionId } from "./components/SettingsModal";
 import { Tooltip, type TooltipPlacement } from "./components/Tooltip";
 import {
@@ -38,6 +41,8 @@ import {
 } from "./components/icons";
 import { basename, dirname, join } from "./lib/path";
 import { getFileTypeLabel, isTextFile, isZhixuDrawFile, stripExtension } from "./lib/fileType";
+import type { InstalledPlugin, PluginIndexItem } from "./lib/plugins/types";
+import { fetchOfficialIndex, listInstalledPlugins } from "./lib/plugins/workshop";
 import {
   createDir,
   createFile,
@@ -278,6 +283,70 @@ export function App() {
       // ignore
     }
   }, [cloudSyncEnabled]);
+
+  const [workshopBaseUrl, setWorkshopBaseUrl] = useState<string>(() => {
+    try {
+      return localStorage.getItem("zhixu:workshopBaseUrl") || "https://zhixu.app/plugins";
+    } catch {
+      return "https://zhixu.app/plugins";
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("zhixu:workshopBaseUrl", workshopBaseUrl);
+    } catch {
+      // ignore
+    }
+  }, [workshopBaseUrl]);
+
+  const [workshopSearch, setWorkshopSearch] = useState<string>("");
+  const [workshopSelectedId, setWorkshopSelectedId] = useState<string | null>(null);
+  const [workshopOfficial, setWorkshopOfficial] = useState<PluginIndexItem[]>([]);
+  const [workshopOfficialLoading, setWorkshopOfficialLoading] = useState(false);
+  const [workshopOfficialError, setWorkshopOfficialError] = useState<string | null>(null);
+  const [workshopInstalled, setWorkshopInstalled] = useState<InstalledPlugin[]>([]);
+  const [workshopInstalledLoading, setWorkshopInstalledLoading] = useState(false);
+
+  const editWorkshopBaseUrl = useCallback(() => {
+    const next = window.prompt("官方插件源（Base URL）", workshopBaseUrl);
+    if (next == null) return;
+    const clean = next.trim().replace(/\/+$/, "");
+    if (!clean) return;
+    setWorkshopBaseUrl(clean);
+  }, [workshopBaseUrl]);
+
+  const reloadWorkshop = useCallback(() => {
+    setWorkshopOfficialLoading(true);
+    setWorkshopOfficialError(null);
+    void (async () => {
+      try {
+        const next = await fetchOfficialIndex(workshopBaseUrl);
+        setWorkshopOfficial(next);
+      } catch (e) {
+        setWorkshopOfficialError(String(e instanceof Error ? e.message : e));
+      } finally {
+        setWorkshopOfficialLoading(false);
+      }
+    })();
+
+    if (!vaultRoot) {
+      setWorkshopInstalled([]);
+      setWorkshopInstalledLoading(false);
+      return;
+    }
+
+    setWorkshopInstalledLoading(true);
+    void (async () => {
+      try {
+        const next = await listInstalledPlugins(vaultRoot);
+        setWorkshopInstalled(next);
+      } catch {
+        setWorkshopInstalled([]);
+      } finally {
+        setWorkshopInstalledLoading(false);
+      }
+    })();
+  }, [vaultRoot, workshopBaseUrl]);
   const [dirCache, setDirCache] = useState<Record<string, VaultEntry[]>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [loadingDir, setLoadingDir] = useState<Record<string, boolean>>({});
@@ -285,6 +354,11 @@ export function App() {
 
   const [activity, setActivity] = useState<Activity>("space");
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => !isDetached);
+
+  useEffect(() => {
+    if (activity !== "workshop") return;
+    reloadWorkshop();
+  }, [activity, reloadWorkshop]);
 
   const [mainSidebarWidth, setMainSidebarWidth] = useState<number>(280);
   const mainSidebarWidthRef = useRef(mainSidebarWidth);
@@ -369,6 +443,7 @@ export function App() {
 
   const [editorMode, setEditorMode] = useState<MarkdownEditorMode>("live");
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [pluginDevOpen, setPluginDevOpen] = useState(false);
 
   const newTabIdRef = useRef(isDetached && transferId ? 1 : 2);
   const [tabs, setTabs] = useState<Tab[]>(() => (isDetached && transferId ? [] : [makeNewTab(1)]));
@@ -1379,6 +1454,12 @@ export function App() {
           setShortcutsOpen(false);
           return;
         }
+        if (pluginDevOpen) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          setPluginDevOpen(false);
+          return;
+        }
         if (vaultPickerOpen) {
           setVaultPickerOpen(false);
           return;
@@ -1390,6 +1471,12 @@ export function App() {
       if (!mod) return;
 
       const key = ev.key.toLowerCase();
+      if (key === "p" && ev.shiftKey) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        setPluginDevOpen(true);
+        return;
+      }
       if (key === "n") {
         ev.preventDefault();
         ev.stopPropagation();
@@ -1420,7 +1507,7 @@ export function App() {
         setShortcutsOpen((v) => !v);
       }
     },
-    [createUntitledInRoot, openFilePicker, saveActive, settingsOpen, shortcutsOpen, vaultPickerOpen],
+    [createUntitledInRoot, openFilePicker, pluginDevOpen, saveActive, settingsOpen, shortcutsOpen, vaultPickerOpen],
   );
 
   useEffect(() => {
@@ -2179,6 +2266,22 @@ export function App() {
               ) : (
                 <div className="emptyState">请选择一个库文件夹开始。</div>
               )
+            ) : activity === "workshop" ? (
+              <WorkshopSidebar
+                vaultRoot={vaultRoot}
+                baseUrl={workshopBaseUrl}
+                search={workshopSearch}
+                onSearchChange={setWorkshopSearch}
+                official={workshopOfficial}
+                officialLoading={workshopOfficialLoading}
+                officialError={workshopOfficialError}
+                installed={workshopInstalled}
+                installedLoading={workshopInstalledLoading}
+                selectedId={workshopSelectedId}
+                onSelect={(id) => setWorkshopSelectedId(id)}
+                onRefresh={reloadWorkshop}
+                onEditBaseUrl={editWorkshopBaseUrl}
+              />
             ) : (
               <div className="emptyState">敬请期待。</div>
             )}
@@ -2297,7 +2400,16 @@ export function App() {
         ) : null}
 
         <div className="editorArea">
-          {activeTab ? (
+          {activity === "workshop" ? (
+            <WorkshopEditor
+              vaultRoot={vaultRoot}
+              baseUrl={workshopBaseUrl}
+              selectedId={workshopSelectedId}
+              official={workshopOfficial}
+              installed={workshopInstalled}
+              onInstalledReload={reloadWorkshop}
+            />
+          ) : activeTab ? (
             activeTab.kind === "newtab" ? (
               <div className="newTabPage">
                 <div className="newTabActions">
@@ -2499,6 +2611,8 @@ export function App() {
           </div>
         </div>
       ) : null}
+
+      {pluginDevOpen ? <PluginDeveloperWindow onClose={() => setPluginDevOpen(false)} /> : null}
 
       {filePickerOpen ? (
         <div

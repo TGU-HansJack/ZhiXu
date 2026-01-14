@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "baseUrl": "",
+  "remoteRoot": "/",
+  "username": "",
+  "password": "",
+  "ignore": [".zhixu/", ".git/", ".obsidian/"]
+}
+

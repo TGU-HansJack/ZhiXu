@@ -1,0 +1,13 @@
+{
+  "id": "webdav-zhixu",
+  "name": "WebDAV 同步",
+  "version": "1.0.0",
+  "description": "将当前 Vault 与 WebDAV 远端目录进行同步（桌面端示例插件）。",
+  "entry": "main.js",
+  "files": ["config.json"],
+  "actions": [
+    { "id": "testConnection", "label": "测试连接", "icon": "cloud_upload", "place": "workshop", "ringIndex": 0 },
+    { "id": "syncNow", "label": "立即同步", "icon": "sync", "place": "workshop", "ringIndex": 1 }
+  ]
+}
+

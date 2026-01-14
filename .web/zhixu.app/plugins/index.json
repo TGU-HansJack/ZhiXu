@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "id": "webdav-zhixu",
+      "name": "WebDAV 同步",
+      "version": "1.0.0",
+      "description": "将当前 Vault 与 WebDAV 远端目录进行同步（桌面端示例插件）。",
+      "platforms": ["desktop", "android"]
+    },
+    {
+      "id": "typecho-xmlrpc-publisher",
+      "name": "Typecho XML-RPC 发布器",
+      "version": "2.0.0",
+      "description": "通过 XML-RPC（MetaWeblog API）将当前笔记发布到 Typecho 博客。",
+      "platforms": ["android"]
+    }
+  ]
+}
+

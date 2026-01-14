@@ -66,6 +66,44 @@ export async function writeBytesAbs(path: string, bytes: number[]): Promise<void
   return invoke<void>("write_bytes_abs", { path, bytes });
 }
 
+export async function readBytesAbs(path: string): Promise<Uint8Array> {
+  const bytes = await invoke<number[]>("read_bytes_abs", { path });
+  return new Uint8Array(bytes);
+}
+
+export type HttpHeader = {
+  name: string;
+  value: string;
+};
+
+export type HttpRequest = {
+  method: string;
+  url: string;
+  headers?: HttpHeader[];
+  body?: Uint8Array;
+  timeoutMs?: number;
+};
+
+export type HttpResponse = {
+  status: number;
+  ok: boolean;
+  headers: HttpHeader[];
+  bytes: Uint8Array;
+};
+
+export async function httpRequest(req: HttpRequest): Promise<HttpResponse> {
+  const res = await invoke<{ status: number; ok: boolean; headers: HttpHeader[]; bytes: number[] }>("http_request", {
+    req: {
+      method: req.method,
+      url: req.url,
+      headers: req.headers,
+      body: req.body ? Array.from(req.body) : undefined,
+      timeoutMs: req.timeoutMs,
+    },
+  });
+  return { status: res.status, ok: res.ok, headers: res.headers, bytes: new Uint8Array(res.bytes) };
+}
+
 export async function writeDrawDocumentAbs(path: string, document: DrawDocument): Promise<void> {
   return invoke<void>("write_draw_document_abs", { path, document });
 }

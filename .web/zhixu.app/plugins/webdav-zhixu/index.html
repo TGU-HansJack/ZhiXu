@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>WebDAV 同步 · Zhixu.app</title>
+    <meta name="description" content="将当前 Vault 与 WebDAV 远端目录进行同步的 Zhixu 插件。" />
+    <link rel="icon" href="../../assets/zhixu.png" />
+    <link rel="stylesheet" href="../../site.css" />
+  </head>
+  <body class="legalPage">
+    <header class="page">
+      <nav class="topnav" aria-label="主导航">
+        <a class="brand" href="../../" aria-label="Zhixu.app 首页">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="28" height="28" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../../">首页</a>
+          <a role="listitem" href="../../docs/">文档</a>
+          <a role="listitem" href="../">插件</a>
+          <a role="listitem" href="https://feedback.zhixu.app/">反馈社区</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="page legal">
+      <h1 class="legal__title">WebDAV 同步</h1>
+      <p class="legal__meta">将当前 Vault 与 WebDAV 远端目录进行同步（示例插件）。</p>
+
+      <article class="legal__content" aria-label="插件说明正文">
+        <h2>功能</h2>
+        <ul>
+          <li>测试连接（PROPFIND Depth 0）</li>
+          <li>立即同步（示例实现：上传本地缺失/变更文件、下载远端缺失文件）</li>
+        </ul>
+
+        <h2>配置</h2>
+        <p>编辑 <code>config.json</code>：</p>
+        <ul>
+          <li><code>baseUrl</code>：WebDAV 服务地址</li>
+          <li><code>remoteRoot</code>：远端根目录</li>
+          <li><code>username</code> / <code>password</code>：认证信息</li>
+        </ul>
+
+        <h2>开发参考</h2>
+        <ul>
+          <li><a href="../../docs/plugins/">插件开发指南</a></li>
+          <li><a href="../">返回插件目录</a></li>
+        </ul>
+      </article>
+    </main>
+
+    <footer class="page footer">
+      <nav class="footnav" aria-label="页脚导航">
+        <a class="brand" href="../../">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="24" height="24" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../../docs/">Docs</a>
+          <a role="listitem" href="../../tos/">Terms</a>
+          <a role="listitem" href="../../privacy/">Privacy</a>
+          <a role="listitem" href="../../license/">License</a>
+        </div>
+      </nav>
+      <p class="tiny muted">&copy; <span id="year"></span> Zhixu contributors.</p>
+    </footer>
+
+    <script src="../../main.js"></script>
+  </body>
+</html>
+

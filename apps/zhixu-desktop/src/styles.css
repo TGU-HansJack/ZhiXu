@@ -1960,3 +1960,405 @@ input {
   resize: none;
   box-sizing: border-box;
 }
+
+/* Workshop (Extensions) */
+.workshopSidebar {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 10px;
+}
+
+.workshopSearch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.workshopSearchIcon {
+  color: rgba(0, 0, 0, 0.55);
+  display: inline-flex;
+  align-items: center;
+}
+
+.workshopSearchInput {
+  flex: 1 1 auto;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  min-width: 0;
+}
+
+.workshopRefreshBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.workshopSection {
+  padding: 10px 10px 0;
+}
+
+.workshopSectionTitle {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  margin: 6px 0 8px;
+}
+
+.workshopHint {
+  padding: 6px 4px 10px;
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+}
+
+.workshopHint.error {
+  color: var(--danger);
+}
+
+.workshopList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workshopItem {
+  appearance: none;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: var(--radius);
+  padding: 10px 10px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.workshopItem:hover {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.workshopItem.active {
+  border-color: rgba(47, 111, 235, 0.65);
+  box-shadow: 0 0 0 2px rgba(47, 111, 235, 0.12);
+}
+
+.workshopItemTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.workshopItemName {
+  font-size: 13px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workshopItemBadge {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid rgba(47, 111, 235, 0.35);
+  background: rgba(47, 111, 235, 0.12);
+  color: rgba(47, 111, 235, 0.9);
+}
+
+.workshopItemBadge.off {
+  border-color: rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.workshopItemBadge.ghost {
+  border-color: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.04);
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.workshopItemDesc {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.65);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.workshopItemMeta {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.workshopEditor {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.workshopEmpty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  text-align: center;
+  color: rgba(0, 0, 0, 0.72);
+}
+
+.workshopEmptyTitle {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.workshopEmptyHint {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.workshopEditorHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.workshopHeaderMain {
+  min-width: 0;
+}
+
+.workshopHeaderTitle {
+  font-size: 18px;
+  font-weight: 750;
+  color: rgba(0, 0, 0, 0.9);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workshopHeaderDesc {
+  margin-top: 6px;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.workshopHeaderActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.workshopBtn {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.75);
+  color: rgba(0, 0, 0, 0.82);
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.workshopBtn:hover {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.workshopBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.workshopBtn.primary {
+  border-color: rgba(47, 111, 235, 0.55);
+  background: rgba(47, 111, 235, 0.14);
+  color: rgba(47, 111, 235, 0.95);
+}
+
+.workshopBtn.primary:hover {
+  background: rgba(47, 111, 235, 0.18);
+}
+
+.workshopBtn.danger {
+  border-color: rgba(217, 44, 44, 0.4);
+  background: rgba(217, 44, 44, 0.1);
+  color: rgba(217, 44, 44, 0.95);
+}
+
+.workshopEditorBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 16px;
+  padding: 16px;
+  overflow: auto;
+}
+
+.workshopEditorMain {
+  min-width: 0;
+}
+
+.workshopEditorAside {
+  min-width: 0;
+}
+
+.workshopMetaCard {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.workshopMetaRow {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.workshopMetaKey {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.workshopMetaVal {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workshopTabs {
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.workshopTab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.62);
+  padding: 10px 8px;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.workshopTab.active {
+  color: rgba(0, 0, 0, 0.86);
+  border-bottom-color: rgba(47, 111, 235, 0.85);
+}
+
+.workshopReadmePre,
+.workshopLogs {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 12px;
+  box-sizing: border-box;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: rgba(0, 0, 0, 0.78);
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.workshopActionRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 14px;
+}
+
+.workshopConfigEditor {
+  width: 100%;
+  min-height: 200px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  box-sizing: border-box;
+  background: #0b0f14;
+  color: rgba(255, 255, 255, 0.9);
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  resize: vertical;
+}
+
+@media (max-width: 980px) {
+  .workshopEditorBody {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pluginDevModal {
+  width: min(860px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+}
+
+.pluginDevBody {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.78);
+}
+
+.pluginDevIntro {
+  margin-bottom: 12px;
+  line-height: 1.55;
+}
+
+.pluginDevH3 {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  font-weight: 750;
+  color: rgba(0, 0, 0, 0.86);
+}
+
+.pluginDevNote {
+  margin: 8px 0;
+  color: rgba(0, 0, 0, 0.62);
+}
+
+.pluginDevPre {
+  margin: 8px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 12px;
+  overflow: auto;
+  color: rgba(0, 0, 0, 0.78);
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  white-space: pre;
+}
+
+.pluginDevList {
+  margin: 8px 0 12px;
+  padding-left: 18px;
+  line-height: 1.6;
+}

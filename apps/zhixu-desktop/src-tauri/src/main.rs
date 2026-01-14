@@ -2,9 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Read;
 use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Duration;
 use tauri::Manager;
 
 mod draw_format;
@@ -26,6 +28,32 @@ struct VaultEntryDto {
     path: String,
     name: String,
     is_dir: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HttpHeaderDto {
+    name: String,
+    value: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HttpRequestDto {
+    method: String,
+    url: String,
+    headers: Option<Vec<HttpHeaderDto>>,
+    body: Option<Vec<u8>>,
+    timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HttpResponseDto {
+    status: u16,
+    ok: bool,
+    headers: Vec<HttpHeaderDto>,
+    bytes: Vec<u8>,
 }
 
 fn persisted_state_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -283,6 +311,94 @@ fn write_draw_document_abs(path: String, document: draw_format::DrawDocumentDto)
 }
 
 #[tauri::command]
+fn read_bytes_abs(path: String) -> Result<Vec<u8>, String> {
+    if path.trim().is_empty() {
+        return Err("Missing path".to_string());
+    }
+    let abs = PathBuf::from(&path);
+    let md = fs::metadata(&abs).map_err(|e| format!("Failed to stat file: {e}"))?;
+    if !md.is_file() {
+        return Err("Not a file".to_string());
+    }
+    fs::read(&abs).map_err(|e| format!("Failed to read file: {e}"))
+}
+
+fn ureq_collect_headers(resp: &ureq::Response) -> Vec<HttpHeaderDto> {
+    let mut out: Vec<HttpHeaderDto> = Vec::new();
+    let names = resp.headers_names();
+    for name in names {
+        if let Some(value) = resp.header(&name) {
+            out.push(HttpHeaderDto { name, value: value.to_string() });
+        }
+    }
+    out
+}
+
+#[tauri::command]
+fn http_request(req: HttpRequestDto) -> Result<HttpResponseDto, String> {
+    let method = req.method.trim();
+    let url = req.url.trim();
+    if method.is_empty() {
+        return Err("Missing method".to_string());
+    }
+    if url.is_empty() {
+        return Err("Missing url".to_string());
+    }
+
+    let mut agent_builder = ureq::AgentBuilder::new();
+    if let Some(timeout_ms) = req.timeout_ms {
+        let d = Duration::from_millis(timeout_ms.max(1));
+        agent_builder = agent_builder.timeout_read(d).timeout_write(d).timeout_connect(d);
+    }
+    let agent = agent_builder.build();
+
+    let mut request = agent.request(method, url);
+    if let Some(headers) = req.headers {
+        for h in headers {
+            let name = h.name.trim();
+            if name.is_empty() {
+                continue;
+            }
+            request = request.set(name, &h.value);
+        }
+    }
+
+    let response = match req.body {
+        Some(body) => request.send_bytes(&body),
+        None => request.call(),
+    };
+
+    match response {
+        Ok(resp) => {
+            let status = resp.status();
+            let headers = ureq_collect_headers(&resp);
+            let mut reader = resp.into_reader();
+            let mut bytes: Vec<u8> = Vec::new();
+            reader.read_to_end(&mut bytes).map_err(|e| format!("Failed to read response: {e}"))?;
+            Ok(HttpResponseDto {
+                status: status as u16,
+                ok: status >= 200 && status < 300,
+                headers,
+                bytes,
+            })
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let headers = ureq_collect_headers(&resp);
+            let mut reader = resp.into_reader();
+            let mut bytes: Vec<u8> = Vec::new();
+            reader.read_to_end(&mut bytes).map_err(|e| format!("Failed to read response: {e}"))?;
+            Ok(HttpResponseDto {
+                status: status as u16,
+                ok: false,
+                headers,
+                bytes,
+            })
+        }
+        Err(e) => Err(format!("Request failed: {e}")),
+    }
+}
+
+#[tauri::command]
 fn create_dir(rel_path: String, state: tauri::State<'_, VaultState>) -> Result<(), String> {
     let root = state.0.lock().unwrap().clone().ok_or_else(|| "No vault selected".to_string())?;
     let path = resolve_in_vault(&root, &rel_path)?;
@@ -381,6 +497,8 @@ fn main() {
             write_draw_document,
             write_bytes_abs,
             write_draw_document_abs,
+            read_bytes_abs,
+            http_request,
             create_dir,
             create_file,
             rename_entry,
