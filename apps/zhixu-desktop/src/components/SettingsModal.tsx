@@ -1,4 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
+import type { OfficialAuthState } from "./AuthModal";
+import { logout } from "../lib/sync/officialClient";
+import { syncOfficialVault, type OfficialVaultSyncSummary } from "../lib/sync/officialSyncEngine";
 
 export type SettingsSectionId = "pro" | "sync" | "editor" | "ui" | "ai" | "about" | "logs";
 
@@ -55,20 +58,88 @@ type Props = {
   initialSection?: SettingsSectionId;
   cloudSyncEnabled: boolean;
   onCloudSyncEnabledChange: (next: boolean) => void;
+  vaultRoot: string | null;
+  officialBaseUrl: string;
+  onOfficialBaseUrlChange: (next: string) => void;
+  officialAuth: OfficialAuthState | null;
+  onOfficialAuthChange: (next: OfficialAuthState | null) => void;
+  onOpenAuth: (mode: "login" | "register") => void;
 };
 
-export function SettingsModal({ initialSection = "pro", cloudSyncEnabled, onCloudSyncEnabledChange }: Props) {
+export function SettingsModal({
+  initialSection = "pro",
+  cloudSyncEnabled,
+  onCloudSyncEnabledChange,
+  vaultRoot,
+  officialBaseUrl,
+  onOfficialBaseUrlChange,
+  officialAuth,
+  onOfficialAuthChange,
+  onOpenAuth,
+}: Props) {
   const [active, setActive] = useState<SettingsSectionId>(initialSection);
 
   const [aiEnabled, setAiEnabled] = useState(false);
   const [compactMode, setCompactMode] = useState(false);
   const [autoSave, setAutoSave] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [syncSummary, setSyncSummary] = useState<OfficialVaultSyncSummary | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncFinishedAt, setSyncFinishedAt] = useState<number | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     setActive(initialSection);
   }, [initialSection]);
 
   const activeSection = useMemo(() => SECTIONS.find((s) => s.id === active) ?? SECTIONS[0], [active]);
+
+  const runSyncNow = async () => {
+    if (syncing) return;
+    setSyncError(null);
+
+    if (!cloudSyncEnabled) {
+      setSyncError("请先开启“云同步”");
+      return;
+    }
+    if (!vaultRoot) {
+      setSyncError("请先打开一个库（Vault）");
+      return;
+    }
+    if (!officialAuth?.token) {
+      setSyncError("请先登录账号");
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      const summary = await syncOfficialVault({ vaultRoot, baseUrl: officialBaseUrl, token: officialAuth.token });
+      setSyncSummary(summary);
+      setSyncFinishedAt(Date.now());
+    } catch (e) {
+      setSyncError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const doLogout = async () => {
+    if (!officialAuth?.token) {
+      onOfficialAuthChange(null);
+      return;
+    }
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+    try {
+      await logout(officialBaseUrl, officialAuth.token);
+    } catch {
+      // ignore
+    } finally {
+      setLoggingOut(false);
+      onOfficialAuthChange(null);
+    }
+  };
 
   return (
     <div className="settingsModalBody">
@@ -98,20 +169,26 @@ export function SettingsModal({ initialSection = "pro", cloudSyncEnabled, onClou
           {active === "pro" ? (
             <div className="settingsCard">
               <SettingsRow
-                title="订阅状态"
-                description="管理你的知序 PRO 订阅与权益。"
+                title="账号"
+                description={officialAuth?.token ? `已登录：${officialAuth.me?.username || "—"}` : "登录后可使用官方同步与订阅能力。"}
                 control={
-                  <button type="button" className="settingsBtn" data-no-drag="true">
-                    查看
-                  </button>
+                  officialAuth?.token ? (
+                    <button type="button" className="settingsBtn" data-no-drag="true" onClick={() => void doLogout()} disabled={loggingOut}>
+                      {loggingOut ? "退出中…" : "退出登录"}
+                    </button>
+                  ) : (
+                    <button type="button" className="settingsBtn" data-no-drag="true" onClick={() => onOpenAuth("login")}>
+                      登录/注册
+                    </button>
+                  )
                 }
               />
               <SettingsRow
-                title="高级功能"
-                description="解锁跨端同步与高级编辑能力。"
+                title="订阅"
+                description={officialAuth?.token ? (officialAuth.me?.plan?.name ? officialAuth.me.plan.name : "未订阅") : "—"}
                 control={
                   <button type="button" className="settingsBtn" data-no-drag="true">
-                    了解
+                    查看
                   </button>
                 }
               />
@@ -125,16 +202,84 @@ export function SettingsModal({ initialSection = "pro", cloudSyncEnabled, onClou
                 description="开启或关闭跨端云同步能力。"
                 control={<Toggle checked={cloudSyncEnabled} onChange={onCloudSyncEnabledChange} />}
               />
-              <SettingsRow
-                title="同步策略"
-                description="选择同步触发与冲突处理方式。"
-                control={
-                  <select className="select" data-no-drag="true" defaultValue="smart">
-                    <option value="smart">智能</option>
-                    <option value="manual">手动</option>
-                  </select>
-                }
-              />
+
+              <div className="syncConfig">
+                <div className="syncConfigTitle">官方同步</div>
+
+                <label className="syncField">
+                  <div className="syncLabel">服务器</div>
+                  <input
+                    className="textInput"
+                    value={officialBaseUrl}
+                    onChange={(e) => onOfficialBaseUrlChange(e.target.value)}
+                    placeholder="https://zhixu.app"
+                    spellCheck={false}
+                  />
+                </label>
+
+                <div className="syncAccountRow">
+                  <div className="syncAccountInfo">
+                    <div className="syncLabel">账号</div>
+                    <div className="syncAccountText">
+                      {officialAuth?.token ? (
+                        <span>
+                          已登录：{officialAuth.me?.username || "—"}
+                          {officialAuth.me?.plan?.code ? <span className="syncPlan">（{officialAuth.me.plan.code}）</span> : null}
+                        </span>
+                      ) : (
+                        <span className="syncMuted">未登录</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="syncAccountActions">
+                    {officialAuth?.token ? (
+                      <button type="button" className="settingsBtn" data-no-drag="true" onClick={() => void doLogout()} disabled={loggingOut}>
+                        {loggingOut ? "退出中…" : "退出登录"}
+                      </button>
+                    ) : (
+                      <button type="button" className="settingsBtn" data-no-drag="true" onClick={() => onOpenAuth("login")}>
+                        登录/注册
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="syncActionsRow">
+                  <button
+                    type="button"
+                    className="settingsBtn syncNowBtn"
+                    data-no-drag="true"
+                    onClick={() => void runSyncNow()}
+                    disabled={!cloudSyncEnabled || syncing || !vaultRoot || !officialAuth?.token}
+                  >
+                    {syncing ? "同步中…" : "立即同步"}
+                  </button>
+                  {!cloudSyncEnabled ? <span className="syncMuted">开启“云同步”后可执行</span> : null}
+                </div>
+
+                {syncError ? <div className="syncError">{syncError}</div> : null}
+
+                {syncSummary ? (
+                  <div className="syncSummary">
+                    <div className="syncSummaryTitle">上次同步</div>
+                    <div className="syncSummaryGrid">
+                      <div>上传</div>
+                      <div>{syncSummary.uploaded}</div>
+                      <div>下载</div>
+                      <div>{syncSummary.downloaded}</div>
+                      <div>远端删除</div>
+                      <div>{syncSummary.deletedRemote}</div>
+                      <div>本地删除</div>
+                      <div>{syncSummary.deletedLocal}</div>
+                      <div>冲突</div>
+                      <div>{syncSummary.conflicts}</div>
+                      <div>失败</div>
+                      <div>{syncSummary.failed}</div>
+                    </div>
+                    {syncFinishedAt ? <div className="syncMuted">完成时间：{new Date(syncFinishedAt).toLocaleString()}</div> : null}
+                  </div>
+                ) : null}
+              </div>
             </div>
           ) : null}
 
@@ -228,4 +373,3 @@ export function SettingsModal({ initialSection = "pro", cloudSyncEnabled, onClou
     </div>
   );
 }
-

@@ -5,10 +5,52 @@ async function initDb() {
 CREATE TABLE IF NOT EXISTS users (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   username VARCHAR(64) NOT NULL,
+  email VARCHAR(255) NULL,
   password_hash VARCHAR(255) NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_users_username (username)
+  UNIQUE KEY uq_users_username (username),
+  UNIQUE KEY uq_users_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+`);
+
+  // Best-effort migration for older schemas.
+  try {
+    const [colRows] = await pool.query("SHOW COLUMNS FROM users LIKE 'email'");
+    const hasEmail = Array.isArray(colRows) && colRows.length > 0;
+    if (!hasEmail) {
+      await pool.query("ALTER TABLE users ADD COLUMN email VARCHAR(255) NULL AFTER username");
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  try {
+    const [idxRows] = await pool.query("SHOW INDEX FROM users WHERE Key_name = 'uq_users_email'");
+    const hasEmailIdx = Array.isArray(idxRows) && idxRows.length > 0;
+    if (!hasEmailIdx) {
+      await pool.query("ALTER TABLE users ADD UNIQUE KEY uq_users_email (email)");
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  await pool.query(`
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id CHAR(36) NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  name VARCHAR(128) NOT NULL DEFAULT '',
+  client VARCHAR(255) NOT NULL DEFAULT '',
+  ip VARCHAR(64) NOT NULL DEFAULT '',
+  location VARCHAR(128) NOT NULL DEFAULT '',
+  refresh_token_hash CHAR(64) NOT NULL DEFAULT '',
+  refresh_token_expires_at_ms BIGINT NOT NULL DEFAULT 0,
+  created_at_ms BIGINT NOT NULL,
+  last_seen_at_ms BIGINT NOT NULL,
+  revoked_at_ms BIGINT NULL,
+  PRIMARY KEY (id),
+  KEY idx_user_sessions_user_last_seen (user_id, last_seen_at_ms),
+  CONSTRAINT fk_user_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `);
 

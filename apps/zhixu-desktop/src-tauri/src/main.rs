@@ -30,6 +30,23 @@ struct VaultEntryDto {
     is_dir: bool,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VaultFileInfoDto {
+    path: String,
+    size_bytes: u64,
+    mtime_ms: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VaultStatDto {
+    path: String,
+    is_dir: bool,
+    size_bytes: u64,
+    mtime_ms: i64,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct HttpHeaderDto {
@@ -482,6 +499,91 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+fn system_time_to_epoch_ms(t: std::time::SystemTime) -> i64 {
+    use std::time::UNIX_EPOCH;
+    t.duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+fn should_skip_walk_dir(rel_path: &str) -> bool {
+    let p = rel_path.trim_matches('/').to_ascii_lowercase();
+    if p.is_empty() {
+        return false;
+    }
+    if p == ".zhixu/sync" || p.starts_with(".zhixu/sync/") {
+        return true;
+    }
+    if p == ".zhixu/conflicts" || p.starts_with(".zhixu/conflicts/") {
+        return true;
+    }
+    if p == ".zhixu/history" || p.starts_with(".zhixu/history/") {
+        return true;
+    }
+    false
+}
+
+#[tauri::command]
+fn stat_entry(rel_path: String, state: tauri::State<'_, VaultState>) -> Result<VaultStatDto, String> {
+    let root = state.0.lock().unwrap().clone().ok_or_else(|| "No vault selected".to_string())?;
+    let path = resolve_in_vault(&root, &rel_path)?;
+    let md = fs::metadata(&path).map_err(|e| format!("Failed to stat: {e}"))?;
+    let is_dir = md.is_dir();
+    let mtime_ms = md.modified().map(system_time_to_epoch_ms).unwrap_or(0);
+    Ok(VaultStatDto {
+        path: rel_path.replace('\\', "/").trim_matches('/').to_string(),
+        is_dir,
+        size_bytes: if is_dir { 0 } else { md.len() },
+        mtime_ms,
+    })
+}
+
+#[tauri::command]
+fn walk_vault_files(state: tauri::State<'_, VaultState>) -> Result<Vec<VaultFileInfoDto>, String> {
+    let root = state.0.lock().unwrap().clone().ok_or_else(|| "No vault selected".to_string())?;
+
+    fn walk(root: &Path, dir: &Path, prefix: &str, out: &mut Vec<VaultFileInfoDto>) -> Result<(), String> {
+        for entry in fs::read_dir(dir).map_err(|e| format!("Failed to list dir: {e}"))? {
+            let entry = entry.map_err(|e| format!("Failed to read entry: {e}"))?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name == ".DS_Store" {
+                continue;
+            }
+
+            let child_path = entry.path();
+            let ft = entry.file_type().map_err(|e| format!("Failed to read type: {e}"))?;
+            if ft.is_symlink() {
+                continue;
+            }
+
+            let rel = if prefix.is_empty() { name.clone() } else { format!("{prefix}/{name}") };
+
+            if ft.is_dir() {
+                if should_skip_walk_dir(&rel) {
+                    continue;
+                }
+                walk(root, &child_path, &rel, out)?;
+                continue;
+            }
+
+            if !ft.is_file() {
+                continue;
+            }
+
+            let md = fs::metadata(&child_path).map_err(|e| format!("Failed to stat file: {e}"))?;
+            let size_bytes = md.len();
+            let mtime_ms = md.modified().map(system_time_to_epoch_ms).unwrap_or(0);
+            let rel_path = to_vault_path(root, &child_path)?;
+            out.push(VaultFileInfoDto { path: rel_path, size_bytes, mtime_ms });
+        }
+        Ok(())
+    }
+
+    let mut out: Vec<VaultFileInfoDto> = Vec::new();
+    walk(&root, &root, "", &mut out)?;
+    Ok(out)
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -505,6 +607,8 @@ fn main() {
             http_request,
             create_dir,
             create_file,
+            stat_entry,
+            walk_vault_files,
             rename_entry,
             delete_entry
         ])

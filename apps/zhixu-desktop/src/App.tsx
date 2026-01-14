@@ -6,6 +6,7 @@ import { message } from "@tauri-apps/plugin-dialog";
 import type { CodeMirrorSelection } from "./components/CodeMirrorEditor";
 import type { MarkdownEditorMode } from "./components/ZhixuMarkdownEditor";
 import { FileTree, type TreeNode } from "./components/FileTree";
+import { AuthModal, type AuthModalMode, type OfficialAuthState } from "./components/AuthModal";
 import { PluginDeveloperWindow } from "./components/PluginDeveloperWindow";
 import { Popover } from "./components/Popover";
 import { WorkshopEditor } from "./components/WorkshopEditor";
@@ -43,6 +44,7 @@ import { basename, dirname, join } from "./lib/path";
 import { getFileTypeLabel, isTextFile, isZhixuDrawFile, stripExtension } from "./lib/fileType";
 import type { InstalledPlugin, PluginIndexItem } from "./lib/plugins/types";
 import { fetchOfficialIndex, listInstalledPlugins } from "./lib/plugins/workshop";
+import { logout as officialLogout, me as officialMe } from "./lib/sync/officialClient";
 import {
   createDir,
   createFile,
@@ -283,6 +285,112 @@ export function App() {
       // ignore
     }
   }, [cloudSyncEnabled]);
+
+  const [officialSyncBaseUrl, setOfficialSyncBaseUrl] = useState<string>(() => {
+    try {
+      return localStorage.getItem("zhixu:officialSyncBaseUrl") || "https://zhixu.app";
+    } catch {
+      return "https://zhixu.app";
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("zhixu:officialSyncBaseUrl", officialSyncBaseUrl);
+    } catch {
+      // ignore
+    }
+  }, [officialSyncBaseUrl]);
+
+  const [officialAuth, setOfficialAuth] = useState<OfficialAuthState | null>(() => {
+    try {
+      const raw = localStorage.getItem("zhixu:officialAuth");
+      if (!raw) return null;
+      const obj = JSON.parse(raw) as OfficialAuthState;
+      if (!obj || typeof obj !== "object" || !obj.token) return null;
+      return obj;
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    try {
+      if (officialAuth?.token) localStorage.setItem("zhixu:officialAuth", JSON.stringify(officialAuth));
+      else localStorage.removeItem("zhixu:officialAuth");
+    } catch {
+      // ignore
+    }
+  }, [officialAuth]);
+
+  useEffect(() => {
+    if (!officialAuth?.token) return;
+    if (officialAuth.me?.username) return;
+    void (async () => {
+      try {
+        const r = await officialMe(officialSyncBaseUrl, officialAuth.token);
+        if (r.ok && r.value) {
+          setOfficialAuth((prev) => {
+            if (!prev?.token || prev.token !== officialAuth.token) return prev;
+            return { ...prev, me: r.value };
+          });
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, [officialAuth?.token, officialAuth?.me?.username, officialSyncBaseUrl]);
+
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<AuthModalMode>("login");
+  const pendingEnableCloudSyncRef = useRef(false);
+
+  const openAuthModal = useCallback(
+    (mode: AuthModalMode = "login") => {
+      setAuthModalMode(mode);
+      setAuthModalOpen(true);
+    },
+    [setAuthModalMode, setAuthModalOpen],
+  );
+
+  const closeAuthModal = useCallback(() => {
+    setAuthModalOpen(false);
+    pendingEnableCloudSyncRef.current = false;
+  }, []);
+
+  const handleAuth = useCallback(
+    (auth: OfficialAuthState) => {
+      setOfficialAuth(auth);
+      if (pendingEnableCloudSyncRef.current) {
+        pendingEnableCloudSyncRef.current = false;
+        setCloudSyncEnabled(true);
+      }
+    },
+    [setOfficialAuth, setCloudSyncEnabled],
+  );
+
+  const handleCloudSyncEnabledChange = useCallback(
+    (next: boolean) => {
+      if (next && !officialAuth?.token) {
+        pendingEnableCloudSyncRef.current = true;
+        openAuthModal("login");
+        return;
+      }
+      pendingEnableCloudSyncRef.current = false;
+      setCloudSyncEnabled(next);
+    },
+    [officialAuth?.token, openAuthModal, setCloudSyncEnabled],
+  );
+
+  const doLogout = useCallback(async () => {
+    const token = officialAuth?.token || "";
+    setOfficialAuth(null);
+    setCloudSyncEnabled(false);
+    if (!token) return;
+    try {
+      await officialLogout(officialSyncBaseUrl, token);
+    } catch {
+      // ignore
+    }
+  }, [officialAuth?.token, officialSyncBaseUrl]);
 
   const [workshopBaseUrl, setWorkshopBaseUrl] = useState<string>(() => {
     try {
@@ -2107,7 +2215,19 @@ export function App() {
           className="tabContextMenu accountMenu"
         >
           <div className="menu">
-            <button type="button" className="menuItem" onClick={() => setAccountMenuOpen(false)}>
+            <button
+              type="button"
+              className="menuItem"
+              onClick={() => {
+                setAccountMenuOpen(false);
+                if (!officialAuth?.token) {
+                  openAuthModal("login");
+                  return;
+                }
+                setSettingsInitialSection("pro");
+                setSettingsOpen(true);
+              }}
+            >
               <span className="menuIcon" aria-hidden="true">
                 <IconLucideCircleUserRound size={16} />
               </span>
@@ -2131,7 +2251,14 @@ export function App() {
 
             <div className="menuSeparator" role="separator" />
 
-            <button type="button" className="menuItem" onClick={() => setAccountMenuOpen(false)}>
+            <button
+              type="button"
+              className="menuItem"
+              onClick={() => {
+                setAccountMenuOpen(false);
+                void doLogout();
+              }}
+            >
               <span className="menuIcon" aria-hidden="true">
                 <IconClose size={16} />
               </span>
@@ -2147,7 +2274,7 @@ export function App() {
               <div className="sidebarHeaderLeft">
                 {false ? (
                   <div className="vaultPicker" ref={vaultPickerRef}>
-                    <Tooltip label={vaultRoot ? formatPathForDisplay(vaultRoot) : ""} placement="right">
+                    <Tooltip label={vaultRoot ? formatPathForDisplay(vaultRoot!) : ""} placement="right">
                       <button
                         type="button"
                         className="vaultPickerBtn"
@@ -2558,7 +2685,16 @@ export function App() {
               <SettingsModal
                 initialSection={settingsInitialSection}
                 cloudSyncEnabled={cloudSyncEnabled}
-                onCloudSyncEnabledChange={setCloudSyncEnabled}
+                onCloudSyncEnabledChange={handleCloudSyncEnabledChange}
+                vaultRoot={vaultRoot}
+                officialBaseUrl={officialSyncBaseUrl}
+                onOfficialBaseUrlChange={setOfficialSyncBaseUrl}
+                officialAuth={officialAuth}
+                onOfficialAuthChange={(next) => {
+                  setOfficialAuth(next);
+                  if (!next?.token) setCloudSyncEnabled(false);
+                }}
+                onOpenAuth={openAuthModal}
               />
             </div>
           </div>
@@ -2613,6 +2749,16 @@ export function App() {
       ) : null}
 
       {pluginDevOpen ? <PluginDeveloperWindow onClose={() => setPluginDevOpen(false)} /> : null}
+
+      {authModalOpen ? (
+        <AuthModal
+          mode={authModalMode}
+          baseUrl={officialSyncBaseUrl}
+          onBaseUrlChange={setOfficialSyncBaseUrl}
+          onClose={closeAuthModal}
+          onAuth={handleAuth}
+        />
+      ) : null}
 
       {filePickerOpen ? (
         <div

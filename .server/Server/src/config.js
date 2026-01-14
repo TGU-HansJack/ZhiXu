@@ -32,5 +32,7 @@ module.exports = {
     database: requireEnv("MYSQL_DATABASE", "zhixu")
   },
   jwtSecret: requireEnv("JWT_SECRET", "dev_secret_change_me"),
+  jwtAccessTtl: process.env.JWT_ACCESS_TTL || "30d",
+  refreshTokenTtlDays: parseIntEnv("REFRESH_TOKEN_TTL_DAYS", 30),
   bcryptRounds: parseIntEnv("BCRYPT_ROUNDS", 12)
 };

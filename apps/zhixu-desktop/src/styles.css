@@ -1904,6 +1904,21 @@ input {
   background: rgba(255, 255, 255, 0.9);
 }
 
+.textInput {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  box-sizing: border-box;
+}
+
+.textInput:focus {
+  outline: 2px solid rgba(47, 111, 235, 0.22);
+  outline-offset: 1px;
+}
+
 .settingsMeta {
   font-size: 12px;
   color: var(--muted);
@@ -1959,6 +1974,198 @@ input {
   font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   resize: none;
   box-sizing: border-box;
+}
+
+/* Auth modal */
+.authModal {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.authBody {
+  padding: 14px;
+}
+
+.authTabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.authTab {
+  flex: 1 1 0;
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 8px 10px;
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.authTab:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text);
+}
+
+.authTab.active {
+  background: rgba(47, 111, 235, 0.12);
+  border-color: rgba(47, 111, 235, 0.35);
+  color: var(--text);
+}
+
+.authForm {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.authField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.authLabel {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.authError {
+  margin-top: 2px;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.authActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.authSubmitBtn {
+  background: rgba(47, 111, 235, 0.12);
+  border-color: rgba(47, 111, 235, 0.4);
+}
+
+.authSubmitBtn:hover {
+  background: rgba(47, 111, 235, 0.18);
+}
+
+.authSubmitBtn:disabled,
+.authCancelBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Sync settings */
+.syncConfig {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.syncConfigTitle {
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--text);
+}
+
+.syncField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.syncLabel {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.syncAccountRow {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.syncAccountInfo {
+  flex: 1 1 auto;
+  min-width: 220px;
+}
+
+.syncAccountText {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.syncMuted {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.syncPlan {
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.syncActionsRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.syncNowBtn {
+  background: rgba(47, 111, 235, 0.12);
+  border-color: rgba(47, 111, 235, 0.4);
+}
+
+.syncNowBtn:hover {
+  background: rgba(47, 111, 235, 0.18);
+}
+
+.syncError {
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.syncSummary {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.6);
+  padding: 10px;
+}
+
+.syncSummaryTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.syncSummaryGrid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--text);
 }
 
 /* Workshop (Extensions) */

@@ -8,6 +8,19 @@ export type VaultEntry = {
   isDir: boolean;
 };
 
+export type VaultFileInfo = {
+  path: string;
+  sizeBytes: number;
+  mtimeMs: number;
+};
+
+export type VaultStat = {
+  path: string;
+  isDir: boolean;
+  sizeBytes: number;
+  mtimeMs: number;
+};
+
 export type PersistedState = {
   lastVault: string | null;
   recentVaults: string[];
@@ -44,6 +57,14 @@ export async function getPersistedState(): Promise<PersistedState> {
 
 export async function listDir(relPath: string): Promise<VaultEntry[]> {
   return invoke<VaultEntry[]>("list_dir", { relPath });
+}
+
+export async function statEntry(relPath: string): Promise<VaultStat> {
+  return invoke<VaultStat>("stat_entry", { relPath });
+}
+
+export async function walkVaultFiles(): Promise<VaultFileInfo[]> {
+  return invoke<VaultFileInfo[]>("walk_vault_files");
 }
 
 export async function readTextFile(relPath: string): Promise<string> {
