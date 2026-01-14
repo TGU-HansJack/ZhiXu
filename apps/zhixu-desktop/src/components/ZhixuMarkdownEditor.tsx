@@ -31,11 +31,6 @@ type EditorWindow = Window & {
   __setShowLineNumbers?: (v: boolean) => void;
   __setShowProperties?: (v: boolean) => void;
   __setReadableLineLength?: (v: boolean) => void;
-  __setStrictLineBreaks?: (v: boolean) => void;
-  __setFoldHeadings?: (v: boolean) => void;
-  __setFoldIndent?: (v: boolean) => void;
-  __setShowIndentGuides?: (v: boolean) => void;
-  __setTextAlignRight?: (v: boolean) => void;
   __setDoc?: (text: string, selStart: number, selEnd: number) => void;
   ZhixuEditor?: {
     docChanged?: (text: string, selStart: number, selEnd: number) => void;
@@ -158,11 +153,6 @@ export function ZhixuMarkdownEditor({
       win.__setShowLineNumbers?.(latest.displaySettings.showLineNumbers);
       win.__setShowProperties?.(latest.displaySettings.notePropertiesDisplay !== "source");
       win.__setReadableLineLength?.(latest.displaySettings.readableLineLength);
-      win.__setStrictLineBreaks?.(latest.displaySettings.strictLineBreaks);
-      win.__setFoldHeadings?.(latest.displaySettings.foldHeadings);
-      win.__setFoldIndent?.(latest.displaySettings.foldIndent);
-      win.__setShowIndentGuides?.(latest.displaySettings.showIndentGuides);
-      win.__setTextAlignRight?.(latest.displaySettings.textAlignRight);
       win.__setDoc?.(latest.value, latest.selection.anchor, latest.selection.head);
       lastEditorValueRef.current = latest.value;
       lastEditorSelRef.current = latest.selection;
@@ -199,20 +189,10 @@ export function ZhixuMarkdownEditor({
     win.__setShowLineNumbers?.(displaySettings.showLineNumbers);
     win.__setShowProperties?.(displaySettings.notePropertiesDisplay !== "source");
     win.__setReadableLineLength?.(displaySettings.readableLineLength);
-    win.__setStrictLineBreaks?.(displaySettings.strictLineBreaks);
-    win.__setFoldHeadings?.(displaySettings.foldHeadings);
-    win.__setFoldIndent?.(displaySettings.foldIndent);
-    win.__setShowIndentGuides?.(displaySettings.showIndentGuides);
-    win.__setTextAlignRight?.(displaySettings.textAlignRight);
   }, [
-    displaySettings.foldHeadings,
-    displaySettings.foldIndent,
     displaySettings.notePropertiesDisplay,
     displaySettings.readableLineLength,
-    displaySettings.showIndentGuides,
     displaySettings.showLineNumbers,
-    displaySettings.strictLineBreaks,
-    displaySettings.textAlignRight,
   ]);
 
   useEffect(() => {

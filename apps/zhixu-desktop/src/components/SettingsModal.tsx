@@ -331,9 +331,6 @@ export function SettingsModal({
                     </SettingsSelect>
                   }
                 />
-              </div>
-
-              <div className="settingsCard">
                 <SettingsRow
                   title="缩减栏宽"
                   description="开启后将限制每行字数，使屏幕显示的内容减少，但使较长的段落更具可读性。"
@@ -341,16 +338,6 @@ export function SettingsModal({
                     <Toggle
                       checked={editorDisplaySettings.readableLineLength}
                       onChange={(next) => updateEditorDisplaySettings({ readableLineLength: next })}
-                    />
-                  }
-                />
-                <SettingsRow
-                  title="严格换行"
-                  description="开启后，根据 Markdown 标准，单个换行符在预览模式下不再生效。"
-                  control={
-                    <Toggle
-                      checked={editorDisplaySettings.strictLineBreaks}
-                      onChange={(next) => updateEditorDisplaySettings({ strictLineBreaks: next })}
                     />
                   }
                 />
@@ -372,52 +359,12 @@ export function SettingsModal({
                   }
                 />
                 <SettingsRow
-                  title="折叠标题"
-                  description="开启后可以将正文内容折叠到标题行。"
-                  control={
-                    <Toggle
-                      checked={editorDisplaySettings.foldHeadings}
-                      onChange={(next) => updateEditorDisplaySettings({ foldHeadings: next })}
-                    />
-                  }
-                />
-                <SettingsRow
-                  title="折叠缩进"
-                  description="开启后可以将缩进内容（如列表）折叠起来。"
-                  control={
-                    <Toggle
-                      checked={editorDisplaySettings.foldIndent}
-                      onChange={(next) => updateEditorDisplaySettings({ foldIndent: next })}
-                    />
-                  }
-                />
-                <SettingsRow
                   title="显示行号"
                   description="在左侧显示行号。"
                   control={
                     <Toggle
                       checked={editorDisplaySettings.showLineNumbers}
                       onChange={(next) => updateEditorDisplaySettings({ showLineNumbers: next })}
-                    />
-                  }
-                />
-                <SettingsRow
-                  title="显示缩进参考线"
-                  description="在缩进的行之间显示参考线。"
-                  control={
-                    <Toggle
-                      checked={editorDisplaySettings.showIndentGuides}
-                      onChange={(next) => updateEditorDisplaySettings({ showIndentGuides: next })}
-                    />
-                  }
-                />
-                <SettingsRow
-                  title="文本右对齐"
-                  description="将文本的默认水平对齐方式修改为右对齐。"
-                  control={
-                    <Toggle
-                      checked={editorDisplaySettings.textAlignRight}
-                      onChange={(next) => updateEditorDisplaySettings({ textAlignRight: next })}
                     />
                   }
                 />
