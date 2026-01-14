@@ -121,9 +121,13 @@ fn resolve_in_vault(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
         return Ok(c);
     }
 
-    // For non-existing targets (e.g. new file), validate parent.
-    let parent = candidate.parent().unwrap_or(root);
-    let p = parent.canonicalize().map_err(|e| format!("Invalid path: {e}"))?;
+    // For non-existing targets (e.g. new file/dir), validate the nearest existing ancestor.
+    // This supports create_dir_all while still preventing symlink-escape via existing paths.
+    let mut probe = candidate.parent().unwrap_or(root).to_path_buf();
+    while probe != *root && !probe.exists() {
+        probe = probe.parent().unwrap_or(root).to_path_buf();
+    }
+    let p = probe.canonicalize().map_err(|e| format!("Invalid path: {e}"))?;
     if !p.starts_with(&root_canon) {
         return Err("Path escapes vault".to_string());
     }
