@@ -606,8 +606,8 @@
         grid-template-columns: auto 1fr auto;
         align-items: center;
         gap: 6px;
-        padding: 2px 6px;
-        border-bottom: 1px solid var(--outline);
+        padding: 6px 6px;
+        border-bottom: none;
         background: var(--surface);
         color: var(--onSurface);
         font-family: var(--editorFont);
@@ -644,10 +644,10 @@
         cursor: pointer;
         line-height: 1;
       }
-      .zhixuHeaderBtn:hover { opacity: 1; }
-      .zhixuHeaderBtn:active { opacity: 1; }
-      .zhixuHeaderBtn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(47, 111, 235, 0.22); opacity: 1; }
-      .zhixuHeaderBtn:disabled { opacity: 0.42; cursor: not-allowed; }
+      .zhixuHeaderBtn:not([aria-disabled="true"]):hover { opacity: 1; }
+      .zhixuHeaderBtn:not([aria-disabled="true"]):active { opacity: 1; }
+      .zhixuHeaderBtn:focus-visible { outline: none; box-shadow: none; opacity: 1; }
+      .zhixuHeaderBtn[aria-disabled="true"] { opacity: 0.42; cursor: not-allowed; }
       .zhixuHeaderBtn svg { width: 16px; height: 16px; display: block; }
 
       .zhixuBreadcrumb {
@@ -677,7 +677,11 @@
       .zhixuCrumb:hover { background: rgba(127, 127, 127, 0.10); }
       .zhixuCrumb:active { background: rgba(127, 127, 127, 0.14); }
       .zhixuCrumb[contenteditable="true"] { cursor: text; }
-      .zhixuCrumbFile { font-weight: 400; }
+      .zhixuCrumb:focus { outline: none; }
+      .zhixuCrumb:focus-visible { outline: none; box-shadow: none; }
+      .zhixuCrumbFile { font-weight: 400; cursor: text; }
+      .zhixuCrumbFile:hover,
+      .zhixuCrumbFile:active { background: transparent; }
       .zhixuCrumbSep {
         opacity: 0.55;
         padding: 0 2px;
@@ -688,6 +692,77 @@
         opacity: 0.6;
         font: 13px/1.2 var(--editorFont);
         padding: 4px 6px;
+      }
+
+      /* Header tooltips (match app tooltipBubble styling). */
+      .zhixuTooltipBubble {
+        --tooltip-bg: rgba(0, 0, 0, 0.92);
+        --tooltip-gap: 4px;
+        --tooltip-arrow: 8px;
+        --tooltip-tip: calc(var(--tooltip-arrow) * 0.7071);
+        --tooltip-arrow-overlap: 1px;
+        --tooltip-offset: calc(var(--tooltip-tip) + var(--tooltip-gap));
+        position: fixed;
+        z-index: 2147483647;
+        padding: 5px 8px;
+        border-radius: 4px;
+        background: var(--tooltip-bg);
+        color: #ffffff;
+        font-size: 13px;
+        line-height: 1.15;
+        white-space: pre-line;
+        overflow-wrap: anywhere;
+        width: max-content;
+        max-width: min(420px, calc(100vw - 16px));
+        pointer-events: none;
+        opacity: 1;
+        transform: translate(var(--tooltip-translate-x, 0), var(--tooltip-translate-y, 0)) scale(1);
+        filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.25));
+      }
+      .zhixuTooltipBubble[hidden] { display: none; }
+      .zhixuTooltipBubble::after {
+        content: "";
+        position: absolute;
+        width: var(--tooltip-arrow);
+        height: var(--tooltip-arrow);
+        background: var(--tooltip-bg);
+        transform: rotate(45deg);
+      }
+      .zhixuTooltipBubble[data-placement="right"] {
+        --tooltip-translate-x: var(--tooltip-offset);
+        --tooltip-translate-y: -50%;
+      }
+      .zhixuTooltipBubble[data-placement="right"]::after {
+        left: calc(-0.5 * var(--tooltip-arrow) + var(--tooltip-arrow-overlap));
+        top: var(--zhixu-tooltip-arrow-y, 50%);
+        transform: translateY(-50%) rotate(45deg);
+      }
+      .zhixuTooltipBubble[data-placement="left"] {
+        --tooltip-translate-x: calc(-100% - var(--tooltip-offset));
+        --tooltip-translate-y: -50%;
+      }
+      .zhixuTooltipBubble[data-placement="left"]::after {
+        right: calc(-0.5 * var(--tooltip-arrow) + var(--tooltip-arrow-overlap));
+        top: var(--zhixu-tooltip-arrow-y, 50%);
+        transform: translateY(-50%) rotate(45deg);
+      }
+      .zhixuTooltipBubble[data-placement="top"] {
+        --tooltip-translate-x: -50%;
+        --tooltip-translate-y: calc(-100% - var(--tooltip-offset));
+      }
+      .zhixuTooltipBubble[data-placement="top"]::after {
+        left: var(--zhixu-tooltip-arrow-x, 50%);
+        bottom: calc(-0.5 * var(--tooltip-arrow) + var(--tooltip-arrow-overlap));
+        transform: translateX(-50%) rotate(45deg);
+      }
+      .zhixuTooltipBubble[data-placement="bottom"] {
+        --tooltip-translate-x: -50%;
+        --tooltip-translate-y: var(--tooltip-offset);
+      }
+      .zhixuTooltipBubble[data-placement="bottom"]::after {
+        left: var(--zhixu-tooltip-arrow-x, 50%);
+        top: calc(-0.5 * var(--tooltip-arrow) + var(--tooltip-arrow-overlap));
+        transform: translateX(-50%) rotate(45deg);
       }
 
       .zhixuHeaderMenuWrap { position: relative; }
@@ -1142,10 +1217,10 @@
   <body>
     <div id="zhixuEditorHeader" class="workshopEditorHeader zhixuEditorHeader" role="toolbar" aria-label="Editor header">
       <div class="zhixuEditorHeaderLeft">
-        <button id="zhixuHeaderBack" class="zhixuHeaderBtn" type="button" aria-label="后退" title="后退">
+        <button id="zhixuHeaderBack" class="zhixuHeaderBtn" type="button" aria-label="后退" data-zhixu-tooltip="后退">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left-icon lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
         </button>
-        <button id="zhixuHeaderForward" class="zhixuHeaderBtn" type="button" aria-label="前进" title="前进">
+        <button id="zhixuHeaderForward" class="zhixuHeaderBtn" type="button" aria-label="前进" data-zhixu-tooltip="前进">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right-icon lucide-arrow-right"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
         </button>
       </div>
@@ -1159,7 +1234,6 @@
             class="zhixuCrumb zhixuCrumbFile"
             role="textbox"
             aria-label="文件名"
-            title="点击编辑文件名"
             tabindex="0"
             contenteditable="false"
             spellcheck="false"
@@ -1170,7 +1244,7 @@
       </div>
 
       <div class="zhixuEditorHeaderRight">
-        <button id="zhixuHeaderModeToggle" class="zhixuHeaderBtn" type="button" aria-label="切换视图" title="切换视图">
+        <button id="zhixuHeaderModeToggle" class="zhixuHeaderBtn" type="button" aria-label="切换视图" data-zhixu-tooltip="">
           <span id="zhixuModeIconBook" aria-hidden="true">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-open-icon lucide-book-open"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
           </span>
@@ -1180,7 +1254,7 @@
         </button>
 
         <div class="zhixuHeaderMenuWrap">
-          <button id="zhixuHeaderMoreBtn" class="zhixuHeaderBtn" type="button" aria-label="更多选项" title="更多选项">
+          <button id="zhixuHeaderMoreBtn" class="zhixuHeaderBtn" type="button" aria-label="更多选项" data-zhixu-tooltip="更多选项">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ellipsis-vertical-icon lucide-ellipsis-vertical"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
           </button>
           <div id="zhixuHeaderMenu" class="zhixuHeaderMenu" hidden>
@@ -1252,6 +1326,112 @@
         let last = { headerPath: null, mode: null, canGoBack: null, canGoForward: null, showBacklinksInTab: null, isEditingFile: null };
         let lastParts = [];
 
+        const headerRoot = document.getElementById("zhixuEditorHeader");
+        const tooltipEl = (() => {
+          try {
+            const existing = document.getElementById("zhixuHeaderTooltip");
+            if (existing) return existing;
+            const el = document.createElement("div");
+            el.id = "zhixuHeaderTooltip";
+            el.className = "zhixuTooltipBubble";
+            el.setAttribute("role", "tooltip");
+            el.hidden = true;
+            document.body.appendChild(el);
+            return el;
+          } catch (_) {
+            return null;
+          }
+        })();
+
+        let tooltipTarget = null;
+
+        function resolveAutoPlacement(rect) {
+          const vw = window.innerWidth || document.documentElement.clientWidth;
+          const vh = window.innerHeight || document.documentElement.clientHeight;
+
+          const leftSpace = rect.left;
+          const rightSpace = vw - rect.right;
+          const topSpace = rect.top;
+          const bottomSpace = vh - rect.bottom;
+
+          const horizBest = rightSpace >= leftSpace ? "right" : "left";
+          const vertBest = bottomSpace >= topSpace ? "bottom" : "top";
+
+          const horizSpace = Math.max(leftSpace, rightSpace);
+          const vertSpace = Math.max(topSpace, bottomSpace);
+
+          if (horizSpace >= 140 || horizSpace >= vertSpace) return horizBest;
+          return vertBest;
+        }
+
+        function tooltipAnchorPoint(rect, placement) {
+          const xCenter = rect.left + rect.width / 2;
+          const yCenter = rect.top + rect.height / 2;
+          if (placement === "right") return { x: rect.right, y: yCenter };
+          if (placement === "left") return { x: rect.left, y: yCenter };
+          if (placement === "top") return { x: xCenter, y: rect.top };
+          return { x: xCenter, y: rect.bottom };
+        }
+
+        function hideTooltip() {
+          if (!tooltipEl) return;
+          tooltipEl.hidden = true;
+          tooltipTarget = null;
+        }
+
+        function showTooltipFor(el) {
+          if (!tooltipEl) return;
+          if (!el) return;
+          if (isEditingFile && el === fileEl) return;
+          const label = String(el.getAttribute("data-zhixu-tooltip") || "").trim();
+          if (!label) return;
+
+          const rect = el.getBoundingClientRect();
+          const placement = "bottom";
+          const anchor = tooltipAnchorPoint(rect, placement);
+          tooltipEl.textContent = label;
+          tooltipEl.dataset.placement = placement;
+          tooltipEl.style.left = `${anchor.x}px`;
+          tooltipEl.style.top = `${anchor.y}px`;
+          tooltipEl.hidden = false;
+
+          // Clamp inside viewport to avoid very narrow/flat tooltips and keep long text readable.
+          try {
+            const vw = window.innerWidth || document.documentElement.clientWidth;
+            const margin = 8;
+            const tipRect = tooltipEl.getBoundingClientRect();
+            let dx = 0;
+            if (tipRect.left < margin) dx = margin - tipRect.left;
+            else if (tipRect.right > vw - margin) dx = (vw - margin) - tipRect.right;
+            if (dx) tooltipEl.style.left = `${anchor.x + dx}px`;
+          } catch (_) {}
+
+          // Align the arrow towards the actual anchor (button) position.
+          try {
+            const tipRect = tooltipEl.getBoundingClientRect();
+            const arrowRaw = getComputedStyle(tooltipEl).getPropertyValue("--tooltip-arrow").trim();
+            const arrowSize = Number.parseFloat(arrowRaw) || 8;
+            const pad = Math.max(8, arrowSize);
+            const bubbleW = tipRect.width || 0;
+            const xInBubble = anchor.x - tipRect.left;
+            const maxX = Math.max(pad, bubbleW - pad);
+            const clampedX = Math.max(pad, Math.min(maxX, xInBubble));
+            tooltipEl.style.setProperty("--zhixu-tooltip-arrow-x", `${clampedX}px`);
+          } catch (_) {}
+        }
+
+        function refreshTooltipFromTarget(target) {
+          if (!headerRoot) return;
+          const el = target && target.closest ? target.closest("[data-zhixu-tooltip]") : null;
+          if (!el || !headerRoot.contains(el)) {
+            hideTooltip();
+            return;
+          }
+          if (tooltipTarget === el && tooltipEl && !tooltipEl.hidden) return;
+          tooltipTarget = el;
+          showTooltipFor(el);
+        }
+
         function getPayload() {
           return window.__payload || {};
         }
@@ -1294,6 +1474,7 @@
         function setMenuOpen(open) {
           if (!menu || !moreBtn) return;
           menu.hidden = !open;
+          hideTooltip();
           try {
             moreBtn.setAttribute("aria-expanded", open ? "true" : "false");
           } catch (_) {}
@@ -1315,7 +1496,7 @@
             btn.type = "button";
             btn.className = "zhixuCrumb";
             btn.textContent = name;
-            btn.title = name;
+            btn.dataset.zhixuTooltip = name;
             btn.dataset.kind = "folder";
             btn.dataset.path = folderParts.slice(0, i + 1).join("/");
             foldersEl.appendChild(btn);
@@ -1341,8 +1522,14 @@
             const p = getPayload();
             const canBack = !!p.canGoBack;
             const canForward = !!p.canGoForward;
-            if (backBtn) backBtn.disabled = !canBack;
-            if (forwardBtn) forwardBtn.disabled = !canForward;
+            if (backBtn) {
+              backBtn.disabled = false;
+              backBtn.setAttribute("aria-disabled", canBack ? "false" : "true");
+            }
+            if (forwardBtn) {
+              forwardBtn.disabled = false;
+              forwardBtn.setAttribute("aria-disabled", canForward ? "false" : "true");
+            }
 
             const mode = p.mode === "source" ? "source" : "live";
             const currentView = mode === "source" ? "编辑视图" : "阅读视图";
@@ -1351,7 +1538,7 @@
 
             if (modeBtn) {
               modeBtn.dataset.nextMode = nextMode;
-              modeBtn.title = `该标签页处于${currentView}中\n点击此处切换至${nextView}\nCtrl+单击以在新标签页中打开`;
+              modeBtn.dataset.zhixuTooltip = `该标签页处于${currentView}中\n点击此处切换至${nextView}\nCtrl+单击以在新标签页中打开`;
             }
             if (bookIcon) bookIcon.hidden = nextMode !== "live";
             if (penIcon) penIcon.hidden = nextMode !== "source";
@@ -1413,7 +1600,49 @@
           } catch (_) {}
         }
 
-        function enterFileEdit(ev) {
+        function placeCaretAtEnd(el) {
+          try {
+            const sel = window.getSelection && window.getSelection();
+            if (!sel) return false;
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            range.collapse(false);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            return true;
+          } catch (_) {
+            return false;
+          }
+        }
+
+        function placeCaretAtPoint(el, x, y) {
+          try {
+            const sel = window.getSelection && window.getSelection();
+            if (!sel) return false;
+
+            let range = null;
+            if (typeof document.caretRangeFromPoint === "function") {
+              range = document.caretRangeFromPoint(x, y);
+            } else if (typeof document.caretPositionFromPoint === "function") {
+              const pos = document.caretPositionFromPoint(x, y);
+              if (pos && pos.offsetNode) {
+                range = document.createRange();
+                range.setStart(pos.offsetNode, pos.offset || 0);
+                range.collapse(true);
+              }
+            }
+            if (!range) return false;
+            if (!el.contains(range.startContainer)) return false;
+
+            sel.removeAllRanges();
+            sel.addRange(range);
+            return true;
+          } catch (_) {
+            return false;
+          }
+        }
+
+        function enterFileEdit(ev, selectAll) {
           if (isEditingFile) return;
           const p = getPayload();
           const headerPath = String(p.headerPath || "").trim();
@@ -1429,7 +1658,13 @@
           try { fileEl.contentEditable = "true"; } catch (_) {}
           try {
             fileEl.focus();
-            selectAllText(fileEl);
+            if (selectAll === true) {
+              selectAllText(fileEl);
+            } else if (ev && typeof ev.clientX === "number" && typeof ev.clientY === "number") {
+              if (!placeCaretAtPoint(fileEl, ev.clientX, ev.clientY)) placeCaretAtEnd(fileEl);
+            } else {
+              placeCaretAtEnd(fileEl);
+            }
           } catch (_) {}
           try { ev && ev.stopPropagation && ev.stopPropagation(); } catch (_) {}
         }
@@ -1481,12 +1716,14 @@
         if (backBtn) {
           backBtn.addEventListener("click", (ev) => {
             try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
+            if (backBtn.getAttribute("aria-disabled") === "true") return;
             emit("navigateBack", {}, ev);
           });
         }
         if (forwardBtn) {
           forwardBtn.addEventListener("click", (ev) => {
             try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
+            if (forwardBtn.getAttribute("aria-disabled") === "true") return;
             emit("navigateForward", {}, ev);
           });
         }
@@ -1501,8 +1738,9 @@
           emit("revealFolder", { path }, ev);
         });
         fileEl.addEventListener("click", (ev) => {
-          try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
-          enterFileEdit(ev);
+          try { ev.stopPropagation(); } catch (_) {}
+          hideTooltip();
+          enterFileEdit(ev, false);
         });
         fileEl.addEventListener("keydown", (ev) => {
           if (!isEditingFile) return;
@@ -1613,7 +1851,7 @@
 
             if (action === "rename") {
               setMenuOpen(false);
-              enterFileEdit(ev);
+              enterFileEdit(ev, true);
               return;
             }
 
@@ -1633,6 +1871,36 @@
         // Initial paint.
         try { applyHeader(); } catch (_) {}
         try { if (typeof window.__scheduleHeaderApply === "function") window.__scheduleHeaderApply(); } catch (_) {}
+
+        // Tooltips for header controls.
+        if (headerRoot) {
+          headerRoot.addEventListener(
+            "pointerover",
+            (ev) => {
+              refreshTooltipFromTarget(ev.target);
+            },
+            true,
+          );
+          headerRoot.addEventListener(
+            "focusin",
+            (ev) => {
+              refreshTooltipFromTarget(ev.target);
+            },
+            true,
+          );
+          headerRoot.addEventListener("pointerleave", hideTooltip, true);
+          headerRoot.addEventListener(
+            "focusout",
+            (ev) => {
+              const next = ev.relatedTarget;
+              if (next && headerRoot.contains(next)) return;
+              hideTooltip();
+            },
+            true,
+          );
+        }
+        window.addEventListener("scroll", hideTooltip, true);
+        window.addEventListener("resize", hideTooltip);
       })();
     </script>
     <script
