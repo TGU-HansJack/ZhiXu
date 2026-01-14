@@ -2,6 +2,13 @@
   "version": 1,
   "plugins": [
     {
+      "id": "todo-zhixu",
+      "name": "待办",
+      "version": "1.0.0",
+      "description": "任务 / 日历 / 四象限三合一待办插件（桌面端）。",
+      "platforms": ["desktop"]
+    },
+    {
       "id": "webdav-zhixu",
       "name": "WebDAV 同步",
       "version": "1.0.0",
@@ -17,4 +24,3 @@
     }
   ]
 }
-

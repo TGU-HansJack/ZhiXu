@@ -1,4 +1,15 @@
-import { createDir, deleteEntry, httpRequest, listDir, readBytesAbs, readTextFile, writeBytesAbs, writeTextFile } from "../vaultApi";
+import {
+  createDir,
+  deleteEntry,
+  httpRequest,
+  listDir,
+  readBytesAbs,
+  readTextFile,
+  statEntry,
+  walkVaultFiles,
+  writeBytesAbs,
+  writeTextFile,
+} from "../vaultApi";
 import type { InstalledPlugin, PluginManifest } from "./types";
 
 const textDecoder = new TextDecoder();
@@ -44,6 +55,7 @@ export async function runInstalledPluginAction(opts: {
   vaultRoot: string;
   plugin: InstalledPlugin;
   actionId: string;
+  input?: unknown;
   log?: (line: string) => void;
 }): Promise<{ manifest: PluginManifest; result: PluginActionResult }> {
   const pluginId = opts.plugin.manifest.id;
@@ -104,6 +116,8 @@ export async function runInstalledPluginAction(opts: {
     },
     vault: {
       listDir: (relPath: string) => listDir(relPath),
+      stat: (relPath: string) => statEntry(relPath),
+      walkFiles: () => walkVaultFiles(),
       readBytes: async (relPath: string) => {
         const abs = joinAbsPath(opts.vaultRoot, relPath);
         return readBytesAbs(abs);
@@ -130,6 +144,7 @@ export async function runInstalledPluginAction(opts: {
   const ctx = {
     plugin: opts.plugin.manifest,
     config: configObj,
+    input: opts.input,
     vault: { root: opts.vaultRoot },
     app: { platform: "desktop" as const },
   };
@@ -140,7 +155,7 @@ export async function runInstalledPluginAction(opts: {
     throw new Error(`Action not found: ${opts.actionId}`);
   }
 
-  const res = action(ctx, api);
+  const res = action(ctx, api, opts.input);
   const result = (await Promise.resolve(res)) as PluginActionResult;
   return { manifest: opts.plugin.manifest, result };
 }

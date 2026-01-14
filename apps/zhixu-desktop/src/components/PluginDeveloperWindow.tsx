@@ -152,10 +152,35 @@ module.exports = { actions: { myPanel } };`}</code>
               <code>api.vault.listDir(relPath)</code>：列出目录（返回 path/name/isDir）
             </li>
             <li>
+              <code>api.vault.stat(relPath)</code>：读取文件信息（isDir/sizeBytes/mtimeMs）
+            </li>
+            <li>
+              <code>api.vault.walkFiles()</code>：递归列出 Vault 内所有文件（path/sizeBytes/mtimeMs）
+            </li>
+            <li>
               <code>api.vault.readBytes(relPath)</code> / <code>api.vault.writeBytes(relPath, bytes)</code>：读写二进制
             </li>
             <li>
               <code>api.vault.readText(relPath)</code> / <code>api.vault.writeText(relPath, text)</code>：读写 Markdown 文本
+            </li>
+          </ul>
+
+          <h3 className="pluginDevH3">侧栏交互（iframe）</h3>
+          <div className="pluginDevNote">
+            当你返回 <code>&#123; title, html &#125;</code> 渲染侧栏时，内容会运行在 sandboxed iframe 中；iframe 内会自动注入{" "}
+            <code>window.ZhixuPlugin</code>，用于与宿主通信。
+          </div>
+          <pre className="pluginDevPre">
+            <code>{`// 在插件返回的 HTML 里（iframe 环境）：
+ZhixuPlugin.runAction("toggleTask", { path: "note.md", lineIndex: 12 });
+ZhixuPlugin.openFile("note.md", 12);`}</code>
+          </pre>
+          <ul className="pluginDevList">
+            <li>
+              <code>ZhixuPlugin.runAction(actionId, input?)</code>：调用同一插件的 action（宿主返回 result）
+            </li>
+            <li>
+              <code>ZhixuPlugin.openFile(path, lineIndex?)</code>：在宿主中打开文件（可选定位到行）
             </li>
           </ul>
 

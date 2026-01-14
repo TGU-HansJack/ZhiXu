@@ -263,9 +263,21 @@ function getRootCssVar(name: string, fallback: string): string {
   }
 }
 
-function buildPluginSidebarSrcDoc(opts: { title: string; html: string; bg: string; text: string; muted: string; accent: string; border: string }) {
+function buildPluginSidebarSrcDoc(opts: {
+  title: string;
+  html: string;
+  bg: string;
+  text: string;
+  muted: string;
+  accent: string;
+  border: string;
+  pluginId?: string;
+  viewActionId?: string;
+}) {
   const title = escapeHtml(opts.title || "Plugin");
   const html = String(opts.html || "");
+  const pluginId = String(opts.pluginId || "");
+  const viewActionId = String(opts.viewActionId || "");
 
   return `<!doctype html>
 <html>
@@ -295,8 +307,65 @@ function buildPluginSidebarSrcDoc(opts: { title: string; html: string; bg: strin
       pre { white-space: pre-wrap; word-break: break-word; }
       hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
     </style>
+    <script>
+      (function () {
+        const pluginId = ${JSON.stringify(pluginId)};
+        const viewActionId = ${JSON.stringify(viewActionId)};
+        const pending = new Map();
+
+        function makeId() {
+          return Math.random().toString(36).slice(2) + Date.now().toString(36);
+        }
+
+        function request(kind, payload, timeoutMs) {
+          const id = makeId();
+          const tm = typeof timeoutMs === "number" && timeoutMs > 0 ? timeoutMs : 30000;
+          return new Promise(function (resolve, reject) {
+            const timer = window.setTimeout(function () {
+              pending.delete(id);
+              reject(new Error("Request timeout"));
+            }, tm);
+
+            pending.set(id, { resolve: resolve, reject: reject, timer: timer });
+
+            try {
+              (window.parent || window.top).postMessage({ __zhixuPlugin: true, id: id, kind: kind, pluginId: pluginId, payload: payload }, "*");
+            } catch (e) {
+              window.clearTimeout(timer);
+              pending.delete(id);
+              reject(e);
+            }
+          });
+        }
+
+        window.addEventListener("message", function (ev) {
+          const msg = ev && ev.data;
+          if (!msg || typeof msg !== "object") return;
+          if (msg.__zhixuPlugin !== true) return;
+          if (msg.kind !== "response") return;
+          const entry = pending.get(msg.id);
+          if (!entry) return;
+          pending.delete(msg.id);
+          window.clearTimeout(entry.timer);
+          if (msg.ok) entry.resolve(msg.result);
+          else entry.reject(new Error(String(msg.error || "Request failed")));
+        });
+
+        window.ZhixuPlugin = {
+          pluginId: pluginId,
+          viewActionId: viewActionId,
+          request: request,
+          runAction: function (actionId, input, timeoutMs) {
+            return request("runAction", { actionId: actionId, input: input }, timeoutMs);
+          },
+          openFile: function (path, lineIndex) {
+            return request("openFile", { path: path, lineIndex: lineIndex }, 15000);
+          },
+        };
+      })();
+    </script>
   </head>
-  <body>
+  <body data-zhixu-plugin-id="${escapeHtml(pluginId)}" data-zhixu-view-action="${escapeHtml(viewActionId)}">
     ${html}
   </body>
 </html>`;
@@ -695,8 +764,12 @@ export function App() {
 
   const [pluginSidebarState, setPluginSidebarState] = useState<{
     activityId: PluginActivityId;
+    pluginId: string;
+    actionId: string;
     title: string;
     html: string;
+    editorTitle: string;
+    editorHtml: string;
     loading: boolean;
     error: string | null;
   } | null>(null);
@@ -711,8 +784,12 @@ export function App() {
     if (!vaultRoot) {
       setPluginSidebarState({
         activityId: v.activityId,
+        pluginId: v.pluginId,
+        actionId: v.actionId,
         title: v.label,
         html: "",
+        editorTitle: "",
+        editorHtml: "",
         loading: false,
         error: "请先选择一个库（Vault）。",
       });
@@ -726,7 +803,17 @@ export function App() {
     }
 
     let cancelled = false;
-    setPluginSidebarState({ activityId: v.activityId, title: v.label, html: "", loading: true, error: null });
+    setPluginSidebarState({
+      activityId: v.activityId,
+      pluginId: v.pluginId,
+      actionId: v.actionId,
+      title: v.label,
+      html: "",
+      editorTitle: "",
+      editorHtml: "",
+      loading: true,
+      error: null,
+    });
     void (async () => {
       try {
         const { result } = await runInstalledPluginAction({ vaultRoot, plugin, actionId: v.actionId });
@@ -734,25 +821,43 @@ export function App() {
 
         let title = v.label;
         let html = "";
+        let editorTitle = "";
+        let editorHtml = "";
 
         if (result && typeof result === "object") {
           const anyRes = result as any;
           if (typeof anyRes.title === "string" && anyRes.title.trim()) title = anyRes.title.trim();
           if (typeof anyRes.html === "string") html = anyRes.html;
           else if (typeof anyRes.message === "string" && anyRes.message.trim()) html = `<pre>${escapeHtml(anyRes.message)}</pre>`;
+          if (typeof anyRes.editorTitle === "string" && anyRes.editorTitle.trim()) editorTitle = anyRes.editorTitle.trim();
+          if (typeof anyRes.editorHtml === "string") editorHtml = anyRes.editorHtml;
         } else if (typeof result === "string") {
           const trimmed = result.trim();
           html = trimmed.startsWith("<") ? result : `<pre>${escapeHtml(result)}</pre>`;
         }
 
         if (!html.trim()) html = `<div style="color: var(--muted);">暂无内容</div>`;
-        setPluginSidebarState({ activityId: v.activityId, title, html, loading: false, error: null });
+        setPluginSidebarState({
+          activityId: v.activityId,
+          pluginId: v.pluginId,
+          actionId: v.actionId,
+          title,
+          html,
+          editorTitle,
+          editorHtml,
+          loading: false,
+          error: null,
+        });
       } catch (e) {
         if (cancelled) return;
         setPluginSidebarState({
           activityId: v.activityId,
+          pluginId: v.pluginId,
+          actionId: v.actionId,
           title: v.label,
           html: "",
+          editorTitle: "",
+          editorHtml: "",
           loading: false,
           error: String(e instanceof Error ? e.message : e),
         });
@@ -767,8 +872,117 @@ export function App() {
   const pluginSidebarSrcDoc = useMemo(() => {
     const state = pluginSidebarState;
     if (!state || state.loading || state.error) return "";
-    return buildPluginSidebarSrcDoc({ title: state.title, html: state.html, ...pluginSidebarTheme });
+    return buildPluginSidebarSrcDoc({
+      title: state.title,
+      html: state.html,
+      pluginId: state.pluginId,
+      viewActionId: state.actionId,
+      ...pluginSidebarTheme,
+    });
   }, [pluginSidebarState, pluginSidebarTheme]);
+
+  const pluginEditorSrcDoc = useMemo(() => {
+    const state = pluginSidebarState;
+    if (!state || state.loading || state.error) return "";
+    const editorHtml = String(state.editorHtml || "");
+    if (!editorHtml.trim()) return "";
+    const title = String(state.editorTitle || state.title || "Plugin");
+    return buildPluginSidebarSrcDoc({
+      title,
+      html: editorHtml,
+      pluginId: state.pluginId,
+      viewActionId: state.actionId,
+      ...pluginSidebarTheme,
+    });
+  }, [pluginSidebarState, pluginSidebarTheme]);
+
+  const pluginSidebarFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const openFileRef = useRef<(path: string, opts?: { lineIndex?: number | null }) => Promise<void> | void>(() => {});
+
+  const installedPluginsRef = useRef<InstalledPlugin[]>([]);
+  installedPluginsRef.current = installedPlugins;
+  const vaultRootRef = useRef<string | null>(null);
+  vaultRootRef.current = vaultRoot;
+  const pluginSidebarStateRef = useRef<typeof pluginSidebarState>(null);
+  pluginSidebarStateRef.current = pluginSidebarState;
+
+  useEffect(() => {
+    function onMessage(ev: MessageEvent) {
+      const msg = ev.data as any;
+      if (!msg || typeof msg !== "object") return;
+      if (msg.__zhixuPlugin !== true) return;
+
+      const source = ev.source as Window | null;
+      const sidebarWin = pluginSidebarFrameRef.current?.contentWindow ?? null;
+      if (!source || source !== sidebarWin) return;
+      const src = source;
+
+      const requestId = String(msg.id || "");
+      const kind = String(msg.kind || "");
+      const pluginId = String(msg.pluginId || "");
+
+      function respond(ok: boolean, payload: { result?: unknown; error?: string }) {
+        try {
+          src.postMessage(
+            { __zhixuPlugin: true, kind: "response", id: requestId, ok, result: payload.result, error: payload.error },
+            "*",
+          );
+        } catch {
+          // ignore
+        }
+      }
+
+      const state = pluginSidebarStateRef.current;
+      if (!state || state.pluginId !== pluginId) {
+        respond(false, { error: "Plugin context mismatch" });
+        return;
+      }
+
+      if (kind === "openFile") {
+        const p = String(msg.payload?.path || "");
+        const lineIndexRaw = msg.payload?.lineIndex;
+        const lineIndex = typeof lineIndexRaw === "number" && Number.isFinite(lineIndexRaw) ? Math.max(0, Math.floor(lineIndexRaw)) : null;
+        if (!p) {
+          respond(false, { error: "Missing path" });
+          return;
+        }
+        void Promise.resolve(openFileRef.current(p, { lineIndex }))
+          .then(() => {
+            respond(true, { result: { ok: true } });
+          })
+          .catch((e) => respond(false, { error: String(e instanceof Error ? e.message : e) }));
+        return;
+      }
+
+      if (kind === "runAction") {
+        const actionId = String(msg.payload?.actionId || "");
+        const input = msg.payload?.input;
+        if (!actionId) {
+          respond(false, { error: "Missing actionId" });
+          return;
+        }
+        const vault = vaultRootRef.current;
+        if (!vault) {
+          respond(false, { error: "No vault selected" });
+          return;
+        }
+        const plugin = installedPluginsRef.current.find((p) => p.enabled && p.manifest.id === pluginId);
+        if (!plugin) {
+          respond(false, { error: "Plugin not installed or disabled" });
+          return;
+        }
+        void runInstalledPluginAction({ vaultRoot: vault, plugin, actionId, input })
+          .then(({ result }) => respond(true, { result }))
+          .catch((e) => respond(false, { error: String(e instanceof Error ? e.message : e) }));
+        return;
+      }
+
+      respond(false, { error: "Unknown request" });
+    }
+
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   type FunctionAreaItem =
     | {
@@ -1394,7 +1608,7 @@ export function App() {
     [recentKey, vaultRoot],
   );
 
-  const openFile = useCallback(async (path: string) => {
+  const openFile = useCallback(async (path: string, opts?: { lineIndex?: number | null }) => {
     pushRecentFile(path);
     setActivePath(path);
     setSelectedDir(dirname(path));
@@ -1445,9 +1659,28 @@ export function App() {
         const t0 = isDevPerfEnabled() ? performance.now() : 0;
         const content = await readTextFile(path);
         if (t0) recordSpanMs("vault:readTextFile", t0, performance.now() - t0, { path, chars: content.length, ctx: "openFile" });
+
+        const lineIndex = opts?.lineIndex;
+        let nextSelection: CodeMirrorSelection | null = null;
+        if (typeof lineIndex === "number" && Number.isFinite(lineIndex)) {
+          const target = Math.max(0, Math.floor(lineIndex));
+          let pos = 0;
+          for (let i = 0; i < target && pos < content.length; i++) {
+            const nl = content.indexOf("\n", pos);
+            if (nl < 0) {
+              pos = content.length;
+              break;
+            }
+            pos = nl + 1;
+          }
+          nextSelection = { anchor: pos, head: pos };
+        }
+
         setTabs((prev) =>
           prev.map((t) =>
-            t.path === path && t.kind === "text" ? { ...t, content, savedContent: content, dirty: false } : t,
+            t.path === path && t.kind === "text"
+              ? { ...t, content, savedContent: content, dirty: false, selection: nextSelection ?? t.selection }
+              : t,
           ),
         );
       } catch (e) {
@@ -1469,6 +1702,7 @@ export function App() {
       }
     }
   }, [pushRecentFile]);
+  openFileRef.current = openFile;
 
   const revealFolderInSidebar = useCallback(
     async (path: string) => {
@@ -3139,6 +3373,7 @@ export function App() {
                     className="pluginSidebarFrame"
                     title={pluginSidebarState.title || "Plugin"}
                     sandbox="allow-scripts"
+                    ref={pluginSidebarFrameRef}
                     srcDoc={pluginSidebarSrcDoc}
                   />
                 )
@@ -3383,6 +3618,13 @@ export function App() {
                 />
               </Suspense>
             )
+          ) : pluginSidebarState && pluginSidebarState.activityId === activity && pluginEditorSrcDoc ? (
+            <iframe
+              className="pluginEditorFrame"
+              title={pluginSidebarState?.editorTitle || pluginSidebarState?.title || "Plugin"}
+              sandbox="allow-scripts"
+              srcDoc={pluginEditorSrcDoc}
+            />
           ) : (
             <div className="emptyState">
               从主侧栏打开一个 Markdown 或绘图（.zhixu）文件。使用 <span className="kbd">Ctrl+S</span> 保存，<span className="kbd">Ctrl+E</span>{" "}
