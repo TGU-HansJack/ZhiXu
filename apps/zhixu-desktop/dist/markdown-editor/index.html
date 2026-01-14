@@ -1073,7 +1073,8 @@
             }
             el.style.left = left + "px";
             el.style.top = snap(top) + "px";
-            el.style.width = snap(2) + "px";
+            // Use a fixed device-pixel width for consistent perceived thickness across DPI scales.
+            el.style.width = 2 / dpr + "px";
             el.style.height = snap(h) + "px";
           } catch (_) {
             hide();
