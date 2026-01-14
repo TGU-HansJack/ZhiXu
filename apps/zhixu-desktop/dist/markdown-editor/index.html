@@ -602,10 +602,11 @@
 
       /* Editor header (similar to .workshopEditorHeader / .drawToolbar in app UI) */
       .zhixuEditorHeader {
-        display: flex;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
         align-items: center;
-        gap: 10px;
-        padding: 8px 10px;
+        gap: 8px;
+        padding: 4px 8px;
         border-bottom: 1px solid var(--outline);
         background: var(--surface);
         color: var(--onSurface);
@@ -616,11 +617,11 @@
       .zhixuEditorHeaderRight {
         display: flex;
         align-items: center;
-        gap: 6px;
-        flex: 0 0 auto;
+        gap: 4px;
       }
+      .zhixuEditorHeaderLeft { justify-self: start; }
+      .zhixuEditorHeaderRight { justify-self: end; }
       .zhixuEditorHeaderCenter {
-        flex: 1 1 auto;
         min-width: 0;
         display: flex;
         align-items: center;
@@ -632,20 +633,22 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        border: 1px solid var(--outline);
-        border-radius: 10px;
-        background: rgba(127, 127, 127, 0.06);
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: transparent;
         color: var(--onSurface);
-        width: 34px;
-        height: 34px;
+        opacity: 0.72;
+        width: 28px;
+        height: 28px;
         padding: 0;
         cursor: pointer;
         line-height: 1;
       }
-      .zhixuHeaderBtn:hover { background: rgba(127, 127, 127, 0.12); }
-      .zhixuHeaderBtn:active { background: rgba(127, 127, 127, 0.16); }
+      .zhixuHeaderBtn:hover { background: rgba(127, 127, 127, 0.12); color: var(--onSurface); opacity: 1; }
+      .zhixuHeaderBtn:active { background: rgba(127, 127, 127, 0.16); color: var(--onSurface); opacity: 1; }
+      .zhixuHeaderBtn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(47, 111, 235, 0.22); opacity: 1; }
       .zhixuHeaderBtn:disabled { opacity: 0.42; cursor: not-allowed; }
-      .zhixuHeaderBtn svg { width: 20px; height: 20px; display: block; }
+      .zhixuHeaderBtn svg { width: 16px; height: 16px; display: block; }
 
       .zhixuBreadcrumb {
         max-width: 100%;
@@ -706,16 +709,20 @@
         top: calc(100% + 8px);
         right: 0;
         z-index: 2147483646;
-        min-width: 240px;
+        min-width: 180px;
         max-width: min(360px, 92vw);
         max-height: min(70vh, 560px);
         overflow: auto;
-        padding: 6px;
+        padding: 4px;
         border: 1px solid var(--outline);
-        border-radius: 12px;
+        border-radius: 4px;
         background: var(--surface);
-        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
       }
+      .zhixuHeaderMenu[hidden] { display: none; }
       .zhixuMenuItem {
         appearance: none;
         display: flex;
@@ -724,10 +731,10 @@
         width: 100%;
         text-align: left;
         border: none;
-        border-radius: 10px;
+        border-radius: 4px;
         background: transparent;
         color: var(--onSurface);
-        padding: 9px 10px;
+        padding: 6px 8px;
         cursor: pointer;
         font: 13px/1.2 var(--editorFont);
       }
@@ -736,7 +743,7 @@
       .zhixuMenuItemDanger { color: rgba(217, 44, 44, 0.96); }
       .zhixuMenuDivider {
         height: 1px;
-        margin: 6px 4px;
+        margin: 4px 6px;
         background: var(--outline);
         opacity: 0.7;
       }
@@ -809,6 +816,17 @@
         max-width: 72ch;
         margin-left: auto;
         margin-right: auto;
+      }
+
+      /* Remove CodeMirror focus/border lines (dashed outline). */
+      #editor,
+      #editor .cm-editor,
+      #editor .cm-editor.cm-focused,
+      #editor .cm-editor .cm-scroller,
+      #editor .cm-editor .cm-content {
+        outline: none !important;
+        border: none !important;
+        box-shadow: none !important;
       }
 
       /* Caret (cursor): make it blue and thicker in both live/source modes. */
@@ -1156,7 +1174,7 @@
       </div>
 
       <div class="zhixuEditorHeaderRight">
-        <button id="zhixuHeaderModeToggle" class="zhixuHeaderBtn" type="button" aria-label="切换视图">
+        <button id="zhixuHeaderModeToggle" class="zhixuHeaderBtn" type="button" aria-label="切换视图" title="切换视图">
           <span id="zhixuModeIconBook" aria-hidden="true">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-open-icon lucide-book-open"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
           </span>
@@ -1271,6 +1289,10 @@
           return !!menu && !menu.hidden;
         }
 
+        function ensureSeparatorBetweenFolders() {
+          // Folder separators are created dynamically inside foldersEl; nothing to do here.
+        }
+
         function renderFolders(folderParts) {
           foldersEl.textContent = "";
           for (let i = 0; i < folderParts.length; i++) {
@@ -1373,6 +1395,7 @@
           if (!currentName) return;
 
           isRenaming = true;
+          try { document.body.classList.add("zhixuHeaderRenaming"); } catch (_) {}
           try { setMenuOpen(false); } catch (_) {}
 
           fileBtn.hidden = true;
@@ -1393,6 +1416,7 @@
           renameInput.hidden = true;
           fileBtn.hidden = false;
           isRenaming = false;
+          try { document.body.classList.remove("zhixuHeaderRenaming"); } catch (_) {}
 
           if (!nextName) {
             applyHeader();
@@ -1455,6 +1479,7 @@
             // Cancel.
             renameInput.hidden = true;
             isRenaming = false;
+            try { document.body.classList.remove("zhixuHeaderRenaming"); } catch (_) {}
             applyHeader();
             try { document.getElementById("editor")?.focus?.(); } catch (_) {}
           }
