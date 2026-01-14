@@ -61,10 +61,105 @@
         window.__payload.bottomInsetPx = v;
         try { document.documentElement.style.setProperty("--editorBottomInset", v + "px"); } catch (e) {}
       };
+      function __editorHasFocus() {
+        try {
+          const root = document.getElementById("editor");
+          if (!root) return false;
+          const active = document.activeElement;
+          if (!active) return false;
+          return active === root || root.contains(active);
+        } catch (_) {
+          return false;
+        }
+      }
+
+      function __computeSafePreviewSelection(text, showProperties) {
+        try {
+          if (!text) return 0;
+
+          // Skip UTF-8 BOM.
+          let pos = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+
+          // If the doc starts with YAML frontmatter, jump past it so the widget stays intact.
+          if (showProperties !== false) {
+            const fenceCandidate = text.slice(pos, pos + 3);
+            if (fenceCandidate === "---" || fenceCandidate === "+++") {
+              const firstLineEnd = text.indexOf("\n", pos);
+              const firstLine = (firstLineEnd === -1 ? text.slice(pos) : text.slice(pos, firstLineEnd)).trim();
+              if (firstLine === fenceCandidate) {
+                let scan = firstLineEnd === -1 ? text.length : firstLineEnd + 1;
+                while (scan < text.length) {
+                  const lineEnd = text.indexOf("\n", scan);
+                  const end = lineEnd === -1 ? text.length : lineEnd;
+                  const line = text.slice(scan, end).trim();
+                  if (line === fenceCandidate) {
+                    pos = end === text.length ? end : end + 1;
+                    break;
+                  }
+                  scan = end === text.length ? end : end + 1;
+                }
+              }
+            }
+          }
+
+          // Skip leading blank lines.
+          while (pos < text.length) {
+            const lineEnd = text.indexOf("\n", pos);
+            const end = lineEnd === -1 ? text.length : lineEnd;
+            const line = text.slice(pos, end);
+
+            if (line.trim().length === 0) {
+              pos = end === text.length ? end : end + 1;
+              continue;
+            }
+
+            const patterns = [
+              /^([ \t]*(?:>[ \t]*)+)/,
+              /^(\s{0,3})(#{1,6})\s+/,
+              /^([ \t]*)-\s+\[(?: |x|X)\]\s+/,
+              /^([ \t]*)(?:[-*+])\s+/,
+              /^([ \t]*)(?:\d+)\.\s+/,
+              /^([ \t]*)(?:`{3,}|~{3,})/,
+              /^!?\[/,
+              /^([*_~`]{1,3})/,
+            ];
+
+            let advance = 0;
+            for (let i = 0; i < patterns.length; i++) {
+              const m = patterns[i].exec(line);
+              if (m && m[0]) {
+                advance = m[0].length + 1;
+                break;
+              }
+            }
+            if (!advance) advance = 4;
+            return Math.min(pos + Math.min(advance, line.length), text.length);
+          }
+
+          return Math.min(pos, text.length);
+        } catch (_) {
+          return 0;
+        }
+      }
+
       window.__setDoc = (text, selStart, selEnd) => {
-        window.__payload.text = text || "";
-        window.__payload.selStart = Number(selStart) || 0;
-        window.__payload.selEnd = Number(selEnd) || window.__payload.selStart;
+        const nextText = text || "";
+        const start = Number(selStart) || 0;
+        const end = Number(selEnd) || start;
+
+        window.__payload.text = nextText;
+
+        // Live preview: when opening a doc with selection at 0, CodeMirror's live-preview shows
+        // the leading markdown marks (e.g. "#", "-", "---"). Keep the initial render unchanged
+        // until the user clicks to place the caret.
+        if (window.__payload.mode !== "source" && start === 0 && end === 0 && !__editorHasFocus()) {
+          const safe = __computeSafePreviewSelection(nextText, window.__payload.showProperties);
+          window.__payload.selStart = safe;
+          window.__payload.selEnd = safe;
+        } else {
+          window.__payload.selStart = start;
+          window.__payload.selEnd = end;
+        }
         window.__scheduleApply();
       };
 
