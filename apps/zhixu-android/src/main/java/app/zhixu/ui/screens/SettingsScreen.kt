@@ -41,6 +41,7 @@ import androidx.compose.material.icons.outlined.Android
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -98,6 +99,8 @@ import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTopAppBar
 import app.zhixu.ui.components.ZhixuTextField
 import app.zhixu.ui.components.ZhixuSwitch
+import app.zhixu.sync.OfficialSync
+import app.zhixu.sync.OfficialVaultSyncEngine
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.log10
@@ -394,6 +397,9 @@ fun SettingsScreen(
         FullScreenDialog(onDismiss = { showSyncDialog = false }) {
             SyncSettingsScreen(
                 contentPadding = PaddingValues(0.dp),
+                vaultRootUri = vaultRootUri,
+                repository = repository,
+                accountState = accountState,
                 onBack = { showSyncDialog = false },
             )
         }
@@ -858,6 +864,9 @@ private fun UiSettingsFullScreen(
 @Composable
 private fun SyncSettingsScreen(
     contentPadding: PaddingValues,
+    vaultRootUri: Uri?,
+    repository: VaultRepository,
+    accountState: AccountState,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -876,6 +885,9 @@ private fun SyncSettingsScreen(
 
     var testStatus by remember { mutableStateOf<String?>(null) }
     var testing by remember { mutableStateOf(false) }
+
+    var officialStatus by remember { mutableStateOf<String?>(null) }
+    var officialSyncing by remember { mutableStateOf(false) }
 
     androidx.compose.runtime.LaunchedEffect(saved) {
         enabled = saved.enabled
@@ -1092,6 +1104,96 @@ private fun SyncSettingsScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(14.dp)) }
+            item { SettingsSectionTitle(text = stringResource(R.string.official_sync_title)) }
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                        Text(
+                            text = stringResource(R.string.vault_settings_official_desc_fmt, OfficialSync.BASE_URL),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        val msg =
+                            if (!accountState.isLoggedIn) stringResource(R.string.official_sync_not_logged_in)
+                            else stringResource(R.string.official_sync_logged_in_as_fmt, accountState.username.ifBlank { "-" })
+                        Text(
+                            text = msg,
+                            color = if (accountState.isLoggedIn) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        ListItem(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { includeIndexSqlite = !includeIndexSqlite },
+                            headlineContent = { Text(stringResource(R.string.webdav_include_index_sqlite)) },
+                            trailingContent = {
+                                ZhixuSwitch(
+                                    checked = includeIndexSqlite,
+                                    onCheckedChange = { includeIndexSqlite = it },
+                                )
+                            },
+                        )
+
+                        val syncHint = officialStatus
+                        if (!syncHint.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(syncHint, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !officialSyncing && accountState.isLoggedIn && vaultRootUri != null,
+                            shape = RoundedCornerShape(8.dp),
+                            onClick = {
+                                val root = vaultRootUri ?: return@Button
+                                val token = accountState.token
+                                scope.launch {
+                                    officialSyncing = true
+                                    officialStatus = context.getString(R.string.official_sync_syncing)
+                                    val engine = OfficialVaultSyncEngine(context, repository)
+                                    runCatching {
+                                        engine.syncVault(
+                                            rootUri = root,
+                                            baseUrl = OfficialSync.BASE_URL,
+                                            token = token,
+                                            includeIndexSqlite = includeIndexSqlite,
+                                        )
+                                    }.fold(
+                                        onSuccess = { summary ->
+                                            officialStatus =
+                                                context.getString(
+                                                    R.string.official_sync_ok,
+                                                    summary.uploaded,
+                                                    summary.downloaded,
+                                                    summary.deletedRemote,
+                                                    summary.deletedLocal,
+                                                    summary.conflicts,
+                                                    summary.failed,
+                                                )
+                                        },
+                                        onFailure = { e ->
+                                            officialStatus =
+                                                context.getString(
+                                                    R.string.official_sync_failed,
+                                                    e.message ?: e.javaClass.simpleName,
+                                                )
+                                        },
+                                    )
+                                    officialSyncing = false
+                                }
+                            },
+                        ) { Text(stringResource(R.string.official_sync_now)) }
                     }
                 }
             }
