@@ -322,8 +322,8 @@ export function SettingsModal({
             <>
               <div className="settingsCard">
                 <SettingsRow
-                  title="默认模式"
-                  description="选择打开 Markdown 的默认编辑模式。"
+                  title="默认编辑模式"
+                  description="在编辑视图下，新标签页默认采用的编辑模式。"
                   control={
                     <SettingsSelect defaultValue="live">
                       <option value="live">所见即所得</option>
