@@ -40,6 +40,11 @@
       table { border-collapse: collapse; width: 100%; }
       th, td { padding: 8px; border-bottom: 1px solid var(--border); }
       input[type="checkbox"] { transform: translateY(1px); margin-right: 0.5em; }
+      input[type="checkbox"][data-zhixu-task-index] { cursor: pointer; }
+      .task-list-item { cursor: pointer; }
+      .task-list-item label { cursor: pointer; }
+      .task-list-item-checkbox { cursor: pointer; pointer-events: auto; }
+      .task-list-item input[type="checkbox"][data-zhixu-task-index] { pointer-events: auto; }
       img { max-width: 100%; height: auto; }
 
       .hljs { color: var(--text); background: transparent; }
@@ -67,7 +72,7 @@
     </div>
 
     <script>
-      window.__payload = { markdown: "", theme: null };
+      window.__payload = { markdown: "", theme: null, taskStateOffsets: [] };
 
       function parseCssColorToRgb(color) {
         const raw = String(color || "").trim();
@@ -144,6 +149,15 @@
         const md = window.__payload.markdown || "";
         const el = document.getElementById("content");
         if (!el) return;
+
+        try {
+          const offsets = [];
+          const taskRe = /^(\s*(?:[-*+]|\\d+\\.)\s+)\[([ xX])\](?=\s)/gm;
+          for (let m; (m = taskRe.exec(md)); ) offsets.push(m.index + m[1].length + 1);
+          window.__payload.taskStateOffsets = offsets;
+        } catch (_) {
+          window.__payload.taskStateOffsets = [];
+        }
         const MarkdownIt = window.markdownit;
         if (!MarkdownIt) {
           el.innerHTML = '<div style="opacity:0.7">Loading…</div>';
@@ -174,14 +188,52 @@
 
         el.innerHTML = mdIt.render(md);
         try {
+          let taskIndex = 0;
+          el.querySelectorAll('input[type="checkbox"].task-list-item-checkbox, li.task-list-item input[type="checkbox"]').forEach((box) => {
+            box.disabled = false;
+            box.removeAttribute("disabled");
+            box.setAttribute("data-zhixu-task-index", String(taskIndex++));
+          });
+        } catch (_) {}
+        try {
           if (window.hljs) {
             el.querySelectorAll("pre code").forEach((block) => window.hljs.highlightElement(block));
           }
         } catch (_) {}
-        scheduleHeight();
+      scheduleHeight();
       }
 
       window.addEventListener("resize", scheduleHeight);
+      const contentEl = document.getElementById("content");
+      function __zhixuToggleTaskFromBox(box) {
+        try {
+          const index = Number(box.getAttribute("data-zhixu-task-index"));
+          const offsets = window.__payload.taskStateOffsets || [];
+          const pos = offsets[index];
+          if (Number.isFinite(pos) && pos >= 0) {
+            const md = String(window.__payload.markdown || "");
+            const next = box.checked ? "x" : " ";
+            if (pos < md.length && md.charAt(pos) !== next) {
+              window.__payload.markdown = md.slice(0, pos) + next + md.slice(pos + 1);
+            }
+          }
+          (window.parent || window.top).postMessage(
+            { __zhixuMarkdownRenderer: true, type: "task-toggle", index, checked: !!box.checked, markdown: window.__payload.markdown || "" },
+            "*",
+          );
+        } catch (_) {}
+      }
+      contentEl && contentEl.addEventListener("click", (e) => {
+        const target = e.target;
+        if (!target || !target.closest) return;
+        let box = target.closest('input[type="checkbox"][data-zhixu-task-index]');
+        if (!box) {
+          const taskItem = target.closest("li.task-list-item");
+          box = taskItem ? taskItem.querySelector('input[type="checkbox"][data-zhixu-task-index]') : null;
+        }
+        if (!box) return;
+        __zhixuToggleTaskFromBox(box);
+      });
 
       render();
     </script>

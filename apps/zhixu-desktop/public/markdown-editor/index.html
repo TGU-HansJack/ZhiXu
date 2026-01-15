@@ -1038,8 +1038,8 @@
         background: currentColor;
         vertical-align: middle;
       }
-      .cm-lp-task { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-right: 6px; line-height: 1; vertical-align: middle; }
-      .cm-lp-task ion-icon { width: 24px; height: 24px; color: var(--primary); transform: translateY(-0.5px); pointer-events: none; }
+      .cm-lp-task { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-right: 6px; line-height: 1; vertical-align: middle; cursor: pointer; }
+      .cm-lp-task ion-icon { width: 18px; height: 18px; color: var(--primary); transform: translateY(-0.5px); pointer-events: none; }
       .cm-lp-task input[type="checkbox"] {
         width: 16px; height: 16px;
         accent-color: var(--primary);
@@ -2111,6 +2111,28 @@
       src="./codemirror.bundle.js"
       onerror="window.__showFatal && window.__showFatal('script load failed', this.src)"
     ></script>
+    <script>
+      // Prevent CodeMirror from moving selection when clicking task widgets.
+      // Otherwise the widget DOM may be replaced by raw "[x]" text before the click handler runs.
+      (function () {
+        if (window.__zhixuTaskWidgetClickBound) return;
+        window.__zhixuTaskWidgetClickBound = true;
+
+        document.addEventListener(
+          "mousedown",
+          function (ev) {
+            try {
+              var target = ev.target;
+              var task = target && target.closest ? target.closest(".cm-lp-task") : null;
+              if (!task) return;
+              if (typeof ev.button === "number" && ev.button !== 0) return;
+              ev.preventDefault();
+            } catch (_) {}
+          },
+          true
+        );
+      })();
+    </script>
     <script>
       // Draw a custom caret overlay for consistent thickness/styling.
       (function () {

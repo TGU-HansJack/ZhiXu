@@ -14,9 +14,19 @@ function getRootCssVar(name: string, fallback: string): string {
   }
 }
 
-export function MarkdownRendererFrame({ markdown, className }: { markdown: string; className?: string }) {
+export function MarkdownRendererFrame({
+  markdown,
+  className,
+  onMarkdownChange,
+}: {
+  markdown: string;
+  className?: string;
+  onMarkdownChange?: (md: string) => void;
+}) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [height, setHeight] = useState<number>(220);
+  const onMarkdownChangeRef = useRef<((md: string) => void) | undefined>(undefined);
+  onMarkdownChangeRef.current = onMarkdownChange;
 
   const themeJson = useMemo(() => {
     const theme = {
@@ -58,6 +68,10 @@ export function MarkdownRendererFrame({ markdown, className }: { markdown: strin
       const msg = ev.data as any;
       if (!msg || typeof msg !== "object") return;
       if (msg.__zhixuMarkdownRenderer !== true) return;
+      if (msg.type === "task-toggle" && typeof msg.markdown === "string") {
+        onMarkdownChangeRef.current?.(msg.markdown);
+        return;
+      }
       const next = Number(msg.height);
       if (!Number.isFinite(next)) return;
       const clamped = Math.min(10_000, Math.max(140, Math.round(next)));
