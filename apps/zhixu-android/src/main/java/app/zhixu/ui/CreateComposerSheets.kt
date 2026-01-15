@@ -4,7 +4,6 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,7 +22,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SheetState
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -149,18 +147,14 @@ internal fun NoteComposerSheet(
     onCreated: (app.zhixu.data.UiDoc) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val isExpanded = sheetState.currentValue == SheetValue.Expanded || sheetState.targetValue == SheetValue.Expanded
-    val heightFraction =
-        animateFloatAsState(
-            targetValue = if (isExpanded) 1f else 0.66f,
-            label = "note_sheet_height_fraction",
-        ).value
+    LaunchedEffect(Unit) {
+        sheetState.partialExpand()
+    }
 
     Box(
         modifier =
             modifier
-                .fillMaxWidth()
-                .fillMaxHeight(heightFraction),
+                .fillMaxWidth(),
     ) {
         val root = vaultRootUri
         if (root == null) {
