@@ -4021,12 +4021,15 @@ export function App() {
           aria-label="设置"
         >
           <div className="modalPanel settingsModal" data-no-drag="true">
-            <div className="modalHeader">
-              <div className="modalTitle">设置</div>
-              <button className="iconBtn" type="button" data-no-drag="true" aria-label="关闭" onClick={() => setSettingsOpen(false)}>
-                <IconClose size={16} />
-              </button>
-            </div>
+            <button
+              className="iconBtn settingsModalClose"
+              type="button"
+              data-no-drag="true"
+              aria-label="关闭"
+              onClick={() => setSettingsOpen(false)}
+            >
+              <IconClose size={16} />
+            </button>
             <div className="settingsModalContent">
               <SettingsModal
                 initialSection={settingsInitialSection}
