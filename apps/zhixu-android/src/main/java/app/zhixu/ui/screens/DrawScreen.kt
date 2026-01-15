@@ -11,7 +11,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -67,6 +66,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -192,7 +192,7 @@ private fun DrawToolDragProxy(
     iconTint: Color,
     modifier: Modifier = Modifier,
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val bg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -1389,7 +1389,7 @@ private fun DrawCircleIconButton(
     enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val bg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
     val contentAlpha = if (enabled) 1f else 0.38f
     Surface(
@@ -1483,7 +1483,7 @@ private fun DrawToolDock(
     dragHandleModifier: Modifier = Modifier,
     modifier: Modifier = Modifier,
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val dockBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
     val fountainPenColor = Color(editor.fountainPenColorArgb)
     val ballpointPenColor = Color(editor.ballpointPenColorArgb)
@@ -1687,7 +1687,7 @@ private fun DrawToolDockButton(
     enabled: Boolean,
     iconTint: Color? = null,
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val selectedBg = if (isDark) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFF2F2F2)
     val bg = if (selected) selectedBg else Color.Transparent
     val fg = iconTint ?: MaterialTheme.colorScheme.onSurface

@@ -17,6 +17,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,7 +68,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -772,53 +776,86 @@ fun ZhixuApp(
                 },
                 floatingActionButton = {
                     if (!showMainUi || createSheetPage != null) return@Scaffold
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        shape = RoundedCornerShape(999.dp),
-                        tonalElevation = 6.dp,
-                        shadowElevation = 6.dp,
-                        modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
+                    val fabShape = RoundedCornerShape(999.dp)
+                    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                    val fabBackground = if (isDark) Color(0xFF0B1B3A) else Color.White
+                    val fabContent = if (isDark) Color(0xFFEAF1FF) else MaterialTheme.colorScheme.onSurface
+                    val fabBorder = if (isDark) Color(0x33FFFFFF) else Color(0xFFE5E7EB)
+
+                    Box(
+                        modifier =
+                            Modifier
+                                .windowInsetsPadding(WindowInsets.navigationBars)
+                                .padding(bottom = 12.dp),
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                        if (!isDark) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .matchParentSize()
+                                        .offset(y = 6.dp)
+                                        .shadow(
+                                            elevation = 20.dp,
+                                            shape = fabShape,
+                                            clip = false,
+                                            ambientColor = Color(0x5585B9FF),
+                                            spotColor = Color(0xCC85B9FF),
+                                        ),
+                            )
+                        }
+
+                        Surface(
+                            color = fabBackground,
+                            contentColor = fabContent,
+                            shape = fabShape,
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
+                            border = BorderStroke(1.dp, fabBorder),
                         ) {
-                            ZhixuIconButton(
-                                onClick = { navController.navigate("cameraCapture") },
+                            Row(
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_lucide_camera),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(ZhixuTopBarIconSize),
-                                )
-                            }
-                            ZhixuIconButton(
-                                onClick = { createSheetPage = CreateSheetPage.Draw },
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_lucide_pencil_ruler),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(ZhixuTopBarIconSize),
-                                )
-                            }
-                            ZhixuIconButton(
-                                onClick = { android.widget.Toast.makeText(context, "录音：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_lucide_mic),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(ZhixuTopBarIconSize),
-                                )
-                            }
-                            ZhixuIconButton(
-                                onClick = { createSheetPage = CreateSheetPage.QuickNew },
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_lucide_plus),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(ZhixuTopBarIconSize),
-                                )
+                                ZhixuIconButton(
+                                    onClick = { navController.navigate("cameraCapture") },
+                                    modifier = Modifier.size(44.dp),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_lucide_camera),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                                ZhixuIconButton(
+                                    onClick = { createSheetPage = CreateSheetPage.Draw },
+                                    modifier = Modifier.size(44.dp),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_lucide_pencil_ruler),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                                ZhixuIconButton(
+                                    onClick = { android.widget.Toast.makeText(context, "录音：敬请期待", android.widget.Toast.LENGTH_SHORT).show() },
+                                    modifier = Modifier.size(44.dp),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_lucide_mic),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                                ZhixuIconButton(
+                                    onClick = { createSheetPage = CreateSheetPage.QuickNew },
+                                    modifier = Modifier.size(44.dp),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_lucide_plus),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
                             }
                         }
                     }
