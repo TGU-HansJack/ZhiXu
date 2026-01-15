@@ -1778,10 +1778,6 @@ input {
   justify-content: center;
   padding: 16px;
   background: rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(6px);
-}
-
-.modalBackdrop.settingsBackdrop {
   backdrop-filter: none;
 }
 
@@ -1789,7 +1785,7 @@ input {
   width: min(720px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow: auto;
-  border-radius: 12px;
+  border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--bg);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.22);
@@ -1857,11 +1853,17 @@ input {
 
 .shortcutGrid {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 10px 12px;
+  grid-template-columns: repeat(2, max-content minmax(0, 1fr));
+  gap: 10px 16px;
   align-items: center;
   font-size: 13px;
   color: rgba(0, 0, 0, 0.78);
+}
+
+@media (max-width: 560px) {
+  .shortcutGrid {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
 }
 
 .shortcutKeyGroup {
@@ -2019,7 +2021,6 @@ input {
   z-index: 2;
   border-color: rgba(0, 0, 0, 0.08);
   background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(8px);
 }
 
 .settingsModalContent {
