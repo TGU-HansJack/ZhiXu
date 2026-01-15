@@ -40,6 +40,13 @@
       input[type="checkbox"] { transform: translateY(1px); margin-right: 0.5em; }
       img { max-width: 100%; height: auto; }
 
+      * { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.18) transparent; }
+      *::-webkit-scrollbar { width: 6px; height: 6px; }
+      *::-webkit-scrollbar-track { background: transparent; }
+      *::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 999px; }
+      *::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
+      *::-webkit-scrollbar-corner { background: transparent; }
+
       *::-webkit-scrollbar-button {
         width: 0 !important;
         height: 0 !important;

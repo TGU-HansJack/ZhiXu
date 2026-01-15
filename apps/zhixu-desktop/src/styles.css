@@ -13,6 +13,9 @@
   --radius: 4px;
   --shadow: rgba(0, 0, 0, 0.06);
   --iconBgHover: rgba(0, 0, 0, 0.06);
+  --scrollbarSize: 6px;
+  --scrollbarThumb: rgba(0, 0, 0, 0.18);
+  --scrollbarThumbHover: rgba(0, 0, 0, 0.28);
 
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue",
@@ -35,6 +38,33 @@ body.sidebarResizing {
 
 body.sidebarResizing * {
   cursor: inherit !important;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbarThumb) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: var(--scrollbarSize);
+  height: var(--scrollbarSize);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbarThumb);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbarThumbHover);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 #root {

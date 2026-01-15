@@ -69,6 +69,31 @@ function buildPluginSrcDoc(opts: {
       pre, code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
       pre { white-space: pre-wrap; word-break: break-word; }
       hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
+      * { scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, 0.18) transparent; }
+      *::-webkit-scrollbar { width: 6px; height: 6px; }
+      *::-webkit-scrollbar-track { background: transparent; }
+      *::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.18); border-radius: 999px; }
+      *::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.28); }
+      *::-webkit-scrollbar-corner { background: transparent; }
+      *::-webkit-scrollbar-button,
+      *::-webkit-scrollbar-button:single-button,
+      *::-webkit-scrollbar-button:single-button:vertical:decrement,
+      *::-webkit-scrollbar-button:single-button:vertical:increment,
+      *::-webkit-scrollbar-button:single-button:horizontal:decrement,
+      *::-webkit-scrollbar-button:single-button:horizontal:increment,
+      *::-webkit-scrollbar-button:start:decrement,
+      *::-webkit-scrollbar-button:end:increment,
+      *::-webkit-scrollbar-button:vertical:start:decrement,
+      *::-webkit-scrollbar-button:vertical:end:increment,
+      *::-webkit-scrollbar-button:horizontal:start:decrement,
+      *::-webkit-scrollbar-button:horizontal:end:increment {
+        width: 0 !important;
+        height: 0 !important;
+        display: none !important;
+        background: transparent !important;
+        -webkit-appearance: none !important;
+        appearance: none !important;
+      }
     </style>
     <script>
       (function () {
