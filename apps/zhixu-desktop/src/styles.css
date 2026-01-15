@@ -1746,13 +1746,24 @@ input {
 }
 
 .statusPill {
-  padding: 2px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.6);
+  padding: 0 6px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   color: rgba(0, 0, 0, 0.65);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 400;
+}
+
+.statusMetric {
+  padding: 0 6px;
+  color: rgba(0, 0, 0, 0.6);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.statusbar .iconBtn {
+  border-radius: 0;
 }
 
 .modalBackdrop {

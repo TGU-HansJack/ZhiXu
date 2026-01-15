@@ -421,6 +421,28 @@ function PluginIcon({ icon, fallback }: { icon?: string; fallback?: string }) {
   return null;
 }
 
+function countWords(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+
+  const Segmenter = (Intl as any).Segmenter as undefined | (new (...args: any[]) => any);
+  if (Segmenter) {
+    const segmenter = new Segmenter(undefined, { granularity: "word" });
+    let count = 0;
+    for (const part of segmenter.segment(trimmed)) {
+      if (part && part.isWordLike) count += 1;
+    }
+    return count;
+  }
+
+  const match = trimmed.match(/\\S+/g);
+  return match ? match.length : 0;
+}
+
+function countChars(text: string): number {
+  return Array.from(text).length;
+}
+
 export function App() {
   const appWindow = useMemo(() => getCurrentWindow(), []);
   const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
@@ -1506,6 +1528,19 @@ export function App() {
   }, [appWindow, isDetached, tabs.length]);
   const activeTab = useMemo(() => tabs.find((t) => t.path === activePath) ?? null, [tabs, activePath]);
   activeTabRef.current = activeTab;
+  const activeTextStats = useMemo(() => {
+    if (!activeTab || activeTab.kind !== "text") return null;
+    const content = activeTab.content ?? "";
+    const sel = activeTab.selection;
+    const hasSelection = sel && sel.anchor !== sel.head;
+    if (!hasSelection) {
+      return { words: countWords(content), chars: countChars(content), source: "document" as const };
+    }
+    const start = Math.max(0, Math.min(sel.anchor, sel.head));
+    const end = Math.min(content.length, Math.max(sel.anchor, sel.head));
+    const selected = content.slice(start, end);
+    return { words: countWords(selected), chars: countChars(selected), source: "selection" as const };
+  }, [activeTab, activeTab?.content, activeTab?.selection?.anchor, activeTab?.selection?.head]);
   const tabCount = Math.max(1, tabs.length);
   const tabsDensity = tabCount >= 14 ? "separators" : tabCount >= 8 ? "dense" : "normal";
 
@@ -3879,6 +3914,11 @@ export function App() {
         </div>
         <div className="statusRight">
           {activeTab?.kind === "text" ? <div className="statusPill">{editorMode === "live" ? "实时预览" : "源码模式"}</div> : null}
+          {activeTextStats ? (
+            <div className="statusMetric" title={activeTextStats.source === "selection" ? "选中" : "全文"}>
+              {activeTextStats.words} 词 {activeTextStats.chars} 字符
+            </div>
+          ) : null}
           <IconButton title="保存" tooltipPlacement="top" onClick={() => void saveActive()} disabled={!activeTab?.dirty}>
             <IconSave size={16} />
           </IconButton>
