@@ -73,7 +73,7 @@ export function MarkdownRendererFrame({ markdown, className }: { markdown: strin
       className={className}
       src="/markdown-renderer/index.html"
       title="Markdown"
-      style={{ height }}
+      style={{ height, overflow: "hidden" }}
     />
   );
 }

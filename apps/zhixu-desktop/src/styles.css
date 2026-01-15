@@ -2658,6 +2658,7 @@ input {
 
 .workshopEditorMain {
   min-width: 0;
+  font-size: 12px;
 }
 
 .workshopEditorAside {
@@ -2712,6 +2713,7 @@ input {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.65);
+  overflow: hidden;
 }
 
 .workshopTab {
@@ -2720,7 +2722,7 @@ input {
   background: transparent;
   color: rgba(0, 0, 0, 0.62);
   padding: 10px 8px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 650;
   cursor: pointer;
   border-bottom: 2px solid transparent;
