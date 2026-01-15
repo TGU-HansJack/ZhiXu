@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { InstalledPlugin, PluginIndexItem, PluginManifest } from "../lib/plugins/types";
 import { runInstalledPluginAction } from "../lib/plugins/runtime";
+import { closeDesktopWidget, isDesktopWidgetEnabled, openDesktopWidget } from "../lib/widgets";
+import { MarkdownRendererFrame } from "./MarkdownRendererFrame";
 import {
   fetchOfficialManifest,
   fetchOfficialReadme,
@@ -47,8 +49,12 @@ export function WorkshopEditor({ vaultRoot, baseUrl, selectedId, official, insta
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [remoteError, setRemoteError] = useState<string | null>(null);
 
-  const [configDraft, setConfigDraft] = useState("");
+  const [configView, setConfigView] = useState<"visual" | "json">("visual");
+  const [configJsonDraft, setConfigJsonDraft] = useState("");
+  const [configObjDraft, setConfigObjDraft] = useState<Record<string, any>>({});
+  const [configError, setConfigError] = useState<string | null>(null);
   const [configSaving, setConfigSaving] = useState(false);
+  const [widgetEnabled, setWidgetEnabled] = useState(false);
 
   const [running, setRunning] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -82,11 +88,31 @@ export function WorkshopEditor({ vaultRoot, baseUrl, selectedId, official, insta
 
   useEffect(() => {
     if (!installedPlugin) {
-      setConfigDraft("");
+      setConfigView("visual");
+      setConfigJsonDraft("");
+      setConfigObjDraft({});
+      setConfigError(null);
       return;
     }
-    const raw = installedPlugin.configText ?? "{\n}\n";
-    setConfigDraft(raw.trimEnd() + "\n");
+    const raw = (installedPlugin.configText ?? "{\n}\n").trim() ? (installedPlugin.configText ?? "{\n}\n") : "{\n}\n";
+    const nextJson = raw.trimEnd() + "\n";
+    setConfigJsonDraft(nextJson);
+    try {
+      const parsed = JSON.parse(nextJson) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        setConfigView("json");
+        setConfigObjDraft({});
+        setConfigError("config.json 必须是对象。");
+      } else {
+        setConfigView("visual");
+        setConfigObjDraft(parsed as Record<string, any>);
+        setConfigError(null);
+      }
+    } catch (e) {
+      setConfigView("json");
+      setConfigObjDraft({});
+      setConfigError(String(e instanceof Error ? e.message : e));
+    }
   }, [installedPlugin]);
 
   const displayManifest = installedPlugin?.manifest || remoteManifest;
@@ -99,6 +125,25 @@ export function WorkshopEditor({ vaultRoot, baseUrl, selectedId, official, insta
   }, [installedPlugin, remoteManifest]);
 
   const readme = installedPlugin?.readmeText ?? remoteReadme;
+
+  const widgetAction = useMemo(() => {
+    if (!installedPlugin?.manifest.actions) return null;
+    const normalizePlace = (place: string | undefined) => String(place || "").replace(/[\s_-]/g, "").toLowerCase();
+    return installedPlugin.manifest.actions.find((a) => normalizePlace(a.place) === "mainsidebar") || null;
+  }, [installedPlugin]);
+
+  useEffect(() => {
+    setWidgetEnabled(selectedId ? isDesktopWidgetEnabled(selectedId) : false);
+  }, [selectedId]);
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== "zhixu:desktopWidgets") return;
+      setWidgetEnabled(selectedId ? isDesktopWidgetEnabled(selectedId) : false);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [selectedId]);
 
   if (!selectedId) {
     return (
@@ -239,7 +284,11 @@ export function WorkshopEditor({ vaultRoot, baseUrl, selectedId, official, insta
           </div>
 
           <div className="workshopReadme">
-            {readme ? <pre className="workshopReadmePre">{readme}</pre> : <div className="workshopHint">暂无 README。</div>}
+            {readme ? (
+              <MarkdownRendererFrame markdown={readme} className="workshopReadmeFrame" />
+            ) : (
+              <div className="workshopHint">暂无 README。</div>
+            )}
           </div>
 
           {installedPlugin ? (
@@ -286,15 +335,191 @@ export function WorkshopEditor({ vaultRoot, baseUrl, selectedId, official, insta
                 <div className="workshopHint">该插件没有声明 actions。</div>
               )}
 
-              <div className="workshopSectionTitle">配置（config.json）</div>
-              <textarea
-                className="workshopConfigEditor"
-                value={configDraft}
-                onChange={(e) => setConfigDraft(e.target.value)}
-                spellCheck={false}
-                data-no-drag="true"
-                disabled={!installedPlugin.enabled || configSaving}
-              />
+              <div className="workshopSectionTitle">桌面</div>
+              <div className="workshopConfigGrid">
+                <div className="workshopConfigRow">
+                  <div className="workshopConfigKey">桌面小组件</div>
+                  <div className="workshopConfigControl">
+                    <button
+                      type="button"
+                      className={`toggle${widgetEnabled ? " on" : ""}`}
+                      aria-label="桌面小组件"
+                      aria-checked={widgetEnabled ? "true" : "false"}
+                      role="switch"
+                      disabled={!vaultRoot || !installedPlugin.enabled || !widgetAction}
+                      onClick={() => {
+                        if (!vaultRoot) return;
+                        if (!widgetAction) return;
+                        setActionError(null);
+                        void (async () => {
+                          try {
+                            if (widgetEnabled) await closeDesktopWidget(installedPlugin.manifest.id);
+                            else {
+                              await openDesktopWidget({
+                                pluginId: installedPlugin.manifest.id,
+                                actionId: widgetAction.id,
+                                vaultRoot,
+                                title: widgetAction.label || installedPlugin.manifest.name,
+                              });
+                            }
+                            setWidgetEnabled(!widgetEnabled);
+                          } catch (e) {
+                            setActionError(String(e instanceof Error ? e.message : e));
+                          }
+                        })();
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="workshopSectionHeader">
+                <div className="workshopSectionTitle">配置（config.json）</div>
+                <button
+                  type="button"
+                  className="workshopBtn"
+                  disabled={!installedPlugin.enabled || configSaving}
+                  onClick={() => {
+                    setActionError(null);
+                    setConfigError(null);
+                    if (configView === "visual") {
+                      setConfigJsonDraft(JSON.stringify(configObjDraft || {}, null, 2) + "\n");
+                      setConfigView("json");
+                      return;
+                    }
+                    try {
+                      const parsed = JSON.parse(configJsonDraft.trim() ? configJsonDraft : "{\n}\n") as unknown;
+                      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+                        setConfigError("config.json 必须是对象。");
+                        return;
+                      }
+                      setConfigObjDraft(parsed as Record<string, any>);
+                      setConfigView("visual");
+                    } catch (e) {
+                      setConfigError(String(e instanceof Error ? e.message : e));
+                    }
+                  }}
+                >
+                  {configView === "visual" ? "高级（JSON）" : "可视化"}
+                </button>
+              </div>
+
+              {configError ? <div className="workshopHint error">{configError}</div> : null}
+
+              {configView === "json" ? (
+                <textarea
+                  className="workshopConfigEditor"
+                  value={configJsonDraft}
+                  onChange={(e) => setConfigJsonDraft(e.target.value)}
+                  spellCheck={false}
+                  data-no-drag="true"
+                  disabled={!installedPlugin.enabled || configSaving}
+                />
+              ) : (
+                <div className="workshopConfigGrid">
+                  {Object.keys(configObjDraft || {}).length ? (
+                    Object.entries(configObjDraft || {}).map(([key, value]) => {
+                      const type = Array.isArray(value) ? "array" : value === null ? "null" : typeof value;
+                      const setValue = (next: any) => setConfigObjDraft((prev) => ({ ...(prev || {}), [key]: next }));
+
+                      if (type === "boolean") {
+                        return (
+                          <div key={key} className="workshopConfigRow">
+                            <div className="workshopConfigKey">{key}</div>
+                            <div className="workshopConfigControl">
+                              <button
+                                type="button"
+                                className={`toggle${value ? " on" : ""}`}
+                                aria-label={key}
+                                aria-checked={value ? "true" : "false"}
+                                role="switch"
+                                disabled={!installedPlugin.enabled || configSaving}
+                                onClick={() => setValue(!value)}
+                              />
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (type === "number" || type === "null") {
+                        return (
+                          <label key={key} className="workshopConfigRow">
+                            <div className="workshopConfigKey">{key}</div>
+                            <div className="workshopConfigControl">
+                              <input
+                                className="textInput"
+                                type="number"
+                                inputMode="decimal"
+                                value={typeof value === "number" ? String(value) : ""}
+                                disabled={!installedPlugin.enabled || configSaving}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  if (raw === "") setValue(null);
+                                  else {
+                                    const n = Number(raw);
+                                    if (Number.isFinite(n)) setValue(n);
+                                  }
+                                }}
+                              />
+                            </div>
+                          </label>
+                        );
+                      }
+
+                      if (type === "string") {
+                        return (
+                          <label key={key} className="workshopConfigRow">
+                            <div className="workshopConfigKey">{key}</div>
+                            <div className="workshopConfigControl">
+                              <input
+                                className="textInput"
+                                type="text"
+                                value={String(value)}
+                                disabled={!installedPlugin.enabled || configSaving}
+                                onChange={(e) => setValue(e.target.value)}
+                              />
+                            </div>
+                          </label>
+                        );
+                      }
+
+                      if (type === "array" && Array.isArray(value) && value.every((v) => typeof v === "string")) {
+                        return (
+                          <label key={key} className="workshopConfigRow">
+                            <div className="workshopConfigKey">{key}</div>
+                            <div className="workshopConfigControl">
+                              <textarea
+                                className="textInput workshopConfigTextarea"
+                                rows={Math.min(6, Math.max(2, value.length || 2))}
+                                value={value.join("\n")}
+                                disabled={!installedPlugin.enabled || configSaving}
+                                onChange={(e) => {
+                                  const lines = String(e.target.value || "")
+                                    .split(/\r?\n|,/g)
+                                    .map((s) => s.trim())
+                                    .filter(Boolean);
+                                  setValue(lines);
+                                }}
+                              />
+                            </div>
+                          </label>
+                        );
+                      }
+
+                      return (
+                        <div key={key} className="workshopConfigRow">
+                          <div className="workshopConfigKey">{key}</div>
+                          <div className="workshopConfigControl">
+                            <div className="workshopHint">该字段类型暂不支持可视化编辑，请使用“高级（JSON）”。</div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="workshopHint">该插件暂无配置项。</div>
+                  )}
+                </div>
+              )}
               <div className="workshopActionRow">
                 <button
                   type="button"
@@ -304,14 +529,24 @@ export function WorkshopEditor({ vaultRoot, baseUrl, selectedId, official, insta
                     if (!vaultRoot) return;
                     setConfigSaving(true);
                     setActionError(null);
+                    setConfigError(null);
                     void (async () => {
                       try {
-                        const next = configDraft.trim() ? configDraft : "{\n}\n";
-                        JSON.parse(next);
+                        const nextObj =
+                          configView === "json"
+                            ? (JSON.parse(configJsonDraft.trim() ? configJsonDraft : "{\n}\n") as unknown)
+                            : (configObjDraft as unknown);
+                        if (!nextObj || typeof nextObj !== "object" || Array.isArray(nextObj)) {
+                          throw new Error("config.json 必须是对象。");
+                        }
+                        const next = JSON.stringify(nextObj, null, 2) + "\n";
                         await savePluginConfig(vaultRoot, installedPlugin.manifest.id, next);
+                        setConfigJsonDraft(next);
+                        setConfigObjDraft(nextObj as Record<string, any>);
+                        setConfigView("visual");
                         onInstalledReload();
                       } catch (e) {
-                        setActionError(String(e instanceof Error ? e.message : e));
+                        setConfigError(String(e instanceof Error ? e.message : e));
                       } finally {
                         setConfigSaving(false);
                       }
@@ -359,4 +594,3 @@ export function WorkshopEditor({ vaultRoot, baseUrl, selectedId, official, insta
     </div>
   );
 }
-

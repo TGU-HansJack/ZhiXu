@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Zhixu Markdown</title>
+
+    <style>
+      * { box-sizing: border-box; }
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --panel: rgba(245, 245, 245, 0.75);
+        --text: rgba(0, 0, 0, 0.88);
+        --muted: rgba(0, 0, 0, 0.55);
+        --accent: #2f6feb;
+        --border: rgba(0, 0, 0, 0.08);
+        --codeBg: rgba(0, 0, 0, 0.04);
+        --radius: 4px;
+      }
+      html, body { height: 100%; margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue",
+          Arial, "Noto Sans", "Liberation Sans", sans-serif;
+        line-height: 1.65;
+      }
+
+      a { color: var(--accent); }
+      #content { padding: 12px 14px 16px; width: 100%; margin: 0 auto; }
+      h1, h2, h3 { line-height: 1.25; margin: 18px 0 10px; }
+      h1 { font-size: 1.55em; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+      h2 { font-size: 1.28em; }
+      h3 { font-size: 1.12em; }
+      pre { overflow: auto; padding: 12px; border-radius: var(--radius); background: var(--codeBg); border: 1px solid var(--border); }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      :not(pre) > code { background: var(--codeBg); border: 1px solid var(--border); padding: 0.15em 0.35em; border-radius: var(--radius); }
+      blockquote { margin: 12px 0; padding: 2px 0 2px 12px; border-left: 2px solid var(--border); color: var(--muted); }
+      hr { border: 0; border-top: 1px solid var(--border); margin: 18px auto; width: 60%; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { padding: 8px; border-bottom: 1px solid var(--border); }
+      input[type="checkbox"] { transform: translateY(1px); margin-right: 0.5em; }
+      img { max-width: 100%; height: auto; }
+
+      .hljs { color: var(--text); background: transparent; }
+      .hljs-comment, .hljs-quote { color: var(--muted); font-style: italic; }
+      .hljs-keyword, .hljs-selector-tag, .hljs-subst { color: #d73a49; }
+      .hljs-string, .hljs-title, .hljs-section, .hljs-attribute, .hljs-literal, .hljs-template-tag, .hljs-template-variable, .hljs-type, .hljs-addition {
+        color: #032f62;
+      }
+      .hljs-number, .hljs-symbol, .hljs-bullet { color: #005cc5; }
+      .hljs-built_in, .hljs-builtin-name, .hljs-link { color: #6f42c1; }
+      .hljs-deletion { color: #b31d28; }
+      .hljs-emphasis { font-style: italic; }
+      .hljs-strong { font-weight: 700; }
+    </style>
+
+    <script defer src="../markdown-preview/vendor/markdown-it/markdown-it.min.js"></script>
+    <script defer src="../markdown-preview/vendor/markdown-it/plugins/markdown-it-task-lists.min.js"></script>
+    <script defer src="../markdown-preview/vendor/markdown-it/plugins/markdown-it-footnote.min.js"></script>
+    <script defer src="../markdown-preview/vendor/markdown-it/plugins/markdownItAnchor.umd.js"></script>
+    <script defer src="../markdown-preview/vendor/highlight.js/highlight.min.js"></script>
+  </head>
+  <body>
+    <div id="content">
+      <div style="opacity: 0.7">Loading…</div>
+    </div>
+
+    <script>
+      window.__payload = { markdown: "", theme: null };
+
+      function parseCssColorToRgb(color) {
+        const raw = String(color || "").trim();
+        if (!raw) return null;
+        const mHex = raw.match(/^#([0-9a-f]{6})$/i);
+        if (mHex) {
+          const hex = mHex[1];
+          const r = parseInt(hex.slice(0, 2), 16);
+          const g = parseInt(hex.slice(2, 4), 16);
+          const b = parseInt(hex.slice(4, 6), 16);
+          if ([r, g, b].every((v) => Number.isFinite(v))) return { r, g, b };
+          return null;
+        }
+        const mRgb = raw.match(/^rgba?\((\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(\d*(?:\.\d+)?))?\)$/i);
+        if (mRgb) {
+          const r = Number(mRgb[1]);
+          const g = Number(mRgb[2]);
+          const b = Number(mRgb[3]);
+          if ([r, g, b].every((v) => Number.isFinite(v))) return { r, g, b };
+          return null;
+        }
+        return null;
+      }
+
+      function isDarkBg(bg) {
+        const rgb = parseCssColorToRgb(bg);
+        if (!rgb) return false;
+        const r = rgb.r / 255;
+        const g = rgb.g / 255;
+        const b = rgb.b / 255;
+        const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        return y < 0.45;
+      }
+
+      function applyTheme() {
+        const theme = window.__payload.theme;
+        if (!theme || typeof theme !== "object") return;
+        const root = document.documentElement;
+        const map = { bg: "--bg", panel: "--panel", text: "--text", muted: "--muted", accent: "--accent", border: "--border" };
+        for (const k in map) {
+          const v = theme[k];
+          if (typeof v === "string" && v.trim()) root.style.setProperty(map[k], v.trim());
+        }
+        root.style.colorScheme = isDarkBg(getComputedStyle(root).getPropertyValue("--bg")) ? "dark" : "light";
+      }
+
+      let heightTimer = null;
+      function scheduleHeight() {
+        if (heightTimer) window.clearTimeout(heightTimer);
+        heightTimer = window.setTimeout(() => {
+          try {
+            const h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+            (window.parent || window.top).postMessage({ __zhixuMarkdownRenderer: true, height: h }, "*");
+          } catch (_) {}
+        }, 30);
+      }
+
+      window.__setTheme = (json) => {
+        try {
+          window.__payload.theme = JSON.parse(String(json || "{}"));
+        } catch (_) {
+          window.__payload.theme = null;
+        }
+        applyTheme();
+        render();
+      };
+
+      window.__setMarkdown = (md) => {
+        window.__payload.markdown = md || "";
+        render();
+      };
+
+      function render() {
+        const md = window.__payload.markdown || "";
+        const el = document.getElementById("content");
+        if (!el) return;
+        const MarkdownIt = window.markdownit;
+        if (!MarkdownIt) {
+          el.innerHTML = '<div style="opacity:0.7">Loading…</div>';
+          scheduleHeight();
+          return;
+        }
+
+        const mdIt = MarkdownIt({
+          html: false,
+          linkify: true,
+          breaks: true,
+          highlight: (str, lang) => {
+            try {
+              if (window.hljs && lang && window.hljs.getLanguage(lang)) {
+                return window.hljs.highlight(str, { language: lang }).value;
+              }
+            } catch (_) {}
+            return "";
+          },
+        });
+
+        try { mdIt.use(window.markdownitTaskLists, { enabled: true, label: true, labelAfter: true }); } catch (_) {}
+        try { mdIt.use(window.markdownitFootnote); } catch (_) {}
+        try {
+          const anchor = window.markdownItAnchor;
+          if (anchor) mdIt.use(anchor, { permalink: anchor.permalink.ariaHidden({ placement: "before" }) });
+        } catch (_) {}
+
+        el.innerHTML = mdIt.render(md);
+        try {
+          if (window.hljs) {
+            el.querySelectorAll("pre code").forEach((block) => window.hljs.highlightElement(block));
+          }
+        } catch (_) {}
+        scheduleHeight();
+      }
+
+      window.addEventListener("resize", scheduleHeight);
+
+      render();
+    </script>
+  </body>
+</html>
+

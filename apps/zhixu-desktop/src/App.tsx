@@ -42,6 +42,7 @@ import { getFileTypeLabel, isTextFile, isZhixuDrawFile, stripExtension } from ".
 import type { InstalledPlugin, PluginIndexItem } from "./lib/plugins/types";
 import { runInstalledPluginAction } from "./lib/plugins/runtime";
 import { fetchOfficialIndex, listInstalledPlugins } from "./lib/plugins/workshop";
+import { listDesktopWidgetStates, openDesktopWidget } from "./lib/widgets";
 import { logout as officialLogout, me as officialMe } from "./lib/sync/officialClient";
 import {
   DEFAULT_EDITOR_DISPLAY_SETTINGS,
@@ -53,6 +54,7 @@ import {
   createDir,
   createFile,
   deleteEntry,
+  exitApp,
   getPersistedState,
   listDir,
   readDrawDocument,
@@ -91,6 +93,7 @@ const LazyZhixuMarkdownEditor = React.lazy(() =>
 
 type PluginActivityId = `plugin:${string}:${string}`;
 type Activity = "space" | "workshop" | PluginActivityId;
+type CloseBehavior = "ask" | "tray" | "exit";
 
 type NewTab = {
   path: string;
@@ -451,6 +454,26 @@ export function App() {
   const [vaultPickerOpen, setVaultPickerOpen] = useState(false);
   const vaultPickerRef = useRef<HTMLDivElement | null>(null);
 
+  const [closeBehavior, setCloseBehavior] = useState<CloseBehavior>(() => {
+    try {
+      const raw = String(localStorage.getItem("zhixu:closeBehavior") || "").trim();
+      if (raw === "tray" || raw === "exit" || raw === "ask") return raw;
+    } catch {
+      // ignore
+    }
+    return "ask";
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("zhixu:closeBehavior", closeBehavior);
+    } catch {
+      // ignore
+    }
+  }, [closeBehavior]);
+  const allowAppExitRef = useRef(false);
+  const [closePromptOpen, setClosePromptOpen] = useState(false);
+  const [closePromptRemember, setClosePromptRemember] = useState(false);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState<SettingsSectionId>("pro");
   const [editorDisplaySettings, setEditorDisplaySettings] = useState<EditorDisplaySettings>(() => {
@@ -639,6 +662,26 @@ export function App() {
   useEffect(() => {
     reloadInstalledPlugins();
   }, [reloadInstalledPlugins]);
+
+  useEffect(() => {
+    if (isDetached) return;
+    if (!vaultRoot) return;
+    if (!installedPlugins.length) return;
+
+    for (const w of listDesktopWidgetStates()) {
+      if (!w.enabled) continue;
+      if (w.vaultRoot && w.vaultRoot !== vaultRoot) continue;
+      const plugin = installedPlugins.find((p) => p.enabled && p.manifest.id === w.pluginId);
+      if (!plugin) continue;
+      if (!w.actionId) continue;
+      void openDesktopWidget({
+        pluginId: w.pluginId,
+        actionId: w.actionId,
+        vaultRoot,
+        title: w.title || plugin.manifest.name,
+      });
+    }
+  }, [installedPlugins, isDetached, vaultRoot]);
 
   const reloadWorkshop = useCallback(() => {
     setWorkshopOfficialLoading(true);
@@ -987,6 +1030,29 @@ export function App() {
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, []);
+
+  useEffect(() => {
+    if (isDetached) return;
+    let unlisten: null | (() => void) = null;
+    void (async () => {
+      try {
+        unlisten = await appWindow.listen<{ path: string; lineIndex?: number | null }>("zhixu:open-file", (event) => {
+          const p = String(event.payload?.path || "");
+          const lineIndexRaw = event.payload?.lineIndex;
+          const lineIndex = typeof lineIndexRaw === "number" && Number.isFinite(lineIndexRaw) ? Math.max(0, Math.floor(lineIndexRaw)) : null;
+          if (!p) return;
+          void Promise.resolve(openFileRef.current(p, { lineIndex })).catch((e) => console.error(e));
+          void appWindow.show().catch(() => {});
+          void appWindow.setFocus().catch(() => {});
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+    return () => {
+      unlisten?.();
+    };
+  }, [appWindow, isDetached]);
 
   type FunctionAreaItem =
     | {
@@ -2598,6 +2664,73 @@ export function App() {
     })();
   }, []);
 
+  const minimizeToTray = useCallback(async () => {
+    try {
+      await appWindow.hide();
+    } catch (e) {
+      console.error(e);
+    }
+  }, [appWindow]);
+
+  const performExit = useCallback(async () => {
+    allowAppExitRef.current = true;
+    try {
+      await exitApp();
+    } catch (e) {
+      console.error(e);
+      try {
+        await appWindow.close();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  }, [appWindow]);
+
+  const requestClose = useCallback(() => {
+    if (isDetached) {
+      void appWindow.close();
+      return;
+    }
+    if (closeBehavior === "tray") {
+      void minimizeToTray();
+      return;
+    }
+    if (closeBehavior === "exit") {
+      void performExit();
+      return;
+    }
+    setClosePromptRemember(false);
+    setClosePromptOpen(true);
+  }, [appWindow, closeBehavior, isDetached, minimizeToTray, performExit]);
+
+  useEffect(() => {
+    if (isDetached) return;
+    let unlisten: null | (() => void) = null;
+    void (async () => {
+      try {
+        unlisten = await appWindow.onCloseRequested((event) => {
+          if (allowAppExitRef.current) return;
+          event.preventDefault();
+          if (closeBehavior === "tray") {
+            void minimizeToTray();
+            return;
+          }
+          if (closeBehavior === "exit") {
+            void performExit();
+            return;
+          }
+          setClosePromptRemember(false);
+          setClosePromptOpen(true);
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+    return () => {
+      unlisten?.();
+    };
+  }, [appWindow, closeBehavior, isDetached, minimizeToTray, performExit]);
+
   useEffect(() => {
     let unlistenTransfer: null | (() => void) = null;
     let unlistenRemove: null | (() => void) = null;
@@ -3152,7 +3285,7 @@ export function App() {
           <IconButton title="最大化" tooltipPlacement="bottom" onClick={() => void appWindow.toggleMaximize()} className="winBtn">
             <IconMaximize size={16} />
           </IconButton>
-          <IconButton title="关闭" tooltipPlacement="bottom" onClick={() => void appWindow.close()} className="winBtn winClose">
+          <IconButton title="关闭" tooltipPlacement="bottom" onClick={requestClose} className="winBtn winClose">
             <IconClose size={16} />
           </IconButton>
         </div>
@@ -3744,6 +3877,72 @@ export function App() {
           <div className="statusPill">{activeTab?.dirty ? "未保存" : "已保存"}</div>
         </div>
       </div>
+
+      {closePromptOpen && !isDetached ? (
+        <div
+          className="modalBackdrop noDrag"
+          data-no-drag="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setClosePromptOpen(false);
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="关闭"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              setClosePromptOpen(false);
+            }
+          }}
+        >
+          <div className="modalPanel closePromptModal" data-no-drag="true">
+            <div className="modalHeader">
+              <div className="modalTitle">关闭知序</div>
+              <button className="iconBtn" type="button" data-no-drag="true" aria-label="关闭" onClick={() => setClosePromptOpen(false)}>
+                <IconClose size={16} />
+              </button>
+            </div>
+            <div className="modalBody">
+              <div className="closePromptText">关闭窗口后，知序将继续在系统托盘运行。</div>
+              <label className="closePromptRememberRow">
+                <input
+                  type="checkbox"
+                  checked={closePromptRemember}
+                  onChange={(e) => setClosePromptRemember(e.target.checked)}
+                />
+                记住我的选择
+              </label>
+              <div className="closePromptActions">
+                <button
+                  type="button"
+                  className="settingsBtn"
+                  data-no-drag="true"
+                  onClick={() => {
+                    if (closePromptRemember) setCloseBehavior("tray");
+                    setClosePromptOpen(false);
+                    void minimizeToTray();
+                  }}
+                >
+                  最小化托盘
+                </button>
+                <button
+                  type="button"
+                  className="settingsBtn danger"
+                  data-no-drag="true"
+                  onClick={() => {
+                    if (closePromptRemember) setCloseBehavior("exit");
+                    setClosePromptOpen(false);
+                    void performExit();
+                  }}
+                >
+                  直接退出
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {settingsOpen ? (
         <div

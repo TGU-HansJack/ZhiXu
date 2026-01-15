@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::Manager;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 
 mod draw_format;
 
@@ -21,6 +23,8 @@ struct PersistedAppState {
 }
 
 struct PersistedState(Mutex<PersistedAppState>);
+
+struct TrayHandle(tauri::tray::TrayIcon);
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -491,6 +495,11 @@ fn get_persisted_state(state: tauri::State<'_, PersistedState>) -> PersistedAppS
     state.0.lock().unwrap().clone()
 }
 
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 fn now_ms() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -587,15 +596,64 @@ fn walk_vault_files(state: tauri::State<'_, VaultState>) -> Result<Vec<VaultFile
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let state = load_persisted_state(app.handle());
             app.manage(PersistedState(Mutex::new(state)));
+
+            let show = MenuItem::with_id(app, "show", "打开", true, None::<&str>)?;
+            let hide = MenuItem::with_id(app, "hide", "隐藏", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show, &hide, &quit])?;
+
+            let icon = app
+                .default_window_icon()
+                .cloned()
+                .ok_or_else(|| "Missing default window icon".to_string())?;
+
+            let tray = TrayIconBuilder::new()
+                .icon(icon)
+                .menu(&menu)
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click { .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(win) = app.get_webview_window("main") {
+                            let visible = win.is_visible().unwrap_or(true);
+                            if visible {
+                                let _ = win.hide();
+                            } else {
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                            }
+                        }
+                    }
+                })
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "show" => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        }
+                    }
+                    "hide" => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.hide();
+                        }
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .build(app)?;
+            app.manage(TrayHandle(tray));
             Ok(())
         })
         .manage(VaultState(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             set_vault_root,
             get_persisted_state,
+            exit_app,
             list_dir,
             read_text_file,
             write_text_file,

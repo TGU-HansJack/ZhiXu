@@ -1,5 +1,9 @@
 {
   "inboxPath": "待办.md",
-  "ignorePrefixes": [".zhixu/"]
+  "ignorePrefixes": [".zhixu/"],
+  "notificationsEnabled": true,
+  "notifyIntervalSec": 60,
+  "notifyBeforeMinutes": 0,
+  "notifyMaxPerRun": 3,
+  "remindRepeatMinutes": 60
 }
-

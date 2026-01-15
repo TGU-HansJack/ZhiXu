@@ -1,5 +1,6 @@
 'use strict';
 
+
 const TASK_LINE_REGEX = /^(\s*-\s*\[)([ xX])(\]\s+)(.*)$/;
 const FIELD_REGEX = /@([a-zA-Z][a-zA-Z0-9_-]*)\(([^)]*)\)/g;
 const ID_REGEX = /@id\(([^)]*)\)/;
@@ -186,7 +187,30 @@ function getConfig(ctx) {
   const cfg = (ctx && ctx.config) || {};
   const inboxPath = normalizeRelPath(cfg.inboxPath || '待办.md');
   const ignorePrefixes = Array.isArray(cfg.ignorePrefixes) ? cfg.ignorePrefixes.map(normalizeRelPath) : ['.zhixu'];
-  return { inboxPath: inboxPath || '待办.md', ignorePrefixes };
+  const notificationsEnabled = typeof cfg.notificationsEnabled === 'boolean' ? cfg.notificationsEnabled : true;
+  const notifyIntervalSecRaw = typeof cfg.notifyIntervalSec === 'number' ? cfg.notifyIntervalSec : parseInt(String(cfg.notifyIntervalSec || ''), 10);
+  const notifyIntervalSec = Number.isFinite(notifyIntervalSecRaw) ? Math.min(3600, Math.max(15, Math.floor(notifyIntervalSecRaw))) : 60;
+
+  const notifyBeforeMinutesRaw =
+    typeof cfg.notifyBeforeMinutes === 'number' ? cfg.notifyBeforeMinutes : parseInt(String(cfg.notifyBeforeMinutes || ''), 10);
+  const notifyBeforeMinutes = Number.isFinite(notifyBeforeMinutesRaw) ? Math.min(1440, Math.max(0, Math.floor(notifyBeforeMinutesRaw))) : 0;
+
+  const notifyMaxPerRunRaw = typeof cfg.notifyMaxPerRun === 'number' ? cfg.notifyMaxPerRun : parseInt(String(cfg.notifyMaxPerRun || ''), 10);
+  const notifyMaxPerRun = Number.isFinite(notifyMaxPerRunRaw) ? Math.min(10, Math.max(1, Math.floor(notifyMaxPerRunRaw))) : 3;
+
+  const remindRepeatMinutesRaw =
+    typeof cfg.remindRepeatMinutes === 'number' ? cfg.remindRepeatMinutes : parseInt(String(cfg.remindRepeatMinutes || ''), 10);
+  const remindRepeatMinutes = Number.isFinite(remindRepeatMinutesRaw) ? Math.min(1440, Math.max(1, Math.floor(remindRepeatMinutesRaw))) : 60;
+
+  return {
+    inboxPath: inboxPath || '待办.md',
+    ignorePrefixes,
+    notificationsEnabled,
+    notifyIntervalSec,
+    notifyBeforeMinutes,
+    notifyMaxPerRun,
+    remindRepeatMinutes,
+  };
 }
 
 function shouldIgnorePath(relPath, ignorePrefixes) {
@@ -287,6 +311,7 @@ async function buildTaskIndex(ctx, api) {
     const tasks = Array.isArray(entry.tasks) ? entry.tasks : [];
     for (const t of tasks) {
       const dueEpochMillis = parseDueEpochMillis(t.due);
+      const remindEpochMillis = parseDueEpochMillis(t.remind);
       all.push({
         path: path,
         fileName: stripExtension(basename(path)),
@@ -296,6 +321,9 @@ async function buildTaskIndex(ctx, api) {
         id: t.id || null,
         due: t.due || null,
         dueEpochMillis: dueEpochMillis,
+        remind: t.remind || null,
+        remindEpochMillis: remindEpochMillis,
+        remindPersistent: !!t.remindPersistent,
         done: t.done || null,
         priority: t.priority == null ? null : Number(t.priority),
         tags: Array.isArray(t.tags) ? t.tags : [],
@@ -304,6 +332,117 @@ async function buildTaskIndex(ctx, api) {
   }
 
   return { cfg, cachePath, tasks: all };
+}
+
+async function loadNotifyCache(api, cachePath) {
+  try {
+    const bytes = await api.vault.readBytes(cachePath);
+    const raw = decodeUtf8(bytes);
+    const obj = JSON.parse(String(raw || ''));
+    if (!obj || typeof obj !== 'object') throw new Error('bad notify cache');
+    if (obj.version !== 1) throw new Error('bad notify cache version');
+    if (!obj.sent || typeof obj.sent !== 'object') throw new Error('bad notify cache payload');
+    return obj;
+  } catch {
+    return { version: 1, sent: {}, lastRunAt: 0 };
+  }
+}
+
+function notifyCacheKey(kind, task, when) {
+  const path = normalizeRelPath(task && task.path);
+  const id = String((task && task.id) || '').trim();
+  const line = Number(task && task.lineIndex);
+  const base = id ? id : Number.isFinite(line) ? String(line) : String(task && task.title) || '';
+  return [String(kind || ''), path, base, String(when || '')].join('|');
+}
+
+function truncateText(text, maxLen) {
+  const s = String(text || '').trim();
+  const n = Math.max(1, Number(maxLen || 0));
+  if (!n) return s;
+  if (s.length <= n) return s;
+  return s.slice(0, Math.max(0, n - 1)) + '…';
+}
+
+async function checkNotifications(ctx, api) {
+  const cfg = getConfig(ctx);
+  if (!cfg.notificationsEnabled) return { ok: true };
+  if (!api || !api.desktop || typeof api.desktop.notify !== 'function') return { ok: false, message: '不支持系统通知。' };
+
+  const idx = await buildTaskIndex(ctx, api);
+  const cachePath = `.zhixu/plugins/${ctx.plugin.id}/notify-cache.json`;
+  const cache = await loadNotifyCache(api, cachePath);
+  const sent = cache.sent && typeof cache.sent === 'object' ? cache.sent : {};
+  cache.sent = sent;
+
+  const now = Date.now();
+  const aheadMs = Math.max(0, Number(cfg.notifyBeforeMinutes || 0) * 60 * 1000);
+  const repeatMs = Math.max(60 * 1000, Number(cfg.remindRepeatMinutes || 60) * 60 * 1000);
+  const maxPerRun = Math.max(1, Math.min(10, Number(cfg.notifyMaxPerRun || 3)));
+
+  let changed = false;
+  let notified = 0;
+
+  for (const t of idx.tasks || []) {
+    if (notified >= maxPerRun) break;
+    if (!t || t.checked) continue;
+
+    const fileName = String(t.fileName || stripExtension(basename(t.path)) || t.path || '').trim();
+    const titleText = truncateText(t.title || '(无标题)', 60);
+
+    const hasRemind = t.remindEpochMillis != null && Number.isFinite(t.remindEpochMillis);
+    if (hasRemind && now >= t.remindEpochMillis) {
+      const key = notifyCacheKey('remind', t, t.remind || t.remindEpochMillis);
+      const last = Number(sent[key]);
+      const canRepeat = !!t.remindPersistent && Number.isFinite(last) && now - last >= repeatMs;
+      if (!Number.isFinite(last) || canRepeat) {
+        try {
+          await api.desktop.notify({ title: '提醒：' + titleText, body: (t.remind ? t.remind + ' · ' : '') + fileName });
+        } catch {
+          // ignore notify errors
+        }
+        sent[key] = now;
+        changed = true;
+        notified++;
+      }
+      continue;
+    }
+
+    if (notified >= maxPerRun) break;
+    if (t.dueEpochMillis != null && Number.isFinite(t.dueEpochMillis)) {
+      const threshold = t.dueEpochMillis - aheadMs;
+      if (now >= threshold) {
+        const key = notifyCacheKey('due', t, t.due || t.dueEpochMillis);
+        if (!Number.isFinite(Number(sent[key]))) {
+          try {
+            await api.desktop.notify({ title: '到期：' + titleText, body: (t.due ? t.due + ' · ' : '') + fileName });
+          } catch {
+            // ignore notify errors
+          }
+          sent[key] = now;
+          changed = true;
+          notified++;
+        }
+      }
+    }
+  }
+
+  const pruneBefore = now - 30 * 24 * 60 * 60 * 1000;
+  for (const [k, v] of Object.entries(sent)) {
+    const ts = Number(v);
+    if (!Number.isFinite(ts) || ts < pruneBefore) {
+      delete sent[k];
+      changed = true;
+    }
+  }
+
+  cache.lastRunAt = now;
+  cache.version = 1;
+  if (changed) {
+    await api.vault.writeBytes(cachePath, encodeUtf8(JSON.stringify(cache, null, 2)));
+  }
+
+  return { ok: true, notified };
 }
 
 function renderSidebar(tasks) {
@@ -558,6 +697,7 @@ function renderEditorPlaceholder() {
 }
 
 async function open(ctx, api) {
+  const cfg = getConfig(ctx);
   const editorHtml = renderEditorPlaceholder();
 
   const html = `
@@ -566,6 +706,7 @@ async function open(ctx, api) {
     </div>
     <script>
       (function () {
+        const CONFIG = ${JSON.stringify(cfg)};
         const root = document.getElementById('todoZhixuRoot');
         if (!root) return;
 
@@ -831,6 +972,19 @@ async function open(ctx, api) {
         });
 
         render();
+        (function maybeStartNotifications() {
+          try {
+            if (!CONFIG || !CONFIG.notificationsEnabled) return;
+            if (!window.ZhixuPlugin || typeof window.ZhixuPlugin.runAction !== 'function') return;
+            const sec = Number(CONFIG.notifyIntervalSec || 60);
+            const intervalMs = Math.min(60 * 60 * 1000, Math.max(15 * 1000, Math.floor(sec) * 1000));
+            const tick = function () {
+              window.ZhixuPlugin.runAction('checkNotifications').catch(function () {});
+            };
+            tick();
+            window.setInterval(tick, intervalMs);
+          } catch (_) {}
+        })();
       })();
     </script>
   `;
@@ -937,6 +1091,7 @@ module.exports = {
     render,
     addTask,
     toggleTask,
+    checkNotifications,
     clearCache,
   },
 };

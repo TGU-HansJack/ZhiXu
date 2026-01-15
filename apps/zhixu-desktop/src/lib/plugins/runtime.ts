@@ -10,6 +10,8 @@ import {
   writeBytesAbs,
   writeTextFile,
 } from "../vaultApi";
+import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
+import { closeDesktopWidget, isDesktopWidgetEnabled, openDesktopWidget } from "../widgets";
 import type { InstalledPlugin, PluginManifest } from "./types";
 
 const textDecoder = new TextDecoder();
@@ -130,6 +132,40 @@ export async function runInstalledPluginAction(opts: {
       writeText: (relPath: string, text: string) => writeTextFile(relPath, text),
       createDir: (relPath: string) => createDir(relPath),
       deleteEntry: (relPath: string) => deleteEntry(relPath),
+    },
+    desktop: {
+      notify: async (input: { title?: string; body?: string } | string) => {
+        const title = typeof input === "string" ? "通知" : String(input?.title || "").trim() || "通知";
+        const body = typeof input === "string" ? input : String(input?.body || "").trim();
+        try {
+          const granted = await isPermissionGranted();
+          if (!granted) {
+            const perm = await requestPermission();
+            if (perm !== "granted") return;
+          }
+        } catch {
+          // ignore permission errors; try to send anyway
+        }
+        try {
+          sendNotification({ title, body });
+        } catch (e) {
+          opts.log?.(`[${pluginId}] notify failed: ${String(e instanceof Error ? e.message : e)}`);
+        }
+      },
+      widgets: {
+        isEnabled: () => isDesktopWidgetEnabled(pluginId),
+        open: async (input?: { actionId?: string; title?: string }) => {
+          const nextActionId = String(input?.actionId || opts.actionId || "").trim();
+          if (!nextActionId) throw new Error("Missing actionId");
+          return openDesktopWidget({
+            pluginId,
+            actionId: nextActionId,
+            vaultRoot: opts.vaultRoot,
+            title: String(input?.title || "").trim() || undefined,
+          });
+        },
+        close: () => closeDesktopWidget(pluginId),
+      },
     },
   };
 

@@ -55,6 +55,10 @@ export async function getPersistedState(): Promise<PersistedState> {
   return invoke<PersistedState>("get_persisted_state");
 }
 
+export async function exitApp(): Promise<void> {
+  return invoke<void>("exit_app");
+}
+
 export async function listDir(relPath: string): Promise<VaultEntry[]> {
   return invoke<VaultEntry[]>("list_dir", { relPath });
 }

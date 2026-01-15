@@ -51,6 +51,102 @@ input {
   -webkit-app-region: no-drag;
 }
 
+.widgetRoot {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.92);
+  overflow: hidden;
+}
+
+.widgetHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(245, 245, 245, 0.85);
+  user-select: none;
+}
+
+.widgetTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.widgetHeaderActions {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.widgetIconBtn {
+  width: 28px;
+  height: 28px;
+}
+
+.widgetIconBtn.active {
+  color: var(--accent);
+}
+
+.widgetBody {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.widgetFrame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  display: block;
+}
+
+.widgetHint {
+  padding: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.widgetHint.error {
+  color: rgba(217, 44, 44, 0.95);
+}
+
+.widgetResizeHandle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+}
+
+.widgetResizeHandle::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid rgba(0, 0, 0, 0.22);
+  border-bottom: 2px solid rgba(0, 0, 0, 0.22);
+  border-radius: 2px;
+  opacity: 0.45;
+}
+
+.widgetRoot[data-locked="true"] .widgetResizeHandle {
+  cursor: default;
+  opacity: 0.2;
+}
+
 .appShell {
   --functionAreaWidth: 50px;
   --mainSidebarWidth: 280px;
@@ -1674,6 +1770,47 @@ input {
   padding: 12px;
 }
 
+.closePromptModal {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.closePromptText {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.closePromptRememberRow {
+  margin-top: 10px;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+  user-select: none;
+}
+
+.closePromptRememberRow input {
+  accent-color: var(--accent);
+}
+
+.closePromptActions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settingsBtn.danger {
+  border-color: rgba(217, 44, 44, 0.4);
+  background: rgba(217, 44, 44, 0.1);
+  color: rgba(217, 44, 44, 0.95);
+}
+
+.settingsBtn.danger:hover {
+  background: rgba(217, 44, 44, 0.14);
+}
+
 .shortcutGrid {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -2300,7 +2437,7 @@ input {
 .workshopRefreshBtn {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 
 .workshopSection {
@@ -2475,7 +2612,7 @@ input {
 .workshopBtn {
   appearance: none;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.75);
   color: rgba(0, 0, 0, 0.82);
   padding: 7px 10px;
@@ -2529,7 +2666,7 @@ input {
 
 .workshopMetaCard {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 12px;
   background: rgba(255, 255, 255, 0.7);
 }
@@ -2562,6 +2699,21 @@ input {
   margin-bottom: 12px;
 }
 
+.workshopSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.workshopReadmeFrame {
+  width: 100%;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.65);
+}
+
 .workshopTab {
   appearance: none;
   border: none;
@@ -2583,7 +2735,7 @@ input {
 .workshopLogs {
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: rgba(0, 0, 0, 0.04);
   padding: 12px;
   box-sizing: border-box;
@@ -2605,7 +2757,7 @@ input {
   width: 100%;
   min-height: 200px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 12px;
   box-sizing: border-box;
   background: #0b0f14;
@@ -2614,9 +2766,64 @@ input {
   resize: vertical;
 }
 
+.workshopConfigGrid {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.workshopConfigRow {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.workshopConfigKey {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workshopConfigControl {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.workshopConfigControl .textInput {
+  flex: 1 1 auto;
+}
+
+.workshopConfigControl .toggle {
+  flex: 0 0 auto;
+}
+
+.workshopConfigControl .workshopHint {
+  padding: 0;
+}
+
+.workshopConfigTextarea {
+  min-height: 44px;
+  resize: vertical;
+}
+
 @media (max-width: 980px) {
   .workshopEditorBody {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .workshopConfigRow {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .workshopConfigKey {
+    white-space: normal;
   }
 }
 
@@ -2650,7 +2857,7 @@ input {
 .pluginDevPre {
   margin: 8px 0 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: rgba(0, 0, 0, 0.04);
   padding: 12px;
   overflow: auto;
