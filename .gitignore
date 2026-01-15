@@ -1,34 +1,18 @@
+# OS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
 # IntelliJ / Android Studio
-**/.idea/
+.idea/
 *.iml
 out/
-
-# Gradle / Kotlin
-**/.gradle/
-**/.kotlin/
-**/build/
-**/local.properties
-.gradle/
-!gradle.properties
-
-# Android / NDK build outputs
-**/.cxx/
-**/.externalNativeBuild/
-**/captures/
-**/logs/
-
-# Temp
-**/.tmp/
-
-# C++ specific
-*.o
-*.obj
-*.a
-*.so
-*.dll
-*.dylib
-**/CMakeFiles/
-CMakeCache.txt
 
 # VS Code (keep shared workspace settings)
 .vscode/*
@@ -38,56 +22,60 @@ CMakeCache.txt
 !.vscode/tasks.json
 !.vscode/*.code-snippets
 
-# Keystore - 签名密钥永远不应提交到版本控制
+# Gradle / Kotlin
+.gradle/
+.kotlin/
+build/
+local.properties
+
+# Android / NDK build outputs
+.cxx/
+.externalNativeBuild/
+captures/
+logs/
+
+# Android artifacts
+*.ap_
+*.apk
+*.aab
+*.aar
+
+# Node (for `.server/` + desktop)
+node_modules/
+.env
+.env.*
+!.env.example
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Rust / Tauri
+target/
+/apps/zhixu-desktop/src-tauri/gen/
+
+# Temp
+.tmp/
+.tmp-*
+*.tmp
+
+# Native / CMake
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.dylib
+
+# Keystore / signing keys (never commit)
 *.jks
 *.keystore
 .key/
 
-# OS
-**/.DS_Store
-**/Thumbs.db
-**/ehthumbs.db
-**/Desktop.ini
-**/.Spotlight-V100
-**/.Trashes
-
-# Node (for `.server/`)
-**/node_modules/
-**/.env
-**/.env.*
-!**/.env.example
-**/npm-debug.log*
-**/yarn-debug.log*
-**/yarn-error.log*
-**/pnpm-debug.log*
-
 # Project-specific build/artifacts
 /apps/zhixu-android/release/
 /.web/zhixu.app/downloads/
-
-# Android specific
-**/gradle/
-**/bin/
-**/gen/
-**/lint/
-**/proguard/
-**/signed/
-**/unsigned/
-**/mapping.txt
-**/outputs/
-**/release/
-**/debug/
-*.ap_
-*.apk
-*.aar
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-/apps/zhixu-desktop/dist-portable
+/apps/zhixu-desktop/dist-portable/
