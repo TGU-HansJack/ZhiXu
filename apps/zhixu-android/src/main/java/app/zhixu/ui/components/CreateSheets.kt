@@ -249,6 +249,45 @@ internal fun CreateMenuSheetContent(
 }
 
 @Composable
+internal fun CreateQuickNewSheetContent(
+    onNewTodo: () -> Unit,
+    onNewNote: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedButton(
+                modifier = Modifier.weight(1f).height(48.dp),
+                shape = RoundedCornerShape(12.dp),
+                onClick = onNewTodo,
+            ) {
+                Icon(imageVector = Icons.Outlined.Checklist, contentDescription = null)
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(text = "新建待办", fontWeight = FontWeight.SemiBold)
+            }
+            Button(
+                modifier = Modifier.weight(1f).height(48.dp),
+                shape = RoundedCornerShape(12.dp),
+                onClick = onNewNote,
+            ) {
+                Icon(imageVector = Icons.Outlined.Description, contentDescription = null)
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(text = "新建笔记", fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
 private fun CreateActionItem(
     @DrawableRes iconRes: Int,
     label: String,

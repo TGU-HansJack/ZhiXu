@@ -111,6 +111,9 @@ import kotlin.math.pow
 fun SettingsScreen(
     contentPadding: PaddingValues,
     vaultRootUri: Uri?,
+    showAccountManagement: Boolean = true,
+    showWorkshop: Boolean = true,
+    showAbout: Boolean = true,
     onOpenAiSettings: () -> Unit,
     onOpenWorkshop: () -> Unit,
     onOpenPomodoroSettings: () -> Unit,
@@ -201,14 +204,16 @@ fun SettingsScreen(
                         } else {
                             context.getString(R.string.account_not_logged_in_short)
                         }
-                    SettingsRow(
-                        iconRes = Ionicons.User,
-                        title = stringResource(R.string.account_manage_title),
-                        subtitle = accountSubtitle,
-                        onClick = { showAccountDialog = true },
-                    )
+                    if (showAccountManagement) {
+                        SettingsRow(
+                            iconRes = Ionicons.User,
+                            title = stringResource(R.string.account_manage_title),
+                            subtitle = accountSubtitle,
+                            onClick = { showAccountDialog = true },
+                        )
 
-                    HorizontalDivider(color = dividerColor)
+                        HorizontalDivider(color = dividerColor)
+                    }
                     SettingsRow(
                         iconRes = Ionicons.Sparkles,
                         title = stringResource(R.string.settings_pro_title),
@@ -278,42 +283,46 @@ fun SettingsScreen(
                         onClick = onOpenAiSettings,
                     )
 
-                    HorizontalDivider(color = dividerColor)
-                    SettingsRow(
-                        iconRes = Ionicons.HelpCircleOutline,
-                        title = stringResource(R.string.settings_placeholder_about),
-                        subtitle = stringResource(R.string.settings_about_subtitle),
-                        onClick = { showAboutDialog = true },
-                    )
+                    if (showAbout) {
+                        HorizontalDivider(color = dividerColor)
+                        SettingsRow(
+                            iconRes = Ionicons.HelpCircleOutline,
+                            title = stringResource(R.string.settings_placeholder_about),
+                            subtitle = stringResource(R.string.settings_about_subtitle),
+                            onClick = { showAboutDialog = true },
+                        )
+                    }
                 }
             }
 
-            item { Spacer(modifier = Modifier.height(14.dp)) }
+            if (showWorkshop) {
+                item { Spacer(modifier = Modifier.height(14.dp)) }
 
-            item {
-                SettingsSectionTitle(text = stringResource(R.string.settings_section_extensions))
-            }
+                item {
+                    SettingsSectionTitle(text = stringResource(R.string.settings_section_extensions))
+                }
 
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = MaterialTheme.shapes.extraLarge,
-                ) {
-                    val workshopEnabled = vaultRootUri != null && isProEnabled
-                    val workshopSubtitle =
-                        when {
-                            vaultRootUri == null -> stringResource(R.string.workshop_no_vault)
-                            !isProEnabled -> stringResource(R.string.settings_requires_pro)
-                            else -> stringResource(R.string.settings_workshop_subtitle)
-                        }
-                    SettingsRow(
-                        iconRes = Ionicons.Workshop,
-                        title = stringResource(R.string.settings_section_workshop),
-                        subtitle = workshopSubtitle,
-                        enabled = workshopEnabled,
-                        onClick = onOpenWorkshop,
-                    )
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = MaterialTheme.shapes.extraLarge,
+                    ) {
+                        val workshopEnabled = vaultRootUri != null && isProEnabled
+                        val workshopSubtitle =
+                            when {
+                                vaultRootUri == null -> stringResource(R.string.workshop_no_vault)
+                                !isProEnabled -> stringResource(R.string.settings_requires_pro)
+                                else -> stringResource(R.string.settings_workshop_subtitle)
+                            }
+                        SettingsRow(
+                            iconRes = Ionicons.Workshop,
+                            title = stringResource(R.string.settings_section_workshop),
+                            subtitle = workshopSubtitle,
+                            enabled = workshopEnabled,
+                            onClick = onOpenWorkshop,
+                        )
+                    }
                 }
             }
 
