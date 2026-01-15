@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 use tauri::Manager;
 use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 mod draw_format;
 
@@ -614,8 +614,17 @@ fn main() {
             let tray = TrayIconBuilder::new()
                 .icon(icon)
                 .menu(&menu)
+                .show_menu_on_left_click(!cfg!(target_os = "windows"))
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { .. } = event {
+                    if !cfg!(target_os = "windows") {
+                        return;
+                    }
+
+                    if let TrayIconEvent::Click { button, button_state, .. } = event {
+                        if button != MouseButton::Left || button_state != MouseButtonState::Up {
+                            return;
+                        }
+
                         let app = tray.app_handle();
                         if let Some(win) = app.get_webview_window("main") {
                             let visible = win.is_visible().unwrap_or(true);
