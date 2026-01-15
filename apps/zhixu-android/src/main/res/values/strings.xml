@@ -49,6 +49,17 @@
     <string name="action_settings">Settings</string>
     <string name="action_new_doc">New</string>
     <string name="action_search">Search</string>
+    <string name="action_sort_filter">Sort &amp; filters</string>
+    <string name="action_toggle_view">Toggle view</string>
+    <string name="docs_sort_filter_title">Sort &amp; filters</string>
+    <string name="docs_sort_title">Sort</string>
+    <string name="docs_sort_edited_desc">Edited time (newest)</string>
+    <string name="docs_sort_created_desc">Created time (newest)</string>
+    <string name="docs_sort_name_asc">Name (A to Z)</string>
+    <string name="docs_filter_title">Filter</string>
+    <string name="docs_filter_all">All</string>
+    <string name="docs_filter_markdown">Markdown</string>
+    <string name="docs_filter_drawing">Drawing</string>
     <string name="action_rename">Rename</string>
     <string name="action_move">Move</string>
     <string name="action_add_to_desktop">Add to home screen</string>

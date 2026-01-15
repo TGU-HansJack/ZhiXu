@@ -137,6 +137,8 @@ fun DocumentListScreen(
     indexUpdater: VaultIndexUpdater,
     isActive: Boolean,
     searchRequestToken: Long,
+    sortFilterRequestToken: Long,
+    useGridLayout: Boolean,
     onOpenDoc: (String, String?, Int?) -> Unit,
     onNewDoc: () -> Unit,
     onChangeVault: () -> Unit,
@@ -171,13 +173,18 @@ fun DocumentListScreen(
                 .build()
         }
     var docs by remember(vaultRootUri) { mutableStateOf<List<UiDoc>>(emptyList()) }
+    var sortOrder by rememberSaveable(vaultRootUri) { mutableStateOf(DocListSortOrder.EditedDesc) }
+    var typeFilter by rememberSaveable(vaultRootUri) { mutableStateOf(DocListTypeFilter.All) }
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
     var lastRefreshBannerAtMs by remember { mutableStateOf(0L) }
     var showSearchSheet by remember { mutableStateOf(false) }
+    var showSortFilterSheet by remember { mutableStateOf(false) }
     var pendingOpenSearch by remember { mutableStateOf(false) }
+    var pendingOpenSortFilter by remember { mutableStateOf(false) }
     var lastSearchToken by remember { mutableLongStateOf(searchRequestToken) }
+    var lastSortFilterToken by remember { mutableLongStateOf(sortFilterRequestToken) }
     var pendingShowUpdatedBanner by remember { mutableStateOf(false) }
     var sawRefreshingForBanner by remember { mutableStateOf(false) }
 
@@ -199,12 +206,34 @@ fun DocumentListScreen(
             strictDocListPreview ||
             configuration.orientation != Configuration.ORIENTATION_LANDSCAPE
 
-    LaunchedEffect(isActive, docs, isTablet) {
+    val visibleDocs =
+        remember(docs, sortOrder, typeFilter) {
+            val filtered =
+                when (typeFilter) {
+                    DocListTypeFilter.All -> docs
+                    DocListTypeFilter.Markdown -> docs.filter { it.name.endsWith(".md", ignoreCase = true) }
+                    DocListTypeFilter.Drawing -> docs.filter { ZhixuDrawFormat.hasDrawingExtension(it.name) }
+                }
+
+            when (sortOrder) {
+                DocListSortOrder.EditedDesc -> filtered
+                DocListSortOrder.CreatedDesc ->
+                    filtered.sortedWith(
+                        compareByDescending<UiDoc> { it.createdAt }.thenBy { it.name.lowercase() },
+                    )
+                DocListSortOrder.NameAsc ->
+                    filtered.sortedWith(
+                        compareBy<UiDoc> { it.baseName.ifBlank { it.name }.lowercase() },
+                    )
+            }
+        }
+
+    LaunchedEffect(isActive, visibleDocs, useGridLayout) {
         if (!isActive) return@LaunchedEffect
-        if (docs.isEmpty()) return@LaunchedEffect
+        if (visibleDocs.isEmpty()) return@LaunchedEffect
 
         val needsRestore =
-            if (isTablet) {
+            if (useGridLayout) {
                 gridState.firstVisibleItemIndex == 0 &&
                     gridState.firstVisibleItemScrollOffset == 0 &&
                     (savedFirstVisibleIndex != 0 || savedFirstVisibleOffset != 0)
@@ -217,18 +246,18 @@ fun DocumentListScreen(
         if (needsRestore) {
             val targetIndexFromKey =
                 savedFirstVisibleKey?.let { key ->
-                    docs.indexOfFirst { it.uri.toString() == key }.takeIf { it >= 0 }
+                    visibleDocs.indexOfFirst { it.uri.toString() == key }.takeIf { it >= 0 }
                 }
 
             val targetIndex =
                 when {
                     targetIndexFromKey != null -> targetIndexFromKey
-                    savedFirstVisibleIndex in docs.indices -> savedFirstVisibleIndex
+                    savedFirstVisibleIndex in visibleDocs.indices -> savedFirstVisibleIndex
                     else -> 0
                 }
 
             if (targetIndex != 0 || savedFirstVisibleOffset != 0) {
-                if (isTablet) {
+                if (useGridLayout) {
                     gridState.scrollToItem(
                         index = targetIndex,
                         scrollOffset = savedFirstVisibleOffset.coerceAtLeast(0),
@@ -243,7 +272,7 @@ fun DocumentListScreen(
         }
 
         snapshotFlow {
-            if (isTablet) {
+            if (useGridLayout) {
                 gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
             } else {
                 listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
@@ -253,7 +282,7 @@ fun DocumentListScreen(
             .collect { (index, offset) ->
                 savedFirstVisibleIndex = index
                 savedFirstVisibleOffset = offset
-                savedFirstVisibleKey = docs.getOrNull(index)?.uri?.toString()
+                savedFirstVisibleKey = visibleDocs.getOrNull(index)?.uri?.toString()
             }
     }
 
@@ -267,6 +296,18 @@ fun DocumentListScreen(
         if (!isActive || !pendingOpenSearch) return@LaunchedEffect
         pendingOpenSearch = false
         showSearchSheet = true
+    }
+
+    LaunchedEffect(sortFilterRequestToken) {
+        if (sortFilterRequestToken == lastSortFilterToken) return@LaunchedEffect
+        lastSortFilterToken = sortFilterRequestToken
+        pendingOpenSortFilter = true
+    }
+
+    LaunchedEffect(isActive, pendingOpenSortFilter) {
+        if (!isActive || !pendingOpenSortFilter) return@LaunchedEffect
+        pendingOpenSortFilter = false
+        showSortFilterSheet = true
     }
 
 
@@ -373,7 +414,7 @@ fun DocumentListScreen(
                 indicator = {},
             ) {
                     Box(modifier = Modifier.fillMaxSize().background(listBg)) {
-                        if (isTablet) {
+                        if (useGridLayout) {
                             LazyVerticalGrid(
                                 modifier = Modifier.fillMaxSize(),
                                 columns = GridCells.Fixed(2),
@@ -382,7 +423,7 @@ fun DocumentListScreen(
                                 verticalArrangement = Arrangement.spacedBy(10.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
-                                if (docs.isEmpty()) {
+                                if (visibleDocs.isEmpty()) {
                                     item(span = { GridItemSpan(maxLineSpan) }) {
                                         Text(
                                             text = stringResource(R.string.docs_empty),
@@ -392,7 +433,7 @@ fun DocumentListScreen(
                                     }
                                 }
                                 gridItemsIndexed(
-                                    items = docs,
+                                    items = visibleDocs,
                                     key = { _, doc -> doc.uri },
                                     contentType = { _, _ -> "doc" },
                                 ) { _, doc ->
@@ -505,7 +546,7 @@ fun DocumentListScreen(
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
-                                if (docs.isEmpty()) {
+                                if (visibleDocs.isEmpty()) {
                                     item {
                                         Text(
                                             text = stringResource(R.string.docs_empty),
@@ -515,7 +556,7 @@ fun DocumentListScreen(
                                     }
                                 }
                                 itemsIndexed(
-                                    items = docs,
+                                    items = visibleDocs,
                                     key = { _, doc -> doc.uri },
                                     contentType = { _, _ -> "doc" },
                                 ) { _, doc ->
@@ -633,7 +674,77 @@ fun DocumentListScreen(
         }
     }
 
+    val sortFilterSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val docMenuSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    if (showSortFilterSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showSortFilterSheet = false },
+            sheetState = sortFilterSheetState,
+            containerColor = MaterialTheme.colorScheme.background,
+            tonalElevation = 0.dp,
+        ) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .windowInsetsPadding(WindowInsets.navigationBars),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.docs_sort_filter_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+
+                Text(
+                    text = stringResource(R.string.docs_sort_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                DocListSheetOption(
+                    title = stringResource(R.string.docs_sort_edited_desc),
+                    selected = sortOrder == DocListSortOrder.EditedDesc,
+                    onClick = { sortOrder = DocListSortOrder.EditedDesc },
+                )
+                DocListSheetOption(
+                    title = stringResource(R.string.docs_sort_created_desc),
+                    selected = sortOrder == DocListSortOrder.CreatedDesc,
+                    onClick = { sortOrder = DocListSortOrder.CreatedDesc },
+                )
+                DocListSheetOption(
+                    title = stringResource(R.string.docs_sort_name_asc),
+                    selected = sortOrder == DocListSortOrder.NameAsc,
+                    onClick = { sortOrder = DocListSortOrder.NameAsc },
+                )
+
+                Spacer(modifier = Modifier.size(8.dp))
+
+                Text(
+                    text = stringResource(R.string.docs_filter_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                DocListSheetOption(
+                    title = stringResource(R.string.docs_filter_all),
+                    selected = typeFilter == DocListTypeFilter.All,
+                    onClick = { typeFilter = DocListTypeFilter.All },
+                )
+                DocListSheetOption(
+                    title = stringResource(R.string.docs_filter_markdown),
+                    selected = typeFilter == DocListTypeFilter.Markdown,
+                    onClick = { typeFilter = DocListTypeFilter.Markdown },
+                )
+                DocListSheetOption(
+                    title = stringResource(R.string.docs_filter_drawing),
+                    selected = typeFilter == DocListTypeFilter.Drawing,
+                    onClick = { typeFilter = DocListTypeFilter.Drawing },
+                )
+
+                Spacer(modifier = Modifier.size(8.dp))
+            }
+        }
+    }
 
     if (showDocMenu && selectedDoc != null) {
         ModalBottomSheet(
@@ -815,6 +926,40 @@ fun DocumentListScreen(
             },
         )
     }
+}
+
+private enum class DocListSortOrder {
+    EditedDesc,
+    CreatedDesc,
+    NameAsc,
+}
+
+private enum class DocListTypeFilter {
+    All,
+    Markdown,
+    Drawing,
+}
+
+@Composable
+private fun DocListSheetOption(
+    title: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        trailingContent = {
+            if (selected) {
+                Icon(
+                    painter = painterResource(Ionicons.Checkmark),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        },
+        modifier = Modifier.clickable(onClick = onClick),
+    )
 }
 
 @Composable

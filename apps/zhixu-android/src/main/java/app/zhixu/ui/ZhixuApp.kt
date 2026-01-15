@@ -35,14 +35,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,11 +57,13 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -103,6 +108,7 @@ import app.zhixu.sync.VaultAutoSync
 import app.zhixu.sync.WebDavAutoSync
 import app.zhixu.ui.components.CreateDrawSheetContent
 import app.zhixu.ui.components.CreateMenuSheetContent
+import app.zhixu.ui.components.VaultDrawer
 import app.zhixu.ui.components.ZhixuCompactDragHandle
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTopAppBar
@@ -339,6 +345,7 @@ fun ZhixuApp(
     }
 
     var docSearchRequestToken by remember { mutableLongStateOf(0L) }
+    var docSortFilterRequestToken by remember { mutableLongStateOf(0L) }
     var meRefreshToken by remember { mutableLongStateOf(0L) }
     var dirStructureMutationToken by remember { mutableLongStateOf(0L) }
     var dirStructureMutation by remember { mutableStateOf<DocListMutation?>(null) }
@@ -477,125 +484,86 @@ fun ZhixuApp(
         onNavIntentConsumed()
     }
 
-    Surface(color = MaterialTheme.colorScheme.background) {
-        Scaffold(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    topBar = {
-                        if (!showTopBar) return@Scaffold
-                        Column {
-                            when (currentRoute) {
-                                "home" -> {
-                                    ZhixuTopAppBar(
-                                        containerColor = MaterialTheme.colorScheme.surface,
-                                        title = { Text(text = stringResource(R.string.nav_docs)) },
-                                        actions = {
-                                            ZhixuIconButton(onClick = { docSearchRequestToken += 1L }) {
-                                                Icon(
-                                                    painter = painterResource(Ionicons.Search),
-                                                    contentDescription = stringResource(R.string.action_search),
-                                                    modifier = Modifier.size(ZhixuTopBarIconSize),
-                                                )
-                                            }
-                                        },
-                                    )
-                                }
+    val configuration = LocalConfiguration.current
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val drawerWidth = configuration.screenWidthDp.dp * (2f / 3f)
+    var docListUseGrid by rememberSaveable(vaultRootUriString) { mutableStateOf(configuration.smallestScreenWidthDp >= 600) }
 
-                                "tasks" -> {
-                                    ZhixuTopAppBar(
-                                        containerColor = MaterialTheme.colorScheme.surface,
-                                        title = {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                            ) {
-                                                val scroll = rememberScrollState()
-                                                Row(
-                                                    modifier = Modifier.weight(1f).horizontalScroll(scroll),
-                                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                ) {
-                                                    TabText(
-                                                        text = stringResource(R.string.nav_tasks),
-                                                        selected = settledTodoPage == 0,
-                                                        onClick = {
-                                                            if (todoPagerState.currentPage == 0) return@TabText
-                                                            scope.launch {
-                                                                todoPagerState.animateScrollToPage(
-                                                                    page = 0,
-                                                                    animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
-                                                                )
-                                                            }
-                                                        },
-                                                    )
-                                                    TabText(
-                                                        text = stringResource(R.string.nav_calendar),
-                                                        selected = settledTodoPage == 1,
-                                                        onClick = {
-                                                            if (todoPagerState.currentPage == 1) return@TabText
-                                                            scope.launch {
-                                                                todoPagerState.animateScrollToPage(
-                                                                    page = 1,
-                                                                    animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
-                                                                )
-                                                            }
-                                                        },
-                                                    )
-                                                    TabText(
-                                                        text = stringResource(R.string.nav_quadrants),
-                                                        selected = settledTodoPage == 2,
-                                                        onClick = {
-                                                            if (todoPagerState.currentPage == 2) return@TabText
-                                                            scope.launch {
-                                                                todoPagerState.animateScrollToPage(
-                                                                    page = 2,
-                                                                    animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing),
-                                                                )
-                                                            }
-                                                        },
-                                                    )
-                                                }
-                                            }
-                                        },
-                                    )
-                                }
-
-                                "pomodoro" -> {
-                                    ZhixuTopAppBar(
-                                        containerColor = MaterialTheme.colorScheme.surface,
-                                        title = { Text(text = stringResource(R.string.nav_pomodoro)) },
-                                    )
-                                }
-                            }
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        }
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = currentRoute == "home",
+        drawerContent = {
+            val root = vaultRootUri
+            if (root != null) {
+                VaultDrawer(
+                    vaultRootUri = root,
+                    repository = repository,
+                    onOpenDoc = { uriStr ->
+                        scope.launch { drawerState.close() }
+                        openDoc(uriStr)
                     },
-                    bottomBar = {
-                        if (!showBottomBar) return@Scaffold
-                        val centerIconRes = if (bulkDeleteCount > 0) Ionicons.TrashOutline else Ionicons.Add
-                        val onCenterClick = {
-                            if (bulkDeleteCount > 0) {
-                                bulkDeleteTarget =
-                                    when (currentRoute) {
-                                        "home" -> BulkDeleteTarget.Docs
-                                        "tasks" -> BulkDeleteTarget.Tasks
-                                        else -> null
-                                    }
-                            } else {
-                                createSheetPage = CreateSheetPage.Menu
-                            }
-                        }
-                        MainBottomBar(
-                            currentRoute = currentRoute,
-                            onDocs = ::navigateDocs,
-                            onTasks = ::navigateTasks,
-                            onPomodoro = ::navigatePomodoro,
-                            centerIconRes = centerIconRes,
-                            onCenter = onCenterClick,
-                            onMe = ::navigateMe,
+                    onCloseDrawer = { scope.launch { drawerState.close() } },
+                    isActive = currentRoute == "home",
+                    refreshToken = dirStructureMutationToken,
+                    mutation = dirStructureMutation,
+                    onDocListMutated = ::onDocListMutated,
+                    sheetWidth = drawerWidth,
+                )
+            }
+        },
+    ) {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            Scaffold(
+                containerColor = MaterialTheme.colorScheme.background,
+                topBar = {
+                    if (currentRoute != "home") return@Scaffold
+                    Column {
+                        ZhixuTopAppBar(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            title = {},
+                            navigationIcon = {
+                                ZhixuIconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_lucide_panel_left_open),
+                                        contentDescription = stringResource(R.string.action_open_drawer),
+                                        modifier = Modifier.size(ZhixuTopBarIconSize),
+                                    )
+                                }
+                            },
+                            actions = {
+                                ZhixuIconButton(onClick = { docSortFilterRequestToken += 1L }) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_lucide_settings_2),
+                                        contentDescription = stringResource(R.string.action_sort_filter),
+                                        modifier = Modifier.size(ZhixuTopBarIconSize),
+                                    )
+                                }
+                                ZhixuIconButton(onClick = { docListUseGrid = !docListUseGrid }) {
+                                    val viewIcon =
+                                        if (docListUseGrid) {
+                                            R.drawable.ic_lucide_layout_dashboard
+                                        } else {
+                                            R.drawable.ic_lucide_stretch_horizontal
+                                        }
+                                    Icon(
+                                        painter = painterResource(viewIcon),
+                                        contentDescription = stringResource(R.string.action_toggle_view),
+                                        modifier = Modifier.size(ZhixuTopBarIconSize),
+                                    )
+                                }
+                                ZhixuIconButton(onClick = { docSearchRequestToken += 1L }) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_lucide_search),
+                                        contentDescription = stringResource(R.string.action_search),
+                                        modifier = Modifier.size(ZhixuTopBarIconSize),
+                                    )
+                                }
+                            },
                         )
-                    },
-                ) { padding ->
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                },
+            ) { padding ->
                     val target = bulkDeleteTarget
                     if (target != null) {
                         val count =
@@ -810,6 +778,8 @@ fun ZhixuApp(
                         indexUpdater = indexUpdater,
                         isActive = currentRoute == "home",
                         searchRequestToken = docSearchRequestToken,
+                        sortFilterRequestToken = docSortFilterRequestToken,
+                        useGridLayout = docListUseGrid,
                         onOpenDoc = ::openDoc,
                         onNewDoc = { navController.navigate("newDoc") },
                         onChangeVault = {
@@ -1153,6 +1123,8 @@ fun ZhixuApp(
         }
 
     }
+}
+
 @Composable
 private fun TabText(
     text: String,
