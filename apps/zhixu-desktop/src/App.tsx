@@ -19,6 +19,7 @@ import {
   IconFolderPlus,
   IconFolderPlusLucide,
   IconLucideBrush,
+  IconLucideCircleQuestionMark,
   IconLucideCircleUserRound,
   IconLucidePictureInPicture,
   IconLucidePin,
@@ -3724,6 +3725,21 @@ export function App() {
                     </div>
                   ) : null}
                 </div>
+
+                <Tooltip label="帮助 / 快捷键 (Ctrl+K)" placement="right" boundarySelector=".sidebar.mainSidebar" gap={8}>
+                  <button
+                    type="button"
+                    className="iconBtn sidebarHelpBtn"
+                    data-no-drag="true"
+                    onClick={() => {
+                      setVaultPickerOpen(false);
+                      setShortcutsOpen(true);
+                    }}
+                    aria-label="帮助"
+                  >
+                    <IconLucideCircleQuestionMark size={20} />
+                  </button>
+                </Tooltip>
 
                 <Tooltip
                   label={cloudSyncEnabled ? "云同步：已开启" : "云同步：未开启"}
