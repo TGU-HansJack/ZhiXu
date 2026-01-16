@@ -92,6 +92,7 @@
     <string name="action_hide">隐藏</string>
     <string name="action_continue">继续</string>
     <string name="edited_at_fmt">%1$s</string>
+    <string name="doc_time_today_time_fmt">今天 %1$s</string>
     <string name="doc_time_yesterday_time_fmt">昨天 %1$s</string>
     <string name="doc_time_day_before_yesterday_time_fmt">前天 %1$s</string>
     <string name="doc_time_edited_at_paren_fmt">(编辑于 %1$s)</string>

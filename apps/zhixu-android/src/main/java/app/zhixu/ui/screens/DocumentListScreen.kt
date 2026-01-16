@@ -1135,7 +1135,7 @@ private fun DocRow(
 
                 ZhixuIconButton(
                     onClick = if (selectionMode) onClick else onMoreClick,
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(24.dp).padding(end = 12.dp),
                 ) {
                     Icon(
                         painter =
@@ -1163,7 +1163,7 @@ private fun DocRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp),
                 )
             }
         }
@@ -1207,6 +1207,11 @@ private fun formatDocListTimestamp(
     val date = localDateTime.toLocalDate()
 
     return when (date) {
+        nowDate ->
+            context.getString(
+                R.string.doc_time_today_time_fmt,
+                docListTimeFormatterTimeOnly.format(localDateTime),
+            )
         nowDate.minusDays(1) ->
             context.getString(
                 R.string.doc_time_yesterday_time_fmt,
