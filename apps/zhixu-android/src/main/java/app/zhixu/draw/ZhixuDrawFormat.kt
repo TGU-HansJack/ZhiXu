@@ -134,7 +134,16 @@ object ZhixuDrawFormat {
                                 "points",
                                 JSONArray().apply {
                                     for (p in el.points) {
-                                        put(JSONArray().put(p.x).put(p.y))
+                                        val pt =
+                                            JSONArray()
+                                                .put(p.x)
+                                                .put(p.y)
+                                        when (p) {
+                                            is ZhixuDrawRoundPoint -> pt.put(p.width).put(p.alpha)
+                                            is ZhixuDrawFlatPoint -> pt.put(p.rx).put(p.ry).put(p.angle).put(p.alpha)
+                                            else -> Unit
+                                        }
+                                        put(pt)
                                     }
                                 },
                             )
@@ -208,11 +217,32 @@ object ZhixuDrawFormat {
                     val w = elObj.optDouble("width", 3.0).toFloat().coerceAtLeast(0.2f)
                     val alpha = elObj.optDouble("alpha", 1.0).toFloat().coerceIn(0f, 1f)
                     val ptsArr = elObj.optJSONArray("points") ?: JSONArray()
-                    val pts = ArrayList<Offset>(ptsArr.length())
+                    val pts = ArrayList<ZhixuDrawStrokePoint>(ptsArr.length())
                     for (j in 0 until ptsArr.length()) {
                         val pair = ptsArr.optJSONArray(j) ?: continue
                         if (pair.length() < 2) continue
-                        pts += Offset(pair.optDouble(0, 0.0).toFloat(), pair.optDouble(1, 0.0).toFloat())
+                        val x = pair.optDouble(0, 0.0).toFloat()
+                        val y = pair.optDouble(1, 0.0).toFloat()
+                        pts +=
+                            when {
+                                pair.length() >= 6 ->
+                                    ZhixuDrawFlatPoint(
+                                        x = x,
+                                        y = y,
+                                        rx = pair.optDouble(2, 0.0).toFloat(),
+                                        ry = pair.optDouble(3, 0.0).toFloat(),
+                                        angle = pair.optDouble(4, 0.0).toFloat(),
+                                        alpha = pair.optDouble(5, 1.0).toFloat().coerceIn(0f, 1f),
+                                    )
+                                pair.length() >= 4 ->
+                                    ZhixuDrawRoundPoint(
+                                        x = x,
+                                        y = y,
+                                        width = pair.optDouble(2, w.toDouble()).toFloat().coerceAtLeast(0.2f),
+                                        alpha = pair.optDouble(3, alpha.toDouble()).toFloat().coerceIn(0f, 1f),
+                                    )
+                                else -> ZhixuDrawBasicPoint(x = x, y = y)
+                            }
                     }
                     elements +=
                         ZhixuDrawStroke(

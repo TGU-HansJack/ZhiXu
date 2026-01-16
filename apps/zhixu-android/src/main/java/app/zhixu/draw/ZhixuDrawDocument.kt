@@ -38,13 +38,39 @@ sealed interface ZhixuDrawElement {
     val id: String
 }
 
+sealed interface ZhixuDrawStrokePoint {
+    val x: Float
+    val y: Float
+}
+
+data class ZhixuDrawBasicPoint(
+    override val x: Float,
+    override val y: Float,
+) : ZhixuDrawStrokePoint
+
+data class ZhixuDrawRoundPoint(
+    override val x: Float,
+    override val y: Float,
+    val width: Float,
+    val alpha: Float,
+) : ZhixuDrawStrokePoint
+
+data class ZhixuDrawFlatPoint(
+    override val x: Float,
+    override val y: Float,
+    val rx: Float,
+    val ry: Float,
+    val angle: Float,
+    val alpha: Float,
+) : ZhixuDrawStrokePoint
+
 data class ZhixuDrawStroke(
     override val id: String,
     val tool: ZhixuDrawTool,
     val colorArgb: Int,
     val width: Float,
     val alpha: Float,
-    val points: List<Offset>,
+    val points: List<ZhixuDrawStrokePoint>,
 ) : ZhixuDrawElement
 
 data class ZhixuDrawShapeElement(

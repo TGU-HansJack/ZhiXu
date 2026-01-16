@@ -10,14 +10,19 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntSize
 import app.zhixu.core.tasks.Ulid
+import app.zhixu.draw.ZhixuDrawBasicPoint
 import app.zhixu.draw.ZhixuDrawDocument
 import app.zhixu.draw.ZhixuDrawElement
+import app.zhixu.draw.ZhixuDrawFlatPoint
 import app.zhixu.draw.ZhixuDrawMeta
 import app.zhixu.draw.ZhixuDrawPage
+import app.zhixu.draw.ZhixuDrawRoundPoint
 import app.zhixu.draw.ZhixuDrawShape
 import app.zhixu.draw.ZhixuDrawShapeElement
 import app.zhixu.draw.ZhixuDrawStroke
+import app.zhixu.draw.ZhixuDrawStrokePoint
 import app.zhixu.draw.ZhixuDrawTool
+import kotlin.math.PI
 
 enum class DrawToolId {
     Pen,
@@ -39,6 +44,25 @@ enum class DrawShapeMode {
     Ellipse,
 }
 
+enum class DrawPressureMapping {
+    Width,
+    Opacity,
+    Both,
+}
+
+enum class DrawPressureCurve {
+    Linear,
+    Soft,
+    Hard,
+    Custom,
+}
+
+enum class DrawTiltMapping {
+    Width,
+    Angle,
+    Shading,
+}
+
 sealed interface DrawElementState {
     val id: String
 }
@@ -49,7 +73,7 @@ class DrawStrokeState(
     var colorArgb: Int,
     var width: Float,
     var alpha: Float,
-    val points: SnapshotStateList<Offset>,
+    val points: SnapshotStateList<ZhixuDrawStrokePoint>,
     var isComplete: Boolean,
 ) : DrawElementState
 
@@ -89,10 +113,12 @@ class DrawViewportState {
 }
 
 class DrawEditorState private constructor(
+    formatVersion: Int,
     createdAtMs: Long,
     modifiedAtMs: Long,
     pages: List<DrawPageState>,
 ) {
+    var formatVersion by mutableIntStateOf(formatVersion.coerceAtLeast(1))
     var createdAtMs by mutableStateOf(createdAtMs)
     var modifiedAtMs by mutableStateOf(modifiedAtMs)
 
@@ -113,6 +139,14 @@ class DrawEditorState private constructor(
     var highlighterColorArgb by mutableIntStateOf(0xFF000000.toInt())
     var highlighterWidth by mutableFloatStateOf(18f)
     var highlighterAlpha by mutableFloatStateOf(0.35f)
+
+    var pressureEnabled by mutableStateOf(true)
+    var pressureMapping by mutableStateOf(DrawPressureMapping.Both)
+    var pressureCurve by mutableStateOf(DrawPressureCurve.Linear)
+    var pressureCurveGamma by mutableFloatStateOf(1f)
+
+    var tiltEnabled by mutableStateOf(false)
+    var tiltMapping by mutableStateOf(DrawTiltMapping.Shading)
 
     var shapeColorArgb by mutableIntStateOf(0xFF000000.toInt())
     var shapeWidth by mutableFloatStateOf(3f)
@@ -207,20 +241,28 @@ class DrawEditorState private constructor(
         val oldH = page.height
         if (oldW <= 1f || oldH <= 1f) return
 
-        fun rotate(point: Offset): Offset = Offset(oldH - point.y, point.x)
+        fun rotatePoint(p: ZhixuDrawStrokePoint): ZhixuDrawStrokePoint {
+            val x = oldH - p.y
+            val y = p.x
+            return when (p) {
+                is ZhixuDrawFlatPoint -> p.copy(x = x, y = y, angle = p.angle + (PI.toFloat() / 2f))
+                is ZhixuDrawRoundPoint -> p.copy(x = x, y = y)
+                is ZhixuDrawBasicPoint -> p.copy(x = x, y = y)
+                else -> ZhixuDrawBasicPoint(x = x, y = y)
+            }
+        }
 
         for (el in page.elements) {
             when (el) {
                 is DrawStrokeState -> {
                     for (i in 0 until el.points.size) {
-                        val p = el.points[i]
-                        el.points[i] = rotate(p)
+                        el.points[i] = rotatePoint(el.points[i])
                     }
                 }
 
                 is DrawShapeState -> {
-                    el.start = rotate(el.start)
-                    el.end = rotate(el.end)
+                    el.start = Offset(oldH - el.start.y, el.start.x)
+                    el.end = Offset(oldH - el.end.y, el.end.x)
                 }
             }
         }
@@ -295,9 +337,15 @@ class DrawEditorState private constructor(
 
     fun toDocument(): ZhixuDrawDocument {
         val pageFiles = pages.mapIndexed { index, _ -> app.zhixu.draw.ZhixuDrawFormat.pageFileName(index) }
+        val inferredVersion =
+            when {
+                formatVersion >= 2 -> formatVersion
+                pages.any { page -> page.elements.any { el -> el is DrawStrokeState && el.points.any { it !is ZhixuDrawBasicPoint } } } -> 2
+                else -> 1
+            }
         val meta =
             ZhixuDrawMeta(
-                formatVersion = 1,
+                formatVersion = inferredVersion,
                 createdAtMs = createdAtMs,
                 modifiedAtMs = modifiedAtMs,
                 pageOrder = pageFiles,
@@ -375,7 +423,7 @@ class DrawEditorState private constructor(
                             },
                     )
                 }
-            val state = DrawEditorState(document.meta.createdAtMs, document.meta.modifiedAtMs, pages)
+            val state = DrawEditorState(document.meta.formatVersion, document.meta.createdAtMs, document.meta.modifiedAtMs, pages)
             state.ensureHasAtLeastOnePage()
             return state
         }
@@ -391,7 +439,7 @@ private fun ZhixuDrawElement.toState(): DrawElementState =
                 colorArgb = colorArgb,
                 width = width,
                 alpha = alpha,
-                points = mutableStateListOf<Offset>().also { it.addAll(points) },
+                points = mutableStateListOf<ZhixuDrawStrokePoint>().also { it.addAll(points) },
                 isComplete = true,
             )
         is ZhixuDrawShapeElement ->

@@ -2,27 +2,46 @@ package app.zhixu.draw.tools
 
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.geometry.Offset
+import app.zhixu.draw.ZhixuDrawBasicPoint
+import app.zhixu.draw.ZhixuDrawFlatPoint
+import app.zhixu.draw.ZhixuDrawRoundPoint
+import app.zhixu.draw.ZhixuDrawStrokePoint
 import app.zhixu.draw.ZhixuDrawTool
 import app.zhixu.draw.editor.DrawEditorState
 import app.zhixu.draw.editor.DrawPageState
+import app.zhixu.draw.editor.DrawPressureCurve
+import app.zhixu.draw.editor.DrawPressureMapping
 import app.zhixu.draw.editor.DrawShapeMode
 import app.zhixu.draw.editor.DrawShapeState
 import app.zhixu.draw.editor.DrawStrokeState
 import app.zhixu.draw.editor.DrawToolId
+import app.zhixu.draw.editor.DrawTiltMapping
 import app.zhixu.draw.editor.PreviewShape
 import app.zhixu.draw.editor.newElementId
 import app.zhixu.draw.geometry.distanceSquared
 import app.zhixu.draw.geometry.lerp
 import app.zhixu.draw.geometry.pointInPolygon
 import kotlin.math.ceil
+import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
+import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.hypot
 
 data class ToolPointerEvent(
     val viewPosition: Offset,
     val viewDelta: Offset,
     val pagePosition: Offset,
     val pageDelta: Offset,
+    val pointerType: String = "touch",
+    val pressure: Float = 1f,
+    val tiltX: Float = 0f,
+    val tiltY: Float = 0f,
+    val twist: Float = 0f,
 )
 
 interface DrawToolMachine {
@@ -65,12 +84,15 @@ class PenToolMachine : DrawToolMachine {
     private fun handlePointer(editor: DrawEditorState, e: ToolPointerEvent) {
         val page = editor.currentPageOrNull() ?: return
         val rawPagePos = editor.viewport.viewToPage(e.viewPosition)
+        val isPen = e.pointerType == "pen"
 
         if (isInPage(page, rawPagePos)) {
             editor.previewStroke = null
             val strokeId = activeStrokeId
             if (strokeId == null) {
                 val newStrokeId = newElementId()
+                val firstPoint = computePenStrokePoint(editor, clampToPage(page, rawPagePos), e, isPen)
+                if (firstPoint !is ZhixuDrawBasicPoint) editor.formatVersion = max(2, editor.formatVersion)
                 page.elements.add(
                     DrawStrokeState(
                         id = newStrokeId,
@@ -78,7 +100,7 @@ class PenToolMachine : DrawToolMachine {
                         colorArgb = editor.currentPenColorArgb,
                         width = editor.currentPenWidth,
                         alpha = 1f,
-                        points = mutableStateListOf(clampToPage(page, rawPagePos)),
+                        points = mutableStateListOf(firstPoint),
                         isComplete = false,
                     ),
                 )
@@ -88,7 +110,9 @@ class PenToolMachine : DrawToolMachine {
             }
 
             val stroke = page.elements.lastOrNull { it is DrawStrokeState && it.id == strokeId } as? DrawStrokeState ?: return
-            stroke.points.add(clampToPage(page, rawPagePos))
+            val nextPoint = computePenStrokePoint(editor, clampToPage(page, rawPagePos), e, isPen)
+            if (nextPoint !is ZhixuDrawBasicPoint) editor.formatVersion = max(2, editor.formatVersion)
+            stroke.points.add(nextPoint)
             return
         }
 
@@ -100,7 +124,7 @@ class PenToolMachine : DrawToolMachine {
             colorArgb = editor.currentPenColorArgb,
             width = editor.currentPenWidth,
             alpha = 1f,
-            point = rawPagePos,
+            point = computePenStrokePoint(editor, rawPagePos, e, isPen),
         )
     }
 
@@ -167,7 +191,7 @@ class HighlighterToolMachine : DrawToolMachine {
                         colorArgb = editor.highlighterColorArgb,
                         width = editor.highlighterWidth,
                         alpha = editor.highlighterAlpha,
-                        points = mutableStateListOf(clampToPage(page, rawPagePos)),
+                        points = mutableStateListOf(basicPoint(clampToPage(page, rawPagePos))),
                         isComplete = false,
                     ),
                 )
@@ -177,7 +201,7 @@ class HighlighterToolMachine : DrawToolMachine {
             }
 
             val stroke = page.elements.lastOrNull { it is DrawStrokeState && it.id == strokeId } as? DrawStrokeState ?: return
-            stroke.points.add(clampToPage(page, rawPagePos))
+            stroke.points.add(basicPoint(clampToPage(page, rawPagePos)))
             return
         }
 
@@ -189,7 +213,7 @@ class HighlighterToolMachine : DrawToolMachine {
             colorArgb = editor.highlighterColorArgb,
             width = editor.highlighterWidth,
             alpha = editor.highlighterAlpha,
-            point = rawPagePos,
+            point = basicPoint(rawPagePos),
         )
     }
 
@@ -284,7 +308,7 @@ class LassoToolMachine(
                     val pts = el.points
                     if (pts.isEmpty()) continue
                     var inside = 0
-                    for (p in pts) if (pointInPolygon(p, polygon)) inside++
+                    for (p in pts) if (pointInPolygon(Offset(p.x, p.y), polygon)) inside++
                     val ratio = inside.toFloat() / max(pts.size, 1).toFloat()
                     if (ratio >= minPercentInside) selected.add(el.id)
                 }
@@ -379,7 +403,7 @@ class EraserToolMachine : DrawToolMachine {
                                 colorArgb = el.colorArgb,
                                 width = el.width,
                                 alpha = el.alpha,
-                                points = mutableStateListOf<Offset>().also { it.addAll(seg) },
+                                points = mutableStateListOf<ZhixuDrawStrokePoint>().also { it.addAll(seg) },
                                 isComplete = true,
                             ),
                         )
@@ -404,10 +428,14 @@ class EraserToolMachine : DrawToolMachine {
         }
     }
 
-    private fun clipStrokePoints(points: List<Offset>, eraser: Offset, radiusSquared: Float): List<List<Offset>> {
+    private fun clipStrokePoints(
+        points: List<ZhixuDrawStrokePoint>,
+        eraser: Offset,
+        radiusSquared: Float,
+    ): List<List<ZhixuDrawStrokePoint>> {
         if (points.isEmpty()) return emptyList()
-        val out = ArrayList<ArrayList<Offset>>()
-        var current: ArrayList<Offset>? = null
+        val out = ArrayList<ArrayList<ZhixuDrawStrokePoint>>()
+        var current: ArrayList<ZhixuDrawStrokePoint>? = null
 
         fun flush() {
             val seg = current
@@ -459,7 +487,7 @@ private fun pushPreviewPoint(
     colorArgb: Int,
     width: Float,
     alpha: Float,
-    point: Offset,
+    point: ZhixuDrawStrokePoint,
 ) {
     val preview = editor.previewStroke
     val canReuse =
@@ -484,4 +512,97 @@ private fun pushPreviewPoint(
     }
 
     preview.points.add(point)
+}
+
+private fun basicPoint(pos: Offset): ZhixuDrawStrokePoint = ZhixuDrawBasicPoint(x = pos.x, y = pos.y)
+
+private fun distanceSquared(a: ZhixuDrawStrokePoint, b: Offset): Float {
+    val dx = a.x - b.x
+    val dy = a.y - b.y
+    return dx * dx + dy * dy
+}
+
+private fun clamp01(v: Float): Float = v.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f
+
+private fun pressureStrength(editor: DrawEditorState, pressure: Float): Float {
+    val p = clamp01(pressure)
+    return when (editor.pressureCurve) {
+        DrawPressureCurve.Linear -> p
+        DrawPressureCurve.Soft -> p.pow(0.6f)
+        DrawPressureCurve.Hard -> p.pow(1.8f)
+        DrawPressureCurve.Custom -> p.pow(editor.pressureCurveGamma.coerceIn(0.2f, 3f))
+    }
+}
+
+private fun tiltStrength(tiltX: Float, tiltY: Float): Float {
+    val tx = if (tiltX.isFinite()) tiltX else 0f
+    val ty = if (tiltY.isFinite()) tiltY else 0f
+    return clamp01(hypot(tx.toDouble(), ty.toDouble()).toFloat() / 90f)
+}
+
+private fun computePenStrokePoint(
+    editor: DrawEditorState,
+    posInPage: Offset,
+    e: ToolPointerEvent,
+    isPen: Boolean,
+): ZhixuDrawStrokePoint {
+    val baseWidth = editor.currentPenWidth.coerceAtLeast(0.2f)
+    val baseAlpha = 1f
+
+    val applyPressure = isPen && editor.pressureEnabled
+    val applyTilt = isPen && editor.tiltEnabled
+
+    val strength = if (applyPressure) pressureStrength(editor, e.pressure) else 1f
+    val mapping = editor.pressureMapping
+    val minWidthFactor = 0.2f
+    val minAlphaFactor = 0.15f
+
+    var width = baseWidth
+    var alpha = baseAlpha
+
+    if (applyPressure) {
+        if (mapping == DrawPressureMapping.Width || mapping == DrawPressureMapping.Both) {
+            width = baseWidth * (minWidthFactor + (1f - minWidthFactor) * strength)
+        }
+        if (mapping == DrawPressureMapping.Opacity || mapping == DrawPressureMapping.Both) {
+            alpha = baseAlpha * (minAlphaFactor + (1f - minAlphaFactor) * strength)
+        }
+    }
+
+    val t = if (applyTilt) tiltStrength(e.tiltX, e.tiltY) else 0f
+    if (applyTilt && editor.tiltMapping == DrawTiltMapping.Width) {
+        width *= 1f + t * 1.2f
+    }
+
+    val canUseFlatBrush = applyTilt && (editor.tiltMapping == DrawTiltMapping.Angle || editor.tiltMapping == DrawTiltMapping.Shading) && t >= 0.12f
+    if (canUseFlatBrush) {
+        val angle = atan2(e.tiltY.toDouble(), e.tiltX.toDouble()).toFloat()
+        val r = max(0.05f, width / 2f)
+        val baseRatio = 0.35f
+        var rx = r
+        var ry = r * baseRatio
+        if (editor.tiltMapping == DrawTiltMapping.Shading) {
+            rx = r * (1f + t * 1.5f)
+            ry = max(0.03f, r * (1f - t * 0.7f))
+        }
+        return ZhixuDrawFlatPoint(
+            x = posInPage.x,
+            y = posInPage.y,
+            rx = rx,
+            ry = ry,
+            angle = angle,
+            alpha = clamp01(alpha),
+        )
+    }
+
+    if (applyPressure || (applyTilt && editor.tiltMapping == DrawTiltMapping.Width)) {
+        return ZhixuDrawRoundPoint(
+            x = posInPage.x,
+            y = posInPage.y,
+            width = width.coerceAtLeast(0.2f),
+            alpha = clamp01(alpha),
+        )
+    }
+
+    return ZhixuDrawBasicPoint(x = posInPage.x, y = posInPage.y)
 }

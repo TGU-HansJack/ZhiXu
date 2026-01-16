@@ -1,5 +1,6 @@
 package app.zhixu.draw.ui
 
+import android.graphics.Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -7,15 +8,17 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.Dp
@@ -24,6 +27,7 @@ import app.zhixu.draw.ZhixuDrawPage
 import app.zhixu.draw.ZhixuDrawShape
 import app.zhixu.draw.ZhixuDrawShapeElement
 import app.zhixu.draw.ZhixuDrawStroke
+import app.zhixu.draw.render.drawStrokePointsToCanvas
 
 @Composable
 fun DrawDocumentPreviewRow(
@@ -62,6 +66,13 @@ private fun DrawPageThumbnail(
     page: ZhixuDrawPage?,
     modifier: Modifier = Modifier,
 ) {
+    val strokePaint =
+        remember {
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+            }
+        }
     Canvas(modifier = modifier.fillMaxHeight().clipToBounds()) {
         val w = page?.width?.takeIf { it > 1f } ?: DefaultPageWidth
         val h = page?.height?.takeIf { it > 1f } ?: DefaultPageHeight
@@ -88,23 +99,28 @@ private fun DrawPageThumbnail(
                 style = Stroke(width = 1f / scale),
             )
             page?.elements?.forEach { el ->
-                drawElement(el)
+                drawElement(el, strokePaint)
             }
         }
     }
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawElement(el: ZhixuDrawElement) {
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawElement(el: ZhixuDrawElement, strokePaint: Paint) {
     when (el) {
         is ZhixuDrawStroke -> {
             val pts = el.points
             if (pts.isEmpty()) return
-            val path = buildPath(pts)
-            drawPath(
-                path = path,
-                color = Color(el.colorArgb).copy(alpha = el.alpha.coerceIn(0f, 1f)),
-                style = Stroke(width = el.width.coerceAtLeast(0.2f), cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
+            drawIntoCanvas { canvas ->
+                drawStrokePointsToCanvas(
+                    canvas = canvas.nativeCanvas,
+                    paint = strokePaint,
+                    points = pts,
+                    colorArgb = el.colorArgb,
+                    fallbackWidth = el.width,
+                    fallbackAlpha = el.alpha,
+                    scale = 1f,
+                )
+            }
         }
 
         is ZhixuDrawShapeElement -> {
@@ -118,16 +134,6 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawElement(el: Zhi
             }
         }
     }
-}
-
-private fun buildPath(points: List<Offset>): Path {
-    val path = Path()
-    if (points.isEmpty()) return path
-    path.moveTo(points[0].x, points[0].y)
-    for (i in 1 until points.size) {
-        path.lineTo(points[i].x, points[i].y)
-    }
-    return path
 }
 
 private fun rectFromPoints(a: Offset, b: Offset): Rect {

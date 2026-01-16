@@ -3,9 +3,9 @@ package app.zhixu.ui.screens
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Paint
-import android.graphics.Path as AndroidPath
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
+import android.view.MotionEvent
 import androidx.core.content.FileProvider
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -49,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,15 +65,17 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerInputScope
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -86,6 +89,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -98,13 +102,19 @@ import app.zhixu.draw.ZhixuDrawFormat
 import app.zhixu.draw.ZhixuDrawShape
 import app.zhixu.draw.ZhixuDrawShapeElement
 import app.zhixu.draw.ZhixuDrawStroke
+import app.zhixu.draw.ZhixuDrawFlatPoint
+import app.zhixu.draw.ZhixuDrawRoundPoint
+import app.zhixu.draw.ZhixuDrawStrokePoint
 import app.zhixu.draw.editor.DrawEditorState
 import app.zhixu.draw.editor.DrawElementState
 import app.zhixu.draw.editor.DrawPenStyle
+import app.zhixu.draw.editor.DrawPressureCurve
+import app.zhixu.draw.editor.DrawPressureMapping
 import app.zhixu.draw.editor.DrawShapeMode
 import app.zhixu.draw.editor.DrawShapeState
 import app.zhixu.draw.editor.DrawStrokeState
 import app.zhixu.draw.editor.DrawToolId
+import app.zhixu.draw.editor.DrawTiltMapping
 import app.zhixu.draw.tools.DrawToolMachine
 import app.zhixu.draw.tools.EraserToolMachine
 import app.zhixu.draw.tools.HighlighterToolMachine
@@ -113,6 +123,8 @@ import app.zhixu.draw.tools.PanToolMachine
 import app.zhixu.draw.tools.PenToolMachine
 import app.zhixu.draw.tools.ShapeToolMachine
 import app.zhixu.draw.tools.ToolPointerEvent
+import app.zhixu.draw.render.argbWithAlpha
+import app.zhixu.draw.render.drawStrokePointsToCanvas
 import app.zhixu.ui.Heroicons
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.DocListMutation
@@ -125,9 +137,16 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.hypot
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.ceil
+import kotlin.math.exp
+import kotlin.math.sin
+import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.math.PI
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -136,6 +155,10 @@ import kotlinx.coroutines.withContext
 
 private const val MinScale: Float = 0.3f
 private const val MaxScale: Float = 5.0f
+private const val MotionSmoothingTauMs: Float = 50f
+private const val PageCacheMaxDimPx: Int = 2048
+private const val PageCacheMaxScale: Float = 3f
+private const val PageCacheScaleStep: Float = 0.5f
 
 private enum class DrawViewMode {
     Writing,
@@ -154,6 +177,12 @@ private val drawShapeColorArgbKey = intPreferencesKey("draw_shape_color_argb")
 private val drawShapeWidthKey = floatPreferencesKey("draw_shape_width")
 private val drawShapeModeKey = stringPreferencesKey("draw_shape_mode")
 private val drawEraserRadiusKey = floatPreferencesKey("draw_eraser_radius")
+private val drawPressureEnabledKey = booleanPreferencesKey("draw_pressure_enabled")
+private val drawPressureMappingKey = stringPreferencesKey("draw_pressure_mapping")
+private val drawPressureCurveKey = stringPreferencesKey("draw_pressure_curve")
+private val drawPressureCurveGammaKey = floatPreferencesKey("draw_pressure_curve_gamma")
+private val drawTiltEnabledKey = booleanPreferencesKey("draw_tilt_enabled")
+private val drawTiltMappingKey = stringPreferencesKey("draw_tilt_mapping")
 
 private data class DrawToolPrefs(
     val penStyle: DrawPenStyle = DrawPenStyle.FountainPen,
@@ -164,6 +193,12 @@ private data class DrawToolPrefs(
     val highlighterColorArgb: Int = 0xFF000000.toInt(),
     val highlighterWidth: Float = 18f,
     val highlighterAlpha: Float = 0.35f,
+    val pressureEnabled: Boolean = true,
+    val pressureMapping: DrawPressureMapping = DrawPressureMapping.Both,
+    val pressureCurve: DrawPressureCurve = DrawPressureCurve.Linear,
+    val pressureCurveGamma: Float = 1f,
+    val tiltEnabled: Boolean = false,
+    val tiltMapping: DrawTiltMapping = DrawTiltMapping.Shading,
     val shapeColorArgb: Int = 0xFF000000.toInt(),
     val shapeWidth: Float = 3f,
     val shapeMode: DrawShapeMode = DrawShapeMode.Line,
@@ -173,6 +208,59 @@ private data class DrawToolPrefs(
 private data class DrawUndoHistory(
     val undoStack: ArrayDeque<List<ZhixuDrawElement>> = ArrayDeque(),
     val redoStack: ArrayDeque<List<ZhixuDrawElement>> = ArrayDeque(),
+)
+
+private data class DrawMotionPointerExtras(
+    val pointerType: String,
+    val pressure: Float,
+    val tiltX: Float,
+    val tiltY: Float,
+    val twist: Float,
+)
+
+private class DrawMotionSmoother(
+    var lastTimeMs: Long,
+    var pressure: Float,
+    var tiltX: Float,
+    var tiltY: Float,
+)
+
+private class DrawMotionInputState {
+    var activeTool: DrawToolMachine? = null
+    var modifiesDocument: Boolean = false
+    var activePointerId: Int? = null
+    var lastViewPos: Offset = Offset.Zero
+    var lastPagePos: Offset = Offset.Zero
+    var isTransform: Boolean = false
+    var prevCentroid: Offset = Offset.Zero
+    var prevSpan: Float = 0f
+    var smoother: DrawMotionSmoother? = null
+
+    fun reset() {
+        activeTool = null
+        modifiesDocument = false
+        activePointerId = null
+        lastViewPos = Offset.Zero
+        lastPagePos = Offset.Zero
+        isTransform = false
+        prevCentroid = Offset.Zero
+        prevSpan = 0f
+        smoother = null
+    }
+}
+
+private data class DrawPageBaseLayerKey(
+    val pageId: String,
+    val revision: Long,
+    val backgroundColorArgb: Int,
+    val outWidthPx: Int,
+    val outHeightPx: Int,
+    val bitmapScale: Float,
+)
+
+private data class DrawPageBaseLayer(
+    val key: DrawPageBaseLayerKey,
+    val bitmap: Bitmap,
 )
 
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
@@ -214,6 +302,15 @@ fun DrawScreen(
         val shapeMode =
             runCatching { DrawShapeMode.valueOf(prefs[drawShapeModeKey] ?: DrawShapeMode.Line.name) }
                 .getOrDefault(DrawShapeMode.Line)
+        val pressureMapping =
+            runCatching { DrawPressureMapping.valueOf(prefs[drawPressureMappingKey] ?: DrawPressureMapping.Both.name) }
+                .getOrDefault(DrawPressureMapping.Both)
+        val pressureCurve =
+            runCatching { DrawPressureCurve.valueOf(prefs[drawPressureCurveKey] ?: DrawPressureCurve.Linear.name) }
+                .getOrDefault(DrawPressureCurve.Linear)
+        val tiltMapping =
+            runCatching { DrawTiltMapping.valueOf(prefs[drawTiltMappingKey] ?: DrawTiltMapping.Shading.name) }
+                .getOrDefault(DrawTiltMapping.Shading)
 
         toolPrefs =
             DrawToolPrefs(
@@ -225,6 +322,12 @@ fun DrawScreen(
                 highlighterColorArgb = prefs[drawHighlighterColorArgbKey] ?: 0xFF000000.toInt(),
                 highlighterWidth = (prefs[drawHighlighterWidthKey] ?: 18f).coerceIn(4f, 42f),
                 highlighterAlpha = (prefs[drawHighlighterAlphaKey] ?: 0.35f).coerceIn(0.05f, 0.9f),
+                pressureEnabled = prefs[drawPressureEnabledKey] ?: true,
+                pressureMapping = pressureMapping,
+                pressureCurve = pressureCurve,
+                pressureCurveGamma = (prefs[drawPressureCurveGammaKey] ?: 1f).coerceIn(0.2f, 3f),
+                tiltEnabled = prefs[drawTiltEnabledKey] ?: false,
+                tiltMapping = tiltMapping,
                 shapeColorArgb = prefs[drawShapeColorArgbKey] ?: 0xFF000000.toInt(),
                 shapeWidth = (prefs[drawShapeWidthKey] ?: 3f).coerceIn(0.5f, 18f),
                 shapeMode = shapeMode,
@@ -242,6 +345,12 @@ fun DrawScreen(
         editor.highlighterColorArgb = prefs.highlighterColorArgb
         editor.highlighterWidth = prefs.highlighterWidth
         editor.highlighterAlpha = prefs.highlighterAlpha
+        editor.pressureEnabled = prefs.pressureEnabled
+        editor.pressureMapping = prefs.pressureMapping
+        editor.pressureCurve = prefs.pressureCurve
+        editor.pressureCurveGamma = prefs.pressureCurveGamma
+        editor.tiltEnabled = prefs.tiltEnabled
+        editor.tiltMapping = prefs.tiltMapping
         editor.shapeColorArgb = prefs.shapeColorArgb
         editor.shapeWidth = prefs.shapeWidth
         editor.shapeMode = prefs.shapeMode
@@ -260,6 +369,12 @@ fun DrawScreen(
                 highlighterColorArgb = editor.highlighterColorArgb,
                 highlighterWidth = editor.highlighterWidth,
                 highlighterAlpha = editor.highlighterAlpha,
+                pressureEnabled = editor.pressureEnabled,
+                pressureMapping = editor.pressureMapping,
+                pressureCurve = editor.pressureCurve,
+                pressureCurveGamma = editor.pressureCurveGamma,
+                tiltEnabled = editor.tiltEnabled,
+                tiltMapping = editor.tiltMapping,
                 shapeColorArgb = editor.shapeColorArgb,
                 shapeWidth = editor.shapeWidth,
                 shapeMode = editor.shapeMode,
@@ -278,6 +393,12 @@ fun DrawScreen(
                     store[drawHighlighterColorArgbKey] = next.highlighterColorArgb
                     store[drawHighlighterWidthKey] = next.highlighterWidth
                     store[drawHighlighterAlphaKey] = next.highlighterAlpha
+                    store[drawPressureEnabledKey] = next.pressureEnabled
+                    store[drawPressureMappingKey] = next.pressureMapping.name
+                    store[drawPressureCurveKey] = next.pressureCurve.name
+                    store[drawPressureCurveGammaKey] = next.pressureCurveGamma
+                    store[drawTiltEnabledKey] = next.tiltEnabled
+                    store[drawTiltMappingKey] = next.tiltMapping.name
                     store[drawShapeColorArgbKey] = next.shapeColorArgb
                     store[drawShapeWidthKey] = next.shapeWidth
                     store[drawShapeModeKey] = next.shapeMode.name
@@ -1437,6 +1558,125 @@ private fun DrawToolDrawerContent(
                     range = 0.5f..18f,
                     onValueChange = { editor.currentPenWidth = it },
                 )
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+
+                Text(
+                    text = "压感",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                ModeChip(
+                    selected = editor.pressureEnabled,
+                    label = if (editor.pressureEnabled) "已启用" else "已关闭",
+                    onClick = { editor.pressureEnabled = !editor.pressureEnabled },
+                )
+                if (editor.pressureEnabled) {
+                    Text(
+                        text = "映射",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val mappingScroll = rememberScrollState()
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(mappingScroll),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        ModeChip(
+                            selected = editor.pressureMapping == DrawPressureMapping.Width,
+                            label = "宽度",
+                            onClick = { editor.pressureMapping = DrawPressureMapping.Width },
+                        )
+                        ModeChip(
+                            selected = editor.pressureMapping == DrawPressureMapping.Opacity,
+                            label = "透明度",
+                            onClick = { editor.pressureMapping = DrawPressureMapping.Opacity },
+                        )
+                        ModeChip(
+                            selected = editor.pressureMapping == DrawPressureMapping.Both,
+                            label = "宽度+透明度",
+                            onClick = { editor.pressureMapping = DrawPressureMapping.Both },
+                        )
+                    }
+
+                    Text(
+                        text = "曲线",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val curveScroll = rememberScrollState()
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(curveScroll),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        ModeChip(
+                            selected = editor.pressureCurve == DrawPressureCurve.Linear,
+                            label = "线性",
+                            onClick = { editor.pressureCurve = DrawPressureCurve.Linear },
+                        )
+                        ModeChip(
+                            selected = editor.pressureCurve == DrawPressureCurve.Soft,
+                            label = "柔和",
+                            onClick = { editor.pressureCurve = DrawPressureCurve.Soft },
+                        )
+                        ModeChip(
+                            selected = editor.pressureCurve == DrawPressureCurve.Hard,
+                            label = "强硬",
+                            onClick = { editor.pressureCurve = DrawPressureCurve.Hard },
+                        )
+                        ModeChip(
+                            selected = editor.pressureCurve == DrawPressureCurve.Custom,
+                            label = "自定义",
+                            onClick = { editor.pressureCurve = DrawPressureCurve.Custom },
+                        )
+                    }
+                    if (editor.pressureCurve == DrawPressureCurve.Custom) {
+                        LabeledSlider(
+                            label = "曲线 Gamma",
+                            value = editor.pressureCurveGamma,
+                            range = 0.2f..3f,
+                            onValueChange = { editor.pressureCurveGamma = it },
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+
+                Text(
+                    text = "倾斜",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                ModeChip(
+                    selected = editor.tiltEnabled,
+                    label = if (editor.tiltEnabled) "已启用" else "已关闭",
+                    onClick = { editor.tiltEnabled = !editor.tiltEnabled },
+                )
+                if (editor.tiltEnabled) {
+                    val tiltScroll = rememberScrollState()
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(tiltScroll),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        ModeChip(
+                            selected = editor.tiltMapping == DrawTiltMapping.Width,
+                            label = "宽度",
+                            onClick = { editor.tiltMapping = DrawTiltMapping.Width },
+                        )
+                        ModeChip(
+                            selected = editor.tiltMapping == DrawTiltMapping.Angle,
+                            label = "角度",
+                            onClick = { editor.tiltMapping = DrawTiltMapping.Angle },
+                        )
+                        ModeChip(
+                            selected = editor.tiltMapping == DrawTiltMapping.Shading,
+                            label = "涂抹",
+                            onClick = { editor.tiltMapping = DrawTiltMapping.Shading },
+                        )
+                    }
+                }
             }
 
             DrawToolId.Shape -> {
@@ -1611,6 +1851,7 @@ private fun DrawColorRow(
     }
 }
 
+@OptIn(FlowPreview::class)
 @Composable
 private fun DrawEditorCanvas(
     editor: DrawEditorState,
@@ -1626,6 +1867,136 @@ private fun DrawEditorCanvas(
     val pageBorderColor = Color(0xFFDDDDDD)
 
     var didInitViewport by remember(editor) { mutableStateOf(false) }
+    val motionState = remember(editor) { DrawMotionInputState() }
+    val strokePaint =
+        remember {
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+            }
+        }
+    val bitmapPaint =
+        remember {
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                isFilterBitmap = true
+            }
+        }
+
+    var baseLayer by remember(editor) { mutableStateOf<DrawPageBaseLayer?>(null) }
+
+    DisposableEffect(baseLayer?.bitmap) {
+        val bitmap = baseLayer?.bitmap
+        onDispose { bitmap?.recycle() }
+    }
+
+    LaunchedEffect(editor) {
+        snapshotFlow {
+            val page = editor.currentPageOrNull() ?: return@snapshotFlow null
+            if (editor.eraserCursor != null) return@snapshotFlow null
+
+            val pageW = page.width.coerceAtLeast(1f)
+            val pageH = page.height.coerceAtLeast(1f)
+            val viewportScale = editor.viewport.scale.coerceAtLeast(0.0001f)
+            val maxScaleByDim =
+                minOf(
+                    PageCacheMaxDimPx.toFloat() / pageW,
+                    PageCacheMaxDimPx.toFloat() / pageH,
+                )
+            val minScale = minOf(0.25f, maxScaleByDim)
+            val desiredScale =
+                minOf(
+                    viewportScale.coerceIn(1f, PageCacheMaxScale),
+                    maxScaleByDim,
+                ).coerceAtLeast(minScale)
+
+            val steppedScale =
+                if (desiredScale <= PageCacheScaleStep) {
+                    desiredScale
+                } else {
+                    (desiredScale / PageCacheScaleStep).toInt().coerceAtLeast(1) * PageCacheScaleStep
+                }
+            val outW = ceil(pageW * steppedScale).toInt().coerceIn(1, PageCacheMaxDimPx)
+            val outH = ceil(pageH * steppedScale).toInt().coerceIn(1, PageCacheMaxDimPx)
+
+            DrawPageBaseLayerKey(
+                pageId = page.id,
+                revision = editor.modifiedAtMs,
+                backgroundColorArgb = page.backgroundColorArgb,
+                outWidthPx = outW,
+                outHeightPx = outH,
+                bitmapScale = steppedScale,
+            )
+        }
+            .distinctUntilChanged()
+            .debounce(180)
+            .collectLatest { key ->
+                if (key == null) {
+                    baseLayer = null
+                    return@collectLatest
+                }
+                if (baseLayer?.key == key) return@collectLatest
+
+                val page = editor.currentPageOrNull() ?: return@collectLatest
+                if (page.id != key.pageId) return@collectLatest
+
+                val elementsSnapshot =
+                    page.elements.toList().mapNotNull { el ->
+                        when (el) {
+                            is DrawStrokeState -> {
+                                if (!el.isComplete) null
+                                else
+                                    ZhixuDrawStroke(
+                                        id = el.id,
+                                        tool = el.tool,
+                                        colorArgb = el.colorArgb,
+                                        width = el.width,
+                                        alpha = el.alpha,
+                                        points = el.points.toList(),
+                                    )
+                            }
+
+                            is DrawShapeState ->
+                                ZhixuDrawShapeElement(
+                                    id = el.id,
+                                    shape =
+                                        when (el.shape) {
+                                            DrawShapeMode.Line -> ZhixuDrawShape.Line
+                                            DrawShapeMode.Rectangle -> ZhixuDrawShape.Rectangle
+                                            DrawShapeMode.Ellipse -> ZhixuDrawShape.Ellipse
+                                        },
+                                    colorArgb = el.colorArgb,
+                                    width = el.width,
+                                    alpha = el.alpha,
+                                    start = el.start,
+                                    end = el.end,
+                                )
+
+                            else -> null
+                        }
+                    }
+
+                val modelPage =
+                    ZhixuDrawPage(
+                        id = page.id,
+                        width = page.width,
+                        height = page.height,
+                        backgroundColorArgb = page.backgroundColorArgb,
+                        elements = elementsSnapshot,
+                    )
+
+                val bitmap =
+                    withContext(Dispatchers.Default) {
+                        runCatching {
+                            val outBitmap = Bitmap.createBitmap(key.outWidthPx, key.outHeightPx, Bitmap.Config.ARGB_8888)
+                            drawPageToAndroidCanvas(android.graphics.Canvas(outBitmap), page = modelPage, scale = key.bitmapScale)
+                            outBitmap
+                        }.getOrNull()
+                    }
+                        ?: return@collectLatest
+
+                baseLayer = DrawPageBaseLayer(key = key, bitmap = bitmap)
+            }
+    }
 
     Canvas(
         modifier =
@@ -1640,18 +2011,229 @@ private fun DrawEditorCanvas(
                         snapViewport(editor, marginPx)
                     }
                 }
-                .pointerInput(editor, marginPx) {
-                    handleDrawGestures(
-                        editor = editor,
-                        marginPx = marginPx,
-                        toolMachineFor = toolMachineFor,
-                        onEdited = onEdited,
-                    )
+                .pointerInteropFilter { event ->
+                    val action = event.actionMasked
+                    fun beginTransform() {
+                        if (motionState.isTransform) return
+                        motionState.isTransform = true
+                        motionState.activeTool?.onCancel(editor)
+                        editor.previewShape = null
+                        editor.previewStroke = null
+                        editor.eraserCursor = null
+                        editor.lassoPathPoints.clear()
+                        motionState.prevCentroid = motionCentroid(event)
+                        motionState.prevSpan = motionSpan(event)
+                        motionState.activePointerId = null
+                        motionState.smoother = null
+                    }
+
+                    fun pointerTypeOf(pointerIndex: Int): String {
+                        val toolType =
+                            runCatching { event.getToolType(pointerIndex) }
+                                .getOrDefault(MotionEvent.TOOL_TYPE_FINGER)
+                        return if (toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER) "pen" else "touch"
+                    }
+
+                    fun rawPressure(pointerIndex: Int, pointerType: String): Float {
+                        if (pointerType != "pen") return 1f
+                        return event.getPressure(pointerIndex).takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f
+                    }
+
+                    fun rawTilt(pointerIndex: Int, pointerType: String): Pair<Float, Float> {
+                        if (pointerType != "pen") return 0f to 0f
+                        val tiltRad = event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex).takeIf { it.isFinite() } ?: 0f
+                        val orientationRad =
+                            event.getAxisValue(MotionEvent.AXIS_ORIENTATION, pointerIndex).takeIf { it.isFinite() } ?: 0f
+                        val tiltDeg = (tiltRad * 180f / PI.toFloat()).coerceIn(0f, 90f)
+                        val tx = tiltDeg * cos(orientationRad.toDouble()).toFloat()
+                        val ty = tiltDeg * sin(orientationRad.toDouble()).toFloat()
+                        return tx to ty
+                    }
+
+                    fun smoothed(pointerIndex: Int): DrawMotionPointerExtras {
+                        val pointerType = pointerTypeOf(pointerIndex)
+                        val pressure = rawPressure(pointerIndex, pointerType)
+                        val (tiltX, tiltY) = rawTilt(pointerIndex, pointerType)
+                        if (pointerType != "pen") {
+                            motionState.smoother = null
+                            return DrawMotionPointerExtras(pointerType = pointerType, pressure = 1f, tiltX = 0f, tiltY = 0f, twist = 0f)
+                        }
+                        val now = event.eventTime
+                        val prev = motionState.smoother
+                        if (prev == null) {
+                            val s = DrawMotionSmoother(lastTimeMs = now, pressure = pressure, tiltX = tiltX, tiltY = tiltY)
+                            motionState.smoother = s
+                            return DrawMotionPointerExtras(pointerType = pointerType, pressure = pressure, tiltX = tiltX, tiltY = tiltY, twist = 0f)
+                        }
+                        val dtMs = (now - prev.lastTimeMs).coerceAtLeast(0L).toFloat()
+                        val a = (1f - exp((-dtMs / MotionSmoothingTauMs).toDouble()).toFloat()).coerceIn(0f, 1f)
+                        prev.pressure = (prev.pressure + (pressure - prev.pressure) * a).coerceIn(0f, 1f)
+                        prev.tiltX = prev.tiltX + (tiltX - prev.tiltX) * a
+                        prev.tiltY = prev.tiltY + (tiltY - prev.tiltY) * a
+                        prev.lastTimeMs = now
+                        return DrawMotionPointerExtras(pointerType = pointerType, pressure = prev.pressure, tiltX = prev.tiltX, tiltY = prev.tiltY, twist = 0f)
+                    }
+
+                    when (action) {
+                        MotionEvent.ACTION_DOWN -> {
+                            motionState.reset()
+                            motionState.activeTool = toolMachineFor(editor.toolId)
+                            motionState.modifiesDocument =
+                                motionState.activeTool?.id == DrawToolId.Pen ||
+                                    motionState.activeTool?.id == DrawToolId.Highlighter ||
+                                    motionState.activeTool?.id == DrawToolId.Shape ||
+                                    motionState.activeTool?.id == DrawToolId.Eraser
+
+                            val pointerIndex = 0
+                            motionState.activePointerId = event.getPointerId(pointerIndex)
+                            val viewPos = Offset(event.getX(pointerIndex), event.getY(pointerIndex))
+                            val pagePos = clampToPage(editor, editor.viewport.viewToPage(viewPos))
+                            val extras = smoothed(pointerIndex)
+                            motionState.lastViewPos = viewPos
+                            motionState.lastPagePos = pagePos
+                            motionState.activeTool?.onDown(
+                                editor,
+                                ToolPointerEvent(
+                                    viewPosition = viewPos,
+                                    viewDelta = Offset.Zero,
+                                    pagePosition = pagePos,
+                                    pageDelta = Offset.Zero,
+                                    pointerType = extras.pointerType,
+                                    pressure = extras.pressure,
+                                    tiltX = extras.tiltX,
+                                    tiltY = extras.tiltY,
+                                    twist = extras.twist,
+                                ),
+                            )
+                            true
+                        }
+
+                        MotionEvent.ACTION_POINTER_DOWN -> {
+                            if (event.pointerCount >= 2) beginTransform()
+                            true
+                        }
+
+                        MotionEvent.ACTION_MOVE -> {
+                            if (motionState.isTransform || event.pointerCount >= 2) {
+                                beginTransform()
+                                if (event.pointerCount >= 2) {
+                                    val currCentroid = motionCentroid(event)
+                                    val currSpan = motionSpan(event)
+                                    val zoomChange = if (motionState.prevSpan > 0f) currSpan / motionState.prevSpan else 1f
+
+                                    val oldScale = editor.viewport.scale.coerceAtLeast(0.0001f)
+                                    val oldTranslation = editor.viewport.translation
+                                    val newScale = (oldScale * zoomChange).coerceIn(MinScale, MaxScale)
+
+                                    val pageUnderPrevCentroid = (motionState.prevCentroid - oldTranslation) / oldScale
+                                    val newTranslation = currCentroid - pageUnderPrevCentroid * newScale
+
+                                    editor.viewport.scale = newScale
+                                    editor.viewport.translation = newTranslation
+
+                                    motionState.prevCentroid = currCentroid
+                                    motionState.prevSpan = currSpan
+                                }
+                                true
+                            } else {
+                                val activeId = motionState.activePointerId
+                                val pointerIndex =
+                                    if (activeId != null) {
+                                        event.findPointerIndex(activeId).takeIf { it >= 0 } ?: 0
+                                    } else {
+                                        0
+                                    }
+                                val viewPos = Offset(event.getX(pointerIndex), event.getY(pointerIndex))
+                                val viewDelta = viewPos - motionState.lastViewPos
+                                val pagePos = clampToPage(editor, editor.viewport.viewToPage(viewPos))
+                                val pageDelta = pagePos - motionState.lastPagePos
+                                val extras = smoothed(pointerIndex)
+                                motionState.activeTool?.onMove(
+                                    editor,
+                                    ToolPointerEvent(
+                                        viewPosition = viewPos,
+                                        viewDelta = viewDelta,
+                                        pagePosition = pagePos,
+                                        pageDelta = pageDelta,
+                                        pointerType = extras.pointerType,
+                                        pressure = extras.pressure,
+                                        tiltX = extras.tiltX,
+                                        tiltY = extras.tiltY,
+                                        twist = extras.twist,
+                                    ),
+                                )
+                                motionState.lastViewPos = viewPos
+                                motionState.lastPagePos = pagePos
+                                true
+                            }
+                        }
+
+                        MotionEvent.ACTION_UP,
+                        MotionEvent.ACTION_POINTER_UP,
+                        -> {
+                            val actionIndex = event.actionIndex
+                            val upPointerId = event.getPointerId(actionIndex)
+                            if (motionState.isTransform) {
+                                if (event.pointerCount - 1 < 2) {
+                                    motionState.isTransform = false
+                                    snapViewport(editor, marginPx)
+                                    motionState.reset()
+                                }
+                                return@pointerInteropFilter true
+                            }
+
+                            if (motionState.activePointerId != null && upPointerId == motionState.activePointerId) {
+                                val viewPos = Offset(event.getX(actionIndex), event.getY(actionIndex))
+                                val viewDelta = viewPos - motionState.lastViewPos
+                                val pagePos = clampToPage(editor, editor.viewport.viewToPage(viewPos))
+                                val pageDelta = pagePos - motionState.lastPagePos
+                                val extras = smoothed(actionIndex)
+                                motionState.activeTool?.onUp(
+                                    editor,
+                                    ToolPointerEvent(
+                                        viewPosition = viewPos,
+                                        viewDelta = viewDelta,
+                                        pagePosition = pagePos,
+                                        pageDelta = pageDelta,
+                                        pointerType = extras.pointerType,
+                                        pressure = extras.pressure,
+                                        tiltX = extras.tiltX,
+                                        tiltY = extras.tiltY,
+                                        twist = extras.twist,
+                                    ),
+                                )
+                                if (motionState.modifiesDocument) onEdited()
+                                if (motionState.activeTool?.id == DrawToolId.Pan) snapViewport(editor, marginPx)
+                                motionState.reset()
+                            }
+                            true
+                        }
+
+                        MotionEvent.ACTION_CANCEL -> {
+                            if (motionState.isTransform) {
+                                snapViewport(editor, marginPx)
+                            } else {
+                                motionState.activeTool?.onCancel(editor)
+                            }
+                            motionState.reset()
+                            true
+                        }
+
+                        else -> false
+                    }
                 },
     ) {
         val page = editor.currentPageOrNull() ?: return@Canvas
         val scale = editor.viewport.scale.coerceAtLeast(0.0001f)
         val translation = editor.viewport.translation
+        val cache = baseLayer
+        val canUseCache =
+            editor.eraserCursor == null &&
+                cache != null &&
+                cache.key.pageId == page.id &&
+                cache.key.revision == editor.modifiedAtMs &&
+                cache.key.backgroundColorArgb == page.backgroundColorArgb
+        val overlayElements: List<DrawElementState> = page.elements.filter { it is DrawStrokeState && !it.isComplete }
 
         withTransform(
             transformBlock = {
@@ -1659,19 +2241,55 @@ private fun DrawEditorCanvas(
                 scale(scale, scale, pivot = Offset.Zero)
             },
         ) {
-            drawPageBackground(
-                pageWidth = page.width,
-                pageHeight = page.height,
-                backgroundColor = Color(page.backgroundColorArgb),
-                scale = scale,
-                borderColor = pageBorderColor,
-            )
-            drawElements(
-                elements = page.elements.toList(),
-                editor = editor,
-                scale = scale,
-                selectionColor = selectionColor,
-            )
+            if (canUseCache) {
+                drawIntoCanvas { canvas ->
+                    val dst = android.graphics.RectF(0f, 0f, page.width, page.height)
+                    canvas.nativeCanvas.drawBitmap(cache!!.bitmap, null, dst, bitmapPaint)
+                }
+                drawRect(
+                    color = pageBorderColor,
+                    topLeft = Offset.Zero,
+                    size = Size(page.width, page.height),
+                    style = Stroke(width = 1f / scale.coerceAtLeast(0.0001f)),
+                )
+                drawElements(
+                    elements = page.elements.toList(),
+                    editor = editor,
+                    scale = scale,
+                    selectionColor = selectionColor,
+                    strokePaint = strokePaint,
+                    drawContent = false,
+                    drawSelection = true,
+                )
+                if (overlayElements.isNotEmpty()) {
+                    drawElements(
+                        elements = overlayElements,
+                        editor = editor,
+                        scale = scale,
+                        selectionColor = selectionColor,
+                        strokePaint = strokePaint,
+                        drawContent = true,
+                        drawSelection = false,
+                    )
+                }
+            } else {
+                drawPageBackground(
+                    pageWidth = page.width,
+                    pageHeight = page.height,
+                    backgroundColor = Color(page.backgroundColorArgb),
+                    scale = scale,
+                    borderColor = pageBorderColor,
+                )
+                drawElements(
+                    elements = page.elements.toList(),
+                    editor = editor,
+                    scale = scale,
+                    selectionColor = selectionColor,
+                    strokePaint = strokePaint,
+                    drawContent = true,
+                    drawSelection = true,
+                )
+            }
             drawOverlays(
                 editor = editor,
                 pageWidth = page.width,
@@ -1679,6 +2297,7 @@ private fun DrawEditorCanvas(
                 scale = scale,
                 lassoColor = lassoColor,
                 eraserColor = eraserColor,
+                strokePaint = strokePaint,
             )
         }
     }
@@ -1709,68 +2328,70 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawElements(
     editor: DrawEditorState,
     scale: Float,
     selectionColor: Color,
+    strokePaint: Paint,
+    drawContent: Boolean = true,
+    drawSelection: Boolean = true,
 ) {
     for (el in elements) {
-        when (el) {
-            is DrawStrokeState -> {
-                val pts = el.points
-                if (pts.isEmpty()) continue
-                val path = buildPath(pts)
-                val color = Color(el.colorArgb).copy(alpha = el.alpha.coerceIn(0f, 1f))
-                drawPath(
-                    path = path,
-                    color = color,
-                    style =
-                        Stroke(
-                            width = el.width.coerceAtLeast(0.2f),
-                            cap = StrokeCap.Round,
-                            join = StrokeJoin.Round,
-                        ),
-                )
-            }
+        if (drawContent) {
+            when (el) {
+                is DrawStrokeState -> {
+                    val pts = el.points
+                    if (pts.isEmpty()) continue
+                    drawIntoCanvas { canvas ->
+                        drawStrokePointsToCanvas(
+                            canvas = canvas.nativeCanvas,
+                            paint = strokePaint,
+                            points = pts,
+                            colorArgb = el.colorArgb,
+                            fallbackWidth = el.width,
+                            fallbackAlpha = el.alpha,
+                            scale = 1f,
+                        )
+                    }
+                }
 
-            is DrawShapeState -> {
-                val color = Color(el.colorArgb).copy(alpha = el.alpha.coerceIn(0f, 1f))
-                val w = el.width.coerceAtLeast(0.2f)
-                val rect = rectFromPoints(el.start, el.end)
-                when (el.shape) {
-                    DrawShapeMode.Line ->
-                        drawLine(
-                            color = color,
-                            start = el.start,
-                            end = el.end,
-                            strokeWidth = w,
-                            cap = StrokeCap.Round,
-                        )
-                    DrawShapeMode.Rectangle ->
-                        drawRect(
-                            color = color,
-                            topLeft = rect.topLeft,
-                            size = rect.size,
-                            style = Stroke(width = w),
-                        )
-                    DrawShapeMode.Ellipse ->
-                        drawOval(
-                            color = color,
-                            topLeft = rect.topLeft,
-                            size = rect.size,
-                            style = Stroke(width = w),
-                        )
+                is DrawShapeState -> {
+                    val color = Color(el.colorArgb).copy(alpha = el.alpha.coerceIn(0f, 1f))
+                    val w = el.width.coerceAtLeast(0.2f)
+                    val rect = rectFromPoints(el.start, el.end)
+                    when (el.shape) {
+                        DrawShapeMode.Line ->
+                            drawLine(
+                                color = color,
+                                start = el.start,
+                                end = el.end,
+                                strokeWidth = w,
+                                cap = StrokeCap.Round,
+                            )
+                        DrawShapeMode.Rectangle ->
+                            drawRect(
+                                color = color,
+                                topLeft = rect.topLeft,
+                                size = rect.size,
+                                style = Stroke(width = w),
+                            )
+                        DrawShapeMode.Ellipse ->
+                            drawOval(
+                                color = color,
+                                topLeft = rect.topLeft,
+                                size = rect.size,
+                                style = Stroke(width = w),
+                            )
+                    }
                 }
             }
         }
 
-        if (el.id in editor.selectedElementIds) {
-            val bounds = elementBounds(el)
-            if (bounds != null) {
-                val dash = PathEffect.dashPathEffect(floatArrayOf(8f / scale, 8f / scale))
-                drawRect(
-                    color = selectionColor,
-                    topLeft = bounds.topLeft,
-                    size = bounds.size,
-                    style = Stroke(width = 1.5f / scale, pathEffect = dash),
-                )
-            }
+        if (drawSelection && el.id in editor.selectedElementIds) {
+            val bounds = elementBounds(el) ?: continue
+            val dash = PathEffect.dashPathEffect(floatArrayOf(8f / scale, 8f / scale))
+            drawRect(
+                color = selectionColor,
+                topLeft = bounds.topLeft,
+                size = bounds.size,
+                style = Stroke(width = 1.5f / scale, pathEffect = dash),
+            )
         }
     }
 }
@@ -1782,6 +2403,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawOverlays(
     scale: Float,
     lassoColor: Color,
     eraserColor: Color,
+    strokePaint: Paint,
 ) {
     editor.previewShape?.let { preview ->
         val dash = PathEffect.dashPathEffect(floatArrayOf(10f / scale, 10f / scale))
@@ -1838,21 +2460,15 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawOverlays(
     editor.previewStroke?.let { preview ->
         val pts = preview.points
         if (pts.isNotEmpty()) {
-            val color = Color(preview.colorArgb).copy(alpha = preview.alpha.coerceIn(0f, 1f))
-            val w = preview.width.coerceAtLeast(0.2f)
-            if (pts.size == 1) {
-                drawCircle(color = color, center = pts.first(), radius = w / 2f)
-            } else {
-                val path = buildPath(pts)
-                drawPath(
-                    path = path,
-                    color = color,
-                    style =
-                        Stroke(
-                            width = w,
-                            cap = StrokeCap.Round,
-                            join = StrokeJoin.Round,
-                        ),
+            drawIntoCanvas { canvas ->
+                drawStrokePointsToCanvas(
+                    canvas = canvas.nativeCanvas,
+                    paint = strokePaint,
+                    points = pts,
+                    colorArgb = preview.colorArgb,
+                    fallbackWidth = preview.width,
+                    fallbackAlpha = preview.alpha,
+                    scale = 1f,
                 )
             }
         }
@@ -1992,6 +2608,27 @@ private fun spanOf(changes: List<PointerInputChange>): Float {
     return hypot((a.x - b.x).toDouble(), (a.y - b.y).toDouble()).toFloat().coerceAtLeast(0f)
 }
 
+private fun motionCentroid(event: MotionEvent): Offset {
+    val count = event.pointerCount
+    if (count <= 0) return Offset.Zero
+    var x = 0f
+    var y = 0f
+    for (i in 0 until count) {
+        x += event.getX(i)
+        y += event.getY(i)
+    }
+    return Offset(x / count.toFloat(), y / count.toFloat())
+}
+
+private fun motionSpan(event: MotionEvent): Float {
+    if (event.pointerCount < 2) return 0f
+    val ax = event.getX(0)
+    val ay = event.getY(0)
+    val bx = event.getX(1)
+    val by = event.getY(1)
+    return hypot((ax - bx).toDouble(), (ay - by).toDouble()).toFloat().coerceAtLeast(0f)
+}
+
 private fun snapViewport(editor: DrawEditorState, marginPx: Float) {
     val page = editor.currentPageOrNull() ?: return
     val size = editor.viewport.viewportSize
@@ -2078,13 +2715,21 @@ private fun elementBounds(el: DrawElementState): Rect? {
                 var minY = Float.POSITIVE_INFINITY
                 var maxX = Float.NEGATIVE_INFINITY
                 var maxY = Float.NEGATIVE_INFINITY
+                var maxRadius = el.width.coerceAtLeast(0.2f) / 2f
                 for (p in pts) {
                     minX = minOf(minX, p.x)
                     minY = minOf(minY, p.y)
                     maxX = maxOf(maxX, p.x)
                     maxY = maxOf(maxY, p.y)
+                    val r =
+                        when (p) {
+                            is ZhixuDrawRoundPoint -> p.width.coerceAtLeast(0.2f) / 2f
+                            is ZhixuDrawFlatPoint -> max(abs(p.rx), abs(p.ry)).coerceAtLeast(0.03f)
+                            else -> el.width.coerceAtLeast(0.2f) / 2f
+                        }
+                    maxRadius = max(maxRadius, r)
                 }
-                val pad = el.width.coerceAtLeast(1f) * 0.6f
+                val pad = max(1f, maxRadius) * 1.2f
                 Rect(minX - pad, minY - pad, maxX + pad, maxY + pad)
             }
         }
@@ -2157,21 +2802,20 @@ private fun drawPageToAndroidCanvas(
     paint.color = page.backgroundColorArgb
     canvas.drawRect(0f, 0f, page.width * scale, page.height * scale, paint)
 
-    paint.style = Paint.Style.STROKE
     for (el in page.elements) {
         when (el) {
             is ZhixuDrawStroke -> {
                 val pts = el.points
                 if (pts.isEmpty()) continue
-                val path = AndroidPath()
-                path.moveTo(pts[0].x * scale, pts[0].y * scale)
-                for (i in 1 until pts.size) {
-                    val p = pts[i]
-                    path.lineTo(p.x * scale, p.y * scale)
-                }
-                paint.color = applyExtraAlpha(el.colorArgb, el.alpha)
-                paint.strokeWidth = (el.width.coerceAtLeast(0.2f) * scale).coerceAtLeast(0.2f)
-                canvas.drawPath(path, paint)
+                drawStrokePointsToCanvas(
+                    canvas = canvas,
+                    paint = paint,
+                    points = pts,
+                    colorArgb = el.colorArgb,
+                    fallbackWidth = el.width,
+                    fallbackAlpha = el.alpha,
+                    scale = scale,
+                )
             }
 
             is ZhixuDrawShapeElement -> {
@@ -2183,7 +2827,8 @@ private fun drawPageToAndroidCanvas(
                 val right = maxOf(startX, endX)
                 val top = minOf(startY, endY)
                 val bottom = maxOf(startY, endY)
-                paint.color = applyExtraAlpha(el.colorArgb, el.alpha)
+                paint.style = Paint.Style.STROKE
+                paint.color = argbWithAlpha(el.colorArgb, el.alpha)
                 paint.strokeWidth = (el.width.coerceAtLeast(0.2f) * scale).coerceAtLeast(0.2f)
                 when (el.shape) {
                     ZhixuDrawShape.Line -> canvas.drawLine(startX, startY, endX, endY, paint)
@@ -2193,13 +2838,6 @@ private fun drawPageToAndroidCanvas(
             }
         }
     }
-}
-
-private fun applyExtraAlpha(colorArgb: Int, alpha: Float): Int {
-    val baseAlpha = android.graphics.Color.alpha(colorArgb).toFloat() / 255f
-    val outAlpha = (baseAlpha * alpha.coerceIn(0f, 1f)).coerceIn(0f, 1f)
-    val a = (outAlpha * 255f).roundToInt().coerceIn(0, 255)
-    return (colorArgb and 0x00FFFFFF) or (a shl 24)
 }
 
 private fun sanitizeFileName(input: String): String {
