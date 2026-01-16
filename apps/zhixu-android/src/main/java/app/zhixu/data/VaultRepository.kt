@@ -1683,11 +1683,13 @@ class VaultRepository(
         }
 
         val resolver: ContentResolver = context.contentResolver
-        resolver.openInputStream(uri)?.use { input ->
-            InputStreamReader(input, StandardCharsets.UTF_8).use { reader ->
-                reader.readUpTo(maxChars)
-            }
-        } ?: ""
+        runCatching {
+            resolver.openInputStream(uri)?.use { input ->
+                InputStreamReader(input, StandardCharsets.UTF_8).use { reader ->
+                    reader.readUpTo(maxChars)
+                }
+            } ?: ""
+        }.getOrDefault("")
     }
 
     suspend fun readBytes(uri: Uri): ByteArray? = withContext(Dispatchers.IO) {
@@ -1696,7 +1698,7 @@ class VaultRepository(
             return@withContext runCatching { File(path).readBytes() }.getOrNull()
         }
         val resolver: ContentResolver = context.contentResolver
-        resolver.openInputStream(uri)?.use { it.readBytes() }
+        runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
     }
 
     suspend fun writeText(uri: Uri, text: String) = withContext(Dispatchers.IO) {
