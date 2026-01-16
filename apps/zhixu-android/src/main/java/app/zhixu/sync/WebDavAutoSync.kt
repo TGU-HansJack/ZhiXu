@@ -11,8 +11,8 @@ import kotlinx.coroutines.withContext
 
 object WebDavAutoSync {
     private val lock = Mutex()
-    private val lastSyncedAt = HashMap<String, Long>()
     private const val minIntervalMs: Long = 60_000
+    private const val maxBackoffMs: Long = 15 * 60_000
 
     suspend fun maybeSyncVault(
         context: Context,
@@ -25,34 +25,66 @@ object WebDavAutoSync {
         if (!config.enabled) return
         val baseUrl = config.baseUrl.trim()
         val remoteRoot = config.remoteRoot.trim().ifBlank { "/" }
-        if (baseUrl.isBlank() || config.username.trim().isBlank() || config.password.isBlank()) return
+        if (baseUrl.isBlank()) return
+        if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) return
 
         val key = "$baseUrl|$remoteRoot|$root"
         val now = System.currentTimeMillis()
+        val stateStore = WebDavAutoSyncStateStore(context.applicationContext)
         val shouldRun =
             lock.withLock {
-                val last = lastSyncedAt[key] ?: 0L
-                if (!force && now - last in 0..minIntervalMs) {
+                val prev = stateStore.get(key)
+                val failures = prev.consecutiveFailures.coerceIn(0, 6)
+                val backoffMs = (minIntervalMs * (1L shl failures)).coerceAtMost(maxBackoffMs)
+                val lastAttempt = prev.lastAttemptedAtMs
+                if (!force && now - lastAttempt in 0..backoffMs) {
                     false
                 } else {
-                    lastSyncedAt[key] = now
+                    stateStore.set(key, prev.copy(lastAttemptedAtMs = now))
                     true
                 }
             }
         if (!shouldRun) return
 
-        withContext(Dispatchers.IO) {
-            WebDavSyncEngine(context, repository).syncVault(
-                rootUri = root,
-                config =
-                    config.copy(
-                        enabled = true,
-                        baseUrl = baseUrl,
-                        username = config.username.trim(),
-                        remoteRoot = remoteRoot,
+        val result =
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    WebDavSyncEngine(context, repository).syncVault(
+                        rootUri = root,
+                        config =
+                            config.copy(
+                                enabled = true,
+                                baseUrl = baseUrl,
+                                username = config.username.trim(),
+                                remoteRoot = remoteRoot,
+                            ),
+                    )
+                }
+            }
+
+        lock.withLock {
+            val prev = stateStore.get(key)
+            if (result.isSuccess) {
+                stateStore.set(
+                    key,
+                    prev.copy(
+                        lastSucceededAtMs = now,
+                        consecutiveFailures = 0,
+                        lastError = null,
                     ),
-            )
+                )
+            } else {
+                val e = result.exceptionOrNull()
+                stateStore.set(
+                    key,
+                    prev.copy(
+                        consecutiveFailures = (prev.consecutiveFailures + 1).coerceAtMost(20),
+                        lastError = (e?.message ?: e?.javaClass?.simpleName).orEmpty().ifBlank { "Sync failed" },
+                    ),
+                )
+            }
         }
+
+        result.getOrThrow()
     }
 }
-

@@ -14,7 +14,23 @@ data class WebDavConfig(
     val password: String,
     val remoteRoot: String,
     val includeIndexSqlite: Boolean,
+    val conflictStrategy: WebDavConflictStrategy,
 )
+
+enum class WebDavConflictStrategy {
+    KEEP_BOTH,
+    LOCAL_WINS,
+    REMOTE_WINS,
+    ASK_EACH_TIME,
+    ;
+
+    companion object {
+        fun fromRaw(raw: String?): WebDavConflictStrategy {
+            val normalized = raw.orEmpty().trim().uppercase()
+            return entries.firstOrNull { it.name == normalized } ?: KEEP_BOTH
+        }
+    }
+}
 
 class SyncPreferences(
     private val context: Context,
@@ -25,6 +41,7 @@ class SyncPreferences(
     private val webdavPasswordKey = stringPreferencesKey("webdav_password")
     private val webdavRemoteRootKey = stringPreferencesKey("webdav_remote_root")
     private val includeIndexSqliteKey = booleanPreferencesKey("sync_include_index_sqlite")
+    private val webdavConflictStrategyKey = stringPreferencesKey("webdav_conflict_strategy")
 
     val webDavConfig: Flow<WebDavConfig> =
         context.dataStore.data
@@ -36,6 +53,7 @@ class SyncPreferences(
                     password = prefs[webdavPasswordKey] ?: "",
                     remoteRoot = prefs[webdavRemoteRootKey] ?: "/",
                     includeIndexSqlite = prefs[includeIndexSqliteKey] ?: true,
+                    conflictStrategy = WebDavConflictStrategy.fromRaw(prefs[webdavConflictStrategyKey]),
                 )
             }
 
@@ -58,6 +76,7 @@ class SyncPreferences(
             prefs[webdavPasswordKey] = config.password
             prefs[webdavRemoteRootKey] = config.remoteRoot
             prefs[includeIndexSqliteKey] = config.includeIndexSqlite
+            prefs[webdavConflictStrategyKey] = config.conflictStrategy.name
         }
     }
 }

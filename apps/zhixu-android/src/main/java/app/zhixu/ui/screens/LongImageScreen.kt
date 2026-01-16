@@ -107,6 +107,7 @@ fun LongImageScreen(
                 password = "",
                 remoteRoot = "/",
                 includeIndexSqlite = false,
+                conflictStrategy = app.zhixu.data.WebDavConflictStrategy.KEEP_BOTH,
             ),
     )
     val userName = webDavConfig.username.trim().ifBlank { "用户" }

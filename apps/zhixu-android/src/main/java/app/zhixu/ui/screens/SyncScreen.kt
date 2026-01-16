@@ -91,6 +91,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -194,6 +197,25 @@ fun SyncScreen(
             }
             current.uri
         }
+
+    var lastWebDavSummaryLoading by remember { mutableStateOf(false) }
+    var lastWebDavSummary by remember { mutableStateOf<String?>(null) }
+
+    suspend fun reloadLastWebDavSummary() {
+        val root = vaultRootUri ?: return
+        lastWebDavSummaryLoading = true
+        lastWebDavSummary =
+            runCatching {
+                val uri = resolveRelativeUri(root, ".zhixu/sync/webdav_last_summary.json") ?: return@runCatching null
+                val raw = repository.readText(uri).trim()
+                if (raw.isBlank()) null else formatWebDavLastSummaryForDisplay(raw, context)
+            }.getOrNull()
+        lastWebDavSummaryLoading = false
+    }
+
+    LaunchedEffect(vaultRootUri) {
+        reloadLastWebDavSummary()
+    }
 
     var showSyncLog by remember { mutableStateOf(false) }
     var syncLogLoading by remember { mutableStateOf(false) }
@@ -473,6 +495,14 @@ fun SyncScreen(
                                     onCheckedChange = { includeIndexSqlite = it },
                                 )
 
+                                if (!lastWebDavSummary.isNullOrBlank()) {
+                                    Spacer(Modifier.height(12.dp))
+                                    Text(lastWebDavSummary!!, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                } else if (lastWebDavSummaryLoading) {
+                                    Spacer(Modifier.height(12.dp))
+                                    Text("...", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+
                                 Spacer(Modifier.height(12.dp))
                                 if (testStatus != null) {
                                     Text(testStatus!!, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -491,6 +521,7 @@ fun SyncScreen(
                                                 password = password,
                                                 remoteRoot = remoteRoot.trim().ifBlank { "/" },
                                                 includeIndexSqlite = includeIndexSqlite,
+                                                conflictStrategy = app.zhixu.data.WebDavConflictStrategy.KEEP_BOTH,
                                             )
                                         scope.launch {
                                             syncPrefs.saveWebDavConfig(config)
@@ -511,6 +542,7 @@ fun SyncScreen(
                                                 password = password,
                                                 remoteRoot = remoteRoot.trim().ifBlank { "/" },
                                                 includeIndexSqlite = includeIndexSqlite,
+                                                conflictStrategy = app.zhixu.data.WebDavConflictStrategy.KEEP_BOTH,
                                             )
                                         scope.launch {
                                             testStatus = context.getString(R.string.webdav_testing)
@@ -538,6 +570,7 @@ fun SyncScreen(
                                                 password = password,
                                                 remoteRoot = remoteRoot.trim().ifBlank { "/" },
                                                 includeIndexSqlite = includeIndexSqlite,
+                                                conflictStrategy = app.zhixu.data.WebDavConflictStrategy.KEEP_BOTH,
                                             )
                                         scope.launch {
                                             testStatus = context.getString(R.string.webdav_syncing)
@@ -550,6 +583,7 @@ fun SyncScreen(
                                                                 R.string.webdav_sync_failed,
                                                                 e.message ?: e.javaClass.simpleName,
                                                             )
+                                                        reloadLastWebDavSummary()
                                                         return@launch
                                                     }
                                             testStatus =
@@ -560,6 +594,7 @@ fun SyncScreen(
                                                     summary.conflicts,
                                                     summary.failed,
                                                 )
+                                            reloadLastWebDavSummary()
                                         }
                                     },
                                 ) { Text(stringResource(R.string.webdav_sync_now)) }
@@ -725,6 +760,35 @@ private fun formatSyncLogLineForDisplay(line: String, context: Context): String 
         }
 
         else -> line
+    }
+}
+
+private fun formatEpochMs(ms: Long): String {
+    if (ms <= 0L) return ""
+    return runCatching {
+        Instant
+            .ofEpochMilli(ms)
+            .atZone(ZoneId.systemDefault())
+            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+    }.getOrElse { ms.toString() }
+}
+
+private fun formatWebDavLastSummaryForDisplay(raw: String, context: Context): String {
+    val obj = runCatching { JSONObject(raw) }.getOrNull() ?: return raw
+    val ok = obj.optBoolean("ok", false)
+    val endedAt = obj.optLong("endedAt", 0L)
+    val timeText = formatEpochMs(endedAt)
+    return if (!ok) {
+        val error = obj.optString("error").ifBlank { "-" }
+        val msg = context.getString(R.string.webdav_sync_failed, error)
+        if (timeText.isNotBlank()) "$timeText  $msg" else msg
+    } else {
+        val uploaded = obj.optInt("uploaded", 0)
+        val downloaded = obj.optInt("downloaded", 0)
+        val conflicts = obj.optInt("conflicts", 0)
+        val failed = obj.optInt("failed", 0)
+        val msg = context.getString(R.string.webdav_sync_ok, uploaded, downloaded, conflicts, failed)
+        if (timeText.isNotBlank()) "$timeText  $msg" else msg
     }
 }
 

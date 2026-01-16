@@ -89,6 +89,7 @@ import app.zhixu.data.VaultStorageLocation
 import app.zhixu.data.VaultSyncPreferences
 import app.zhixu.data.WebDavClient
 import app.zhixu.data.WebDavConfig
+import app.zhixu.data.WebDavConflictStrategy
 import app.zhixu.data.UiPreferences
 import app.zhixu.data.UiSettings
 import app.zhixu.data.UiThemeMode
@@ -101,10 +102,20 @@ import app.zhixu.ui.components.ZhixuTextField
 import app.zhixu.ui.components.ZhixuSwitch
 import app.zhixu.sync.OfficialSync
 import app.zhixu.sync.OfficialVaultSyncEngine
+import app.zhixu.sync.WebDavAutoSyncStateStore
+import app.zhixu.sync.WebDavSyncEngine
+import app.zhixu.sync.WebDavSyncPlan
+import app.zhixu.sync.WebDavPlannedOpKind
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.log10
 import kotlin.math.pow
+import org.json.JSONObject
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -881,7 +892,19 @@ private fun SyncSettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = remember(context) { SyncPreferences(context.applicationContext) }
-    val saved by prefs.webDavConfig.collectAsState(initial = WebDavConfig(false, "", "", "", "/", true))
+    val saved by
+        prefs.webDavConfig.collectAsState(
+            initial =
+                WebDavConfig(
+                    enabled = false,
+                    baseUrl = "",
+                    username = "",
+                    password = "",
+                    remoteRoot = "/",
+                    includeIndexSqlite = true,
+                    conflictStrategy = app.zhixu.data.WebDavConflictStrategy.KEEP_BOTH,
+                ),
+        )
 
     var enabled by remember { mutableStateOf(saved.enabled) }
     var showConfig by remember { mutableStateOf(false) }
@@ -890,10 +913,26 @@ private fun SyncSettingsScreen(
     var password by remember { mutableStateOf(saved.password) }
     var remoteRoot by remember { mutableStateOf(saved.remoteRoot) }
     var includeIndexSqlite by remember { mutableStateOf(saved.includeIndexSqlite) }
+    var conflictStrategy by remember { mutableStateOf(saved.conflictStrategy) }
     var showPassword by remember { mutableStateOf(false) }
 
     var testStatus by remember { mutableStateOf<String?>(null) }
     var testing by remember { mutableStateOf(false) }
+
+    var showConflictStrategyDialog by remember { mutableStateOf(false) }
+
+    var webDavStatus by remember { mutableStateOf<String?>(null) }
+    var webDavSyncing by remember { mutableStateOf(false) }
+    var lastWebDavSummaryLoading by remember { mutableStateOf(false) }
+    var lastWebDavSummary by remember { mutableStateOf<String?>(null) }
+
+    var webDavPreviewLoading by remember { mutableStateOf(false) }
+    var webDavPreviewPlan by remember { mutableStateOf<WebDavSyncPlan?>(null) }
+    var showWebDavPreview by remember { mutableStateOf(false) }
+    var showWebDavConflictCenter by remember { mutableStateOf(false) }
+    var showWebDavLogs by remember { mutableStateOf(false) }
+
+    var webDavAutoSyncStatus by remember { mutableStateOf<String?>(null) }
 
     var officialStatus by remember { mutableStateOf<String?>(null) }
     var officialSyncing by remember { mutableStateOf(false) }
@@ -906,6 +945,7 @@ private fun SyncSettingsScreen(
         password = saved.password
         remoteRoot = saved.remoteRoot
         includeIndexSqlite = saved.includeIndexSqlite
+        conflictStrategy = saved.conflictStrategy
     }
 
     fun currentConfig(): WebDavConfig {
@@ -916,6 +956,7 @@ private fun SyncSettingsScreen(
             password = password,
             remoteRoot = remoteRoot,
             includeIndexSqlite = includeIndexSqlite,
+            conflictStrategy = conflictStrategy,
         )
     }
 
@@ -926,10 +967,273 @@ private fun SyncSettingsScreen(
         }
     }
 
+    fun formatEpochMs(ms: Long): String {
+        if (ms <= 0L) return "-"
+        return runCatching {
+            Instant
+                .ofEpochMilli(ms)
+                .atZone(ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+        }.getOrElse { ms.toString() }
+    }
+
+    suspend fun reloadWebDavLastSummary() {
+        val root = vaultRootUri ?: return
+        lastWebDavSummaryLoading = true
+        lastWebDavSummary =
+            withContext(Dispatchers.IO) {
+                val uri = repository.resolveVaultFileUri(root, ".zhixu/sync/webdav_last_summary.json") ?: return@withContext null
+                val raw = runCatching { repository.readText(uri) }.getOrNull().orEmpty().trim()
+                if (raw.isBlank()) return@withContext null
+                val obj = runCatching { JSONObject(raw) }.getOrNull() ?: return@withContext raw
+                val ok = obj.optBoolean("ok", false)
+                val endedAt = obj.optLong("endedAt", 0L)
+                if (!ok) {
+                    val error = obj.optString("error").ifBlank { "-" }
+                    return@withContext context.getString(R.string.webdav_sync_failed, error)
+                }
+                val uploaded = obj.optInt("uploaded", 0)
+                val downloaded = obj.optInt("downloaded", 0)
+                val deletedRemote = obj.optInt("deletedRemote", 0)
+                val deletedLocal = obj.optInt("deletedLocal", 0)
+                val conflicts = obj.optInt("conflicts", 0)
+                val failed = obj.optInt("failed", 0)
+                val msg = context.getString(R.string.webdav_sync_ok_v2, uploaded, downloaded, deletedRemote, deletedLocal, conflicts, failed)
+                val time = formatEpochMs(endedAt)
+                "$msg · $time"
+            }
+        lastWebDavSummaryLoading = false
+    }
+
+    suspend fun reloadWebDavAutoSyncStatus(config: WebDavConfig) {
+        val root = vaultRootUri ?: run {
+            webDavAutoSyncStatus = context.getString(R.string.webdav_autosync_status_no_vault)
+            return
+        }
+        if (!config.enabled) {
+            webDavAutoSyncStatus = context.getString(R.string.webdav_autosync_status_disabled)
+            return
+        }
+        val baseUrl = config.baseUrl.trim()
+        val remoteRoot = config.remoteRoot.trim().ifBlank { "/" }
+        if (baseUrl.isBlank()) {
+            webDavAutoSyncStatus = context.getString(R.string.webdav_autosync_status_empty_url)
+            return
+        }
+        if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+            webDavAutoSyncStatus = context.getString(R.string.webdav_autosync_status_invalid_url)
+            return
+        }
+        val key = "$baseUrl|$remoteRoot|$root"
+        val store = WebDavAutoSyncStateStore(context.applicationContext)
+        val state = store.get(key)
+        val nextBackoffMs = (60_000L * (1L shl state.consecutiveFailures.coerceIn(0, 6))).coerceAtMost(15 * 60_000L)
+        val nextAllowed = state.lastAttemptedAtMs + nextBackoffMs
+        val base =
+            context.getString(
+                R.string.webdav_autosync_status_fmt,
+                formatEpochMs(state.lastSucceededAtMs),
+                formatEpochMs(state.lastAttemptedAtMs),
+                formatEpochMs(nextAllowed),
+            )
+        val errorPart =
+            if (state.lastError.isNullOrBlank()) {
+                ""
+            } else {
+                "\n" + context.getString(R.string.webdav_autosync_status_error_fmt, state.lastError!!)
+            }
+        webDavAutoSyncStatus = base + errorPart
+    }
+
+    androidx.compose.runtime.LaunchedEffect(vaultRootUri, saved.baseUrl, saved.remoteRoot, saved.enabled) {
+        reloadWebDavLastSummary()
+        reloadWebDavAutoSyncStatus(saved)
+    }
+
     val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
 
     BackHandler(enabled = showConfig) {
         showConfig = false
+    }
+
+    if (showConflictStrategyDialog) {
+        AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
+            onDismissRequest = { showConflictStrategyDialog = false },
+            properties = ZhixuDialogDefaults.properties,
+            title = { Text(stringResource(R.string.webdav_conflict_strategy_title)) },
+            text = {
+                Column {
+                    @Composable
+                    fun option(strategy: WebDavConflictStrategy, labelRes: Int) {
+                        TextButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                conflictStrategy = strategy
+                                showConflictStrategyDialog = false
+                            },
+                        ) {
+                            Text(
+                                text = stringResource(labelRes),
+                                fontWeight = if (conflictStrategy == strategy) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        }
+                    }
+                    option(WebDavConflictStrategy.KEEP_BOTH, R.string.webdav_conflict_strategy_keep_both)
+                    option(WebDavConflictStrategy.LOCAL_WINS, R.string.webdav_conflict_strategy_local_wins)
+                    option(WebDavConflictStrategy.REMOTE_WINS, R.string.webdav_conflict_strategy_remote_wins)
+                    option(WebDavConflictStrategy.ASK_EACH_TIME, R.string.webdav_conflict_strategy_ask_each_time)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showConflictStrategyDialog = false }) { Text(stringResource(R.string.action_close)) }
+            },
+        )
+    }
+
+    if (showWebDavPreview && webDavPreviewPlan != null) {
+        val plan = webDavPreviewPlan!!
+        FullScreenDialog(onDismiss = { showWebDavPreview = false }) {
+            Scaffold(
+                contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                containerColor = MaterialTheme.colorScheme.background,
+                topBar = {
+                    Column {
+                        ZhixuTopAppBar(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            title = { Text(stringResource(R.string.webdav_sync_preview_title), style = MaterialTheme.typography.titleMedium) },
+                            navigationIcon = {
+                                ZhixuIconButton(onClick = { showWebDavPreview = false }) {
+                                    Icon(
+                                        painter = painterResource(Ionicons.ArrowBack),
+                                        contentDescription = stringResource(R.string.action_back),
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            },
+                            actions = {
+                                TextButton(
+                                    enabled = enabled && !webDavSyncing && vaultRootUri != null,
+                                    onClick = {
+                                        showWebDavPreview = false
+                                        val root = vaultRootUri ?: return@TextButton
+                                        scope.launch {
+                                            webDavSyncing = true
+                                            webDavStatus = context.getString(R.string.webdav_syncing)
+                                            val cfg = currentConfig()
+                                            val engine = WebDavSyncEngine(context, repository)
+                                            val res =
+                                                runCatching { engine.syncVault(root, cfg) }
+                                                    .getOrElse { e ->
+                                                        webDavStatus =
+                                                            context.getString(
+                                                                R.string.webdav_sync_failed,
+                                                                e.message ?: e.javaClass.simpleName,
+                                                            )
+                                                        webDavSyncing = false
+                                                        reloadWebDavLastSummary()
+                                                        reloadWebDavAutoSyncStatus(cfg)
+                                                        return@launch
+                                                    }
+                                            webDavStatus =
+                                                context.getString(
+                                                    R.string.webdav_sync_ok_v2,
+                                                    res.uploaded,
+                                                    res.downloaded,
+                                                    res.deletedRemote,
+                                                    res.deletedLocal,
+                                                    res.conflicts,
+                                                    res.failed,
+                                                )
+                                            webDavSyncing = false
+                                            reloadWebDavLastSummary()
+                                            reloadWebDavAutoSyncStatus(cfg)
+                                        }
+                                    },
+                                ) { Text(stringResource(R.string.webdav_sync_now)) }
+                            },
+                        )
+                        HorizontalDivider(color = dividerColor)
+                    }
+                },
+            ) { innerPadding ->
+                val ops = plan.operations
+                val shown = ops.take(500)
+                LazyColumn(
+                    modifier =
+                        Modifier
+                            .padding(innerPadding)
+                            .windowInsetsPadding(WindowInsets.navigationBars)
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    item {
+                        Text(
+                            text =
+                                context.getString(
+                                    R.string.webdav_sync_ok_v2,
+                                    plan.summary.uploaded,
+                                    plan.summary.downloaded,
+                                    plan.summary.deletedRemote,
+                                    plan.summary.deletedLocal,
+                                    plan.summary.conflicts,
+                                    plan.summary.failed,
+                                ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    if (ops.isEmpty()) {
+                        item { Text("-", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    } else {
+                        for (op in shown) {
+                            item {
+                                val prefix =
+                                    when (op.kind) {
+                                        WebDavPlannedOpKind.DOWNLOAD -> "↓"
+                                        WebDavPlannedOpKind.UPLOAD -> "↑"
+                                        WebDavPlannedOpKind.DELETE_REMOTE -> "delR"
+                                        WebDavPlannedOpKind.DELETE_LOCAL -> "delL"
+                                        WebDavPlannedOpKind.CONFLICT -> "conflict"
+                                    }
+                                Text(
+                                    text = "$prefix ${op.path} (${op.reason})",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        if (ops.size > shown.size) {
+                            item { Text("… +${ops.size - shown.size}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showWebDavConflictCenter) {
+        FullScreenDialog(onDismiss = { showWebDavConflictCenter = false }) {
+            WebDavConflictCenterScreen(
+                contentPadding = PaddingValues(0.dp),
+                vaultRootUri = vaultRootUri,
+                repository = repository,
+                webDavConfig = currentConfig(),
+                onBack = { showWebDavConflictCenter = false },
+            )
+        }
+    }
+
+    if (showWebDavLogs) {
+        FullScreenDialog(onDismiss = { showWebDavLogs = false }) {
+            WebDavLogsScreen(
+                contentPadding = PaddingValues(0.dp),
+                vaultRootUri = vaultRootUri,
+                repository = repository,
+                onBack = { showWebDavLogs = false },
+            )
+        }
     }
 
     Scaffold(
@@ -1071,6 +1375,21 @@ private fun SyncSettingsScreen(
                                     )
                                 },
                             )
+                            val strategyLabel =
+                                when (conflictStrategy) {
+                                    WebDavConflictStrategy.KEEP_BOTH -> stringResource(R.string.webdav_conflict_strategy_keep_both)
+                                    WebDavConflictStrategy.LOCAL_WINS -> stringResource(R.string.webdav_conflict_strategy_local_wins)
+                                    WebDavConflictStrategy.REMOTE_WINS -> stringResource(R.string.webdav_conflict_strategy_remote_wins)
+                                    WebDavConflictStrategy.ASK_EACH_TIME -> stringResource(R.string.webdav_conflict_strategy_ask_each_time)
+                                }
+                            ListItem(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = enabled) { showConflictStrategyDialog = true },
+                                headlineContent = { Text(stringResource(R.string.webdav_conflict_strategy_title)) },
+                                supportingContent = { Text(strategyLabel, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                            )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1111,6 +1430,110 @@ private fun SyncSettingsScreen(
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                 }
+                            }
+
+                            if (lastWebDavSummaryLoading) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text("...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                            } else if (!lastWebDavSummary.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(lastWebDavSummary!!, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                            }
+
+                            if (!webDavAutoSyncStatus.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(webDavAutoSyncStatus!!, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                            }
+
+                            if (!webDavStatus.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(webDavStatus!!, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                TextButton(
+                                    enabled = enabled && !webDavSyncing && !webDavPreviewLoading && vaultRootUri != null,
+                                    onClick = {
+                                        val root = vaultRootUri ?: return@TextButton
+                                        scope.launch {
+                                            webDavPreviewLoading = true
+                                            webDavPreviewPlan = null
+                                            webDavStatus = null
+                                            val cfg = currentConfig()
+                                            val engine = WebDavSyncEngine(context, repository)
+                                            val plan =
+                                                runCatching { engine.planVault(root, cfg) }
+                                                    .getOrElse { e ->
+                                                        webDavStatus =
+                                                            context.getString(
+                                                                R.string.webdav_sync_failed,
+                                                                e.message ?: e.javaClass.simpleName,
+                                                            )
+                                                        webDavPreviewLoading = false
+                                                        return@launch
+                                                    }
+                                            webDavPreviewPlan = plan
+                                            showWebDavPreview = true
+                                            webDavPreviewLoading = false
+                                        }
+                                    },
+                                ) { Text(stringResource(R.string.action_preview)) }
+
+                                TextButton(
+                                    enabled = vaultRootUri != null && !webDavSyncing,
+                                    onClick = { showWebDavConflictCenter = true },
+                                ) { Text(stringResource(R.string.webdav_conflict_center_open)) }
+
+                                TextButton(
+                                    enabled = vaultRootUri != null && !webDavSyncing,
+                                    onClick = { showWebDavLogs = true },
+                                ) { Text(stringResource(R.string.webdav_logs_open)) }
+
+                                Button(
+                                    modifier = Modifier.weight(1f),
+                                    enabled = enabled && !webDavSyncing && vaultRootUri != null,
+                                    shape = RoundedCornerShape(8.dp),
+                                    onClick = {
+                                        val root = vaultRootUri ?: return@Button
+                                        scope.launch {
+                                            webDavSyncing = true
+                                            webDavStatus = context.getString(R.string.webdav_syncing)
+                                            val cfg = currentConfig()
+                                            val engine = WebDavSyncEngine(context, repository)
+                                            val res =
+                                                runCatching { engine.syncVault(root, cfg) }
+                                                    .getOrElse { e ->
+                                                        webDavStatus =
+                                                            context.getString(
+                                                                R.string.webdav_sync_failed,
+                                                                e.message ?: e.javaClass.simpleName,
+                                                            )
+                                                        webDavSyncing = false
+                                                        reloadWebDavLastSummary()
+                                                        reloadWebDavAutoSyncStatus(cfg)
+                                                        return@launch
+                                                    }
+                                            webDavStatus =
+                                                context.getString(
+                                                    R.string.webdav_sync_ok_v2,
+                                                    res.uploaded,
+                                                    res.downloaded,
+                                                    res.deletedRemote,
+                                                    res.deletedLocal,
+                                                    res.conflicts,
+                                                    res.failed,
+                                                )
+                                            webDavSyncing = false
+                                            reloadWebDavLastSummary()
+                                            reloadWebDavAutoSyncStatus(cfg)
+                                        }
+                                    },
+                                ) { Text(stringResource(R.string.webdav_sync_now)) }
                             }
                         }
                     }
@@ -1944,7 +2367,19 @@ private fun SyncDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = remember(context) { SyncPreferences(context.applicationContext) }
-    val saved by prefs.webDavConfig.collectAsState(initial = WebDavConfig(false, "", "", "", "/", true))
+    val saved by
+        prefs.webDavConfig.collectAsState(
+            initial =
+                WebDavConfig(
+                    enabled = false,
+                    baseUrl = "",
+                    username = "",
+                    password = "",
+                    remoteRoot = "/",
+                    includeIndexSqlite = true,
+                    conflictStrategy = app.zhixu.data.WebDavConflictStrategy.KEEP_BOTH,
+                ),
+        )
 
     var enabled by remember { mutableStateOf(saved.enabled) }
     var baseUrl by remember { mutableStateOf(saved.baseUrl) }
@@ -1952,6 +2387,7 @@ private fun SyncDialog(
     var password by remember { mutableStateOf(saved.password) }
     var remoteRoot by remember { mutableStateOf(saved.remoteRoot) }
     var includeIndexSqlite by remember { mutableStateOf(saved.includeIndexSqlite) }
+    var conflictStrategy by remember { mutableStateOf(saved.conflictStrategy) }
     var showPassword by remember { mutableStateOf(false) }
 
     var testStatus by remember { mutableStateOf<String?>(null) }
@@ -1964,6 +2400,7 @@ private fun SyncDialog(
         password = saved.password
         remoteRoot = saved.remoteRoot
         includeIndexSqlite = saved.includeIndexSqlite
+        conflictStrategy = saved.conflictStrategy
     }
 
     fun currentConfig(): WebDavConfig {
@@ -1974,6 +2411,7 @@ private fun SyncDialog(
             password = password,
             remoteRoot = remoteRoot,
             includeIndexSqlite = includeIndexSqlite,
+            conflictStrategy = conflictStrategy,
         )
     }
 

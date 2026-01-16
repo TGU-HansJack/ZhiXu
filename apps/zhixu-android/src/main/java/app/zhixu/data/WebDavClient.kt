@@ -6,6 +6,10 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSink
+import okio.source
+import java.io.IOException
+import java.io.InputStream
 import java.util.Base64
 
 data class WebDavTestResult(
@@ -20,6 +24,24 @@ object WebDavClient {
             .followRedirects(true)
             .followSslRedirects(true)
             .build()
+
+    private class StreamRequestBody(
+        private val mediaType: okhttp3.MediaType?,
+        private val contentLength: Long?,
+        private val openStream: () -> InputStream?,
+    ) : okhttp3.RequestBody() {
+        override fun contentType(): okhttp3.MediaType? = mediaType
+
+        override fun contentLength(): Long {
+            val len = contentLength ?: -1L
+            return if (len >= 0L) len else -1L
+        }
+
+        override fun writeTo(sink: BufferedSink) {
+            val input = openStream() ?: throw IOException("Failed to open upload stream")
+            input.use { sink.writeAll(it.source()) }
+        }
+    }
 
     suspend fun testConnection(config: WebDavConfig): WebDavTestResult = withContext(Dispatchers.IO) {
         val baseUrl = config.baseUrl.trim()
@@ -71,15 +93,55 @@ object WebDavClient {
         requestMessage(config, "MKCOL", targetUrl, body = null, headers = emptyMap()).first
     }
 
-    suspend fun put(config: WebDavConfig, targetUrl: String, contentType: String?, content: ByteArray): Int =
+    suspend fun put(
+        config: WebDavConfig,
+        targetUrl: String,
+        contentType: String?,
+        content: ByteArray,
+        ifMatch: String? = null,
+        ifNoneMatchStar: Boolean = false,
+    ): Int =
         withContext(Dispatchers.IO) {
             val mediaType = (contentType ?: "application/octet-stream").toMediaType()
+            val headers =
+                buildMap<String, String> {
+                    val m = ifMatch?.trim().orEmpty()
+                    if (m.isNotBlank()) put("If-Match", m)
+                    if (ifNoneMatchStar) put("If-None-Match", "*")
+                }
             requestMessage(
                 config = config,
                 method = "PUT",
                 url = targetUrl,
                 body = content.toRequestBody(mediaType),
-                headers = emptyMap(),
+                headers = headers,
+            ).first
+        }
+
+    suspend fun putStream(
+        config: WebDavConfig,
+        targetUrl: String,
+        contentType: String?,
+        contentLength: Long?,
+        openStream: () -> InputStream?,
+        ifMatch: String? = null,
+        ifNoneMatchStar: Boolean = false,
+    ): Int =
+        withContext(Dispatchers.IO) {
+            val mediaType = (contentType ?: "application/octet-stream").toMediaType()
+            val headers =
+                buildMap<String, String> {
+                    val m = ifMatch?.trim().orEmpty()
+                    if (m.isNotBlank()) put("If-Match", m)
+                    if (ifNoneMatchStar) put("If-None-Match", "*")
+                }
+            val body = StreamRequestBody(mediaType = mediaType, contentLength = contentLength, openStream = openStream)
+            requestMessage(
+                config = config,
+                method = "PUT",
+                url = targetUrl,
+                body = body,
+                headers = headers,
             ).first
         }
 
@@ -91,8 +153,31 @@ object WebDavClient {
         }
     }
 
-    suspend fun delete(config: WebDavConfig, targetUrl: String): Int = withContext(Dispatchers.IO) {
-        requestMessage(config, "DELETE", targetUrl, body = null, headers = emptyMap()).first
+    suspend fun getToStream(
+        config: WebDavConfig,
+        targetUrl: String,
+        sink: (InputStream) -> Unit,
+    ): Int =
+        withContext(Dispatchers.IO) {
+            val request = buildRequest(config, "GET", targetUrl, body = null, headers = emptyMap())
+            client.newCall(request).execute().use { resp ->
+                val body = resp.body
+                if (resp.code !in 200..299 || body == null) {
+                    body?.close()
+                    return@withContext resp.code
+                }
+                body.byteStream().use { input -> sink(input) }
+                resp.code
+            }
+        }
+
+    suspend fun delete(config: WebDavConfig, targetUrl: String, ifMatch: String? = null): Int = withContext(Dispatchers.IO) {
+        val headers =
+            buildMap<String, String> {
+                val m = ifMatch?.trim().orEmpty()
+                if (m.isNotBlank()) put("If-Match", m)
+            }
+        requestMessage(config, "DELETE", targetUrl, body = null, headers = headers).first
     }
 
     fun normalizeJoin(baseUrl: String, remoteRoot: String): String {

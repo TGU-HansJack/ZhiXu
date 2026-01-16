@@ -120,6 +120,7 @@ import app.zhixu.ocr.OcrWorkflow
 import app.zhixu.ocr.ppocrv5.PpOcrV5OcrEngine
 import app.zhixu.sync.VaultAutoSync
 import app.zhixu.sync.WebDavAutoSync
+import app.zhixu.sync.WebDavAutoSyncStateStore
 import app.zhixu.ui.components.CreateDrawSheetContent
 import app.zhixu.ui.components.CreateMenuSheetContent
 import app.zhixu.ui.components.CreateQuickNewSheetContent
@@ -167,6 +168,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+private enum class WebDavUiStatusLevel {
+    DISABLED,
+    UNKNOWN,
+    OK,
+    WARNING,
+    ERROR,
+}
+
+private data class WebDavUiStatusSnapshot(
+    val level: WebDavUiStatusLevel,
+    val text: String?,
+    val endedAtMs: Long,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -258,8 +277,12 @@ fun ZhixuApp(
                 password = "",
                 remoteRoot = "/",
                 includeIndexSqlite = true,
+                conflictStrategy = app.zhixu.data.WebDavConflictStrategy.KEEP_BOTH,
             ),
     )
+    var showWebDavStatusDialog by remember { mutableStateOf(false) }
+    var webDavUiStatus by remember { mutableStateOf<WebDavUiStatusSnapshot?>(null) }
+    var webDavAutoSyncStatusText by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         withFrameNanos { }
@@ -286,6 +309,110 @@ fun ZhixuApp(
             val root = vaultRootUri
             if (root == null) kotlinx.coroutines.flow.flowOf(emptyList()) else prefs.pinnedDocUris(root)
         }.collectAsState(initial = emptyList())
+
+    fun formatEpochMs(ms: Long): String {
+        if (ms <= 0L) return "-"
+        return runCatching {
+            Instant
+                .ofEpochMilli(ms)
+                .atZone(ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+        }.getOrElse { ms.toString() }
+    }
+
+    suspend fun reloadWebDavUiStatus() {
+        val root = vaultRootUri ?: run {
+            webDavUiStatus = null
+            return
+        }
+        val uri = repository.resolveVaultFileUri(root, ".zhixu/sync/webdav_last_summary.json")
+        val raw = uri?.let { runCatching { repository.readText(it) }.getOrNull().orEmpty().trim() }.orEmpty()
+        val obj = runCatching { JSONObject(raw) }.getOrNull()
+        val ok = obj?.optBoolean("ok", false) ?: false
+        val endedAt = obj?.optLong("endedAt", 0L) ?: 0L
+        val conflicts = obj?.optInt("conflicts", 0) ?: 0
+        val failed = obj?.optInt("failed", 0) ?: 0
+        val error = obj?.optString("error").orEmpty().trim().ifBlank { null }
+        val text =
+            if (raw.isBlank()) {
+                null
+            } else if (!ok) {
+                context.getString(R.string.webdav_sync_failed, error ?: "-")
+            } else {
+                val uploaded = obj?.optInt("uploaded", 0) ?: 0
+                val downloaded = obj?.optInt("downloaded", 0) ?: 0
+                val deletedRemote = obj?.optInt("deletedRemote", 0) ?: 0
+                val deletedLocal = obj?.optInt("deletedLocal", 0) ?: 0
+                context.getString(R.string.webdav_sync_ok_v2, uploaded, downloaded, deletedRemote, deletedLocal, conflicts, failed) +
+                    " · " +
+                    formatEpochMs(endedAt)
+            }
+        val level =
+            when {
+                !webDavConfig.enabled -> WebDavUiStatusLevel.DISABLED
+                text.isNullOrBlank() -> WebDavUiStatusLevel.UNKNOWN
+                !ok -> WebDavUiStatusLevel.ERROR
+                conflicts > 0 || failed > 0 -> WebDavUiStatusLevel.WARNING
+                else -> WebDavUiStatusLevel.OK
+            }
+        webDavUiStatus = WebDavUiStatusSnapshot(level = level, text = text, endedAtMs = endedAt)
+    }
+
+    suspend fun reloadWebDavAutoSyncStatusForDialog() {
+        val root = vaultRootUri ?: run {
+            webDavAutoSyncStatusText = context.getString(R.string.webdav_autosync_status_no_vault)
+            return
+        }
+        if (!webDavConfig.enabled) {
+            webDavAutoSyncStatusText = context.getString(R.string.webdav_autosync_status_disabled)
+            return
+        }
+        val baseUrl = webDavConfig.baseUrl.trim()
+        val remoteRoot = webDavConfig.remoteRoot.trim().ifBlank { "/" }
+        if (baseUrl.isBlank()) {
+            webDavAutoSyncStatusText = context.getString(R.string.webdav_autosync_status_empty_url)
+            return
+        }
+        if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+            webDavAutoSyncStatusText = context.getString(R.string.webdav_autosync_status_invalid_url)
+            return
+        }
+        val key = "$baseUrl|$remoteRoot|$root"
+        val store = WebDavAutoSyncStateStore(appContext)
+        val state = store.get(key)
+        val nextBackoffMs = (60_000L * (1L shl state.consecutiveFailures.coerceIn(0, 6))).coerceAtMost(15 * 60_000L)
+        val nextAllowed = state.lastAttemptedAtMs + nextBackoffMs
+        val base =
+            context.getString(
+                R.string.webdav_autosync_status_fmt,
+                formatEpochMs(state.lastSucceededAtMs),
+                formatEpochMs(state.lastAttemptedAtMs),
+                formatEpochMs(nextAllowed),
+            )
+        val errorPart =
+            if (state.lastError.isNullOrBlank()) {
+                ""
+            } else {
+                "\n" + context.getString(R.string.webdav_autosync_status_error_fmt, state.lastError!!)
+            }
+        webDavAutoSyncStatusText = base + errorPart
+    }
+
+    LaunchedEffect(vaultRootUriString, webDavConfig.enabled) {
+        reloadWebDavUiStatus()
+    }
+
+    LaunchedEffect(
+        showWebDavStatusDialog,
+        vaultRootUriString,
+        webDavConfig.enabled,
+        webDavConfig.baseUrl,
+        webDavConfig.remoteRoot,
+    ) {
+        if (!showWebDavStatusDialog) return@LaunchedEffect
+        reloadWebDavUiStatus()
+        reloadWebDavAutoSyncStatusForDialog()
+    }
 
     val uiPrefs = remember(appContext) { UiPreferences(appContext) }
     val languageTagOrNull by uiPrefs.languageTagOrNull.collectAsState(initial = null)
@@ -349,6 +476,37 @@ fun ZhixuApp(
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
+
+    if (showWebDavStatusDialog) {
+        AlertDialog(
+            onDismissRequest = { showWebDavStatusDialog = false },
+            title = { Text("WebDAV") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = webDavUiStatus?.text ?: "-",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = webDavAutoSyncStatusText.orEmpty().ifBlank { "-" },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showWebDavStatusDialog = false
+                        navController.navigate("settingsMain")
+                    },
+                ) { Text(stringResource(R.string.nav_settings)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWebDavStatusDialog = false }) { Text(stringResource(R.string.action_close)) }
+            },
+        )
+    }
 
     val indexUpdater = remember(appContext) { VaultIndexUpdater(appContext, repository) }
     val documentIndex = remember(repository) { DocumentIndex(repository) }
@@ -933,6 +1091,29 @@ fun ZhixuApp(
                                             )
                                         }
                                     } else {
+                                        if (vaultSyncConfig.location == VaultStorageLocation.LOCAL) {
+                                            val level =
+                                                when (webDavUiStatus?.level ?: WebDavUiStatusLevel.UNKNOWN) {
+                                                    WebDavUiStatusLevel.DISABLED -> WebDavUiStatusLevel.DISABLED
+                                                    else -> if (webDavConfig.enabled) (webDavUiStatus?.level ?: WebDavUiStatusLevel.UNKNOWN) else WebDavUiStatusLevel.DISABLED
+                                                }
+                                            val tint =
+                                                when (level) {
+                                                    WebDavUiStatusLevel.OK -> MaterialTheme.colorScheme.primary
+                                                    WebDavUiStatusLevel.WARNING -> MaterialTheme.colorScheme.tertiary
+                                                    WebDavUiStatusLevel.ERROR -> MaterialTheme.colorScheme.error
+                                                    WebDavUiStatusLevel.DISABLED -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                                                    WebDavUiStatusLevel.UNKNOWN -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                }
+                                            ZhixuIconButton(onClick = { showWebDavStatusDialog = true }) {
+                                                Icon(
+                                                    painter = painterResource(Ionicons.Sync),
+                                                    contentDescription = stringResource(R.string.settings_section_sync),
+                                                    tint = tint,
+                                                    modifier = Modifier.size(ZhixuTopBarIconSize),
+                                                )
+                                            }
+                                        }
                                         ZhixuIconButton(onClick = { docSortFilterRequestToken += 1L }) {
                                             Icon(
                                                 painter = painterResource(R.drawable.ic_lucide_settings_2),
