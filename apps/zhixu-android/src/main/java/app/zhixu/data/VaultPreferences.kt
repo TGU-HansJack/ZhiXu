@@ -21,6 +21,7 @@ class VaultPreferences(
     private val docListCacheVaultRootUriKey = stringPreferencesKey("doc_list_cache_vault_root_uri")
     private val docListCacheJsonKey = stringPreferencesKey("doc_list_cache_json")
     private val docListCacheUpdatedAtMsKey = longPreferencesKey("doc_list_cache_updated_at_ms")
+    private val pinnedDocUrisJsonKey = stringPreferencesKey("doc_pinned_uris_json")
 
     val vaultRootUri: Flow<String?> =
         context.dataStore.data.map { prefs: Preferences -> prefs[vaultRootUriKey] }
@@ -70,6 +71,64 @@ class VaultPreferences(
             context.dataStore.edit { prefs ->
                 prefs[docListCacheVaultRootUriKey] = vaultRootUri.toString()
                 prefs[docListCacheUpdatedAtMsKey] = updatedAtMs
+            }
+        }
+    }
+
+    fun pinnedDocUris(vaultRootUri: Uri): Flow<List<String>> =
+        context.dataStore.data.map { prefs: Preferences ->
+            decodePinnedDocUris(prefs[pinnedDocUrisJsonKey].orEmpty(), vaultRootUri.toString())
+        }
+
+    suspend fun togglePinnedDocUris(
+        vaultRootUri: Uri,
+        docUriStrings: Collection<String>,
+    ) {
+        val rootKey = vaultRootUri.toString()
+        val targets = docUriStrings.mapNotNull { it.trim().takeIf(String::isNotBlank) }.distinct()
+        if (rootKey.isBlank() || targets.isEmpty()) return
+
+        withContext(Dispatchers.IO) {
+            context.dataStore.edit { prefs ->
+                val raw = prefs[pinnedDocUrisJsonKey].orEmpty()
+                val obj =
+                    runCatching {
+                        if (raw.isBlank()) JSONObject() else JSONObject(raw)
+                    }.getOrElse { JSONObject() }
+
+                val arr = obj.optJSONArray(rootKey) ?: JSONArray()
+                val current = ArrayList<String>(arr.length())
+                for (i in 0 until arr.length()) {
+                    val uriStr = arr.optString(i).orEmpty().trim()
+                    if (uriStr.isNotBlank()) current += uriStr
+                }
+                val currentSet = current.toMutableSet()
+
+                val allPinned = targets.all { it in currentSet }
+                val nextSet = currentSet.toMutableSet()
+                if (allPinned) {
+                    for (uriStr in targets) nextSet.remove(uriStr)
+                } else {
+                    for (uriStr in targets) nextSet.add(uriStr)
+                }
+
+                val next = ArrayList<String>(nextSet.size)
+                for (uriStr in current) {
+                    if (uriStr in nextSet) next += uriStr
+                }
+                for (uriStr in targets) {
+                    if (uriStr !in currentSet && uriStr in nextSet) next += uriStr
+                }
+
+                if (next.isEmpty()) {
+                    obj.remove(rootKey)
+                } else {
+                    val nextArr = JSONArray()
+                    for (uriStr in next) nextArr.put(uriStr)
+                    obj.put(rootKey, nextArr)
+                }
+
+                prefs[pinnedDocUrisJsonKey] = obj.toString()
             }
         }
     }
@@ -126,4 +185,21 @@ private fun decodeDocListCache(json: String): List<UiDoc> {
             )
     }
     return out
+}
+
+private fun decodePinnedDocUris(
+    json: String,
+    vaultRootUriString: String,
+): List<String> {
+    if (vaultRootUriString.isBlank() || json.isBlank()) return emptyList()
+    return runCatching {
+        val obj = JSONObject(json)
+        val arr = obj.optJSONArray(vaultRootUriString) ?: return@runCatching emptyList<String>()
+        val out = ArrayList<String>(arr.length())
+        for (i in 0 until arr.length()) {
+            val uriStr = arr.optString(i).orEmpty().trim()
+            if (uriStr.isNotBlank()) out += uriStr
+        }
+        out
+    }.getOrDefault(emptyList())
 }

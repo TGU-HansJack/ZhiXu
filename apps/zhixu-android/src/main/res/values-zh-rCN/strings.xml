@@ -9,6 +9,8 @@
     <string name="nav_settings">设置</string>
     <string name="nav_me">我的</string>
     <string name="home_section_docs_list">文档列</string>
+    <string name="docs_selected_count_fmt">已选择 %1$d</string>
+    <string name="doc_pinned_label">已固定</string>
     <string name="home_section_todo">待办</string>
     <string name="home_section_pomodoro">番茄</string>
     <string name="home_section_space">空间</string>

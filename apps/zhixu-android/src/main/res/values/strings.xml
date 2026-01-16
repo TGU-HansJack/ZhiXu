@@ -11,6 +11,8 @@
     <string name="nav_settings">Settings</string>
     <string name="nav_me">Me</string>
     <string name="home_section_docs_list">Docs list</string>
+    <string name="docs_selected_count_fmt">Selected %1$d</string>
+    <string name="doc_pinned_label">Pinned</string>
     <string name="home_section_todo">Todo</string>
     <string name="home_section_pomodoro">Pomodoro</string>
     <string name="home_section_space">Space</string>

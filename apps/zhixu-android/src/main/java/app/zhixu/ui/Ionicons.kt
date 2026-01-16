@@ -60,10 +60,18 @@ object Ionicons {
     @DrawableRes val ChevronDown: Int = R.drawable.ic_ion_chevron_down_outline
     @DrawableRes val ChevronExpandOutline: Int = R.drawable.ic_ion_chevron_expand_outline
     @DrawableRes val ChevronCollapseOutline: Int = R.drawable.ic_ion_chevron_collapse_outline
+    @DrawableRes val X: Int = R.drawable.ic_lucide_x
 
     @DrawableRes val DocumentText: Int = R.drawable.ic_ion_document_text_outline
     @DrawableRes val DocumentOutline: Int = R.drawable.ic_ion_document_outline
     @DrawableRes val EllipsisHorizontal: Int = R.drawable.ic_lucide_ellipsis
+    @DrawableRes val EllipsisVertical: Int = R.drawable.ic_lucide_ellipsis_vertical
+
+    @DrawableRes val Circle: Int = R.drawable.ic_lucide_circle
+    @DrawableRes val CircleCheck: Int = R.drawable.ic_lucide_circle_check
+    @DrawableRes val Share2: Int = R.drawable.ic_lucide_share_2
+    @DrawableRes val Pin: Int = R.drawable.ic_lucide_pin
+    @DrawableRes val PinOff: Int = R.drawable.ic_lucide_pin_off
 
     @DrawableRes val EyeOutline: Int = R.drawable.ic_ion_eye_outline
     @DrawableRes val EyeOffOutline: Int = R.drawable.ic_ion_eye_off_outline

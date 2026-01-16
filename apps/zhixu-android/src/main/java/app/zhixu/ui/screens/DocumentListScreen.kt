@@ -44,6 +44,8 @@ import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridS
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
@@ -96,7 +98,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.platform.LocalDensity
 import app.zhixu.R
 import app.zhixu.data.DocSearchResult
 import app.zhixu.data.DocumentIndex
@@ -115,7 +116,6 @@ import app.zhixu.ui.components.RefreshStatusBanner
 import app.zhixu.ui.components.SheetActionRow
 import app.zhixu.ui.components.SheetQuickAction
 import app.zhixu.ui.components.ZhixuCompactDragHandle
-import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.VaultSearchDialog
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.Markwon
@@ -144,6 +144,7 @@ fun DocumentListScreen(
     searchRequestToken: Long,
     sortFilterRequestToken: Long,
     useGridLayout: Boolean,
+    pinnedDocUris: List<String> = emptyList(),
     onOpenDoc: (String, String?, Int?) -> Unit,
     onNewDoc: () -> Unit,
     onChangeVault: () -> Unit,
@@ -211,8 +212,10 @@ fun DocumentListScreen(
             strictDocListPreview ||
             configuration.orientation != Configuration.ORIENTATION_LANDSCAPE
 
+    val pinnedSet = remember(pinnedDocUris) { pinnedDocUris.toHashSet() }
+
     val visibleDocs =
-        remember(docs, sortOrder, typeFilter) {
+        remember(docs, sortOrder, typeFilter, pinnedDocUris) {
             val filtered =
                 when (typeFilter) {
                     DocListTypeFilter.All -> docs
@@ -220,17 +223,30 @@ fun DocumentListScreen(
                     DocListTypeFilter.Drawing -> docs.filter { ZhixuDrawFormat.hasDrawingExtension(it.name) }
                 }
 
-            when (sortOrder) {
-                DocListSortOrder.EditedDesc -> filtered
-                DocListSortOrder.CreatedDesc ->
-                    filtered.sortedWith(
-                        compareByDescending<UiDoc> { it.createdAt }.thenBy { it.name.lowercase() },
-                    )
-                DocListSortOrder.NameAsc ->
-                    filtered.sortedWith(
-                        compareBy<UiDoc> { it.baseName.ifBlank { it.name }.lowercase() },
-                    )
+            val sorted =
+                when (sortOrder) {
+                    DocListSortOrder.EditedDesc -> filtered
+                    DocListSortOrder.CreatedDesc ->
+                        filtered.sortedWith(
+                            compareByDescending<UiDoc> { it.createdAt }.thenBy { it.name.lowercase() },
+                        )
+                    DocListSortOrder.NameAsc ->
+                        filtered.sortedWith(
+                            compareBy<UiDoc> { it.baseName.ifBlank { it.name }.lowercase() },
+                        )
+                }
+
+            if (pinnedDocUris.isEmpty()) return@remember sorted
+
+            val pinnedSet = pinnedDocUris.toHashSet()
+            val byUri = sorted.associateBy { it.uri.toString() }
+            val pinned = ArrayList<UiDoc>(pinnedDocUris.size)
+            for (uriStr in pinnedDocUris) {
+                val doc = byUri[uriStr] ?: continue
+                pinned += doc
             }
+            val rest = sorted.filterNot { it.uri.toString() in pinnedSet }
+            pinned + rest
         }
 
     LaunchedEffect(isActive, visibleDocs, useGridLayout) {
@@ -453,6 +469,7 @@ fun DocumentListScreen(
                                             nowMs = nowMs,
                                         ).ifBlank { editedAtDash }
                                     val docUriStr = doc.uri.toString()
+                                    val pinned = docUriStr in pinnedSet
                                     val isDrawing = ZhixuDrawFormat.hasDrawingExtension(doc.name)
                                     val previewKey =
                                         remember(docUriStr, doc.lastModified) { "$docUriStr@${doc.lastModified}" }
@@ -538,6 +555,7 @@ fun DocumentListScreen(
                                     DocRow(
                                         title = title,
                                         timeText = timeText,
+                                        pinned = pinned,
                                         compactHeader = useGridLayout,
                                         timeBelowPreview = timeBelowPreview,
                                         previewContent = previewContent,
@@ -547,10 +565,6 @@ fun DocumentListScreen(
                                             if (selectionMode) onToggleDocSelection(docUriStr) else onOpenDoc(docUriStr, null, null)
                                         },
                                         onLongClick = { onToggleDocSelection(docUriStr) },
-                                        onMoreClick = {
-                                            selectedDoc = doc
-                                            showDocMenu = true
-                                        },
                                     )
                                 }
                             }
@@ -584,6 +598,7 @@ fun DocumentListScreen(
                                         nowMs = nowMs,
                                     ).ifBlank { editedAtDash }
                                 val docUriStr = doc.uri.toString()
+                                val pinned = docUriStr in pinnedSet
                                 val isDrawing = ZhixuDrawFormat.hasDrawingExtension(doc.name)
                                 val previewKey = remember(docUriStr, doc.lastModified) { "$docUriStr@${doc.lastModified}" }
                                 val previewMarkdown = if (isDrawing) null else previewCache[previewKey]
@@ -668,6 +683,7 @@ fun DocumentListScreen(
                                 DocRow(
                                     title = title,
                                     timeText = timeText,
+                                    pinned = pinned,
                                     compactHeader = useGridLayout,
                                     timeBelowPreview = timeBelowPreview,
                                     previewContent = previewContent,
@@ -677,10 +693,6 @@ fun DocumentListScreen(
                                         if (selectionMode) onToggleDocSelection(docUriStr) else onOpenDoc(docUriStr, null, null)
                                     },
                                     onLongClick = { onToggleDocSelection(docUriStr) },
-                                    onMoreClick = {
-                                        selectedDoc = doc
-                                        showDocMenu = true
-                                    },
                                 )
                             }
                         }
@@ -1066,6 +1078,7 @@ private fun DocumentRowActionsSheet(
 private fun DocRow(
     title: String,
     timeText: String,
+    pinned: Boolean,
     compactHeader: Boolean,
     timeBelowPreview: Boolean,
     previewContent: (@Composable () -> Unit)?,
@@ -1073,7 +1086,6 @@ private fun DocRow(
     selected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onMoreClick: () -> Unit,
 ) {
     Surface(
         modifier =
@@ -1083,29 +1095,54 @@ private fun DocRow(
                     onClick = onClick,
                     onLongClick = onLongClick,
                 ),
-        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surface,
+        border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
         shape = RoundedCornerShape(8.dp),
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
             ) {
-                val barHeight = with(LocalDensity.current) { MaterialTheme.typography.bodyMedium.lineHeight.toDp() }
-                Box(
-                    modifier =
-                        Modifier
-                            .size(width = 3.dp, height = barHeight)
-                            .background(MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(2.dp)),
-                )
-                Spacer(modifier = Modifier.width(3.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        maxLines = if (compactHeader) 2 else 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                    )
+                    val titleStyle = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                    if (pinned) {
+                        val pinnedColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                painter = painterResource(Ionicons.Pin),
+                                contentDescription = null,
+                                tint = pinnedColor,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = stringResource(R.string.doc_pinned_label),
+                                color = pinnedColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = title,
+                                maxLines = if (compactHeader) 2 else 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = titleStyle,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = title,
+                            maxLines = if (compactHeader) 2 else 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = titleStyle,
+                        )
+                    }
                     if (!timeBelowPreview && compactHeader) {
                         Spacer(modifier = Modifier.size(2.dp))
                         Text(
@@ -1128,28 +1165,32 @@ private fun DocRow(
                         textAlign = TextAlign.End,
                         modifier = Modifier.widthIn(max = 140.dp),
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
-                } else {
-                    Spacer(modifier = Modifier.width(4.dp))
                 }
-
-                ZhixuIconButton(
-                    onClick = if (selectionMode) onClick else onMoreClick,
-                    modifier = Modifier.size(24.dp).padding(end = 12.dp),
-                ) {
-                    Icon(
-                        painter =
-                            painterResource(
-                                if (selectionMode) {
-                                    if (selected) Ionicons.CheckmarkCircle else Ionicons.SquareOutline
-                                } else {
-                                    Ionicons.EllipsisHorizontal
-                                },
-                            ),
-                        contentDescription = null,
-                        tint = if (selectionMode && selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp),
-                    )
+                if (selectionMode) {
+                    Spacer(modifier = Modifier.width(10.dp))
+                    if (selected) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .size(20.dp)
+                                    .background(MaterialTheme.colorScheme.primary, CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                painter = painterResource(Ionicons.CircleCheck),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    } else {
+                        Icon(
+                            painter = painterResource(Ionicons.Circle),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
             }
 
@@ -1163,7 +1204,7 @@ private fun DocRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
-                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }

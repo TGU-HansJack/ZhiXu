@@ -1,5 +1,6 @@
 ﻿package app.zhixu.ui
 
+import android.content.Intent
 import android.net.Uri
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.animation.EnterTransition
@@ -280,6 +281,11 @@ fun ZhixuApp(
     val vaultRootUriString by prefs.vaultRootUri.collectAsState(initial = "")
     val isVaultLoaded = vaultRootUriString != ""
     val vaultRootUri = vaultRootUriString?.takeIf { it.isNotBlank() }?.let(Uri::parse)
+    val pinnedDocUris by
+        remember(vaultRootUriString) {
+            val root = vaultRootUri
+            if (root == null) kotlinx.coroutines.flow.flowOf(emptyList()) else prefs.pinnedDocUris(root)
+        }.collectAsState(initial = emptyList())
 
     val uiPrefs = remember(appContext) { UiPreferences(appContext) }
     val languageTagOrNull by uiPrefs.languageTagOrNull.collectAsState(initial = null)
@@ -385,6 +391,9 @@ fun ZhixuApp(
 
     val showTopBar = currentRoute in setOf("home", "tasks", "pomodoro")
     val showBottomBar = currentRoute in setOf("home", "tasks", "pomodoro", "me")
+    val docsSelectionMode = currentRoute == "home" && selectedDocUris.isNotEmpty()
+    val pinnedDocUriSet = remember(pinnedDocUris) { pinnedDocUris.toHashSet() }
+    val docsSelectionAllPinned = docsSelectionMode && selectedDocUris.all { it in pinnedDocUriSet }
 
     val todoPagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 0, pageCount = { 3 })
     val settledTodoPage by remember { derivedStateOf { todoPagerState.settledPage } }
@@ -720,109 +729,211 @@ fun ZhixuApp(
                     if (!showMainUi) return@Scaffold
                     Column {
                         ZhixuTopAppBar(
-                            containerColor = MaterialTheme.colorScheme.surface,
+                            containerColor = if (docsSelectionMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
                             title = {
-                                val sectionTitleRes =
-                                    when (currentRoute) {
-                                        "tasks" -> R.string.home_section_todo
-                                        "pomodoro" -> R.string.home_section_pomodoro
-                                        "space" -> R.string.home_section_space
-                                        else -> R.string.home_section_docs_list
-                                    }
+                                if (docsSelectionMode) {
+                                    Text(
+                                        text = stringResource(R.string.docs_selected_count_fmt, selectedDocUris.size),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        maxLines = 1,
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                    )
+                                } else {
+                                    val sectionTitleRes =
+                                        when (currentRoute) {
+                                            "tasks" -> R.string.home_section_todo
+                                            "pomodoro" -> R.string.home_section_pomodoro
+                                            "space" -> R.string.home_section_space
+                                            else -> R.string.home_section_docs_list
+                                        }
 
-                                Box {
-                                    Row(
-                                        modifier =
-                                            Modifier
-                                                .clickable { sectionMenuExpanded = true }
-                                                .padding(horizontal = 6.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(
-                                            text = stringResource(sectionTitleRes),
-                                            style = MaterialTheme.typography.titleMedium,
-                                            maxLines = 1,
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Icon(
-                                            painter = painterResource(Ionicons.ChevronDown),
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(18.dp),
-                                        )
-                                    }
-                                    DropdownMenu(
-                                        expanded = sectionMenuExpanded,
-                                        onDismissRequest = { sectionMenuExpanded = false },
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.home_section_docs_list)) },
-                                            onClick = {
-                                                sectionMenuExpanded = false
-                                                navigateDocs()
-                                            },
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.home_section_todo)) },
-                                            onClick = {
-                                                sectionMenuExpanded = false
-                                                navigateTasks()
-                                            },
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.home_section_pomodoro)) },
-                                            onClick = {
-                                                sectionMenuExpanded = false
-                                                navigatePomodoro()
-                                            },
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.home_section_space)) },
-                                            onClick = {
-                                                sectionMenuExpanded = false
-                                                navigateSpace()
-                                            },
-                                        )
+                                    Box {
+                                        Row(
+                                            modifier =
+                                                Modifier
+                                                    .clickable { sectionMenuExpanded = true }
+                                                    .padding(horizontal = 6.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(
+                                                text = stringResource(sectionTitleRes),
+                                                style = MaterialTheme.typography.titleMedium,
+                                                maxLines = 1,
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Icon(
+                                                painter = painterResource(Ionicons.ChevronDown),
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
+                                        DropdownMenu(
+                                            expanded = sectionMenuExpanded,
+                                            onDismissRequest = { sectionMenuExpanded = false },
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.home_section_docs_list)) },
+                                                onClick = {
+                                                    sectionMenuExpanded = false
+                                                    navigateDocs()
+                                                },
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.home_section_todo)) },
+                                                onClick = {
+                                                    sectionMenuExpanded = false
+                                                    navigateTasks()
+                                                },
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.home_section_pomodoro)) },
+                                                onClick = {
+                                                    sectionMenuExpanded = false
+                                                    navigatePomodoro()
+                                                },
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.home_section_space)) },
+                                                onClick = {
+                                                    sectionMenuExpanded = false
+                                                    navigateSpace()
+                                                },
+                                            )
+                                        }
                                     }
                                 }
                             },
                             navigationIcon = {
-                                ZhixuIconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_lucide_panel_left_open),
-                                        contentDescription = stringResource(R.string.action_open_drawer),
-                                        modifier = Modifier.size(ZhixuTopBarIconSize),
-                                    )
+                                if (docsSelectionMode) {
+                                    ZhixuIconButton(onClick = { selectedDocUris = emptySet() }) {
+                                        Icon(
+                                            painter = painterResource(Ionicons.X),
+                                            contentDescription = stringResource(R.string.action_cancel),
+                                            tint = MaterialTheme.colorScheme.onPrimary,
+                                            modifier = Modifier.size(ZhixuTopBarIconSize),
+                                        )
+                                    }
+                                } else {
+                                    ZhixuIconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_lucide_panel_left_open),
+                                            contentDescription = stringResource(R.string.action_open_drawer),
+                                            modifier = Modifier.size(ZhixuTopBarIconSize),
+                                        )
+                                    }
                                 }
                             },
                             actions = {
                                 if (currentRoute == "home") {
-                                    ZhixuIconButton(onClick = { docSortFilterRequestToken += 1L }) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_lucide_settings_2),
-                                            contentDescription = stringResource(R.string.action_sort_filter),
-                                            modifier = Modifier.size(ZhixuTopBarIconSize),
-                                        )
-                                    }
-                                    ZhixuIconButton(onClick = { docListUseGrid = !docListUseGrid }) {
-                                        val viewIcon =
-                                            if (docListUseGrid) {
-                                                R.drawable.ic_lucide_stretch_horizontal
-                                            } else {
-                                                R.drawable.ic_lucide_layout_dashboard
-                                            }
-                                        Icon(
-                                            painter = painterResource(viewIcon),
-                                            contentDescription = stringResource(R.string.action_toggle_view),
-                                            modifier = Modifier.size(ZhixuTopBarIconSize),
-                                        )
-                                    }
-                                    ZhixuIconButton(onClick = { docSearchRequestToken += 1L }) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_lucide_search),
-                                            contentDescription = stringResource(R.string.action_search),
-                                            modifier = Modifier.size(ZhixuTopBarIconSize),
-                                        )
+                                    if (docsSelectionMode) {
+                                        ZhixuIconButton(
+                                            onClick =
+                                                onClick@{
+                                                    val root = vaultRootUri ?: return@onClick
+                                                    scope.launch {
+                                                        prefs.togglePinnedDocUris(root, selectedDocUris)
+                                                    }
+                                                },
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(if (docsSelectionAllPinned) Ionicons.PinOff else Ionicons.Pin),
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onPrimary,
+                                                modifier = Modifier.size(ZhixuTopBarIconSize),
+                                            )
+                                        }
+                                        ZhixuIconButton(
+                                            onClick =
+                                                onClick@{
+                                                val uriStrings = selectedDocUris.toList()
+                                                if (uriStrings.isEmpty()) return@onClick
+
+                                                val streamUris = ArrayList<Uri>(uriStrings.size)
+                                                val textUris = ArrayList<String>(0)
+                                                for (raw in uriStrings) {
+                                                    val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: continue
+                                                    if (uri.scheme.equals("file", ignoreCase = true)) {
+                                                        textUris += uri.toString()
+                                                    } else {
+                                                        streamUris += uri
+                                                    }
+                                                }
+
+                                                val intent =
+                                                    when {
+                                                        streamUris.size >= 2 ->
+                                                            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                                                                type = "*/*"
+                                                                putParcelableArrayListExtra(Intent.EXTRA_STREAM, streamUris)
+                                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                            }
+                                                        streamUris.size == 1 ->
+                                                            Intent(Intent.ACTION_SEND).apply {
+                                                                type = "*/*"
+                                                                putExtra(Intent.EXTRA_STREAM, streamUris.first())
+                                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                            }
+                                                        else ->
+                                                            Intent(Intent.ACTION_SEND).apply {
+                                                                type = "text/plain"
+                                                            }
+                                                    }
+
+                                                if (textUris.isNotEmpty()) {
+                                                    intent.putExtra(Intent.EXTRA_TEXT, textUris.joinToString("\n"))
+                                                }
+
+                                                runCatching {
+                                                    context.startActivity(Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                                }.onFailure {
+                                                    android.widget.Toast.makeText(context, context.getString(R.string.editor_share_failed), android.widget.Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(Ionicons.Share2),
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onPrimary,
+                                                modifier = Modifier.size(ZhixuTopBarIconSize),
+                                            )
+                                        }
+                                        ZhixuIconButton(onClick = { android.widget.Toast.makeText(context, "敬请期待", android.widget.Toast.LENGTH_SHORT).show() }) {
+                                            Icon(
+                                                painter = painterResource(Ionicons.EllipsisVertical),
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onPrimary,
+                                                modifier = Modifier.size(ZhixuTopBarIconSize),
+                                            )
+                                        }
+                                    } else {
+                                        ZhixuIconButton(onClick = { docSortFilterRequestToken += 1L }) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_lucide_settings_2),
+                                                contentDescription = stringResource(R.string.action_sort_filter),
+                                                modifier = Modifier.size(ZhixuTopBarIconSize),
+                                            )
+                                        }
+                                        ZhixuIconButton(onClick = { docListUseGrid = !docListUseGrid }) {
+                                            val viewIcon =
+                                                if (docListUseGrid) {
+                                                    R.drawable.ic_lucide_stretch_horizontal
+                                                } else {
+                                                    R.drawable.ic_lucide_layout_dashboard
+                                                }
+                                            Icon(
+                                                painter = painterResource(viewIcon),
+                                                contentDescription = stringResource(R.string.action_toggle_view),
+                                                modifier = Modifier.size(ZhixuTopBarIconSize),
+                                            )
+                                        }
+                                        ZhixuIconButton(onClick = { docSearchRequestToken += 1L }) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_lucide_search),
+                                                contentDescription = stringResource(R.string.action_search),
+                                                modifier = Modifier.size(ZhixuTopBarIconSize),
+                                            )
+                                        }
                                     }
                                 }
                             },
@@ -831,7 +942,7 @@ fun ZhixuApp(
                     }
                 },
                 floatingActionButton = {
-                    if (!showMainUi || createSheetPage != null) return@Scaffold
+                    if (!showMainUi || createSheetPage != null || docsSelectionMode) return@Scaffold
                     val fabShape = RoundedCornerShape(999.dp)
                     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                     val fabBackground = if (isDark) Color(0xFF0B1B3A) else Color.White
@@ -1146,6 +1257,7 @@ fun ZhixuApp(
                         searchRequestToken = docSearchRequestToken,
                         sortFilterRequestToken = docSortFilterRequestToken,
                         useGridLayout = docListUseGrid,
+                        pinnedDocUris = pinnedDocUris,
                         onOpenDoc = ::openDoc,
                         onNewDoc = { navController.navigate("newDoc") },
                         onChangeVault = {
