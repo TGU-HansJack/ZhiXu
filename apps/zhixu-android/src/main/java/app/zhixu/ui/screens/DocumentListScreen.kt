@@ -1069,7 +1069,7 @@ private fun DocRow(
                     modifier =
                         Modifier
                             .size(width = 3.dp, height = barHeight)
-                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)),
+                            .background(MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(2.dp)),
                 )
                 Spacer(modifier = Modifier.width(3.dp))
                 Text(
