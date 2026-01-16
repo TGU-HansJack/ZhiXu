@@ -93,6 +93,9 @@
     <string name="action_hide">Hide</string>
     <string name="action_continue">Continue</string>
     <string name="edited_at_fmt">%1$s</string>
+    <string name="doc_time_yesterday_time_fmt">Yesterday %1$s</string>
+    <string name="doc_time_day_before_yesterday_time_fmt">Day before yesterday %1$s</string>
+    <string name="doc_time_edited_at_paren_fmt">(Edited at %1$s)</string>
     <string name="search_empty">No results</string>
     <string name="search_task_hit">Task match</string>
     <string name="doc_delete_failed">Delete failed</string>

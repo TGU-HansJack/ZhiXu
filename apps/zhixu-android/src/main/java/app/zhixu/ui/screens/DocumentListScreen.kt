@@ -127,6 +127,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.input.pointer.pointerInteropFilter
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -401,6 +405,8 @@ fun DocumentListScreen(
                 val selectionMode = selectedDocUris.isNotEmpty()
                 val defaultTitle = stringResource(R.string.new_doc_default_title)
                 val editedAtDash = "—"
+                val nowMs = System.currentTimeMillis()
+                val timeBelowPreview = !isTablet
                 val listBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
                 val pullState = rememberPullToRefreshState()
             PullToRefreshBox(
@@ -439,7 +445,13 @@ fun DocumentListScreen(
                                     contentType = { _, _ -> "doc" },
                                 ) { _, doc ->
                                     val title = doc.baseName.ifBlank { defaultTitle }
-                                    val editedAt = doc.createdAtText.ifBlank { editedAtDash }
+                                    val timeText =
+                                        formatDocListTimeText(
+                                            context = context,
+                                            createdAtMs = doc.createdAt,
+                                            editedAtMs = doc.lastModified,
+                                            nowMs = nowMs,
+                                        ).ifBlank { editedAtDash }
                                     val docUriStr = doc.uri.toString()
                                     val isDrawing = ZhixuDrawFormat.hasDrawingExtension(doc.name)
                                     val previewKey =
@@ -525,8 +537,9 @@ fun DocumentListScreen(
 
                                     DocRow(
                                         title = title,
-                                        editedAt = editedAt,
+                                        timeText = timeText,
                                         compactHeader = useGridLayout,
+                                        timeBelowPreview = timeBelowPreview,
                                         previewContent = previewContent,
                                         selectionMode = selectionMode,
                                         selected = docUriStr in selectedDocUris,
@@ -563,7 +576,13 @@ fun DocumentListScreen(
                                     contentType = { _, _ -> "doc" },
                                 ) { _, doc ->
                                 val title = doc.baseName.ifBlank { defaultTitle }
-                                val editedAt = doc.createdAtText.ifBlank { editedAtDash }
+                                val timeText =
+                                    formatDocListTimeText(
+                                        context = context,
+                                        createdAtMs = doc.createdAt,
+                                        editedAtMs = doc.lastModified,
+                                        nowMs = nowMs,
+                                    ).ifBlank { editedAtDash }
                                 val docUriStr = doc.uri.toString()
                                 val isDrawing = ZhixuDrawFormat.hasDrawingExtension(doc.name)
                                 val previewKey = remember(docUriStr, doc.lastModified) { "$docUriStr@${doc.lastModified}" }
@@ -648,8 +667,9 @@ fun DocumentListScreen(
 
                                 DocRow(
                                     title = title,
-                                    editedAt = editedAt,
+                                    timeText = timeText,
                                     compactHeader = useGridLayout,
+                                    timeBelowPreview = timeBelowPreview,
                                     previewContent = previewContent,
                                     selectionMode = selectionMode,
                                     selected = docUriStr in selectedDocUris,
@@ -1045,8 +1065,9 @@ private fun DocumentRowActionsSheet(
 @Composable
 private fun DocRow(
     title: String,
-    editedAt: String,
+    timeText: String,
     compactHeader: Boolean,
+    timeBelowPreview: Boolean,
     previewContent: (@Composable () -> Unit)?,
     selectionMode: Boolean,
     selected: Boolean,
@@ -1085,10 +1106,10 @@ private fun DocRow(
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                     )
-                    if (compactHeader) {
+                    if (!timeBelowPreview && compactHeader) {
                         Spacer(modifier = Modifier.size(2.dp))
                         Text(
-                            text = stringResource(R.string.edited_at_fmt, editedAt),
+                            text = stringResource(R.string.edited_at_fmt, timeText),
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -1096,10 +1117,10 @@ private fun DocRow(
                         )
                     }
                 }
-                if (!compactHeader) {
+                if (!timeBelowPreview && !compactHeader) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = stringResource(R.string.edited_at_fmt, editedAt),
+                        text = stringResource(R.string.edited_at_fmt, timeText),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1133,7 +1154,74 @@ private fun DocRow(
             }
 
             previewContent?.invoke()
+
+            if (timeBelowPreview) {
+                Spacer(modifier = Modifier.size(if (previewContent == null) 6.dp else 8.dp))
+                Text(
+                    text = stringResource(R.string.edited_at_fmt, timeText),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
+    }
+}
+
+private val docListTimeFormatterTimeOnly: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val docListTimeFormatterThisYear: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm")
+private val docListTimeFormatterOtherYear: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+
+private fun formatDocListTimeText(
+    context: android.content.Context,
+    createdAtMs: Long,
+    editedAtMs: Long,
+    nowMs: Long,
+): String {
+    val baseMs = if (createdAtMs > 0L) createdAtMs else editedAtMs
+    if (baseMs <= 0L) return ""
+
+    val zoneId = ZoneId.systemDefault()
+    val nowDate = Instant.ofEpochMilli(nowMs).atZone(zoneId).toLocalDate()
+    val baseText = formatDocListTimestamp(context, baseMs, nowDate, zoneId)
+
+    val showEdited = editedAtMs > 0L && editedAtMs > baseMs
+    if (!showEdited) return baseText
+
+    val editedText = formatDocListTimestamp(context, editedAtMs, nowDate, zoneId)
+    if (editedText.isBlank() || editedText == baseText) return baseText
+
+    return baseText + " " + context.getString(R.string.doc_time_edited_at_paren_fmt, editedText)
+}
+
+private fun formatDocListTimestamp(
+    context: android.content.Context,
+    timestampMs: Long,
+    nowDate: LocalDate,
+    zoneId: ZoneId,
+): String {
+    if (timestampMs <= 0L) return ""
+    val localDateTime = Instant.ofEpochMilli(timestampMs).atZone(zoneId).toLocalDateTime()
+    val date = localDateTime.toLocalDate()
+
+    return when (date) {
+        nowDate.minusDays(1) ->
+            context.getString(
+                R.string.doc_time_yesterday_time_fmt,
+                docListTimeFormatterTimeOnly.format(localDateTime),
+            )
+        nowDate.minusDays(2) ->
+            context.getString(
+                R.string.doc_time_day_before_yesterday_time_fmt,
+                docListTimeFormatterTimeOnly.format(localDateTime),
+            )
+        else ->
+            when (date.year) {
+                nowDate.year -> docListTimeFormatterThisYear.format(localDateTime)
+                else -> docListTimeFormatterOtherYear.format(localDateTime)
+            }
     }
 }
 
