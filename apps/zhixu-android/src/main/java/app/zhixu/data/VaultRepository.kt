@@ -322,6 +322,63 @@ class VaultRepository(
     }
 
     suspend fun ensureVaultStructure(rootUri: Uri) = withContext(Dispatchers.IO) {
+        if (rootUri.scheme.equals("file", ignoreCase = true)) {
+            val rootPath = rootUri.path ?: error("Invalid file vault uri: $rootUri")
+            val rootDir = File(rootPath)
+            if (rootDir.exists() && !rootDir.isDirectory) {
+                error("Vault root is not a directory: $rootPath")
+            }
+            if (!rootDir.exists() && !rootDir.mkdirs()) {
+                error("Failed to create vault root directory: $rootPath")
+            }
+
+            fun ensureDir(dir: File, displayPath: String) {
+                if (dir.exists()) {
+                    require(dir.isDirectory) { "Expected directory but got file: $displayPath" }
+                    return
+                }
+                if (!dir.mkdirs()) {
+                    error("Failed to create directory: $displayPath (${dir.absolutePath})")
+                }
+            }
+
+            val zhixuDir = File(rootDir, appConfigDirName)
+            val syncDir = File(zhixuDir, "sync")
+            val exportsDir = File(zhixuDir, "exports")
+            val pluginsDir = File(zhixuDir, "plugins")
+            val ocrDir = File(zhixuDir, "ocr")
+            val ocrImagesDir = File(ocrDir, "images")
+            val ocrModelsDir = File(ocrDir, ".models")
+            val ocrPpocrv5Dir = File(ocrModelsDir, "ppocrv5")
+
+            ensureDir(zhixuDir, appConfigDirName)
+            ensureDir(syncDir, "$appConfigDirName/sync")
+            ensureDir(exportsDir, "$appConfigDirName/exports")
+            ensureDir(pluginsDir, "$appConfigDirName/plugins")
+            ensureDir(ocrDir, "$appConfigDirName/ocr")
+            ensureDir(ocrImagesDir, "$appConfigDirName/ocr/images")
+            ensureDir(ocrModelsDir, "$appConfigDirName/ocr/.models")
+            ensureDir(ocrPpocrv5Dir, "$appConfigDirName/ocr/.models/ppocrv5")
+
+            val pluginState = File(pluginsDir, "state.json")
+            val settings = File(zhixuDir, "settings.json")
+            runCatching {
+                if (!settings.exists()) settings.createNewFile()
+                if (settings.exists() && settings.length() == 0L) {
+                    settings.writeText("{}\n", Charsets.UTF_8)
+                }
+            }.onFailure { Log.e("Zhixu", "ensure settings.json failed", it) }
+
+            runCatching {
+                if (!pluginState.exists()) pluginState.createNewFile()
+                if (pluginState.exists() && pluginState.length() == 0L) {
+                    pluginState.writeText("{\n  \"enabled\": []\n}\n", Charsets.UTF_8)
+                }
+            }.onFailure { Log.e("Zhixu", "ensure plugins/state.json failed", it) }
+
+            return@withContext
+        }
+
         val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
         val zhixu = findChild(root, appConfigDirName) ?: root.createDirectory(appConfigDirName)
         val syncDir = zhixu?.let { findChild(it, "sync") ?: it.createDirectory("sync") }

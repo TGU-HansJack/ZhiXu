@@ -15,10 +15,18 @@ fun vaultRootToDocumentFile(context: Context, rootUri: Uri): DocumentFile? {
 }
 
 fun appManagedVaultRootUri(context: Context): Uri {
-    val base = context.getExternalFilesDir(null) ?: context.filesDir
-    val dir = File(base, "ZhixuVault")
-    if (!dir.exists()) {
-        dir.mkdirs()
+    val candidates = listOfNotNull(context.getExternalFilesDir(null), context.filesDir)
+    for (base in candidates) {
+        val dir = File(base, "ZhixuVault")
+        if (dir.exists()) {
+            if (dir.isDirectory) return Uri.fromFile(dir)
+            continue
+        }
+        if (dir.mkdirs() || (dir.exists() && dir.isDirectory)) {
+            return Uri.fromFile(dir)
+        }
     }
-    return Uri.fromFile(dir)
+    val fallback = File(context.filesDir, "ZhixuVault")
+    fallback.mkdirs()
+    return Uri.fromFile(fallback)
 }
