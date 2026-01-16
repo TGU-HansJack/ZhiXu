@@ -821,7 +821,7 @@ fun ZhixuApp(
                                             Box(
                                                 modifier =
                                                     Modifier
-                                                        .size(32.dp)
+                                                        .size(36.dp)
                                                         .clip(CircleShape)
                                                         .background(MaterialTheme.colorScheme.surfaceVariant),
                                                 contentAlignment = Alignment.Center,
