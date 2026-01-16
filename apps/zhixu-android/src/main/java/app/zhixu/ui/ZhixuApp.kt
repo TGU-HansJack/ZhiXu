@@ -523,7 +523,7 @@ fun ZhixuApp(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val drawerWidth = configuration.screenWidthDp.dp * (2f / 3f)
     val showMainUi = currentRoute in setOf("home", "tasks", "pomodoro", "space")
-    var docListUseGrid by rememberSaveable(vaultRootUriString) { mutableStateOf(true) }
+    var docListUseGrid by rememberSaveable(vaultRootUriString) { mutableStateOf(false) }
     var sectionMenuExpanded by remember { mutableStateOf(false) }
     var showAccountDialog by remember { mutableStateOf(false) }
 
