@@ -816,11 +816,37 @@ fun ZhixuApp(
                                     }
                                 } else {
                                     ZhixuIconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_lucide_panel_left_open),
-                                            contentDescription = stringResource(R.string.action_open_drawer),
-                                            modifier = Modifier.size(ZhixuTopBarIconSize),
-                                        )
+                                        if (currentRoute == "home") {
+                                            val uri = accountState.avatarUri
+                                            Box(
+                                                modifier =
+                                                    Modifier
+                                                        .size(32.dp)
+                                                        .clip(CircleShape)
+                                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                if (uri.isNotBlank()) {
+                                                    AsyncImage(
+                                                        model = uri,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.fillMaxSize(),
+                                                    )
+                                                } else {
+                                                    Text(
+                                                        text = accountState.username.firstOrNull()?.uppercase() ?: "Z",
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+                                            }
+                                        } else {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_lucide_panel_left_open),
+                                                contentDescription = stringResource(R.string.action_open_drawer),
+                                                modifier = Modifier.size(ZhixuTopBarIconSize),
+                                            )
+                                        }
                                     }
                                 }
                             },
