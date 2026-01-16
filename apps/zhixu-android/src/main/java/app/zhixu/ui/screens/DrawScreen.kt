@@ -13,7 +13,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -22,12 +21,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -84,7 +81,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.contentDescription
@@ -179,49 +175,6 @@ private data class DrawUndoHistory(
     val redoStack: ArrayDeque<List<ZhixuDrawElement>> = ArrayDeque(),
 )
 
-private enum class ToolDockEdge {
-    Top,
-    Bottom,
-    Left,
-    Right,
-}
-
-@Composable
-private fun DrawToolDragProxy(
-    iconRes: Int,
-    iconTint: Color,
-    modifier: Modifier = Modifier,
-) {
-    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val bg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = bg,
-        tonalElevation = 0.dp,
-        shadowElevation = 10.dp,
-        modifier = modifier.size(44.dp),
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .border(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
-                        shape = RoundedCornerShape(12.dp),
-                    ),
-            contentAlignment = Alignment.Center,
-        ) {
-            androidx.compose.material3.Icon(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                modifier = Modifier.size(22.dp),
-                tint = iconTint,
-            )
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun DrawScreen(
@@ -245,16 +198,6 @@ fun DrawScreen(
     var loadFailed by remember { mutableStateOf(false) }
     var editor by remember { mutableStateOf(DrawEditorState.newDocument()) }
     var viewMode by remember { mutableStateOf(DrawViewMode.Writing) }
-    var toolDockOffsetPx by remember { mutableStateOf(Offset.Zero) }
-    var toolDockSizePx by remember { mutableStateOf(IntSize.Zero) }
-    var toolDockContainerSizePx by remember { mutableStateOf(IntSize.Zero) }
-    var toolDockInitialized by remember { mutableStateOf(false) }
-    var toolDockDragging by remember { mutableStateOf(false) }
-    var toolDockEdge by remember { mutableStateOf(ToolDockEdge.Bottom) }
-    var toolDockPendingAnchorGlobalPx by remember { mutableStateOf<Offset?>(null) }
-    var toolDockDragProxyCenterPx by remember { mutableStateOf<Offset?>(null) }
-    var topStartControlsHeightPx by remember { mutableStateOf(0) }
-    var topEndControlsHeightPx by remember { mutableStateOf(0) }
 
     var toolPrefs by remember { mutableStateOf<DrawToolPrefs?>(null) }
 
@@ -725,7 +668,6 @@ fun DrawScreen(
                 Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .onSizeChanged { toolDockContainerSizePx = it },
         ) {
             when {
                 isLoading -> {
@@ -754,351 +696,171 @@ fun DrawScreen(
                     )
                 }
             }
+            val canEdit = editorReady && viewMode == DrawViewMode.Writing
+            val toolScrollState = rememberScrollState()
 
             Row(
                 modifier =
                     Modifier
-                        .align(Alignment.TopStart)
+                        .align(Alignment.TopCenter)
                         .windowInsetsPadding(WindowInsets.statusBars)
-                        .padding(12.dp)
-                        .onSizeChanged { topStartControlsHeightPx = it.height },
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        .padding(horizontal = 12.dp, vertical = 12.dp)
+                        .fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                DrawCircleIconButton(
-                    onClick = onBack,
-                    contentDescription = stringResource(R.string.action_back),
-                ) {
-                    androidx.compose.material3.Icon(
-                        painter =
-                            painterResource(
-                                if (LocalLayoutDirection.current == LayoutDirection.Rtl) Ionicons.ArrowForward else Ionicons.ArrowBack,
-                            ),
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-                DrawCircleIconButton(
-                    onClick = ::undoStroke,
-                    enabled = editorReady && canUndo && viewMode == DrawViewMode.Writing,
-                    contentDescription = stringResource(R.string.action_undo),
-                ) {
-                    androidx.compose.material3.Icon(
-                        painter = painterResource(Heroicons.ArrowUturnLeft),
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-                DrawCircleIconButton(
-                    onClick = ::redoStroke,
-                    enabled = editorReady && canRedo && viewMode == DrawViewMode.Writing,
-                    contentDescription = stringResource(R.string.action_redo),
-                ) {
-                    androidx.compose.material3.Icon(
-                        painter = painterResource(Heroicons.ArrowUturnRight),
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-            }
-
-            if (editorReady) {
                 Row(
-                    modifier =
-                        Modifier
-                            .align(Alignment.TopEnd)
-                            .windowInsetsPadding(WindowInsets.statusBars)
-                            .padding(12.dp)
-                            .onSizeChanged { topEndControlsHeightPx = it.height },
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     DrawCircleIconButton(
-                        onClick = { showClearDialog = true },
-                        enabled = viewMode == DrawViewMode.Writing,
-                        contentDescription = stringResource(R.string.draw_action_clear),
+                        onClick = onBack,
+                        contentDescription = stringResource(R.string.action_back),
                     ) {
                         androidx.compose.material3.Icon(
-                            painter = painterResource(Heroicons.Trash),
+                            painter =
+                                painterResource(
+                                    if (LocalLayoutDirection.current == LayoutDirection.Rtl) Ionicons.ArrowForward else Ionicons.ArrowBack,
+                                ),
                             contentDescription = null,
                             modifier = Modifier.size(22.dp),
                         )
                     }
                     DrawCircleIconButton(
-                        onClick = ::requestSave,
-                        contentDescription = stringResource(R.string.action_save),
+                        onClick = ::undoStroke,
+                        enabled = canEdit && canUndo,
+                        contentDescription = stringResource(R.string.action_undo),
                     ) {
                         androidx.compose.material3.Icon(
-                            painter = painterResource(Ionicons.SaveOutline),
+                            painter = painterResource(Heroicons.ArrowUturnLeft),
                             contentDescription = null,
                             modifier = Modifier.size(22.dp),
                         )
                     }
                     DrawCircleIconButton(
-                        onClick = {
-                            showToolDrawer = false
-                            showOverflowMenu = true
-                        },
-                        contentDescription = "更多",
+                        onClick = ::redoStroke,
+                        enabled = canEdit && canRedo,
+                        contentDescription = stringResource(R.string.action_redo),
                     ) {
                         androidx.compose.material3.Icon(
-                            painter = painterResource(Ionicons.EllipsisHorizontal),
+                            painter = painterResource(Heroicons.ArrowUturnRight),
                             contentDescription = null,
                             modifier = Modifier.size(22.dp),
                         )
                     }
                 }
 
-                if (viewMode == DrawViewMode.Writing) {
-                    val container = toolDockContainerSizePx
-                    val dock = toolDockSizePx
-                    val edgeMargin = with(density) { 6.dp.toPx() }
-                    val navBars = WindowInsets.navigationBars
-                    val statusBars = WindowInsets.statusBars
-                    val layoutDir = LocalLayoutDirection.current
-                    val leftInset = navBars.getLeft(density, layoutDir).toFloat()
-                    val rightInset = navBars.getRight(density, layoutDir).toFloat()
-                    val bottomInset = navBars.getBottom(density).toFloat()
-                    val topInset = statusBars.getTop(density).toFloat()
-                    val topControlsHeightPx =
-                        maxOf(topStartControlsHeightPx, topEndControlsHeightPx)
-                            .takeIf { it > 0 }
-                            ?.toFloat()
-                            ?: (topInset + with(density) { 64.dp.toPx() })
-                    val xMin = leftInset + edgeMargin
-                    val xMax =
-                        (container.width.toFloat() - rightInset - dock.width.toFloat() - edgeMargin)
-                            .coerceAtLeast(xMin)
-                    val yMin = topControlsHeightPx + edgeMargin
-                    val yMax =
-                        (container.height.toFloat() - bottomInset - dock.height.toFloat() - edgeMargin)
-                            .coerceAtLeast(yMin)
-                    val safeLeft = xMin
-                    val safeRight = (container.width.toFloat() - rightInset - edgeMargin).coerceAtLeast(safeLeft)
-                    val safeTop = yMin
-                    val safeBottom = (container.height.toFloat() - bottomInset - edgeMargin).coerceAtLeast(safeTop)
-                    val dragHandleThicknessPx = with(density) { 24.dp.toPx() }
-                    val dragProxyHalfPx = with(density) { 22.dp.toPx() }
+                Spacer(modifier = Modifier.width(10.dp))
 
-                    fun clampDockOffset(offset: Offset): Offset {
-                        if (container == IntSize.Zero || dock == IntSize.Zero) return offset
-                        return Offset(
-                            x = offset.x.coerceIn(xMin, xMax),
-                            y = offset.y.coerceIn(yMin, yMax),
-                        )
-                    }
-
-                    fun dragProxyLocalCenter(
-                        edge: ToolDockEdge,
-                        size: IntSize,
-                    ): Offset =
-                        when (edge) {
-                            ToolDockEdge.Left ->
-                                Offset(
-                                    x = size.width.toFloat() - dragHandleThicknessPx / 2f,
-                                    y = size.height.toFloat() / 2f,
-                                )
-                            ToolDockEdge.Right -> Offset(x = dragHandleThicknessPx / 2f, y = size.height.toFloat() / 2f)
-                            else -> Offset(x = size.width.toFloat() / 2f, y = dragHandleThicknessPx / 2f)
+                if (editorReady) {
+                    val fountainPenColor = Color(editor.fountainPenColorArgb)
+                    val ballpointPenColor = Color(editor.ballpointPenColorArgb)
+                    val penColor = if (editor.penStyle == DrawPenStyle.FountainPen) fountainPenColor else ballpointPenColor
+                    val highlighterColor = Color(editor.highlighterColorArgb)
+                    val shapeColor = Color(editor.shapeColorArgb)
+                    val penIcon =
+                        when (editor.penStyle) {
+                            DrawPenStyle.FountainPen -> R.drawable.ic_lucide_pen_tool
+                            DrawPenStyle.BallpointPen -> R.drawable.ic_lucide_pencil
                         }
 
-                    fun clampProxyCenter(center: Offset): Offset {
-                        val xMinCenter = safeLeft + dragProxyHalfPx
-                        val xMaxCenter = safeRight - dragProxyHalfPx
-                        val yMinCenter = safeTop + dragProxyHalfPx
-                        val yMaxCenter = safeBottom - dragProxyHalfPx
-                        fun coerceInOrCenter(
-                            value: Float,
-                            min: Float,
-                            max: Float,
-                        ): Float =
-                            if (max >= min) {
-                                value.coerceIn(min, max)
-                            } else {
-                                (min + max) / 2f
-                            }
-                        return Offset(
-                            x = coerceInOrCenter(center.x, xMinCenter, xMaxCenter),
-                            y = coerceInOrCenter(center.y, yMinCenter, yMaxCenter),
-                        )
-                    }
-
-                    fun pickNearestEdge(center: Offset): ToolDockEdge {
-                        val dLeft = abs(center.x - safeLeft)
-                        val dRight = abs(safeRight - center.x)
-                        val dTop = abs(center.y - safeTop)
-                        val dBottom = abs(safeBottom - center.y)
-                        val min = minOf(dLeft, dRight, dTop, dBottom)
-                        return when (min) {
-                            dTop -> ToolDockEdge.Top
-                            dLeft -> ToolDockEdge.Left
-                            dRight -> ToolDockEdge.Right
-                            else -> ToolDockEdge.Bottom
-                        }
-                    }
-
-                    fun computeDockOffsetForEdge(
-                        edge: ToolDockEdge,
-                        anchorGlobal: Offset,
-                    ): Offset {
-                        val xCentered = ((xMin + xMax) / 2f).coerceIn(xMin, xMax)
-                        return when (edge) {
-                            ToolDockEdge.Top -> Offset(xCentered, yMin)
-                            ToolDockEdge.Bottom ->
-                                Offset(
-                                    x = (anchorGlobal.x - dock.width.toFloat() / 2f).coerceIn(xMin, xMax),
-                                    y = yMax,
-                                )
-                            ToolDockEdge.Left ->
-                                Offset(
-                                    x = xMin,
-                                    y = (anchorGlobal.y - dock.height.toFloat() / 2f).coerceIn(yMin, yMax),
-                                )
-                            ToolDockEdge.Right ->
-                                Offset(
-                                    x = xMax,
-                                    y = (anchorGlobal.y - dock.height.toFloat() / 2f).coerceIn(yMin, yMax),
-                                )
-                        }
-                    }
-
-                    LaunchedEffect(container, dock) {
-                        if (container == IntSize.Zero || dock == IntSize.Zero) return@LaunchedEffect
-                        val initial =
-                            if (toolDockInitialized) {
-                                toolDockOffsetPx
-                            } else {
-                                toolDockEdge = ToolDockEdge.Bottom
-                                Offset(
-                                    x = (container.width - dock.width).toFloat() / 2f,
-                                    y = yMax,
-                                )
-                            }
-                        toolDockOffsetPx = clampDockOffset(initial)
-                        toolDockInitialized = true
-                    }
-
-                    LaunchedEffect(container, dock, toolDockEdge) {
-                        if (!toolDockInitialized) return@LaunchedEffect
-                        if (container == IntSize.Zero || dock == IntSize.Zero) return@LaunchedEffect
-                        val pending = toolDockPendingAnchorGlobalPx
-                        if (pending != null) {
-                            toolDockOffsetPx = clampDockOffset(computeDockOffsetForEdge(toolDockEdge, pending))
-                            toolDockPendingAnchorGlobalPx = null
-                        } else if (!toolDockDragging) {
-                            toolDockOffsetPx = clampDockOffset(toolDockOffsetPx)
-                        }
-                    }
-
-                    val dragHandleDragModifier =
-                        Modifier.pointerInput(container, dock, toolDockInitialized) {
-                            detectDragGestures(
-                                onDragStart = {
-                                    toolDockDragging = true
-                                    val fallback =
-                                        Offset(
-                                            x = ((safeLeft + safeRight) / 2f),
-                                            y = safeBottom,
-                                        )
-                                    val start =
-                                        if (dock == IntSize.Zero) {
-                                            fallback
-                                        } else {
-                                            toolDockOffsetPx + dragProxyLocalCenter(toolDockEdge, dock)
-                                        }
-                                    toolDockDragProxyCenterPx = clampProxyCenter(start)
-                                },
-                                onDrag = onDockDrag@{ change, dragAmount ->
-                                    change.consume()
-                                    val current = toolDockDragProxyCenterPx ?: return@onDockDrag
-                                    toolDockDragProxyCenterPx = clampProxyCenter(current + dragAmount)
-                                },
-                                onDragEnd = {
-                                    val center = toolDockDragProxyCenterPx
-                                    if (center != null) {
-                                        val targetEdge = pickNearestEdge(center)
-                                        toolDockEdge = targetEdge
-                                        toolDockPendingAnchorGlobalPx = center
-                                        if (dock != IntSize.Zero) {
-                                            toolDockOffsetPx = clampDockOffset(computeDockOffsetForEdge(targetEdge, center))
-                                        }
-                                    }
-                                    toolDockDragging = false
-                                    toolDockDragProxyCenterPx = null
-                                },
-                                onDragCancel = {
-                                    val center = toolDockDragProxyCenterPx
-                                    if (center != null) {
-                                        val targetEdge = pickNearestEdge(center)
-                                        toolDockEdge = targetEdge
-                                        toolDockPendingAnchorGlobalPx = center
-                                        if (dock != IntSize.Zero) {
-                                            toolDockOffsetPx = clampDockOffset(computeDockOffsetForEdge(targetEdge, center))
-                                        }
-                                    }
-                                    toolDockDragging = false
-                                    toolDockDragProxyCenterPx = null
-                                },
-                            )
-                        }
-
-                    DrawToolDock(
-                        editor = editor,
-                        onToolClick = ::handleToolDockClick,
-                        dragging = toolDockDragging,
-                        edge = toolDockEdge,
-                        dragHandleModifier = dragHandleDragModifier,
+                    Row(
                         modifier =
-                            (
-                                if (toolDockInitialized) {
-                                    Modifier.offset { IntOffset(toolDockOffsetPx.x.roundToInt(), toolDockOffsetPx.y.roundToInt()) }
-                                } else {
-                                    Modifier
-                                        .align(Alignment.BottomCenter)
-                                        .windowInsetsPadding(WindowInsets.navigationBars)
-                                        .padding(bottom = 12.dp)
-                                }
-                            ).onSizeChanged { toolDockSizePx = it },
-                    )
+                            Modifier
+                                .weight(1f)
+                                .horizontalScroll(toolScrollState),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        DrawToolDockButton(
+                            selected = editor.toolId == DrawToolId.Pen,
+                            iconRes = penIcon,
+                            contentDescription = stringResource(R.string.draw_tool_pen),
+                            iconTint = penColor,
+                            onClick = { handleToolDockClick(DrawToolId.Pen) },
+                            enabled = canEdit,
+                        )
+                        DrawToolDockButton(
+                            selected = editor.toolId == DrawToolId.Highlighter,
+                            iconRes = R.drawable.ic_lucide_highlighter,
+                            contentDescription = stringResource(R.string.draw_tool_highlighter),
+                            iconTint = highlighterColor,
+                            onClick = { handleToolDockClick(DrawToolId.Highlighter) },
+                            enabled = canEdit,
+                        )
+                        DrawToolDockButton(
+                            selected = editor.toolId == DrawToolId.Shape,
+                            iconRes = R.drawable.ic_lucide_pyramid,
+                            contentDescription = stringResource(R.string.draw_tool_shape),
+                            iconTint = shapeColor,
+                            onClick = { handleToolDockClick(DrawToolId.Shape) },
+                            enabled = canEdit,
+                        )
+                        DrawToolDockButton(
+                            selected = editor.toolId == DrawToolId.Lasso,
+                            iconRes = R.drawable.ic_lucide_lasso,
+                            contentDescription = stringResource(R.string.draw_tool_lasso),
+                            onClick = { handleToolDockClick(DrawToolId.Lasso) },
+                            enabled = canEdit,
+                        )
+                        DrawToolDockButton(
+                            selected = editor.toolId == DrawToolId.Eraser,
+                            iconRes = R.drawable.ic_lucide_eraser,
+                            contentDescription = stringResource(R.string.draw_tool_eraser),
+                            onClick = { handleToolDockClick(DrawToolId.Eraser) },
+                            enabled = canEdit,
+                        )
+                        DrawToolDockButton(
+                            selected = editor.toolId == DrawToolId.Pan,
+                            iconRes = R.drawable.ic_lucide_hand,
+                            contentDescription = stringResource(R.string.draw_tool_pan),
+                            onClick = { handleToolDockClick(DrawToolId.Pan) },
+                            enabled = true,
+                        )
+                    }
 
-                    if (toolDockDragging) {
-                        val proxyCenter = toolDockDragProxyCenterPx
-                        if (proxyCenter != null) {
-                            val (selectedIconRes, selectedIconTint) =
-                                when (editor.toolId) {
-                                    DrawToolId.Pen ->
-                                        (
-                                            when (editor.penStyle) {
-                                                DrawPenStyle.FountainPen -> R.drawable.ic_lucide_pen_tool
-                                                DrawPenStyle.BallpointPen -> R.drawable.ic_lucide_pencil
-                                            }
-                                        ) to
-                                            Color(
-                                                if (editor.penStyle == DrawPenStyle.FountainPen) {
-                                                    editor.fountainPenColorArgb
-                                                } else {
-                                                    editor.ballpointPenColorArgb
-                                                },
-                                            )
-                                    DrawToolId.Highlighter -> R.drawable.ic_lucide_highlighter to Color(editor.highlighterColorArgb)
-                                    DrawToolId.Shape -> R.drawable.ic_lucide_pyramid to Color(editor.shapeColorArgb)
-                                    DrawToolId.Lasso -> R.drawable.ic_lucide_lasso to MaterialTheme.colorScheme.onSurface
-                                    DrawToolId.Eraser -> R.drawable.ic_lucide_eraser to MaterialTheme.colorScheme.onSurface
-                                    DrawToolId.Pan -> R.drawable.ic_lucide_hand to MaterialTheme.colorScheme.onSurface
-                                }
-                            DrawToolDragProxy(
-                                iconRes = selectedIconRes,
-                                iconTint = selectedIconTint,
-                                modifier =
-                                    Modifier.offset {
-                                        IntOffset(
-                                            (proxyCenter.x - dragProxyHalfPx).roundToInt(),
-                                            (proxyCenter.y - dragProxyHalfPx).roundToInt(),
-                                        )
-                                    },
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        DrawCircleIconButton(
+                            onClick = { showClearDialog = true },
+                            enabled = canEdit,
+                            contentDescription = stringResource(R.string.draw_action_clear),
+                        ) {
+                            androidx.compose.material3.Icon(
+                                painter = painterResource(Heroicons.Trash),
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        DrawCircleIconButton(
+                            onClick = ::requestSave,
+                            contentDescription = stringResource(R.string.action_save),
+                        ) {
+                            androidx.compose.material3.Icon(
+                                painter = painterResource(Ionicons.SaveOutline),
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        DrawCircleIconButton(
+                            onClick = {
+                                showToolDrawer = false
+                                showOverflowMenu = true
+                            },
+                            contentDescription = "更多",
+                        ) {
+                            androidx.compose.material3.Icon(
+                                painter = painterResource(Ionicons.EllipsisHorizontal),
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp),
                             )
                         }
                     }
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -1153,6 +915,14 @@ fun DrawScreen(
                         rotateCurrentPage90Degrees()
                     },
                 )
+                DrawOverflowItem(
+                    label = "删除选中",
+                    enabled = canEdit && editor.selectedElementIds.isNotEmpty(),
+                    onClick = {
+                        showOverflowMenu = false
+                        deleteSelection()
+                    },
+                )
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
 
@@ -1200,6 +970,13 @@ fun DrawScreen(
                     onClick = {
                         showOverflowMenu = false
                         showExportSheet = true
+                    },
+                )
+                DrawOverflowItem(
+                    label = "另存为（库内）",
+                    onClick = {
+                        showOverflowMenu = false
+                        requestSaveAs()
                     },
                 )
                 DrawOverflowItem(
@@ -1475,210 +1252,6 @@ private fun DrawOverflowItem(
 }
 
 @Composable
-private fun DrawToolDock(
-    editor: DrawEditorState,
-    onToolClick: (DrawToolId) -> Unit,
-    dragging: Boolean,
-    edge: ToolDockEdge,
-    dragHandleModifier: Modifier = Modifier,
-    modifier: Modifier = Modifier,
-) {
-    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val dockBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
-    val fountainPenColor = Color(editor.fountainPenColorArgb)
-    val ballpointPenColor = Color(editor.ballpointPenColorArgb)
-    val penColor = if (editor.penStyle == DrawPenStyle.FountainPen) fountainPenColor else ballpointPenColor
-    val highlighterColor = Color(editor.highlighterColorArgb)
-    val shapeColor = Color(editor.shapeColorArgb)
-    val penIcon =
-        when (editor.penStyle) {
-            DrawPenStyle.FountainPen -> R.drawable.ic_lucide_pen_tool
-            DrawPenStyle.BallpointPen -> R.drawable.ic_lucide_pencil
-        }
-    val barAlpha = if (dragging) 0f else 1f
-    val vertical = edge == ToolDockEdge.Left || edge == ToolDockEdge.Right
-    val dockThickness = 72.dp
-    val handleThickness = 20.dp
-    val handleLength = 72.dp
-    Surface(
-        color = if (dragging) Color.Transparent else dockBg,
-        shape = RoundedCornerShape(18.dp),
-        tonalElevation = if (dragging) 0.dp else if (isDark) 3.dp else 0.dp,
-        shadowElevation = if (dragging) 0.dp else 6.dp,
-        modifier =
-            if (vertical) {
-                modifier.width(dockThickness)
-            } else {
-                modifier.height(dockThickness)
-            },
-    ) {
-        Box(
-            modifier =
-                if (vertical) {
-                    Modifier.fillMaxWidth()
-                } else {
-                    Modifier.fillMaxHeight()
-                },
-        ) {
-            if (!vertical) {
-                Row(
-                    modifier =
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(horizontal = 10.dp)
-                            .padding(bottom = 6.dp)
-                            .alpha(barAlpha),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    DrawToolDockButton(
-                        selected = editor.toolId == DrawToolId.Pen,
-                        iconRes = penIcon,
-                        contentDescription = stringResource(R.string.draw_tool_pen),
-                        iconTint = penColor,
-                        onClick = { onToolClick(DrawToolId.Pen) },
-                        enabled = true,
-                    )
-                    DrawToolDockButton(
-                        selected = editor.toolId == DrawToolId.Highlighter,
-                        iconRes = R.drawable.ic_lucide_highlighter,
-                        contentDescription = stringResource(R.string.draw_tool_highlighter),
-                        iconTint = highlighterColor,
-                        onClick = { onToolClick(DrawToolId.Highlighter) },
-                        enabled = true,
-                    )
-                    DrawToolDockButton(
-                        selected = editor.toolId == DrawToolId.Shape,
-                        iconRes = R.drawable.ic_lucide_pyramid,
-                        contentDescription = stringResource(R.string.draw_tool_shape),
-                        iconTint = shapeColor,
-                        onClick = { onToolClick(DrawToolId.Shape) },
-                        enabled = true,
-                    )
-                    DrawToolDockButton(
-                        selected = editor.toolId == DrawToolId.Lasso,
-                        iconRes = R.drawable.ic_lucide_lasso,
-                        contentDescription = stringResource(R.string.draw_tool_lasso),
-                        onClick = { onToolClick(DrawToolId.Lasso) },
-                        enabled = true,
-                    )
-                    DrawToolDockButton(
-                        selected = editor.toolId == DrawToolId.Eraser,
-                        iconRes = R.drawable.ic_lucide_eraser,
-                        contentDescription = stringResource(R.string.draw_tool_eraser),
-                        onClick = { onToolClick(DrawToolId.Eraser) },
-                        enabled = true,
-                    )
-                    DrawToolDockButton(
-                        selected = editor.toolId == DrawToolId.Pan,
-                        iconRes = R.drawable.ic_lucide_hand,
-                        contentDescription = stringResource(R.string.draw_tool_pan),
-                        onClick = { onToolClick(DrawToolId.Pan) },
-                        enabled = true,
-                    )
-                }
-            } else {
-                Column(
-                    modifier =
-                        Modifier
-                            .align(Alignment.Center)
-                            .padding(
-                                start = if (edge == ToolDockEdge.Right) 10.dp else 0.dp,
-                                end = if (edge == ToolDockEdge.Left) 10.dp else 0.dp,
-                                top = 10.dp,
-                                bottom = 10.dp,
-                            )
-                            .alpha(barAlpha),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    DrawToolDockButton(
-                        selected = editor.toolId == DrawToolId.Pen,
-                        iconRes = penIcon,
-                        contentDescription = stringResource(R.string.draw_tool_pen),
-                        iconTint = penColor,
-                        onClick = { onToolClick(DrawToolId.Pen) },
-                        enabled = true,
-                    )
-                    DrawToolDockButton(
-                        selected = editor.toolId == DrawToolId.Highlighter,
-                        iconRes = R.drawable.ic_lucide_highlighter,
-                        contentDescription = stringResource(R.string.draw_tool_highlighter),
-                        iconTint = highlighterColor,
-                        onClick = { onToolClick(DrawToolId.Highlighter) },
-                        enabled = true,
-                    )
-                    DrawToolDockButton(
-                        selected = editor.toolId == DrawToolId.Shape,
-                        iconRes = R.drawable.ic_lucide_pyramid,
-                        contentDescription = stringResource(R.string.draw_tool_shape),
-                        iconTint = shapeColor,
-                        onClick = { onToolClick(DrawToolId.Shape) },
-                        enabled = true,
-                    )
-                    DrawToolDockButton(
-                        selected = editor.toolId == DrawToolId.Lasso,
-                        iconRes = R.drawable.ic_lucide_lasso,
-                        contentDescription = stringResource(R.string.draw_tool_lasso),
-                        onClick = { onToolClick(DrawToolId.Lasso) },
-                        enabled = true,
-                    )
-                    DrawToolDockButton(
-                        selected = editor.toolId == DrawToolId.Eraser,
-                        iconRes = R.drawable.ic_lucide_eraser,
-                        contentDescription = stringResource(R.string.draw_tool_eraser),
-                        onClick = { onToolClick(DrawToolId.Eraser) },
-                        enabled = true,
-                    )
-                    DrawToolDockButton(
-                        selected = editor.toolId == DrawToolId.Pan,
-                        iconRes = R.drawable.ic_lucide_hand,
-                        contentDescription = stringResource(R.string.draw_tool_pan),
-                        onClick = { onToolClick(DrawToolId.Pan) },
-                        enabled = true,
-                    )
-                }
-            }
-
-            val handleAlignment =
-                when (edge) {
-                    ToolDockEdge.Left -> Alignment.CenterEnd
-                    ToolDockEdge.Right -> Alignment.CenterStart
-                    else -> Alignment.TopCenter
-                }
-
-            Box(
-                modifier =
-                    dragHandleModifier
-                        .align(handleAlignment)
-                        .size(
-                            width = if (vertical) handleThickness else handleLength,
-                            height = if (vertical) handleLength else handleThickness,
-                        ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(2.dp),
-                    color =
-                        if (dragging) {
-                            Color.Transparent
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-                        },
-                    modifier =
-                        if (vertical) {
-                            Modifier.size(width = 4.dp, height = 30.dp)
-                        } else {
-                            Modifier.size(width = 30.dp, height = 4.dp)
-                        },
-                    content = {},
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun DrawToolDockButton(
     selected: Boolean,
     iconRes: Int,
@@ -1691,12 +1264,14 @@ private fun DrawToolDockButton(
     val selectedBg = if (isDark) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFF2F2F2)
     val bg = if (selected) selectedBg else Color.Transparent
     val fg = iconTint ?: MaterialTheme.colorScheme.onSurface
+    val contentAlpha = if (enabled) 1f else 0.38f
     Surface(
         color = bg,
         shape = RoundedCornerShape(12.dp),
         modifier =
             Modifier
                 .size(36.dp)
+                .alpha(contentAlpha)
                 .clickable(enabled = enabled, onClick = onClick)
                 .semantics { this.contentDescription = contentDescription },
     ) {
