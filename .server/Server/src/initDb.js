@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   username VARCHAR(64) NOT NULL,
   email VARCHAR(255) NULL,
+  email_verified_at_ms BIGINT NOT NULL DEFAULT 0,
   password_hash VARCHAR(255) NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -20,6 +21,16 @@ CREATE TABLE IF NOT EXISTS users (
     const hasEmail = Array.isArray(colRows) && colRows.length > 0;
     if (!hasEmail) {
       await pool.query("ALTER TABLE users ADD COLUMN email VARCHAR(255) NULL AFTER username");
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  try {
+    const [colRows] = await pool.query("SHOW COLUMNS FROM users LIKE 'email_verified_at_ms'");
+    const hasCol = Array.isArray(colRows) && colRows.length > 0;
+    if (!hasCol) {
+      await pool.query("ALTER TABLE users ADD COLUMN email_verified_at_ms BIGINT NOT NULL DEFAULT 0 AFTER email");
     }
   } catch (_) {
     // ignore
@@ -51,6 +62,21 @@ CREATE TABLE IF NOT EXISTS user_sessions (
   PRIMARY KEY (id),
   KEY idx_user_sessions_user_last_seen (user_id, last_seen_at_ms),
   CONSTRAINT fk_user_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+`);
+
+  await pool.query(`
+CREATE TABLE IF NOT EXISTS email_codes (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  email VARCHAR(255) NOT NULL,
+  purpose VARCHAR(32) NOT NULL,
+  code_hash CHAR(64) NOT NULL,
+  created_at_ms BIGINT NOT NULL,
+  expires_at_ms BIGINT NOT NULL,
+  used_at_ms BIGINT NULL,
+  PRIMARY KEY (id),
+  KEY idx_email_codes_email_purpose (email, purpose),
+  KEY idx_email_codes_expires (expires_at_ms)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `);
 

@@ -667,6 +667,7 @@ fun VaultDrawer(
             sheetState = entryMenuSheetState,
             containerColor = MaterialTheme.colorScheme.background,
             tonalElevation = 0.dp,
+            dragHandle = { ZhixuCompactDragHandle() },
         ) {
             VaultEntryActionsSheet(
                 onRename = {

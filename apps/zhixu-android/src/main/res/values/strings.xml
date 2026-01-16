@@ -231,7 +231,8 @@
     <string name="account_avatar_permission_denied">Permission denied</string>
     <string name="account_email_code">Email verification code</string>
     <string name="account_send_code">Send</string>
-    <string name="account_email_code_sent_placeholder">Sent (placeholder)</string>
+    <string name="account_email_code_sent_placeholder">Verification code sent</string>
+    <string name="account_send_code_failed">Failed to send code</string>
     <string name="account_create_account">Create account</string>
     <string name="account_have_account_login">Already have an account? Login</string>
     <string name="account_no_account_create">No account? Create one</string>

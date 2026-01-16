@@ -22,7 +22,10 @@ router.get("/me", async (req, res) => {
   const userId = Number(req.user?.id);
   if (!Number.isFinite(userId) || userId <= 0) return res.status(401).json({ error: "invalid_user" });
 
-  const [[u]] = await pool.query("SELECT id, username, COALESCE(email, '') AS email FROM users WHERE id = ? LIMIT 1", [userId]);
+  const [[u]] = await pool.query(
+    "SELECT id, username, COALESCE(email, '') AS email, COALESCE(email_verified_at_ms, 0) AS email_verified_at_ms FROM users WHERE id = ? LIMIT 1",
+    [userId]
+  );
   if (!u) return res.status(404).json({ error: "not_found" });
 
   const [[sub]] = await pool.query(
@@ -40,6 +43,8 @@ LIMIT 1
     userId: Number(u.id) || userId,
     username: String(u.username || ""),
     email: String(u.email || ""),
+    emailVerifiedAtMs: Number(u.email_verified_at_ms) || 0,
+    emailVerified: (Number(u.email_verified_at_ms) || 0) > 0,
     plan: sub
       ? {
           code: String(sub.plan_code || ""),

@@ -67,6 +67,7 @@ fun AuthForm(
     val registerOkText = stringResource(R.string.account_register_ok)
     val loginFailedText = stringResource(R.string.account_login_failed)
     val registerFailedText = stringResource(R.string.account_register_failed)
+    val sendCodeFailedText = stringResource(R.string.account_send_code_failed)
     val serverUnreachableText = stringResource(R.string.error_server_unreachable)
 
     fun <T> SyncServerResult<T>.toUiMessage(fallback: String): String {
@@ -152,8 +153,29 @@ fun AuthForm(
                         enabled = !busy && sendCooldown == 0 && email.isNotBlank(),
                         shape = RoundedCornerShape(8.dp),
                         onClick = {
-                            Toast.makeText(context, context.getString(R.string.account_email_code_sent_placeholder), Toast.LENGTH_SHORT).show()
-                            sendCooldown = 60
+                            scope.launch {
+                                setBusy(true)
+                                try {
+                                    val sent =
+                                        SyncServerClient.sendEmailCode(
+                                            baseUrl = OfficialSync.BASE_URL,
+                                            email = email.trim(),
+                                            purpose = "register",
+                                        )
+                                    if (!sent.ok) {
+                                        status = sent.toUiMessage(sendCodeFailedText)
+                                        return@launch
+                                    }
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.account_email_code_sent_placeholder),
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                    sendCooldown = 60
+                                } finally {
+                                    setBusy(false)
+                                }
+                            }
                         },
                     ) {
                         Text(
@@ -196,18 +218,8 @@ fun AuthForm(
                                     emailCode = emailCode.trim(),
                                 )
                             if (!reg.ok) {
-                                val fallback =
-                                    SyncServerClient.register(
-                                        baseUrl = OfficialSync.BASE_URL,
-                                        username = username.trim(),
-                                        password = password,
-                                        email = email.trim(),
-                                        emailCode = "",
-                                    )
-                                if (!fallback.ok) {
-                                    status = fallback.toUiMessage(registerFailedText)
-                                    return@launch
-                                }
+                                status = reg.toUiMessage(registerFailedText)
+                                return@launch
                             }
                             Toast.makeText(context, registerOkText, Toast.LENGTH_SHORT).show()
 

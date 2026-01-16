@@ -13,6 +13,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -29,11 +30,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
@@ -68,6 +71,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -78,6 +82,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.os.LocaleListCompat
+import coil.compose.AsyncImage
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -509,7 +514,7 @@ fun ZhixuApp(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val drawerWidth = configuration.screenWidthDp.dp * (2f / 3f)
     val showMainUi = currentRoute in setOf("home", "tasks", "pomodoro", "space")
-    var docListUseGrid by rememberSaveable(vaultRootUriString) { mutableStateOf(configuration.smallestScreenWidthDp >= 600) }
+    var docListUseGrid by rememberSaveable(vaultRootUriString) { mutableStateOf(true) }
     var sectionMenuExpanded by remember { mutableStateOf(false) }
     var showAccountDialog by remember { mutableStateOf(false) }
 
@@ -527,19 +532,70 @@ fun ZhixuApp(
                     modifier =
                         Modifier
                             .fillMaxSize()
+                            .windowInsetsPadding(WindowInsets.statusBars)
                             .windowInsetsPadding(WindowInsets.navigationBars)
                             .padding(vertical = 8.dp),
                 ) {
                     ListItem(
                         leadingContent = {
-                            Icon(
-                                painter = painterResource(Ionicons.User),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
+                            val uri = accountState.avatarUri
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .size(42.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (uri.isNotBlank()) {
+                                    AsyncImage(
+                                        model = uri,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                } else {
+                                    Text(
+                                        text = accountState.username.firstOrNull()?.uppercase() ?: "Z",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        },
+                        headlineContent = {
+                            Text(
+                                text =
+                                    if (accountState.isLoggedIn) {
+                                        accountState.username.ifBlank { stringResource(R.string.account_manage_title) }
+                                    } else {
+                                        stringResource(R.string.account_not_logged_in_short)
+                                    },
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             )
                         },
-                        headlineContent = { Text(stringResource(R.string.account_manage_title)) },
+                        supportingContent = {
+                            val email =
+                                if (accountState.isLoggedIn) {
+                                    accountState.email.ifBlank { stringResource(R.string.account_login_register) }
+                                } else {
+                                    stringResource(R.string.account_login_register)
+                                }
+                            Text(
+                                text = email,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
+                        },
+                        trailingContent = {
+                            Icon(
+                                painter = painterResource(Ionicons.ChevronForward),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
                         modifier =
                             Modifier
                                 .fillMaxWidth()
@@ -751,9 +807,9 @@ fun ZhixuApp(
                                     ZhixuIconButton(onClick = { docListUseGrid = !docListUseGrid }) {
                                         val viewIcon =
                                             if (docListUseGrid) {
-                                                R.drawable.ic_lucide_layout_dashboard
-                                            } else {
                                                 R.drawable.ic_lucide_stretch_horizontal
+                                            } else {
+                                                R.drawable.ic_lucide_layout_dashboard
                                             }
                                         Icon(
                                             painter = painterResource(viewIcon),

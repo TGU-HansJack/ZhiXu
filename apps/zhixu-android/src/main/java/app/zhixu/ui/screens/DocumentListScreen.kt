@@ -36,11 +36,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed as staggeredItemsIndexed
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -114,6 +114,7 @@ import app.zhixu.ui.DocListMutation
 import app.zhixu.ui.components.RefreshStatusBanner
 import app.zhixu.ui.components.SheetActionRow
 import app.zhixu.ui.components.SheetQuickAction
+import app.zhixu.ui.components.ZhixuCompactDragHandle
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.VaultSearchDialog
 import io.noties.markwon.AbstractMarkwonPlugin
@@ -154,7 +155,7 @@ fun DocumentListScreen(
     val configuration = LocalConfiguration.current
     val isTablet = configuration.smallestScreenWidthDp >= 600
     val listState = rememberLazyListState()
-    val gridState = rememberLazyGridState()
+    val gridState = rememberLazyStaggeredGridState()
 
     var savedFirstVisibleKey by rememberSaveable(vaultRootUri) { mutableStateOf<String?>(null) }
     var savedFirstVisibleIndex by rememberSaveable(vaultRootUri) { mutableIntStateOf(0) }
@@ -415,16 +416,16 @@ fun DocumentListScreen(
             ) {
                     Box(modifier = Modifier.fillMaxSize().background(listBg)) {
                         if (useGridLayout) {
-                            LazyVerticalGrid(
+                            LazyVerticalStaggeredGrid(
                                 modifier = Modifier.fillMaxSize(),
-                                columns = GridCells.Fixed(2),
+                                columns = StaggeredGridCells.Fixed(2),
                                 state = gridState,
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalItemSpacing = 10.dp,
                             ) {
                                 if (visibleDocs.isEmpty()) {
-                                    item(span = { GridItemSpan(maxLineSpan) }) {
+                                    item(span = StaggeredGridItemSpan.FullLine) {
                                         Text(
                                             text = stringResource(R.string.docs_empty),
                                             modifier = Modifier.padding(8.dp),
@@ -432,7 +433,7 @@ fun DocumentListScreen(
                                         )
                                     }
                                 }
-                                gridItemsIndexed(
+                                staggeredItemsIndexed(
                                     items = visibleDocs,
                                     key = { _, doc -> doc.uri },
                                     contentType = { _, _ -> "doc" },
@@ -525,6 +526,7 @@ fun DocumentListScreen(
                                     DocRow(
                                         title = title,
                                         editedAt = editedAt,
+                                        compactHeader = useGridLayout,
                                         previewContent = previewContent,
                                         selectionMode = selectionMode,
                                         selected = docUriStr in selectedDocUris,
@@ -647,6 +649,7 @@ fun DocumentListScreen(
                                 DocRow(
                                     title = title,
                                     editedAt = editedAt,
+                                    compactHeader = useGridLayout,
                                     previewContent = previewContent,
                                     selectionMode = selectionMode,
                                     selected = docUriStr in selectedDocUris,
@@ -683,6 +686,7 @@ fun DocumentListScreen(
             sheetState = sortFilterSheetState,
             containerColor = MaterialTheme.colorScheme.background,
             tonalElevation = 0.dp,
+            dragHandle = { ZhixuCompactDragHandle() },
         ) {
             Column(
                 modifier =
@@ -752,6 +756,7 @@ fun DocumentListScreen(
             sheetState = docMenuSheetState,
             containerColor = MaterialTheme.colorScheme.background,
             tonalElevation = 0.dp,
+            dragHandle = { ZhixuCompactDragHandle() },
         ) {
             DocumentRowActionsSheet(
                 onRename = {
@@ -1041,6 +1046,7 @@ private fun DocumentRowActionsSheet(
 private fun DocRow(
     title: String,
     editedAt: String,
+    compactHeader: Boolean,
     previewContent: (@Composable () -> Unit)?,
     selectionMode: Boolean,
     selected: Boolean,
@@ -1072,24 +1078,39 @@ private fun DocRow(
                             .background(MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(2.dp)),
                 )
                 Spacer(modifier = Modifier.width(3.dp))
-                Text(
-                    text = title,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.edited_at_fmt, editedAt),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
-                    textAlign = TextAlign.End,
-                    modifier = Modifier.widthIn(max = 140.dp),
-                )
-                Spacer(modifier = Modifier.width(4.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        maxLines = if (compactHeader) 2 else 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    )
+                    if (compactHeader) {
+                        Spacer(modifier = Modifier.size(2.dp))
+                        Text(
+                            text = stringResource(R.string.edited_at_fmt, editedAt),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
+                        )
+                    }
+                }
+                if (!compactHeader) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.edited_at_fmt, editedAt),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Light),
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.widthIn(max = 140.dp),
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                } else {
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
 
                 ZhixuIconButton(
                     onClick = if (selectionMode) onClick else onMoreClick,

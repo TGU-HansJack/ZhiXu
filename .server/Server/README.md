@@ -23,7 +23,9 @@ Vault file contents are stored on disk under `STORAGE_ROOT` (default: `./storage
 ## API
 
 - `GET /health`
-- `POST /api/auth/register` `{ "username": "...", "password": "...", "email"?: "..." }`
+- `POST /api/auth/email/code` `{ "email": "...", "purpose"?: "register" | "verify" }`
+- `POST /api/auth/email/verify` `{ "email": "...", "code": "123456" }`
+- `POST /api/auth/register` `{ "username": "...", "password": "...", "email"?: "...", "emailCode"?: "123456" }`
 - `POST /api/auth/login` `{ "username": "...", "password": "..." }` -> `{ "token": "...", "sessionId": "...", "refreshToken": "..." }`
 - `POST /api/auth/refresh` `{ "sessionId": "...", "refreshToken": "..." }` -> `{ "token": "...", "sessionId": "...", "refreshToken": "..." }`
 - `POST /api/auth/logout` (Bearer token) -> `{ "ok": true }`

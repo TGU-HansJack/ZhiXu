@@ -174,6 +174,7 @@ import app.zhixu.ui.components.DiffLine
 import app.zhixu.ui.components.ZhixuDialogDefaults
 import app.zhixu.ui.components.SheetActionRow
 import app.zhixu.ui.components.SheetQuickAction
+import app.zhixu.ui.components.ZhixuCompactDragHandle
 import app.zhixu.ui.components.ZhixuTextField
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuCenterAlignedTopAppBar
@@ -1666,6 +1667,7 @@ fun EditorScreen(
             sheetState = overflowSheetState,
             containerColor = MaterialTheme.colorScheme.background,
             tonalElevation = 0.dp,
+            dragHandle = { ZhixuCompactDragHandle() },
         ) {
             val notImplemented: () -> Unit = {
                 scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.common_not_implemented)) }
@@ -1898,7 +1900,7 @@ fun EditorScreen(
             onDismissRequest = { showHistorySheet = false },
             sheetState = historySheetState,
             containerColor = MaterialTheme.colorScheme.surface,
-            dragHandle = null,
+            dragHandle = { ZhixuCompactDragHandle() },
         ) {
             val diffLines =
                 remember(selectedText, currentTextSnapshot) {
@@ -2069,7 +2071,7 @@ fun EditorScreen(
             onDismissRequest = { showFontSizeSheet = false },
             sheetState = fontSizeSheetState,
             containerColor = MaterialTheme.colorScheme.surface,
-            dragHandle = null,
+            dragHandle = { ZhixuCompactDragHandle() },
         ) {
             Column(
                 modifier =
@@ -2131,7 +2133,7 @@ fun EditorScreen(
             onDismissRequest = { showPdfMenu = false },
             sheetState = pdfMenuState,
             containerColor = MaterialTheme.colorScheme.surface,
-            dragHandle = null,
+            dragHandle = { ZhixuCompactDragHandle() },
         ) {
             Column(
                 modifier =
@@ -2179,7 +2181,7 @@ fun EditorScreen(
             onDismissRequest = { showPdfThumbnails = false },
             sheetState = pdfThumbState,
             containerColor = MaterialTheme.colorScheme.surface,
-            dragHandle = null,
+            dragHandle = { ZhixuCompactDragHandle() },
         ) {
             Column(
                 modifier =

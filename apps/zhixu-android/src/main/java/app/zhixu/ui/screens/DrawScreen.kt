@@ -129,6 +129,7 @@ import app.zhixu.ui.Heroicons
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.DocListMutation
 import app.zhixu.ui.components.ZhixuIconButton
+import app.zhixu.ui.components.ZhixuCompactDragHandle
 import app.zhixu.ui.components.ZhixuTextField
 import java.io.File
 import java.io.FileOutputStream
@@ -991,7 +992,7 @@ fun DrawScreen(
         ModalBottomSheet(
             onDismissRequest = { showToolDrawer = false },
             sheetState = toolDrawerState,
-            dragHandle = { DrawSlimDragHandle() },
+            dragHandle = { ZhixuCompactDragHandle() },
         ) {
             DrawToolDrawerContent(
                 editor = editor,
@@ -1007,7 +1008,7 @@ fun DrawScreen(
         ModalBottomSheet(
             onDismissRequest = { showOverflowMenu = false },
             sheetState = overflowMenuState,
-            dragHandle = { DrawSlimDragHandle() },
+            dragHandle = { ZhixuCompactDragHandle() },
         ) {
             val canEdit = viewMode == DrawViewMode.Writing
             Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
@@ -1116,7 +1117,7 @@ fun DrawScreen(
         ModalBottomSheet(
             onDismissRequest = { showBackgroundPicker = false },
             sheetState = backgroundPickerState,
-            dragHandle = { DrawSlimDragHandle() },
+            dragHandle = { ZhixuCompactDragHandle() },
         ) {
             val bg = editor.currentPageOrNull()?.backgroundColorArgb ?: 0xFFFFFFFF.toInt()
             Column(
@@ -1140,7 +1141,7 @@ fun DrawScreen(
         ModalBottomSheet(
             onDismissRequest = { showExportSheet = false },
             sheetState = exportSheetState,
-            dragHandle = { DrawSlimDragHandle() },
+            dragHandle = { ZhixuCompactDragHandle() },
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
                 DrawOverflowSectionTitle(text = "导出文件")
@@ -1305,24 +1306,6 @@ private fun DrawCircleIconButton(
         Box(contentAlignment = Alignment.Center) {
             content()
         }
-    }
-}
-
-@Composable
-private fun DrawSlimDragHandle(modifier: Modifier = Modifier) {
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(top = 6.dp, bottom = 2.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Surface(
-            shape = RoundedCornerShape(2.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-            modifier = Modifier.size(width = 34.dp, height = 4.dp),
-            content = {},
-        )
     }
 }
 

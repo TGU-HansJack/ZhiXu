@@ -3,10 +3,13 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const { pool } = require("../db");
+const { isSmtpConfigured, sendMail } = require("../mailer");
 const { authRequired } = require("../middleware/auth");
 const { bcryptRounds, jwtSecret, jwtAccessTtl, refreshTokenTtlDays } = require("../config");
 
 const router = express.Router();
+
+const EMAIL_CODE_TTL_MS = 10 * 60 * 1000;
 
 function sha256HexUtf8(text) {
   return crypto.createHash("sha256").update(String(text), "utf8").digest("hex");
@@ -46,16 +49,110 @@ function normalizeEmail(raw) {
   return email;
 }
 
+function generateEmailCode() {
+  const n = crypto.randomInt(100000, 1000000);
+  return String(n);
+}
+
+async function issueEmailCode(email, purpose) {
+  const now = Date.now();
+  const code = generateEmailCode();
+  const codeHash = sha256HexUtf8(code);
+  const expiresAtMs = now + EMAIL_CODE_TTL_MS;
+  await pool.query(
+    "INSERT INTO email_codes (email, purpose, code_hash, created_at_ms, expires_at_ms, used_at_ms) VALUES (?, ?, ?, ?, ?, NULL)",
+    [email, purpose, codeHash, now, expiresAtMs]
+  );
+  return { code, expiresAtMs };
+}
+
+async function consumeEmailCode(email, purpose, code) {
+  const now = Date.now();
+  const codeHash = sha256HexUtf8(code);
+
+  const [[row]] = await pool.query(
+    "SELECT id, code_hash, expires_at_ms FROM email_codes WHERE email = ? AND purpose = ? AND used_at_ms IS NULL ORDER BY created_at_ms DESC LIMIT 1",
+    [email, purpose]
+  );
+  if (!row) return { ok: false, error: "code_not_found" };
+
+  const expiresAtMs = Number(row.expires_at_ms) || 0;
+  if (expiresAtMs > 0 && now > expiresAtMs) return { ok: false, error: "code_expired" };
+
+  const storedHash = String(row.code_hash || "");
+  if (!storedHash || !timingSafeEqualHex(storedHash, codeHash)) return { ok: false, error: "code_mismatch" };
+
+  await pool.query("UPDATE email_codes SET used_at_ms = ? WHERE id = ? AND used_at_ms IS NULL", [now, Number(row.id)]);
+  return { ok: true };
+}
+
+router.post("/email/code", async (req, res) => {
+  const emailRaw = String(req.body?.email || "").trim();
+  const email = normalizeEmail(emailRaw);
+  if (!email) return res.status(400).json({ error: "invalid_email" });
+
+  const rawPurpose = String(req.body?.purpose || "register").trim().toLowerCase();
+  const purpose = rawPurpose === "verify" ? "verify" : "register";
+
+  if (!isSmtpConfigured()) return res.status(503).json({ error: "smtp_not_configured" });
+
+  try {
+    const issued = await issueEmailCode(email, purpose);
+    const mins = Math.max(1, Math.floor(EMAIL_CODE_TTL_MS / 60_000));
+    const subject = purpose === "verify" ? "Zhixu: Verify your email" : "Zhixu: Email verification code";
+    const text = `Your Zhixu verification code is: ${issued.code}\n\nThis code expires in ${mins} minutes.`;
+
+    const sent = await sendMail({ to: email, subject, text });
+    if (!sent.ok) return res.status(500).json({ error: sent.error || "send_failed" });
+    return res.json({ ok: true });
+  } catch (_) {
+    return res.status(500).json({ error: "server_error" });
+  }
+});
+
+router.post("/email/verify", async (req, res) => {
+  const emailRaw = String(req.body?.email || "").trim();
+  const email = normalizeEmail(emailRaw);
+  const code = String(req.body?.code || "").trim();
+  if (!email) return res.status(400).json({ error: "invalid_email" });
+  if (!code) return res.status(400).json({ error: "invalid_email_code" });
+
+  const [[u]] = await pool.query("SELECT id, COALESCE(email_verified_at_ms, 0) AS email_verified_at_ms FROM users WHERE email = ? LIMIT 1", [
+    email
+  ]);
+  if (!u) return res.status(404).json({ error: "not_found" });
+  if ((Number(u.email_verified_at_ms) || 0) > 0) return res.json({ ok: true, alreadyVerified: true });
+
+  const consumed = await consumeEmailCode(email, "verify", code);
+  if (!consumed.ok) return res.status(400).json({ error: consumed.error || "invalid_email_code" });
+
+  await pool.query("UPDATE users SET email_verified_at_ms = ? WHERE id = ? AND email = ? AND email_verified_at_ms = 0 LIMIT 1", [
+    Date.now(),
+    Number(u.id),
+    email
+  ]);
+  return res.json({ ok: true });
+});
+
 router.post("/register", async (req, res) => {
   const username = String(req.body?.username || "").trim();
   const password = String(req.body?.password || "");
   const emailRaw = String(req.body?.email || "").trim();
   const email = emailRaw ? normalizeEmail(emailRaw) : null;
+  const emailCode = String(req.body?.emailCode || "").trim();
   if (!username || username.length < 3) return res.status(400).json({ error: "invalid_username" });
   if (!password || password.length < 6) return res.status(400).json({ error: "invalid_password" });
   if (emailRaw && !email) return res.status(400).json({ error: "invalid_email" });
 
   const passwordHash = await bcrypt.hash(password, bcryptRounds);
+  const now = Date.now();
+  let emailVerifiedAtMs = 0;
+
+  if (email && emailCode) {
+    const consumed = await consumeEmailCode(email, "register", emailCode);
+    if (!consumed.ok) return res.status(400).json({ error: consumed.error || "invalid_email_code" });
+    emailVerifiedAtMs = now;
+  }
 
   try {
     const [result] = await pool.query("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)", [
@@ -63,6 +160,20 @@ router.post("/register", async (req, res) => {
       email,
       passwordHash
     ]);
+
+    if (email && emailVerifiedAtMs > 0) {
+      await pool.query("UPDATE users SET email_verified_at_ms = ? WHERE id = ? LIMIT 1", [emailVerifiedAtMs, Number(result.insertId)]);
+    } else if (email && isSmtpConfigured()) {
+      try {
+        const issued = await issueEmailCode(email, "verify");
+        const mins = Math.max(1, Math.floor(EMAIL_CODE_TTL_MS / 60_000));
+        const subject = "Zhixu: Verify your email";
+        const text = `Your Zhixu verification code is: ${issued.code}\n\nThis code expires in ${mins} minutes.`;
+        await sendMail({ to: email, subject, text });
+      } catch (_) {
+        // ignore best-effort verification email
+      }
+    }
     return res.status(201).json({ userId: Number(result.insertId) || 0 });
   } catch (e) {
     if (String(e?.code) === "ER_DUP_ENTRY") {

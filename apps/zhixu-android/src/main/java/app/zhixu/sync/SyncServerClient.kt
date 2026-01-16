@@ -118,6 +118,39 @@ object SyncServerClient {
         }
     }
 
+    suspend fun sendEmailCode(
+        baseUrl: String,
+        email: String,
+        purpose: String = "register",
+    ): SyncServerResult<Unit> = withContext(Dispatchers.IO) {
+        safeResult {
+            val url = normalizeJoin(baseUrl, "/api/auth/email/code")
+            val body =
+                JSONObject()
+                    .put("email", email.trim())
+                    .put("purpose", purpose.trim())
+                    .toString()
+                    .toRequestBody("application/json; charset=utf-8".toMediaType())
+            val req = Request.Builder().url(url).post(body).header("User-Agent", "Zhixu-Android").build()
+            client.newCall(req).execute().use { resp ->
+                val text = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) {
+                    val parsed =
+                        runCatching {
+                            val obj = JSONObject(text)
+                            obj.optString("error").orEmpty().ifBlank { obj.optString("message").orEmpty() }
+                        }.getOrNull()
+                    return@use SyncServerResult(
+                        ok = false,
+                        errorMessage = parsed?.ifBlank { text }.orEmpty().ifBlank { "HTTP ${resp.code}" },
+                        statusCode = resp.code,
+                    )
+                }
+                SyncServerResult(ok = true, value = Unit, statusCode = resp.code)
+            }
+        }
+    }
+
     suspend fun register(
         baseUrl: String,
         username: String,
