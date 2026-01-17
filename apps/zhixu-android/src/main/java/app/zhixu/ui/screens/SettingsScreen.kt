@@ -32,6 +32,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -1303,6 +1306,14 @@ private fun SyncSettingsScreen(
         popPage()
     }
 
+    // Each page gets its own scroll state. Otherwise, switching pages reuses the same LazyColumn
+    // scroll position and can land "past the end" of the new page's content (looks like a blank page).
+    val mainListState = rememberLazyListState()
+    val officialServerListState = rememberLazyListState()
+    val webDavServiceListState = rememberLazyListState()
+    val webDavFolderPairListState = rememberLazyListState()
+    val webDavManualListState = rememberLazyListState()
+
     if (showConflictStrategyDialog) {
         AlertDialog(
             modifier = ZhixuDialogDefaults.modifier(),
@@ -1537,19 +1548,34 @@ private fun SyncSettingsScreen(
             }
         },
     ) { innerPadding ->
-        LazyColumn(
-            modifier =
-                Modifier
-                    .padding(contentPadding)
-                    .padding(innerPadding)
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .background(MaterialTheme.colorScheme.background)
-                    .fillMaxSize()
-                    .imePadding(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(0.dp),
+        val listModifier =
+            Modifier
+                .padding(contentPadding)
+                .padding(innerPadding)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .background(MaterialTheme.colorScheme.background)
+                .fillMaxSize()
+                .imePadding()
+        val listContentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp)
+
+        @Composable
+        fun PageLazyColumn(
+            state: LazyListState,
+            content: LazyListScope.() -> Unit,
         ) {
-            if (page == SyncSettingsPage.Main) {
+            LazyColumn(
+                modifier = listModifier,
+                state = state,
+                contentPadding = listContentPadding,
+                verticalArrangement = Arrangement.spacedBy(0.dp),
+            ) {
+                content()
+            }
+        }
+
+        when (page) {
+            SyncSettingsPage.Main ->
+                PageLazyColumn(mainListState) {
                 item { Spacer(modifier = Modifier.height(12.dp)) }
 
                 item {
@@ -1625,8 +1651,11 @@ private fun SyncSettingsScreen(
                         )
                     }
                 }
+
             }
-            if (page == SyncSettingsPage.OfficialServer) {
+
+            SyncSettingsPage.OfficialServer ->
+                PageLazyColumn(officialServerListState) {
                 item { SettingsSectionTitle(text = stringResource(R.string.official_sync_title)) }
                 item {
                 Card(
@@ -1723,9 +1752,11 @@ private fun SyncSettingsScreen(
                         ) { Text(stringResource(R.string.official_sync_now)) }
                     }
                 }
+                }
             }
 
-            if (page == SyncSettingsPage.WebDavFolderPair) {
+            SyncSettingsPage.WebDavFolderPair ->
+                PageLazyColumn(webDavFolderPairListState) {
                 val localFolderLabel =
                     if (vaultRootUri == null) {
                         "-"
@@ -1802,7 +1833,8 @@ private fun SyncSettingsScreen(
                 }
             }
 
-            if (page == SyncSettingsPage.WebDavManual) {
+            SyncSettingsPage.WebDavManual ->
+                PageLazyColumn(webDavManualListState) {
                 item { Spacer(modifier = Modifier.height(12.dp)) }
                 item {
                     Card(
@@ -1820,7 +1852,8 @@ private fun SyncSettingsScreen(
                 }
             }
 
-            if (page == SyncSettingsPage.WebDavService) {
+            SyncSettingsPage.WebDavService ->
+                PageLazyColumn(webDavServiceListState) {
                 item { Spacer(modifier = Modifier.height(14.dp)) }
 
                 val trimmedUser = username.trim()
@@ -2056,9 +2089,8 @@ private fun SyncSettingsScreen(
                     }
                 }
 
-        }
+            }
     }
-}
 }
 }
 
