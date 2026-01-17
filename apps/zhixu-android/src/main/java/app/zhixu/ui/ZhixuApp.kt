@@ -873,15 +873,18 @@ fun ZhixuApp(
                             .fillMaxSize()
                             .windowInsetsPadding(WindowInsets.statusBars)
                             .windowInsetsPadding(WindowInsets.navigationBars)
-                            .padding(vertical = 8.dp),
+                            .padding(bottom = 8.dp),
                 ) {
+                    val drawerLeadingSize = 42.dp
+                    val drawerIconSize = 20.dp
+
                     ListItem(
                         leadingContent = {
                             val uri = accountState.avatarUri
                             Box(
                                 modifier =
                                     Modifier
-                                        .size(42.dp)
+                                        .size(drawerLeadingSize)
                                         .clip(CircleShape)
                                         .background(MaterialTheme.colorScheme.surfaceVariant),
                                 contentAlignment = Alignment.Center,
@@ -947,12 +950,17 @@ fun ZhixuApp(
                     )
                     ListItem(
                         leadingContent = {
-                            Icon(
-                                painter = painterResource(Ionicons.Workshop),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
-                            )
+                            Box(
+                                modifier = Modifier.size(drawerLeadingSize),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    painter = painterResource(Ionicons.Workshop),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(drawerIconSize),
+                                )
+                            }
                         },
                         headlineContent = { Text(stringResource(R.string.settings_section_workshop)) },
                         modifier =
@@ -967,12 +975,17 @@ fun ZhixuApp(
                     )
                     ListItem(
                         leadingContent = {
-                            Icon(
-                                painter = painterResource(Ionicons.SettingsOutline),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
-                            )
+                            Box(
+                                modifier = Modifier.size(drawerLeadingSize),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    painter = painterResource(Ionicons.SettingsOutline),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(drawerIconSize),
+                                )
+                            }
                         },
                         headlineContent = { Text(stringResource(R.string.nav_settings)) },
                         modifier =
@@ -990,12 +1003,17 @@ fun ZhixuApp(
 
                     ListItem(
                         leadingContent = {
-                            Icon(
-                                painter = painterResource(Ionicons.CalendarOutline),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
-                            )
+                            Box(
+                                modifier = Modifier.size(drawerLeadingSize),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    painter = painterResource(Ionicons.ChartPie),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(drawerIconSize),
+                                )
+                            }
                         },
                         headlineContent = { Text(stringResource(R.string.drawer_stats)) },
                         modifier =
@@ -1010,12 +1028,17 @@ fun ZhixuApp(
                     )
                     ListItem(
                         leadingContent = {
-                            Icon(
-                                painter = painterResource(Ionicons.HelpCircleOutline),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
-                            )
+                            Box(
+                                modifier = Modifier.size(drawerLeadingSize),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    painter = painterResource(Ionicons.HelpCircleOutline),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(drawerIconSize),
+                                )
+                            }
                         },
                         headlineContent = { Text(stringResource(R.string.drawer_help_support)) },
                         modifier =
@@ -1030,12 +1053,17 @@ fun ZhixuApp(
                     )
                     ListItem(
                         leadingContent = {
-                            Icon(
-                                painter = painterResource(Ionicons.InformationCircleOutline),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
-                            )
+                            Box(
+                                modifier = Modifier.size(drawerLeadingSize),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    painter = painterResource(Ionicons.InformationCircleOutline),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(drawerIconSize),
+                                )
+                            }
                         },
                         headlineContent = { Text(stringResource(R.string.settings_placeholder_about)) },
                         modifier =
