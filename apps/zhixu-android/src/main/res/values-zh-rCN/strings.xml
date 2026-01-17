@@ -180,6 +180,9 @@
     <string name="settings_sync_provider_webdav">WebDAV 服务</string>
     <string name="settings_sync_placeholder">同步设置：使用官方服务器同步，或在下方配置 WebDAV。</string>
     <string name="action_close">关闭</string>
+    <string name="cloud_sync_title">云同步</string>
+    <string name="cloud_sync_status_disabled">未开启</string>
+    <string name="cloud_sync_status_not_configured">未配置</string>
 
     <!-- Account -->
     <string name="account_not_logged_in_short">未登录</string>

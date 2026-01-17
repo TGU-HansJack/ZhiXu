@@ -118,6 +118,7 @@ import app.zhixu.ocr.NoopOcrEngine
 import app.zhixu.ocr.OcrEngineCache
 import app.zhixu.ocr.OcrWorkflow
 import app.zhixu.ocr.ppocrv5.PpOcrV5OcrEngine
+import app.zhixu.sync.OfficialSync
 import app.zhixu.sync.VaultAutoSync
 import app.zhixu.sync.WebDavAutoSync
 import app.zhixu.sync.WebDavAutoSyncStateStore
@@ -186,6 +187,27 @@ private data class WebDavUiStatusSnapshot(
     val text: String?,
     val endedAtMs: Long,
 )
+
+private enum class SyncServerUiStatusLevel {
+    DISABLED,
+    UNKNOWN,
+    OK,
+    WARNING,
+    ERROR,
+}
+
+private data class SyncServerUiStatusSnapshot(
+    val level: SyncServerUiStatusLevel,
+    val text: String?,
+    val endedAtMs: Long,
+)
+
+private enum class CloudSyncUiIconState {
+    SYNCING,
+    OK,
+    WARNING,
+    DISABLED,
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -280,9 +302,13 @@ fun ZhixuApp(
                 conflictStrategy = app.zhixu.data.WebDavConflictStrategy.KEEP_BOTH,
             ),
     )
-    var showWebDavStatusDialog by remember { mutableStateOf(false) }
+    var showCloudSyncStatusDialog by remember { mutableStateOf(false) }
     var webDavUiStatus by remember { mutableStateOf<WebDavUiStatusSnapshot?>(null) }
     var webDavAutoSyncStatusText by remember { mutableStateOf<String?>(null) }
+    var syncServerUiStatus by remember { mutableStateOf<SyncServerUiStatusSnapshot?>(null) }
+
+    var webDavSyncing by remember { mutableStateOf(false) }
+    var syncServerSyncing by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         withFrameNanos { }
@@ -358,6 +384,57 @@ fun ZhixuApp(
         webDavUiStatus = WebDavUiStatusSnapshot(level = level, text = text, endedAtMs = endedAt)
     }
 
+    suspend fun reloadSyncServerUiStatus() {
+        val root = vaultRootUri ?: run {
+            syncServerUiStatus = null
+            return
+        }
+
+        val cfg = vaultSyncConfig
+        val enabled =
+            when (cfg.location) {
+                VaultStorageLocation.LOCAL -> false
+                VaultStorageLocation.OFFICIAL_SERVER -> accountState.token.isNotBlank()
+                VaultStorageLocation.THIRD_PARTY_SERVICE -> {
+                    val tp = cfg.thirdParty
+                    tp.url.trim().isNotBlank() && tp.username.trim().isNotBlank() && tp.password.isNotBlank()
+                }
+            }
+
+        val uri = repository.resolveVaultFileUri(root, ".zhixu/sync/server_last_summary.json")
+        val raw = uri?.let { runCatching { repository.readText(it) }.getOrNull().orEmpty().trim() }.orEmpty()
+        val obj = runCatching { JSONObject(raw) }.getOrNull()
+        val ok = obj?.optBoolean("ok", false) ?: false
+        val endedAt = obj?.optLong("endedAt", 0L) ?: 0L
+        val conflicts = obj?.optInt("conflicts", 0) ?: 0
+        val failed = obj?.optInt("failed", 0) ?: 0
+        val error = obj?.optString("error").orEmpty().trim().ifBlank { null }
+        val text =
+            if (raw.isBlank()) {
+                null
+            } else if (!ok) {
+                context.getString(R.string.official_sync_failed, error ?: "-")
+            } else {
+                val uploaded = obj?.optInt("uploaded", 0) ?: 0
+                val downloaded = obj?.optInt("downloaded", 0) ?: 0
+                val deletedRemote = obj?.optInt("deletedRemote", 0) ?: 0
+                val deletedLocal = obj?.optInt("deletedLocal", 0) ?: 0
+                context.getString(R.string.official_sync_ok, uploaded, downloaded, deletedRemote, deletedLocal, conflicts, failed) +
+                    " · " +
+                    formatEpochMs(endedAt)
+            }
+
+        val level =
+            when {
+                !enabled -> SyncServerUiStatusLevel.DISABLED
+                text.isNullOrBlank() -> SyncServerUiStatusLevel.UNKNOWN
+                !ok -> SyncServerUiStatusLevel.ERROR
+                conflicts > 0 || failed > 0 -> SyncServerUiStatusLevel.WARNING
+                else -> SyncServerUiStatusLevel.OK
+            }
+        syncServerUiStatus = SyncServerUiStatusSnapshot(level = level, text = text, endedAtMs = endedAt)
+    }
+
     suspend fun reloadWebDavAutoSyncStatusForDialog() {
         val root = vaultRootUri ?: run {
             webDavAutoSyncStatusText = context.getString(R.string.webdav_autosync_status_no_vault)
@@ -403,15 +480,32 @@ fun ZhixuApp(
     }
 
     LaunchedEffect(
-        showWebDavStatusDialog,
+        vaultRootUriString,
+        vaultSyncConfig.location,
+        accountState.token,
+        vaultSyncConfig.thirdParty.url,
+        vaultSyncConfig.thirdParty.username,
+        vaultSyncConfig.thirdParty.password,
+    ) {
+        reloadSyncServerUiStatus()
+    }
+
+    LaunchedEffect(
+        showCloudSyncStatusDialog,
         vaultRootUriString,
         webDavConfig.enabled,
         webDavConfig.baseUrl,
         webDavConfig.remoteRoot,
+        vaultSyncConfig.location,
+        accountState.token,
+        vaultSyncConfig.thirdParty.url,
+        vaultSyncConfig.thirdParty.username,
+        vaultSyncConfig.thirdParty.password,
     ) {
-        if (!showWebDavStatusDialog) return@LaunchedEffect
+        if (!showCloudSyncStatusDialog) return@LaunchedEffect
         reloadWebDavUiStatus()
         reloadWebDavAutoSyncStatusForDialog()
+        reloadSyncServerUiStatus()
     }
 
     val uiPrefs = remember(appContext) { UiPreferences(appContext) }
@@ -440,14 +534,21 @@ fun ZhixuApp(
         vaultSyncConfig.thirdParty.username,
         vaultSyncConfig.thirdParty.password,
     ) {
+        if (vaultSyncConfig.location == VaultStorageLocation.LOCAL) return@LaunchedEffect
         val root = vaultRootUri ?: return@LaunchedEffect
-        runCatching {
-            VaultAutoSync.maybeSyncVault(
-                context = context,
-                repository = repository,
-                vaultRootUri = root,
-                force = false,
-            )
+        syncServerSyncing = true
+        try {
+            runCatching {
+                VaultAutoSync.maybeSyncVault(
+                    context = context,
+                    repository = repository,
+                    vaultRootUri = root,
+                    force = false,
+                )
+            }
+        } finally {
+            syncServerSyncing = false
+            reloadSyncServerUiStatus()
         }
     }
 
@@ -462,14 +563,21 @@ fun ZhixuApp(
         webDavConfig.includeIndexSqlite,
     ) {
         if (vaultSyncConfig.location != VaultStorageLocation.LOCAL) return@LaunchedEffect
-        runCatching {
-            WebDavAutoSync.maybeSyncVault(
-                context = context,
-                repository = repository,
-                vaultRootUri = vaultRootUri,
-                config = webDavConfig,
-                force = false,
-            )
+        if (!webDavConfig.enabled) return@LaunchedEffect
+        webDavSyncing = true
+        try {
+            runCatching {
+                WebDavAutoSync.maybeSyncVault(
+                    context = context,
+                    repository = repository,
+                    vaultRootUri = vaultRootUri,
+                    config = webDavConfig,
+                    force = false,
+                )
+            }
+        } finally {
+            webDavSyncing = false
+            reloadWebDavUiStatus()
         }
     }
 
@@ -477,18 +585,82 @@ fun ZhixuApp(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
-    if (showWebDavStatusDialog) {
+    if (showCloudSyncStatusDialog) {
         AlertDialog(
-            onDismissRequest = { showWebDavStatusDialog = false },
-            title = { Text("WebDAV") },
+            onDismissRequest = { showCloudSyncStatusDialog = false },
+            title = { Text(stringResource(R.string.cloud_sync_title)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val locationLabel =
+                        when (vaultSyncConfig.location) {
+                            VaultStorageLocation.LOCAL -> stringResource(R.string.vault_settings_location_local)
+                            VaultStorageLocation.OFFICIAL_SERVER -> stringResource(R.string.vault_settings_location_official)
+                            VaultStorageLocation.THIRD_PARTY_SERVICE -> stringResource(R.string.vault_settings_location_third_party)
+                        }
                     Text(
-                        text = webDavUiStatus?.text ?: "-",
+                        text = "${stringResource(R.string.vault_settings_storage_location)}: $locationLabel",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+
+                    Text(stringResource(R.string.settings_sync_provider_webdav), fontWeight = FontWeight.SemiBold)
+                    val webDavStatusText =
+                        when {
+                            !webDavConfig.enabled -> stringResource(R.string.cloud_sync_status_disabled)
+                            webDavSyncing -> stringResource(R.string.webdav_syncing)
+                            !webDavUiStatus?.text.isNullOrBlank() -> webDavUiStatus?.text!!
+                            else -> stringResource(R.string.cloud_sync_status_not_configured)
+                        }
+                    Text(
+                        text = webDavStatusText,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
                         text = webDavAutoSyncStatusText.orEmpty().ifBlank { "-" },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f))
+
+                    val serverTitle =
+                        when (vaultSyncConfig.location) {
+                            VaultStorageLocation.THIRD_PARTY_SERVICE -> stringResource(R.string.vault_settings_location_third_party)
+                            else -> stringResource(R.string.official_sync_title)
+                        }
+                    Text(serverTitle, fontWeight = FontWeight.SemiBold)
+
+                    val serverEnabled =
+                        when (vaultSyncConfig.location) {
+                            VaultStorageLocation.LOCAL -> false
+                            VaultStorageLocation.OFFICIAL_SERVER -> accountState.token.isNotBlank()
+                            VaultStorageLocation.THIRD_PARTY_SERVICE -> {
+                                val tp = vaultSyncConfig.thirdParty
+                                tp.url.trim().isNotBlank() && tp.username.trim().isNotBlank() && tp.password.isNotBlank()
+                            }
+                        }
+                    val serverStatusText =
+                        when {
+                            vaultSyncConfig.location == VaultStorageLocation.LOCAL -> stringResource(R.string.cloud_sync_status_disabled)
+                            !serverEnabled && vaultSyncConfig.location == VaultStorageLocation.OFFICIAL_SERVER -> stringResource(R.string.account_not_logged_in_short)
+                            !serverEnabled -> stringResource(R.string.cloud_sync_status_not_configured)
+                            syncServerSyncing -> stringResource(R.string.official_sync_syncing)
+                            !syncServerUiStatus?.text.isNullOrBlank() -> syncServerUiStatus?.text!!
+                            else -> stringResource(R.string.cloud_sync_status_not_configured)
+                        }
+                    Text(
+                        text = serverStatusText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    val baseUrlText =
+                        when (vaultSyncConfig.location) {
+                            VaultStorageLocation.OFFICIAL_SERVER -> OfficialSync.BASE_URL
+                            VaultStorageLocation.THIRD_PARTY_SERVICE -> vaultSyncConfig.thirdParty.url.trim().ifBlank { "-" }
+                            else -> "-"
+                        }
+                    Text(
+                        text = context.getString(R.string.account_server_fmt, baseUrlText),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -497,13 +669,13 @@ fun ZhixuApp(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showWebDavStatusDialog = false
+                        showCloudSyncStatusDialog = false
                         navController.navigate("settingsMain")
                     },
                 ) { Text(stringResource(R.string.nav_settings)) }
             },
             dismissButton = {
-                TextButton(onClick = { showWebDavStatusDialog = false }) { Text(stringResource(R.string.action_close)) }
+                TextButton(onClick = { showCloudSyncStatusDialog = false }) { Text(stringResource(R.string.action_close)) }
             },
         )
     }
@@ -1091,28 +1263,52 @@ fun ZhixuApp(
                                             )
                                         }
                                     } else {
-                                        if (vaultSyncConfig.location == VaultStorageLocation.LOCAL) {
-                                            val level =
-                                                when (webDavUiStatus?.level ?: WebDavUiStatusLevel.UNKNOWN) {
-                                                    WebDavUiStatusLevel.DISABLED -> WebDavUiStatusLevel.DISABLED
-                                                    else -> if (webDavConfig.enabled) (webDavUiStatus?.level ?: WebDavUiStatusLevel.UNKNOWN) else WebDavUiStatusLevel.DISABLED
+                                        val cloudState =
+                                            when (vaultSyncConfig.location) {
+                                                VaultStorageLocation.LOCAL -> {
+                                                    when {
+                                                        !webDavConfig.enabled -> CloudSyncUiIconState.DISABLED
+                                                        webDavSyncing -> CloudSyncUiIconState.SYNCING
+                                                        webDavUiStatus?.level == WebDavUiStatusLevel.OK -> CloudSyncUiIconState.OK
+                                                        else -> CloudSyncUiIconState.WARNING
+                                                    }
                                                 }
-                                            val tint =
-                                                when (level) {
-                                                    WebDavUiStatusLevel.OK -> MaterialTheme.colorScheme.primary
-                                                    WebDavUiStatusLevel.WARNING -> MaterialTheme.colorScheme.tertiary
-                                                    WebDavUiStatusLevel.ERROR -> MaterialTheme.colorScheme.error
-                                                    WebDavUiStatusLevel.DISABLED -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
-                                                    WebDavUiStatusLevel.UNKNOWN -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                VaultStorageLocation.OFFICIAL_SERVER -> {
+                                                    when {
+                                                        accountState.token.isBlank() -> CloudSyncUiIconState.DISABLED
+                                                        syncServerSyncing -> CloudSyncUiIconState.SYNCING
+                                                        syncServerUiStatus?.level == SyncServerUiStatusLevel.OK -> CloudSyncUiIconState.OK
+                                                        else -> CloudSyncUiIconState.WARNING
+                                                    }
                                                 }
-                                            ZhixuIconButton(onClick = { showWebDavStatusDialog = true }) {
-                                                Icon(
-                                                    painter = painterResource(Ionicons.Sync),
-                                                    contentDescription = stringResource(R.string.settings_section_sync),
-                                                    tint = tint,
-                                                    modifier = Modifier.size(ZhixuTopBarIconSize),
-                                                )
+                                                VaultStorageLocation.THIRD_PARTY_SERVICE -> {
+                                                    val tp = vaultSyncConfig.thirdParty
+                                                    val enabled =
+                                                        tp.url.trim().isNotBlank() && tp.username.trim().isNotBlank() && tp.password.isNotBlank()
+                                                    when {
+                                                        !enabled -> CloudSyncUiIconState.DISABLED
+                                                        syncServerSyncing -> CloudSyncUiIconState.SYNCING
+                                                        syncServerUiStatus?.level == SyncServerUiStatusLevel.OK -> CloudSyncUiIconState.OK
+                                                        else -> CloudSyncUiIconState.WARNING
+                                                    }
+                                                }
                                             }
+
+                                        val (cloudIconRes, cloudTint) =
+                                            when (cloudState) {
+                                                CloudSyncUiIconState.SYNCING -> R.drawable.ic_lucide_cloud_sync to Color(0xFF3B82F6)
+                                                CloudSyncUiIconState.OK -> R.drawable.ic_lucide_cloud_check to Color(0xFF22C55E)
+                                                CloudSyncUiIconState.WARNING -> R.drawable.ic_lucide_cloud_alert to Color(0xFFF59E0B)
+                                                CloudSyncUiIconState.DISABLED -> R.drawable.ic_lucide_cloud_off to Color(0xFFEF4444)
+                                            }
+
+                                        ZhixuIconButton(onClick = { showCloudSyncStatusDialog = true }) {
+                                            Icon(
+                                                painter = painterResource(cloudIconRes),
+                                                contentDescription = stringResource(R.string.cloud_sync_title),
+                                                tint = cloudTint,
+                                                modifier = Modifier.size(ZhixuTopBarIconSize),
+                                            )
                                         }
                                         ZhixuIconButton(onClick = { docSortFilterRequestToken += 1L }) {
                                             Icon(

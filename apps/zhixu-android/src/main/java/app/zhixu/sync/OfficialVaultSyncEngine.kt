@@ -47,6 +47,7 @@ class OfficialVaultSyncEngine(
         token: String,
         includeIndexSqlite: Boolean,
     ): OfficialVaultSyncSummary = withContext(Dispatchers.IO) {
+        val startedAtMs = System.currentTimeMillis()
         require(token.isNotBlank()) { "Not logged in" }
 
         repository.ensureVaultStructure(rootUri)
@@ -295,13 +296,70 @@ class OfficialVaultSyncEngine(
                         "failed" to summary.failed.toString(),
                     ),
                 )
+                runCatching {
+                    writeLastSummary(
+                        root = root,
+                        startedAtMs = startedAtMs,
+                        endedAtMs = System.currentTimeMillis(),
+                        baseUrl = baseUrl,
+                        includeIndexSqlite = includeIndexSqlite,
+                        summary = summary,
+                        error = null,
+                    )
+                }
                 summary
             },
             onFailure = { e ->
-                logger.logEvent("end", mapOf("ok" to "false", "error" to (e.message ?: e.javaClass.simpleName)))
+                val error = e.message ?: e.javaClass.simpleName
+                logger.logEvent("end", mapOf("ok" to "false", "error" to error))
+                runCatching {
+                    writeLastSummary(
+                        root = root,
+                        startedAtMs = startedAtMs,
+                        endedAtMs = System.currentTimeMillis(),
+                        baseUrl = baseUrl,
+                        includeIndexSqlite = includeIndexSqlite,
+                        summary = null,
+                        error = error,
+                    )
+                }
                 throw e
             },
         )
+    }
+
+    private suspend fun writeLastSummary(
+        root: DocumentFile,
+        startedAtMs: Long,
+        endedAtMs: Long,
+        baseUrl: String,
+        includeIndexSqlite: Boolean,
+        summary: OfficialVaultSyncSummary?,
+        error: String?,
+    ) {
+        val file = ensureLocalFile(root, ".zhixu/sync/server_last_summary.json") ?: return
+        val obj =
+            JSONObject()
+                .put("version", 1)
+                .put("engine", "sync_server")
+                .put("ok", error.isNullOrBlank())
+                .put("startedAt", startedAtMs.coerceAtLeast(0L))
+                .put("endedAt", endedAtMs.coerceAtLeast(0L))
+                .put("durationMs", (endedAtMs - startedAtMs).coerceAtLeast(0L))
+                .put("baseUrl", baseUrl.trim())
+                .put("includeIndexSqlite", includeIndexSqlite)
+        if (summary != null) {
+            obj.put("uploaded", summary.uploaded)
+            obj.put("downloaded", summary.downloaded)
+            obj.put("deletedRemote", summary.deletedRemote)
+            obj.put("deletedLocal", summary.deletedLocal)
+            obj.put("conflicts", summary.conflicts)
+            obj.put("failed", summary.failed)
+        }
+        if (!error.isNullOrBlank()) {
+            obj.put("error", error.take(500))
+        }
+        runCatching { repository.writeText(file.uri, obj.toString()) }
     }
 
     private inner class SyncLogger(

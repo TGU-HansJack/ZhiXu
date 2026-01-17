@@ -201,6 +201,9 @@
     <string name="settings_sync_provider_webdav">WebDAV service</string>
     <string name="settings_sync_placeholder">Sync settings. Use Official server sync or configure WebDAV below.</string>
     <string name="action_close">Close</string>
+    <string name="cloud_sync_title">Cloud sync</string>
+    <string name="cloud_sync_status_disabled">Disabled</string>
+    <string name="cloud_sync_status_not_configured">Not configured</string>
 
     <!-- Account -->
     <string name="account_not_logged_in_short">Not logged in</string>
