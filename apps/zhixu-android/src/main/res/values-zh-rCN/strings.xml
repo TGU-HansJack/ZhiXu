@@ -176,6 +176,8 @@
     <string name="settings_vault_not_selected">未选择</string>
     <string name="settings_change_vault">更换空间</string>
     <string name="settings_section_sync">同步</string>
+    <string name="settings_sync_providers_title">同步服务</string>
+    <string name="settings_sync_provider_webdav">WebDAV 服务</string>
     <string name="settings_sync_placeholder">同步设置：使用官方服务器同步，或在下方配置 WebDAV。</string>
     <string name="action_close">关闭</string>
 

@@ -197,6 +197,8 @@
     <string name="settings_vault_not_selected">Not selected</string>
     <string name="settings_change_vault">Change Vault</string>
     <string name="settings_section_sync">Sync</string>
+    <string name="settings_sync_providers_title">Sync services</string>
+    <string name="settings_sync_provider_webdav">WebDAV service</string>
     <string name="settings_sync_placeholder">Sync settings. Use Official server sync or configure WebDAV below.</string>
     <string name="action_close">Close</string>
 
