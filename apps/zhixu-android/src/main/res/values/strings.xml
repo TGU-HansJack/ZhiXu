@@ -291,7 +291,7 @@
 
     <!-- WebDAV -->
     <string name="webdav_enable">Enable WebDAV</string>
-    <string name="webdav_service_title">WebDAV service</string>
+    <string name="webdav_service_title">WebDAV</string>
     <string name="webdav_account_title">WebDAV account</string>
     <string name="webdav_account_subtitle_empty">Not configured</string>
     <string name="webdav_account_subtitle_fmt">%1$s · %2$s</string>
@@ -314,7 +314,7 @@
     <string name="webdav_automation_retry_count">Retries after failure</string>
     <string name="webdav_automation_retry_interval_seconds">Retry interval (seconds)</string>
     <string name="webdav_manual_title">User manual</string>
-    <string name="webdav_manual_content">WebDAV sync keeps the current Vault folder consistent across devices while remaining local-first, and provides a controllable remote backup.\n\nSetup:\n1) WebDAV account: enter server URL, username and password, then tap Connect.\n2) Add sync folder pair: set the remote folder path for the current Vault, choose a conflict strategy, and decide whether to sync the database file.\n3) Automation: configure auto sync interval, retry count and retry interval.\n\nCommon scenarios:\n- Phone + tablet: point both devices to the same remote folder.\n- Frequent edits across devices: prefer “Keep both” or “Ask each time” to reduce accidental overwrites.\n\nNotes:\n- First sync can be slow; keep network stable.\n- If conflicts happen, resolve them in Conflict Center.\n- Avoid editing the same file offline on multiple devices for long periods.</string>
+    <string name="webdav_manual_content">WebDAV sync keeps the current Vault folder consistent across devices while remaining local-first, and provides a controllable remote backup.\n\nSetup:\n1) WebDAV account: enter server URL, username and password, then tap Connect.\n2) Add sync folder pair: set the remote folder path for the current Vault, choose a conflict strategy, and decide whether to sync the database file.\n3) Automation: configure auto sync interval, retry count and retry interval.\n\nCommon scenarios:\n- Phone + tablet: point both devices to the same remote folder.\n- Frequent edits across devices: prefer “Keep both” or “Ask each time” to reduce accidental overwrites.\n\nNotes:\n- First sync can be slow; keep network stable.\n- If conflicts happen, resolve them in the sync task list.\n- Avoid editing the same file offline on multiple devices for long periods.</string>
     <string name="webdav_base_url">Base URL</string>
     <string name="webdav_remote_root">Remote root path</string>
     <string name="webdav_username">Username</string>
@@ -376,6 +376,50 @@
     <string name="webdav_autosync_status_invalid_url">Auto sync: base URL must start with http(s)://</string>
     <string name="webdav_autosync_status_fmt">Auto sync: lastOk %1$s · lastTry %2$s · next %3$s</string>
     <string name="webdav_autosync_status_error_fmt">Last error: %1$s</string>
+
+    <string name="webdav_sync_panel_last_status_title">Last sync</string>
+    <string name="webdav_sync_panel_last_status_none">No history</string>
+    <string name="webdav_sync_panel_last_status_ok">Success</string>
+    <string name="webdav_sync_panel_last_status_partial">Partial</string>
+    <string name="webdav_sync_panel_last_status_failed">Failed</string>
+
+    <string name="webdav_sync_panel_autosync_title">Auto sync</string>
+    <string name="webdav_sync_panel_autosync_enabled">On</string>
+    <string name="webdav_sync_panel_autosync_disabled">Off</string>
+    <string name="webdav_sync_panel_autosync_subtitle_fmt">%1$s · Every %2$d min · Retries %3$d</string>
+
+    <string name="webdav_sync_panel_current_task_title">Current task</string>
+    <string name="webdav_sync_panel_no_current_task">No current task</string>
+    <string name="webdav_sync_panel_generate_task">Generate task</string>
+    <string name="webdav_sync_panel_current_task_summary_fmt">Ops: %1$d · Unresolved conflicts: %2$d</string>
+    <string name="webdav_sync_panel_review_task">Review</string>
+    <string name="webdav_sync_panel_discard_task">Discard</string>
+
+    <string name="webdav_sync_panel_history_title">Recent tasks</string>
+    <string name="webdav_sync_panel_history_empty">No history</string>
+    <string name="webdav_sync_panel_history_subtitle_fmt">Showing last %1$d</string>
+    <string name="webdav_sync_panel_task_trigger_manual">Manual</string>
+    <string name="webdav_sync_panel_task_trigger_auto">Auto</string>
+
+    <string name="webdav_task_detail_title">Sync task</string>
+    <string name="webdav_task_execute">Execute</string>
+    <string name="webdav_task_created_at_fmt">Created: %1$s</string>
+    <string name="webdav_task_ended_at_fmt">Ended: %1$s</string>
+    <string name="webdav_task_config_changed">Config changed; regenerate task</string>
+    <string name="webdav_task_unresolved_conflicts">Unresolved conflicts; resolve before executing</string>
+    <string name="webdav_task_operations_title">Operations</string>
+    <string name="webdav_task_operations_count_fmt">%1$d ops</string>
+    <string name="webdav_task_op_state_pending">Pending</string>
+    <string name="webdav_task_op_state_skipped">Skipped</string>
+    <string name="webdav_task_op_state_done">Done</string>
+    <string name="webdav_task_op_state_failed">Failed</string>
+    <string name="webdav_task_delete_risk">High risk</string>
+    <string name="webdav_task_conflict_use_local">Use local</string>
+    <string name="webdav_task_conflict_use_remote">Use remote</string>
+    <string name="webdav_task_conflict_keep_both">Keep both</string>
+    <string name="webdav_task_skip">Skip</string>
+    <string name="webdav_task_unskip">Unskip</string>
+    <string name="webdav_task_retry_failed">Retry failed</string>
 
     <!-- Official server sync -->
     <string name="official_sync_title">Official server</string>

@@ -1192,6 +1192,7 @@ private fun SyncSettingsScreen(
         )
     val savedWebDavPairName by prefs.webDavPairName.collectAsState(initial = "")
     val webDavAutomation by prefs.webDavAutomationSettings.collectAsState(initial = WebDavAutomationSettings.DEFAULT)
+    val webDavAutoSyncEnabled by prefs.webDavAutoSyncEnabled.collectAsState(initial = true)
 
     var page by rememberSaveable { mutableStateOf(SyncSettingsPage.Main) }
 
@@ -1223,11 +1224,12 @@ private fun SyncSettingsScreen(
 
     var showConflictStrategyDialog by remember { mutableStateOf(false) }
 
-    var webDavStatus by remember { mutableStateOf<String?>(null) }
-    var webDavSyncing by remember { mutableStateOf(false) }
     var lastWebDavSummaryLoading by remember { mutableStateOf(false) }
     var lastWebDavSummary by remember { mutableStateOf<String?>(null) }
 
+    // Legacy (removed entry points) - kept only so existing dialog code compiles; not reachable from Sync Panel.
+    var webDavStatus by remember { mutableStateOf<String?>(null) }
+    var webDavSyncing by remember { mutableStateOf(false) }
     var webDavPreviewLoading by remember { mutableStateOf(false) }
     var webDavPreviewPlan by remember { mutableStateOf<WebDavSyncPlan?>(null) }
     var showWebDavPreview by remember { mutableStateOf(false) }
@@ -1327,6 +1329,10 @@ private fun SyncSettingsScreen(
             return
         }
         if (!config.enabled) {
+            webDavAutoSyncStatus = context.getString(R.string.webdav_autosync_status_disabled)
+            return
+        }
+        if (!webDavAutoSyncEnabled) {
             webDavAutoSyncStatus = context.getString(R.string.webdav_autosync_status_disabled)
             return
         }
@@ -2337,115 +2343,16 @@ private fun SyncSettingsScreen(
 
                 item { Spacer(modifier = Modifier.height(14.dp)) }
                 item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = MaterialTheme.shapes.extraLarge,
-                    ) {
-                        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                            if (lastWebDavSummaryLoading) {
-                                Text("...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-                            } else if (!lastWebDavSummary.isNullOrBlank()) {
-                                Text(lastWebDavSummary!!, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-                            }
-
-                            if (!webDavAutoSyncStatus.isNullOrBlank()) {
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Text(webDavAutoSyncStatus!!, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                            }
-
-                            if (!webDavStatus.isNullOrBlank()) {
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Text(webDavStatus!!, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                TextButton(
-                                    enabled = enabled && !webDavSyncing && !webDavPreviewLoading && vaultRootUri != null,
-                                    onClick = {
-                                        val root = vaultRootUri ?: return@TextButton
-                                        scope.launch {
-                                            webDavPreviewLoading = true
-                                            webDavPreviewPlan = null
-                                            webDavStatus = null
-                                            val cfg = currentConfig()
-                                            val engine = WebDavSyncEngine(context, repository)
-                                            val plan =
-                                                runCatching { engine.planVault(root, cfg) }
-                                                    .getOrElse { e ->
-                                                        webDavStatus =
-                                                            context.getString(
-                                                                R.string.webdav_sync_failed,
-                                                                e.message ?: e.javaClass.simpleName,
-                                                            )
-                                                        webDavPreviewLoading = false
-                                                        return@launch
-                                                    }
-                                            webDavPreviewPlan = plan
-                                            showWebDavPreview = true
-                                            webDavPreviewLoading = false
-                                        }
-                                    },
-                                ) { Text(stringResource(R.string.action_preview)) }
-
-                                TextButton(
-                                    enabled = vaultRootUri != null && !webDavSyncing,
-                                    onClick = { showWebDavConflictCenter = true },
-                                ) { Text(stringResource(R.string.webdav_conflict_center_open)) }
-
-                                TextButton(
-                                    enabled = vaultRootUri != null && !webDavSyncing,
-                                    onClick = { showWebDavLogs = true },
-                                ) { Text(stringResource(R.string.webdav_logs_open)) }
-
-                                Button(
-                                    modifier = Modifier.weight(1f),
-                                    enabled = enabled && !webDavSyncing && vaultRootUri != null,
-                                    shape = RoundedCornerShape(8.dp),
-                                    onClick = {
-                                        val root = vaultRootUri ?: return@Button
-                                        scope.launch {
-                                            webDavSyncing = true
-                                            webDavStatus = context.getString(R.string.webdav_syncing)
-                                            val cfg = currentConfig()
-                                            val engine = WebDavSyncEngine(context, repository)
-                                            val res =
-                                                runCatching { engine.syncVault(root, cfg) }
-                                                    .getOrElse { e ->
-                                                        webDavStatus =
-                                                            context.getString(
-                                                                R.string.webdav_sync_failed,
-                                                                e.message ?: e.javaClass.simpleName,
-                                                            )
-                                                        webDavSyncing = false
-                                                        reloadWebDavLastSummary()
-                                                        reloadWebDavAutoSyncStatus(cfg, webDavAutomation)
-                                                        return@launch
-                                                    }
-                                            webDavStatus =
-                                                context.getString(
-                                                    R.string.webdav_sync_ok_v2,
-                                                    res.uploaded,
-                                                    res.downloaded,
-                                                    res.deletedRemote,
-                                                    res.deletedLocal,
-                                                    res.conflicts,
-                                                    res.failed,
-                                                )
-                                            webDavSyncing = false
-                                            reloadWebDavLastSummary()
-                                            reloadWebDavAutoSyncStatus(cfg, webDavAutomation)
-                                        }
-                                    },
-                                ) { Text(stringResource(R.string.webdav_sync_now)) }
-                            }
-                        }
-                    }
+                    WebDavSyncPanel(
+                        vaultRootUri = vaultRootUri,
+                        repository = repository,
+                        webDavConfig = currentConfig(),
+                        webDavAutomation = webDavAutomation,
+                        autoSyncEnabled = webDavAutoSyncEnabled,
+                        onAutoSyncEnabledChange = { checked -> scope.launch { prefs.setWebDavAutoSyncEnabled(checked) } },
+                        legacyLastSummaryText = lastWebDavSummary,
+                        autoSyncStatusText = webDavAutoSyncStatus,
+                    )
                 }
 
             }

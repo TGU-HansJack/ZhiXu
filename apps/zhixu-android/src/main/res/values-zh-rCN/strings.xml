@@ -270,7 +270,7 @@
 
     <!-- WebDAV -->
     <string name="webdav_enable">启用 WebDAV</string>
-    <string name="webdav_service_title">WebDAV 服务</string>
+    <string name="webdav_service_title">WebDAV</string>
     <string name="webdav_account_title">WebDAV 账号</string>
     <string name="webdav_account_subtitle_empty">未配置</string>
     <string name="webdav_account_subtitle_fmt">%1$s · %2$s</string>
@@ -293,7 +293,7 @@
     <string name="webdav_automation_retry_count">同步失败后的自动重试次数</string>
     <string name="webdav_automation_retry_interval_seconds">重试时间间隔（秒）</string>
     <string name="webdav_manual_title">用户手册</string>
-    <string name="webdav_manual_content">WebDAV 同步用于在不同设备之间保持当前 Vault 空间目录一致，并在离线优先的前提下提供可控的云端备份。\n\n配置流程：\n1) 配置 WebDAV 账号：填写服务器地址、用户名、密码并点击「连接」。\n2) 添加同步文件夹对：为当前 Vault 设置云端远程文件夹路径，选择冲突处理策略，并决定是否同步数据库文件。\n3) 自动化设定：设置自动同步间隔、失败重试次数与重试间隔。\n\n常见场景与示例：\n- 手机与平板共用同一份 Vault：将两台设备配置到相同远端文件夹。\n- 多设备频繁编辑：建议使用「保留双方」或「每次询问」以降低误覆盖风险。\n\n注意事项：\n- 首次同步可能较慢，请保持网络稳定。\n- 产生冲突时，请前往「冲突中心」处理。\n- 不建议在多个设备同时长时间离线编辑同一文件。</string>
+    <string name="webdav_manual_content">WebDAV 同步用于在不同设备之间保持当前 Vault 空间目录一致，并在离线优先的前提下提供可控的云端备份。\n\n配置流程：\n1) 配置 WebDAV 账号：填写服务器地址、用户名、密码并点击「连接」。\n2) 添加同步文件夹对：为当前 Vault 设置云端远程文件夹路径，选择冲突处理策略，并决定是否同步数据库文件。\n3) 自动化设定：设置自动同步间隔、失败重试次数与重试间隔。\n\n常见场景与示例：\n- 手机与平板共用同一份 Vault：将两台设备配置到相同远端文件夹。\n- 多设备频繁编辑：建议使用「保留双方」或「每次询问」以降低误覆盖风险。\n\n注意事项：\n- 首次同步可能较慢，请保持网络稳定。\n- 产生冲突时，请在同步任务列表中处理。\n- 不建议在多个设备同时长时间离线编辑同一文件。</string>
     <string name="webdav_base_url">服务器地址（Base URL）</string>
     <string name="webdav_remote_root">远端根目录</string>
     <string name="webdav_username">用户名</string>
@@ -355,6 +355,50 @@
     <string name="webdav_autosync_status_invalid_url">自动同步：服务器地址必须以 http(s):// 开头</string>
     <string name="webdav_autosync_status_fmt">自动同步：上次成功 %1$s · 上次尝试 %2$s · 下次允许 %3$s</string>
     <string name="webdav_autosync_status_error_fmt">上次错误：%1$s</string>
+
+    <string name="webdav_sync_panel_last_status_title">上次同步</string>
+    <string name="webdav_sync_panel_last_status_none">暂无记录</string>
+    <string name="webdav_sync_panel_last_status_ok">成功</string>
+    <string name="webdav_sync_panel_last_status_partial">部分完成</string>
+    <string name="webdav_sync_panel_last_status_failed">失败</string>
+
+    <string name="webdav_sync_panel_autosync_title">自动同步</string>
+    <string name="webdav_sync_panel_autosync_enabled">已开启</string>
+    <string name="webdav_sync_panel_autosync_disabled">已关闭</string>
+    <string name="webdav_sync_panel_autosync_subtitle_fmt">%1$s · 每 %2$d 分钟 · 重试 %3$d 次</string>
+
+    <string name="webdav_sync_panel_current_task_title">当前任务</string>
+    <string name="webdav_sync_panel_no_current_task">没有当前任务</string>
+    <string name="webdav_sync_panel_generate_task">生成任务</string>
+    <string name="webdav_sync_panel_current_task_summary_fmt">操作：%1$d · 未解决冲突：%2$d</string>
+    <string name="webdav_sync_panel_review_task">审阅</string>
+    <string name="webdav_sync_panel_discard_task">丢弃</string>
+
+    <string name="webdav_sync_panel_history_title">最近任务</string>
+    <string name="webdav_sync_panel_history_empty">暂无历史</string>
+    <string name="webdav_sync_panel_history_subtitle_fmt">显示最近 %1$d 条</string>
+    <string name="webdav_sync_panel_task_trigger_manual">手动</string>
+    <string name="webdav_sync_panel_task_trigger_auto">自动</string>
+
+    <string name="webdav_task_detail_title">同步任务</string>
+    <string name="webdav_task_execute">执行</string>
+    <string name="webdav_task_created_at_fmt">创建：%1$s</string>
+    <string name="webdav_task_ended_at_fmt">结束：%1$s</string>
+    <string name="webdav_task_config_changed">配置已更改，请重新生成任务</string>
+    <string name="webdav_task_unresolved_conflicts">存在未解决冲突，请先裁决</string>
+    <string name="webdav_task_operations_title">操作列表</string>
+    <string name="webdav_task_operations_count_fmt">%1$d 项</string>
+    <string name="webdav_task_op_state_pending">待执行</string>
+    <string name="webdav_task_op_state_skipped">已跳过</string>
+    <string name="webdav_task_op_state_done">已完成</string>
+    <string name="webdav_task_op_state_failed">失败</string>
+    <string name="webdav_task_delete_risk">高风险</string>
+    <string name="webdav_task_conflict_use_local">用本地版本</string>
+    <string name="webdav_task_conflict_use_remote">用远端版本</string>
+    <string name="webdav_task_conflict_keep_both">保留双方</string>
+    <string name="webdav_task_skip">跳过</string>
+    <string name="webdav_task_unskip">取消跳过</string>
+    <string name="webdav_task_retry_failed">重试失败项</string>
 
     <!-- 官方服务器同步 -->
     <string name="official_sync_title">官方服务器</string>

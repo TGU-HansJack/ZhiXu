@@ -55,6 +55,7 @@ class SyncPreferences(
     private val webdavPairNameKey = stringPreferencesKey("webdav_pair_name")
     private val includeIndexSqliteKey = booleanPreferencesKey("sync_include_index_sqlite")
     private val webdavConflictStrategyKey = stringPreferencesKey("webdav_conflict_strategy")
+    private val webdavAutoSyncEnabledKey = booleanPreferencesKey("webdav_autosync_enabled")
     private val webdavAutoSyncIntervalMinutesKey = intPreferencesKey("webdav_autosync_interval_minutes")
     private val webdavAutoSyncRetryCountKey = intPreferencesKey("webdav_autosync_retry_count")
     private val webdavAutoSyncRetryIntervalSecondsKey = intPreferencesKey("webdav_autosync_retry_interval_seconds")
@@ -77,6 +78,8 @@ class SyncPreferences(
     val includeIndexSqlite: Flow<Boolean> = context.dataStore.data.map { it[includeIndexSqliteKey] ?: true }
 
     val webDavPairName: Flow<String> = context.dataStore.data.map { it[webdavPairNameKey] ?: "" }
+
+    val webDavAutoSyncEnabled: Flow<Boolean> = context.dataStore.data.map { it[webdavAutoSyncEnabledKey] ?: true }
 
     val webDavAutomationSettings: Flow<WebDavAutomationSettings> =
         context.dataStore.data.map { prefs ->
@@ -107,6 +110,12 @@ class SyncPreferences(
         val trimmed = remoteRoot.trim()
         context.dataStore.edit { prefs ->
             prefs[webdavRemoteRootKey] = trimmed.ifBlank { "/" }
+        }
+    }
+
+    suspend fun setWebDavAutoSyncEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[webdavAutoSyncEnabledKey] = enabled
         }
     }
 

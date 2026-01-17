@@ -55,6 +55,12 @@ data class WebDavSyncPlan(
     val summary: WebDavSyncSummary,
 )
 
+data class WebDavSyncObservedOpResult(
+    val op: WebDavPlannedOp,
+    val ok: Boolean,
+    val error: String?,
+)
+
 private const val WEB_DAV_UNRESOLVED_CONFLICTS_PATH = ".zhixu/sync/webdav_unresolved_conflicts.json"
 
 internal data class RemoteEntry(
@@ -77,16 +83,75 @@ class WebDavSyncEngine(
     private val repository: VaultRepository,
 ) {
     suspend fun syncVault(rootUri: Uri, config: WebDavConfig): WebDavSyncSummary =
-        syncVaultInternal(rootUri = rootUri, config = config, dryRun = false, onlyPaths = null).summary
+        syncVaultInternal(
+            rootUri = rootUri,
+            config = config,
+            dryRun = false,
+            onlyPaths = null,
+            expectedOperations = null,
+            conflictStrategyOverrides = emptyMap(),
+            observer = null,
+        ).summary
 
     suspend fun syncVaultPaths(rootUri: Uri, config: WebDavConfig, onlyPaths: Set<String>): WebDavSyncSummary =
-        syncVaultInternal(rootUri = rootUri, config = config, dryRun = false, onlyPaths = onlyPaths).summary
+        syncVaultInternal(
+            rootUri = rootUri,
+            config = config,
+            dryRun = false,
+            onlyPaths = onlyPaths,
+            expectedOperations = null,
+            conflictStrategyOverrides = emptyMap(),
+            observer = null,
+        ).summary
 
     suspend fun planVault(rootUri: Uri, config: WebDavConfig): WebDavSyncPlan =
-        syncVaultInternal(rootUri = rootUri, config = config, dryRun = true, onlyPaths = null)
+        syncVaultInternal(
+            rootUri = rootUri,
+            config = config,
+            dryRun = true,
+            onlyPaths = null,
+            expectedOperations = null,
+            conflictStrategyOverrides = emptyMap(),
+            observer = null,
+        )
 
     suspend fun planVaultPaths(rootUri: Uri, config: WebDavConfig, onlyPaths: Set<String>): WebDavSyncPlan =
-        syncVaultInternal(rootUri = rootUri, config = config, dryRun = true, onlyPaths = onlyPaths)
+        syncVaultInternal(
+            rootUri = rootUri,
+            config = config,
+            dryRun = true,
+            onlyPaths = onlyPaths,
+            expectedOperations = null,
+            conflictStrategyOverrides = emptyMap(),
+            observer = null,
+        )
+
+    suspend fun syncVaultWithExpectedPlan(
+        rootUri: Uri,
+        config: WebDavConfig,
+        expectedOperations: List<WebDavPlannedOp>,
+        conflictStrategyOverrides: Map<String, WebDavConflictStrategy> = emptyMap(),
+        observer: ((WebDavSyncObservedOpResult) -> Unit)? = null,
+    ): WebDavSyncSummary {
+        val normalizedExpected =
+            expectedOperations
+                .map { op ->
+                    op.copy(
+                        path = op.path.trim().trimStart('/').replace('\\', '/'),
+                    )
+                }
+                .filter { it.path.isNotBlank() }
+        val onlyPaths = normalizedExpected.map { it.path }.toSet()
+        return syncVaultInternal(
+            rootUri = rootUri,
+            config = config,
+            dryRun = false,
+            onlyPaths = onlyPaths,
+            expectedOperations = normalizedExpected,
+            conflictStrategyOverrides = conflictStrategyOverrides,
+            observer = observer,
+        ).summary
+    }
 
     suspend fun listUnresolvedConflicts(rootUri: Uri): List<WebDavUnresolvedConflict> =
         withContext(Dispatchers.IO) {
@@ -106,7 +171,15 @@ class WebDavSyncEngine(
             removed
         }
 
-    private suspend fun syncVaultInternal(rootUri: Uri, config: WebDavConfig, dryRun: Boolean, onlyPaths: Set<String>?): WebDavSyncPlan =
+    private suspend fun syncVaultInternal(
+        rootUri: Uri,
+        config: WebDavConfig,
+        dryRun: Boolean,
+        onlyPaths: Set<String>?,
+        expectedOperations: List<WebDavPlannedOp>?,
+        conflictStrategyOverrides: Map<String, WebDavConflictStrategy>,
+        observer: ((WebDavSyncObservedOpResult) -> Unit)?,
+    ): WebDavSyncPlan =
         withContext(Dispatchers.IO) {
         require(config.enabled) { "WebDAV is disabled" }
         val startedAtMs = System.currentTimeMillis()
@@ -143,12 +216,48 @@ class WebDavSyncEngine(
                     return normalized in only
                 }
 
-                fun record(kind: WebDavPlannedOpKind, path: String, reason: String, strategy: WebDavConflictStrategy? = null) {
-                    planOps += WebDavPlannedOp(kind = kind, path = path, reason = reason, strategy = strategy?.name)
+                fun normalizeOpPath(raw: String): String = raw.trim().trimStart('/').replace('\\', '/')
+
+                val normalizedExpected =
+                    expectedOperations?.map { exp ->
+                        exp.copy(path = normalizeOpPath(exp.path))
+                    }
+
+                val normalizedConflictOverrides =
+                    conflictStrategyOverrides.entries.associate { (k, v) ->
+                        normalizeOpPath(k) to v
+                    }
+
+                fun conflictStrategyFor(path: String): WebDavConflictStrategy {
+                    val key = normalizeOpPath(path)
+                    return normalizedConflictOverrides[key] ?: config.conflictStrategy
                 }
 
-                fun recordConflict(path: String, reason: String) {
-                    record(WebDavPlannedOpKind.CONFLICT, path, reason, strategy = config.conflictStrategy)
+                var expectedIndex = 0
+
+                fun record(kind: WebDavPlannedOpKind, path: String, reason: String, strategy: WebDavConflictStrategy? = null): WebDavPlannedOp {
+                    val op = WebDavPlannedOp(kind = kind, path = normalizeOpPath(path), reason = reason, strategy = strategy?.name)
+
+                    if (!dryRun && normalizedExpected != null) {
+                        if (expectedIndex >= normalizedExpected.size) {
+                            throw IllegalStateException("Unexpected operation: ${op.kind} ${op.path} (${op.reason})")
+                        }
+                        val exp = normalizedExpected[expectedIndex]
+                        val match = (op.kind == exp.kind && op.path == normalizeOpPath(exp.path) && op.reason == exp.reason)
+                        if (!match) {
+                            throw IllegalStateException(
+                                "Plan mismatch at #$expectedIndex: expected ${exp.kind} ${normalizeOpPath(exp.path)} (${exp.reason}), got ${op.kind} ${op.path} (${op.reason})",
+                            )
+                        }
+                        expectedIndex += 1
+                    }
+
+                    planOps += op
+                    return op
+                }
+
+                fun recordConflict(path: String, reason: String): WebDavPlannedOp {
+                    return record(WebDavPlannedOpKind.CONFLICT, path, reason, strategy = conflictStrategyFor(path))
                 }
 
             fun normalizeEtagForCompare(raw: String?): String? {
@@ -204,9 +313,10 @@ class WebDavSyncEngine(
             var failed = 0
 
             val remoteAllByPath = remoteFiles.filter { !it.isDir }.associateBy { it.path }
-            val unresolvedConflicts = readUnresolvedConflicts(rootUri)
+            val useUnresolvedConflicts = normalizedExpected == null
+            val unresolvedConflicts = if (useUnresolvedConflicts) readUnresolvedConflicts(rootUri) else mutableMapOf()
             var unresolvedDirty = false
-            val blockUnresolved = config.conflictStrategy == WebDavConflictStrategy.ASK_EACH_TIME
+            val blockUnresolved = useUnresolvedConflicts && config.conflictStrategy == WebDavConflictStrategy.ASK_EACH_TIME
 
             fun markUnresolved(path: String, reason: String, localArtifactPath: String?, remoteArtifactPath: String?) {
                 val normalized = path.trim().trimStart('/').replace('\\', '/')
@@ -291,60 +401,82 @@ class WebDavSyncEngine(
                 return runCatching { repository.deleteEntry(uri) }.getOrDefault(false)
             }
 
-            suspend fun planDownload(path: String, reason: String): Boolean {
-                record(WebDavPlannedOpKind.DOWNLOAD, path, reason)
-                if (dryRun) return true
-                val ok =
-                    try {
-                    downloadFile(root, remoteRootUrl, path, config)
+            suspend fun performDownload(path: String): Pair<Boolean, String?> {
+                if (dryRun) return true to null
+                return try {
+                    val ok = downloadFile(root, remoteRootUrl, path, config)
+                    ok to null
                 } catch (e: Throwable) {
                     logger.fileFailed("download", path, e)
-                    false
+                    false to (e.message ?: e.javaClass.simpleName)
                 }
+            }
+
+            suspend fun performUpload(local: LocalEntry, ifMatch: String?, ifNoneMatchStar: Boolean): Pair<Boolean, String?> {
+                if (dryRun) return true to null
+                return try {
+                    val ok = uploadFile(remoteRootUrl, local, config, ensuredRemoteDirs, ifMatch = ifMatch, ifNoneMatchStar = ifNoneMatchStar)
+                    ok to null
+                } catch (e: Throwable) {
+                    logger.fileFailed("upload", local.path, e)
+                    false to (e.message ?: e.javaClass.simpleName)
+                }
+            }
+
+            suspend fun performDeleteRemote(path: String, remote: RemoteEntry?): Pair<Boolean, String?> {
+                if (dryRun) return true to null
+                return try {
+                    val url = buildRemoteUrl(remoteRootUrl, path)
+                    val code = WebDavClient.delete(config, url, ifMatch = remote?.etag)
+                    (code in 200..299 || code == 404) to null
+                } catch (e: Throwable) {
+                    logger.fileFailed("delete_remote", path, e)
+                    false to (e.message ?: e.javaClass.simpleName)
+                }
+            }
+
+            suspend fun performDeleteLocal(path: String): Pair<Boolean, String?> {
+                if (dryRun) return true to null
+                return try {
+                    deleteLocalPath(path) to null
+                } catch (e: Throwable) {
+                    logger.fileFailed("delete_local", path, e)
+                    false to (e.message ?: e.javaClass.simpleName)
+                }
+            }
+
+            suspend fun planDownload(path: String, reason: String): Boolean {
+                val op = record(WebDavPlannedOpKind.DOWNLOAD, path, reason)
+                if (dryRun) return true
+                val (ok, error) = performDownload(path)
+                observer?.invoke(WebDavSyncObservedOpResult(op = op, ok = ok, error = error))
                 if (ok) maybeClearUnresolvedAfterSuccess(path)
                 return ok
             }
 
             suspend fun planUpload(local: LocalEntry, ifMatch: String?, ifNoneMatchStar: Boolean, reason: String): Boolean {
-                record(WebDavPlannedOpKind.UPLOAD, local.path, reason)
+                val op = record(WebDavPlannedOpKind.UPLOAD, local.path, reason)
                 if (dryRun) return true
-                val ok =
-                    try {
-                    uploadFile(remoteRootUrl, local, config, ensuredRemoteDirs, ifMatch = ifMatch, ifNoneMatchStar = ifNoneMatchStar)
-                } catch (e: Throwable) {
-                    logger.fileFailed("upload", local.path, e)
-                    false
-                }
+                val (ok, error) = performUpload(local, ifMatch = ifMatch, ifNoneMatchStar = ifNoneMatchStar)
+                observer?.invoke(WebDavSyncObservedOpResult(op = op, ok = ok, error = error))
                 if (ok) maybeClearUnresolvedAfterSuccess(local.path)
                 return ok
             }
 
             suspend fun planDeleteRemote(path: String, remote: RemoteEntry?, reason: String): Boolean {
-                record(WebDavPlannedOpKind.DELETE_REMOTE, path, reason)
+                val op = record(WebDavPlannedOpKind.DELETE_REMOTE, path, reason)
                 if (dryRun) return true
-                val ok =
-                    try {
-                    val url = buildRemoteUrl(remoteRootUrl, path)
-                    val code = WebDavClient.delete(config, url, ifMatch = remote?.etag)
-                    code in 200..299 || code == 404
-                } catch (e: Throwable) {
-                    logger.fileFailed("delete_remote", path, e)
-                    false
-                }
+                val (ok, error) = performDeleteRemote(path, remote)
+                observer?.invoke(WebDavSyncObservedOpResult(op = op, ok = ok, error = error))
                 if (ok) maybeClearUnresolvedAfterSuccess(path)
                 return ok
             }
 
             suspend fun planDeleteLocal(path: String, reason: String): Boolean {
-                record(WebDavPlannedOpKind.DELETE_LOCAL, path, reason)
+                val op = record(WebDavPlannedOpKind.DELETE_LOCAL, path, reason)
                 if (dryRun) return true
-                val ok =
-                    try {
-                    deleteLocalPath(path)
-                } catch (e: Throwable) {
-                    logger.fileFailed("delete_local", path, e)
-                    false
-                }
+                val (ok, error) = performDeleteLocal(path)
+                observer?.invoke(WebDavSyncObservedOpResult(op = op, ok = ok, error = error))
                 if (ok) maybeClearUnresolvedAfterSuccess(path)
                 return ok
             }
@@ -409,39 +541,82 @@ class WebDavSyncEngine(
                     val tombstone = tombstones[path]
                     if (tombstone != null) {
                         val revived = isAfterTombstone(remote.lastModifiedEpochMs, tombstone)
-                        if (revived || config.conflictStrategy == WebDavConflictStrategy.REMOTE_WINS) {
-                            clearTombstoneIfRevived(path, true)
-                            val ok = planDownload(path, reason = "remote_only_restore_from_tombstone")
-                            if (ok) downloaded++ else failed++
+                        if (!revived) {
+                            // Remote still has the file, but we have a tombstone -> propagate deletion to remote (skippable op).
+                            val okDelete = planDeleteRemote(path, remote = remote, reason = "tombstoned_remote_delete")
+                            if (okDelete) {
+                                deletedRemote += 1
+                                touchTombstone(path, remote)
+                                remoteByPath.remove(path)
+                            } else {
+                                failed += 1
+                            }
                             continue
                         }
 
-                        if (config.conflictStrategy != WebDavConflictStrategy.LOCAL_WINS) {
-                            recordConflict(path, "tombstoned_remote")
-                            val conflictResult = planDownloadConflict(path, kind = "remote-tombstoned")
-                            if (conflictResult.ok) {
-                                conflicts += 1
-                                logger.conflict(path, conflictResult.conflictPath ?: "", reason = "tombstoned_remote")
-                            }
-                            if (config.conflictStrategy == WebDavConflictStrategy.ASK_EACH_TIME) {
-                                markUnresolved(
-                                    path = path,
-                                    reason = "tombstoned_remote",
-                                    localArtifactPath = null,
-                                    remoteArtifactPath = conflictResult.conflictPath,
-                                )
-                                continue
-                            }
-                        }
+                        // Remote changed after local deletion -> conflict (must be explicit in plan/tasks).
+                        val conflictOp = recordConflict(path, "tombstoned_remote")
+                        conflicts += 1
+                        if (dryRun) continue
 
-                        val okDelete = planDeleteRemote(path, remote = remote, reason = "tombstoned_remote_delete")
-                        if (okDelete) {
-                            deletedRemote += 1
-                            touchTombstone(path, remote)
-                            remoteByPath.remove(path)
-                        } else {
-                            failed += 1
-                        }
+                        val strategy = conflictStrategyFor(path)
+                        val (ok, err) =
+                            when (strategy) {
+                                WebDavConflictStrategy.REMOTE_WINS -> {
+                                    clearTombstoneIfRevived(path, true)
+                                    val (downloadOk, downloadErr) = performDownload(path)
+                                    if (downloadOk) downloaded++ else failed++
+                                    downloadOk to downloadErr
+                                }
+
+                                WebDavConflictStrategy.LOCAL_WINS -> {
+                                    val (delOk, delErr) = performDeleteRemote(path, remote)
+                                    if (delOk) {
+                                        deletedRemote += 1
+                                        touchTombstone(path, remote)
+                                        remoteByPath.remove(path)
+                                    } else {
+                                        failed += 1
+                                    }
+                                    delOk to delErr
+                                }
+
+                                WebDavConflictStrategy.KEEP_BOTH -> {
+                                    val conflictResult = planDownloadConflict(path, kind = "remote-tombstoned")
+                                    if (conflictResult.ok) {
+                                        logger.conflict(path, conflictResult.conflictPath ?: "", reason = "tombstoned_remote")
+                                    }
+                                    if (!conflictResult.ok) {
+                                        failed += 1
+                                        false to "download_conflict_failed"
+                                    } else {
+                                        val (delOk, delErr) = performDeleteRemote(path, remote)
+                                        if (delOk) {
+                                            deletedRemote += 1
+                                            touchTombstone(path, remote)
+                                            remoteByPath.remove(path)
+                                        } else {
+                                            failed += 1
+                                        }
+                                        delOk to delErr
+                                    }
+                                }
+
+                                WebDavConflictStrategy.ASK_EACH_TIME -> {
+                                    val conflictResult = planDownloadConflict(path, kind = "remote-tombstoned")
+                                    if (conflictResult.ok) {
+                                        logger.conflict(path, conflictResult.conflictPath ?: "", reason = "tombstoned_remote")
+                                    }
+                                    markUnresolved(
+                                        path = path,
+                                        reason = "tombstoned_remote",
+                                        localArtifactPath = null,
+                                        remoteArtifactPath = conflictResult.conflictPath,
+                                    )
+                                    false to "unresolved_conflict"
+                                }
+                            }
+                        observer?.invoke(WebDavSyncObservedOpResult(op = conflictOp, ok = ok, error = err))
                         continue
                     }
 
@@ -482,29 +657,70 @@ class WebDavSyncEngine(
                     val tombstone = tombstones[path]
                     if (tombstone != null) {
                         val revived = isAfterTombstone(local.lastModifiedEpochMs, tombstone)
-                        if (revived) {
-                            clearTombstoneIfRevived(path, true)
-                        } else {
-                            when (config.conflictStrategy) {
+                        if (!revived) {
+                            // Local still has the file, but we have a tombstone -> propagate deletion to local (skippable op).
+                            val okDelete = planDeleteLocal(path, reason = "tombstoned_local_delete")
+                            if (okDelete) {
+                                deletedLocal += 1
+                                localByPath.remove(path)
+                            } else {
+                                failed += 1
+                            }
+                            continue
+                        }
+
+                        // Local changed after remote deletion -> conflict (must be explicit in plan/tasks).
+                        val conflictOp = recordConflict(path, "tombstoned_local")
+                        conflicts += 1
+                        if (dryRun) continue
+
+                        val strategy = conflictStrategyFor(path)
+                        val (ok, err) =
+                            when (strategy) {
                                 WebDavConflictStrategy.LOCAL_WINS -> {
                                     clearTombstoneIfRevived(path, true)
+                                    val (uploadOk, uploadErr) = performUpload(local, ifMatch = null, ifNoneMatchStar = true)
+                                    if (uploadOk && !dryRun) {
+                                        val refreshed = refreshRemoteFile(path)
+                                        if (refreshed != null) remoteByPath[path] = refreshed
+                                    }
+                                    if (uploadOk) uploaded++ else failed++
+                                    uploadOk to uploadErr
                                 }
 
                                 WebDavConflictStrategy.REMOTE_WINS -> {
-                                    val okDelete = planDeleteLocal(path, reason = "tombstoned_local_delete")
-                                    if (okDelete) {
+                                    val (delOk, delErr) = performDeleteLocal(path)
+                                    if (delOk) {
                                         deletedLocal += 1
                                         localByPath.remove(path)
                                     } else {
                                         failed += 1
                                     }
-                                    continue
+                                    delOk to delErr
+                                }
+
+                                WebDavConflictStrategy.KEEP_BOTH -> {
+                                    val savedPath = planSaveLocalConflict(path, local.file.uri, kind = "local-tombstoned")
+                                    if (!savedPath.isNullOrBlank()) {
+                                        logger.conflict(path, savedPath, reason = "tombstoned_local")
+                                    }
+                                    if (savedPath.isNullOrBlank()) {
+                                        failed += 1
+                                        false to "save_conflict_failed"
+                                    } else {
+                                        val (delOk, delErr) = performDeleteLocal(path)
+                                        if (delOk) {
+                                            deletedLocal += 1
+                                            localByPath.remove(path)
+                                        } else {
+                                            failed += 1
+                                        }
+                                        delOk to delErr
+                                    }
                                 }
 
                                 WebDavConflictStrategy.ASK_EACH_TIME -> {
-                                    recordConflict(path, "tombstoned_local")
                                     val savedPath = planSaveLocalConflict(path, local.file.uri, kind = "local-tombstoned")
-                                    conflicts += 1
                                     logger.conflict(path, savedPath.orEmpty(), reason = "tombstoned_local")
                                     markUnresolved(
                                         path = path,
@@ -512,27 +728,11 @@ class WebDavSyncEngine(
                                         localArtifactPath = savedPath,
                                         remoteArtifactPath = null,
                                     )
-                                    continue
-                                }
-
-                                WebDavConflictStrategy.KEEP_BOTH -> {
-                                    recordConflict(path, "tombstoned_local")
-                                    val savedPath = planSaveLocalConflict(path, local.file.uri, kind = "local-tombstoned")
-                                    if (!savedPath.isNullOrBlank()) {
-                                        conflicts += 1
-                                        logger.conflict(path, savedPath, reason = "tombstoned_local")
-                                    }
-                                    val okDelete = planDeleteLocal(path, reason = "tombstoned_local_delete")
-                                    if (okDelete) {
-                                        deletedLocal += 1
-                                        localByPath.remove(path)
-                                    } else {
-                                        failed += 1
-                                    }
-                                    continue
+                                    false to "unresolved_conflict"
                                 }
                             }
-                        }
+                        observer?.invoke(WebDavSyncObservedOpResult(op = conflictOp, ok = ok, error = err))
+                        continue
                     }
 
                     val ok = planUpload(local, ifMatch = null, ifNoneMatchStar = true, reason = "local_only_new")
@@ -559,62 +759,73 @@ class WebDavSyncEngine(
                 }
 
                 // Local changed but remote missing -> treat as conflict; recreate remote from local.
-                when (config.conflictStrategy) {
-                    WebDavConflictStrategy.LOCAL_WINS -> {
-                        clearTombstoneIfRevived(path, true)
-                        conflicts += 1
-                        val okRecreate = planUpload(local, ifMatch = null, ifNoneMatchStar = false, reason = "local_vs_delete_local_wins")
-                        if (okRecreate && !dryRun) {
-                            val refreshed = refreshRemoteFile(path)
-                            if (refreshed != null) remoteByPath[path] = refreshed
-                        }
-                        if (okRecreate) uploaded++ else failed++
-                    }
+                val conflictOp = recordConflict(path, "local_vs_delete")
+                conflicts += 1
+                if (dryRun) continue
 
-                    WebDavConflictStrategy.REMOTE_WINS -> {
-                        conflicts += 1
-                        touchTombstone(path, remote = null)
-                        val okDelete = planDeleteLocal(path, reason = "local_vs_delete_remote_wins")
-                        if (okDelete) {
-                            deletedLocal += 1
-                            localByPath.remove(path)
-                        } else {
-                            failed += 1
+                val strategy = conflictStrategyFor(path)
+                val (ok, err) =
+                    when (strategy) {
+                        WebDavConflictStrategy.LOCAL_WINS -> {
+                            clearTombstoneIfRevived(path, true)
+                            val (uploadOk, uploadErr) = performUpload(local, ifMatch = null, ifNoneMatchStar = false)
+                            if (uploadOk && !dryRun) {
+                                val refreshed = refreshRemoteFile(path)
+                                if (refreshed != null) remoteByPath[path] = refreshed
+                            }
+                            if (uploadOk) uploaded++ else failed++
+                            uploadOk to uploadErr
                         }
-                    }
 
-                    WebDavConflictStrategy.ASK_EACH_TIME -> {
-                        recordConflict(path, "local_vs_delete")
-                        val savedPath = planSaveLocalConflict(path, local.file.uri, kind = "local-vs-delete")
-                        conflicts += 1
-                        logger.conflict(path, savedPath.orEmpty(), reason = "local_vs_delete")
-                        markUnresolved(
-                            path = path,
-                            reason = "local_vs_delete",
-                            localArtifactPath = savedPath,
-                            remoteArtifactPath = null,
-                        )
-                    }
+                        WebDavConflictStrategy.REMOTE_WINS -> {
+                            touchTombstone(path, remote = null)
+                            val (delOk, delErr) = performDeleteLocal(path)
+                            if (delOk) {
+                                deletedLocal += 1
+                                localByPath.remove(path)
+                            } else {
+                                failed += 1
+                            }
+                            delOk to delErr
+                        }
 
-                    WebDavConflictStrategy.KEEP_BOTH -> {
-                        recordConflict(path, "local_vs_delete")
-                        val savedPath = planSaveLocalConflict(path, local.file.uri, kind = "local-vs-delete")
-                        conflicts += 1
-                        if (!savedPath.isNullOrBlank()) {
-                            logger.conflict(path, savedPath, reason = "local_vs_delete")
-                        } else {
-                            logger.conflict(path, conflictPath = "", reason = "local_vs_delete")
+                        WebDavConflictStrategy.KEEP_BOTH -> {
+                            val savedPath = planSaveLocalConflict(path, local.file.uri, kind = "local-vs-delete")
+                            if (!savedPath.isNullOrBlank()) {
+                                logger.conflict(path, savedPath, reason = "local_vs_delete")
+                            } else {
+                                logger.conflict(path, conflictPath = "", reason = "local_vs_delete")
+                            }
+                            if (savedPath.isNullOrBlank()) {
+                                failed += 1
+                                false to "save_conflict_failed"
+                            } else {
+                                touchTombstone(path, remote = null)
+                                val (delOk, delErr) = performDeleteLocal(path)
+                                if (delOk) {
+                                    deletedLocal += 1
+                                    localByPath.remove(path)
+                                } else {
+                                    failed += 1
+                                }
+                                delOk to delErr
+                            }
                         }
-                        touchTombstone(path, remote = null)
-                        val okDelete = planDeleteLocal(path, reason = "local_vs_delete_keep_both")
-                        if (okDelete) {
-                            deletedLocal += 1
-                            localByPath.remove(path)
-                        } else {
-                            failed += 1
+
+                        WebDavConflictStrategy.ASK_EACH_TIME -> {
+                            val savedPath = planSaveLocalConflict(path, local.file.uri, kind = "local-vs-delete")
+                            logger.conflict(path, savedPath.orEmpty(), reason = "local_vs_delete")
+                            markUnresolved(
+                                path = path,
+                                reason = "local_vs_delete",
+                                localArtifactPath = savedPath,
+                                remoteArtifactPath = null,
+                            )
+                            false to "unresolved_conflict"
                         }
                     }
-                }
+                observer?.invoke(WebDavSyncObservedOpResult(op = conflictOp, ok = ok, error = err))
+                continue
             }
 
             // Pass 3: files existing on both sides (true two-way: only conflict when both changed).
@@ -635,63 +846,66 @@ class WebDavSyncEngine(
                             kotlin.math.abs(remote.lastModifiedEpochMs - local.lastModifiedEpochMs) < 2_000
                     if (same) continue
 
-                    when (config.conflictStrategy) {
-                        WebDavConflictStrategy.REMOTE_WINS -> {
-                            recordConflict(path, "both_changed_no_base")
-                            val ok = planDownload(path, reason = "conflict_remote_wins_no_base")
-                            if (ok) downloaded++ else failed++
-                            conflicts += 1
-                        }
+                    val conflictOp = recordConflict(path, "both_changed_no_base")
+                    conflicts += 1
+                    if (dryRun) continue
 
-                        WebDavConflictStrategy.LOCAL_WINS -> {
-                            recordConflict(path, "both_changed_no_base")
-                            val ok = planUpload(local, ifMatch = remote.etag, ifNoneMatchStar = false, reason = "conflict_local_wins_no_base")
-                            if (ok && !dryRun) {
-                                val refreshed = refreshRemoteFile(path)
-                                if (refreshed != null) remoteByPath[path] = refreshed
-                            }
-                            if (ok) uploaded++ else failed++
-                            conflicts += 1
-                        }
-
-                        WebDavConflictStrategy.KEEP_BOTH -> {
-                            recordConflict(path, "both_changed_no_base")
-                            val conflictResult = planDownloadConflict(path, kind = "remote")
-                            if (conflictResult.ok) {
-                                conflicts++
-                                logger.conflict(path, conflictResult.conflictPath ?: "", reason = "both_changed_no_base")
-                            } else {
-                                failed++
-                                continue
+                    val strategy = conflictStrategyFor(path)
+                    val (ok, err) =
+                        when (strategy) {
+                            WebDavConflictStrategy.REMOTE_WINS -> {
+                                val (downloadOk, downloadErr) = performDownload(path)
+                                if (downloadOk) downloaded++ else failed++
+                                downloadOk to downloadErr
                             }
 
-                            val okOverwrite =
-                                planUpload(local, ifMatch = remote.etag, ifNoneMatchStar = false, reason = "conflict_keep_both_overwrite_remote")
-                            if (okOverwrite && !dryRun) {
-                                val refreshed = refreshRemoteFile(path)
-                                if (refreshed != null) remoteByPath[path] = refreshed
+                            WebDavConflictStrategy.LOCAL_WINS -> {
+                                val (uploadOk, uploadErr) = performUpload(local, ifMatch = remote.etag, ifNoneMatchStar = false)
+                                if (uploadOk && !dryRun) {
+                                    val refreshed = refreshRemoteFile(path)
+                                    if (refreshed != null) remoteByPath[path] = refreshed
+                                }
+                                if (uploadOk) uploaded++ else failed++
+                                uploadOk to uploadErr
                             }
-                            if (okOverwrite) uploaded++ else failed++
-                        }
 
-                        WebDavConflictStrategy.ASK_EACH_TIME -> {
-                            recordConflict(path, "both_changed_ask")
-                            val remoteSnap = planDownloadConflict(path, kind = "remote")
-                            val localSnap = planSaveLocalConflict(path, local.file.uri, kind = "local")
-                            if (remoteSnap.ok || !localSnap.isNullOrBlank()) {
-                                conflicts += 1
-                                logger.conflict(path, remoteSnap.conflictPath ?: localSnap.orEmpty(), reason = "both_changed_ask")
-                                markUnresolved(
-                                    path = path,
-                                    reason = "both_changed",
-                                    localArtifactPath = localSnap,
-                                    remoteArtifactPath = remoteSnap.conflictPath,
-                                )
-                            } else {
-                                failed += 1
+                            WebDavConflictStrategy.KEEP_BOTH -> {
+                                val conflictResult = planDownloadConflict(path, kind = "remote")
+                                if (conflictResult.ok) {
+                                    logger.conflict(path, conflictResult.conflictPath ?: "", reason = "both_changed_no_base")
+                                }
+                                if (!conflictResult.ok) {
+                                    failed += 1
+                                    false to "download_conflict_failed"
+                                } else {
+                                    val (uploadOk, uploadErr) = performUpload(local, ifMatch = remote.etag, ifNoneMatchStar = false)
+                                    if (uploadOk && !dryRun) {
+                                        val refreshed = refreshRemoteFile(path)
+                                        if (refreshed != null) remoteByPath[path] = refreshed
+                                    }
+                                    if (uploadOk) uploaded++ else failed++
+                                    uploadOk to uploadErr
+                                }
+                            }
+
+                            WebDavConflictStrategy.ASK_EACH_TIME -> {
+                                val remoteSnap = planDownloadConflict(path, kind = "remote")
+                                val localSnap = planSaveLocalConflict(path, local.file.uri, kind = "local")
+                                if (remoteSnap.ok || !localSnap.isNullOrBlank()) {
+                                    logger.conflict(path, remoteSnap.conflictPath ?: localSnap.orEmpty(), reason = "both_changed_no_base")
+                                    markUnresolved(
+                                        path = path,
+                                        reason = "both_changed_no_base",
+                                        localArtifactPath = localSnap,
+                                        remoteArtifactPath = remoteSnap.conflictPath,
+                                    )
+                                } else {
+                                    failed += 1
+                                }
+                                false to "unresolved_conflict"
                             }
                         }
-                    }
+                    observer?.invoke(WebDavSyncObservedOpResult(op = conflictOp, ok = ok, error = err))
                     continue
                 }
 
@@ -715,63 +929,66 @@ class WebDavSyncEngine(
                     continue
                 }
 
-                when (config.conflictStrategy) {
-                    WebDavConflictStrategy.REMOTE_WINS -> {
-                        recordConflict(path, "both_changed")
-                        val ok = planDownload(path, reason = "conflict_remote_wins")
-                        if (ok) downloaded++ else failed++
-                        conflicts += 1
-                    }
+                val conflictOp = recordConflict(path, "both_changed")
+                conflicts += 1
+                if (dryRun) continue
 
-                    WebDavConflictStrategy.LOCAL_WINS -> {
-                        recordConflict(path, "both_changed")
-                        val ok = planUpload(local, ifMatch = remote.etag, ifNoneMatchStar = false, reason = "conflict_local_wins")
-                        if (ok && !dryRun) {
-                            val refreshed = refreshRemoteFile(path)
-                            if (refreshed != null) remoteByPath[path] = refreshed
-                        }
-                        if (ok) uploaded++ else failed++
-                        conflicts += 1
-                    }
-
-                    WebDavConflictStrategy.KEEP_BOTH -> {
-                        recordConflict(path, "both_changed")
-                        val conflictResult = planDownloadConflict(path, kind = "remote")
-                        if (conflictResult.ok) {
-                            conflicts++
-                            logger.conflict(path, conflictResult.conflictPath ?: "", reason = "both_changed")
-                        } else {
-                            failed++
-                            continue
+                val strategy = conflictStrategyFor(path)
+                val (ok, err) =
+                    when (strategy) {
+                        WebDavConflictStrategy.REMOTE_WINS -> {
+                            val (downloadOk, downloadErr) = performDownload(path)
+                            if (downloadOk) downloaded++ else failed++
+                            downloadOk to downloadErr
                         }
 
-                        val okOverwrite =
-                            planUpload(local, ifMatch = remote.etag, ifNoneMatchStar = false, reason = "conflict_keep_both_overwrite_remote")
-                        if (okOverwrite && !dryRun) {
-                            val refreshed = refreshRemoteFile(path)
-                            if (refreshed != null) remoteByPath[path] = refreshed
+                        WebDavConflictStrategy.LOCAL_WINS -> {
+                            val (uploadOk, uploadErr) = performUpload(local, ifMatch = remote.etag, ifNoneMatchStar = false)
+                            if (uploadOk && !dryRun) {
+                                val refreshed = refreshRemoteFile(path)
+                                if (refreshed != null) remoteByPath[path] = refreshed
+                            }
+                            if (uploadOk) uploaded++ else failed++
+                            uploadOk to uploadErr
                         }
-                        if (okOverwrite) uploaded++ else failed++
-                    }
 
-                    WebDavConflictStrategy.ASK_EACH_TIME -> {
-                        recordConflict(path, "both_changed_ask")
-                        val remoteSnap = planDownloadConflict(path, kind = "remote")
-                        val localSnap = planSaveLocalConflict(path, local.file.uri, kind = "local")
-                        if (remoteSnap.ok || !localSnap.isNullOrBlank()) {
-                            conflicts += 1
-                            logger.conflict(path, remoteSnap.conflictPath ?: localSnap.orEmpty(), reason = "both_changed_ask")
-                            markUnresolved(
-                                path = path,
-                                reason = "both_changed",
-                                localArtifactPath = localSnap,
-                                remoteArtifactPath = remoteSnap.conflictPath,
-                            )
-                        } else {
-                            failed += 1
+                        WebDavConflictStrategy.KEEP_BOTH -> {
+                            val conflictResult = planDownloadConflict(path, kind = "remote")
+                            if (conflictResult.ok) {
+                                logger.conflict(path, conflictResult.conflictPath ?: "", reason = "both_changed")
+                            }
+                            if (!conflictResult.ok) {
+                                failed += 1
+                                false to "download_conflict_failed"
+                            } else {
+                                val (uploadOk, uploadErr) = performUpload(local, ifMatch = remote.etag, ifNoneMatchStar = false)
+                                if (uploadOk && !dryRun) {
+                                    val refreshed = refreshRemoteFile(path)
+                                    if (refreshed != null) remoteByPath[path] = refreshed
+                                }
+                                if (uploadOk) uploaded++ else failed++
+                                uploadOk to uploadErr
+                            }
+                        }
+
+                        WebDavConflictStrategy.ASK_EACH_TIME -> {
+                            val remoteSnap = planDownloadConflict(path, kind = "remote")
+                            val localSnap = planSaveLocalConflict(path, local.file.uri, kind = "local")
+                            if (remoteSnap.ok || !localSnap.isNullOrBlank()) {
+                                logger.conflict(path, remoteSnap.conflictPath ?: localSnap.orEmpty(), reason = "both_changed")
+                                markUnresolved(
+                                    path = path,
+                                    reason = "both_changed",
+                                    localArtifactPath = localSnap,
+                                    remoteArtifactPath = remoteSnap.conflictPath,
+                                )
+                            } else {
+                                failed += 1
+                            }
+                            false to "unresolved_conflict"
                         }
                     }
-                }
+                observer?.invoke(WebDavSyncObservedOpResult(op = conflictOp, ok = ok, error = err))
             }
 
             if (!dryRun) {
@@ -830,6 +1047,10 @@ class WebDavSyncEngine(
                         writeUnresolvedConflicts(root, unresolvedConflicts)
                     }
                 }
+            }
+
+            if (!dryRun && normalizedExpected != null && expectedIndex != normalizedExpected.size) {
+                throw IllegalStateException("Plan mismatch: expected ${normalizedExpected.size} ops but got $expectedIndex")
             }
 
             WebDavSyncSummary(

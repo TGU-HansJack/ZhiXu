@@ -304,6 +304,7 @@ fun ZhixuApp(
             ),
     )
     val webDavAutomationSettings by syncPrefs.webDavAutomationSettings.collectAsState(initial = WebDavAutomationSettings.DEFAULT)
+    val webDavAutoSyncEnabled by syncPrefs.webDavAutoSyncEnabled.collectAsState(initial = true)
     var showCloudSyncStatusDialog by remember { mutableStateOf(false) }
     var webDavUiStatus by remember { mutableStateOf<WebDavUiStatusSnapshot?>(null) }
     var webDavAutoSyncStatusText by remember { mutableStateOf<String?>(null) }
@@ -446,6 +447,10 @@ fun ZhixuApp(
             webDavAutoSyncStatusText = context.getString(R.string.webdav_autosync_status_disabled)
             return
         }
+        if (!webDavAutoSyncEnabled) {
+            webDavAutoSyncStatusText = context.getString(R.string.webdav_autosync_status_disabled)
+            return
+        }
         val baseUrl = webDavConfig.baseUrl.trim()
         val remoteRoot = webDavConfig.remoteRoot.trim().ifBlank { "/" }
         if (baseUrl.isBlank()) {
@@ -566,12 +571,14 @@ fun ZhixuApp(
         webDavConfig.password,
         webDavConfig.remoteRoot,
         webDavConfig.includeIndexSqlite,
+        webDavAutoSyncEnabled,
         webDavAutomationSettings.intervalMinutes,
         webDavAutomationSettings.retryCount,
         webDavAutomationSettings.retryIntervalSeconds,
     ) {
         if (vaultSyncConfig.location != VaultStorageLocation.LOCAL) return@LaunchedEffect
         if (!webDavConfig.enabled) return@LaunchedEffect
+        if (!webDavAutoSyncEnabled) return@LaunchedEffect
         val intervalMs = (webDavAutomationSettings.intervalMinutes.toLong() * 60_000L).coerceAtLeast(60_000L)
         while (true) {
             val root = vaultRootUri
