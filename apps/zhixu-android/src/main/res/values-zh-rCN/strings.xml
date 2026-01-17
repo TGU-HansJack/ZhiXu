@@ -278,6 +278,14 @@
     <string name="webdav_folder_pair_title">添加同步文件夹对</string>
     <string name="webdav_folder_pair_name">文件夹对名称</string>
     <string name="webdav_folder_pair_remote_folder">云端远程文件夹路径</string>
+    <string name="webdav_remote_folder_picker_title">选择云端文件夹</string>
+    <string name="webdav_remote_folder_picker_select">选择此文件夹</string>
+    <string name="webdav_remote_folder_picker_parent">上一级</string>
+    <string name="webdav_remote_folder_picker_current_path_fmt">当前路径：%1$s</string>
+    <string name="webdav_remote_folder_picker_empty">没有文件夹</string>
+    <string name="webdav_remote_folder_picker_error_empty_url">服务器地址为空</string>
+    <string name="webdav_remote_folder_picker_error_invalid_url">服务器地址必须以 http(s):// 开头</string>
+    <string name="webdav_remote_folder_picker_error_http_fmt">请求失败（HTTP %1$d）</string>
     <string name="webdav_folder_pair_local_folder">本地文件夹</string>
     <string name="webdav_automation_title">自动化设定</string>
     <string name="webdav_automation_subtitle_fmt">间隔 %1$d 分钟 · 重试 %2$d 次 · 重试间隔 %3$d 秒</string>

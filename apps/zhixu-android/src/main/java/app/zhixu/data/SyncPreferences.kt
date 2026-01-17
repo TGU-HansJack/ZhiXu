@@ -103,6 +103,13 @@ class SyncPreferences(
         }
     }
 
+    suspend fun setWebDavRemoteRoot(remoteRoot: String) {
+        val trimmed = remoteRoot.trim()
+        context.dataStore.edit { prefs ->
+            prefs[webdavRemoteRootKey] = trimmed.ifBlank { "/" }
+        }
+    }
+
     suspend fun saveWebDavAutomationSettings(settings: WebDavAutomationSettings) {
         context.dataStore.edit { prefs ->
             prefs[webdavAutoSyncIntervalMinutesKey] = settings.intervalMinutes.coerceIn(1, 24 * 60)

@@ -299,6 +299,14 @@
     <string name="webdav_folder_pair_title">Add sync folder pair</string>
     <string name="webdav_folder_pair_name">Pair name</string>
     <string name="webdav_folder_pair_remote_folder">Remote folder path</string>
+    <string name="webdav_remote_folder_picker_title">Select remote folder</string>
+    <string name="webdav_remote_folder_picker_select">Select this folder</string>
+    <string name="webdav_remote_folder_picker_parent">Parent directory</string>
+    <string name="webdav_remote_folder_picker_current_path_fmt">Current: %1$s</string>
+    <string name="webdav_remote_folder_picker_empty">No folders</string>
+    <string name="webdav_remote_folder_picker_error_empty_url">Base URL is empty</string>
+    <string name="webdav_remote_folder_picker_error_invalid_url">Base URL must start with http(s)://</string>
+    <string name="webdav_remote_folder_picker_error_http_fmt">Request failed (HTTP %1$d)</string>
     <string name="webdav_folder_pair_local_folder">Local folder</string>
     <string name="webdav_automation_title">Automation</string>
     <string name="webdav_automation_subtitle_fmt">Every %1$d min · Retries %2$d · Retry interval %3$d s</string>

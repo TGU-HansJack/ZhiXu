@@ -892,7 +892,79 @@ private enum class SyncSettingsPage {
     OfficialServer,
     WebDavService,
     WebDavFolderPair,
+    WebDavRemoteFolderPicker,
     WebDavManual,
+}
+
+private data class WebDavRemoteFolder(
+    val name: String,
+    val path: String,
+)
+
+private data class WebDavPropfindEntry(
+    val href: String,
+    val isDir: Boolean,
+)
+
+private fun parseWebDavPropfind(xml: String): List<WebDavPropfindEntry> {
+    val trimmed = xml.trimStart()
+    if (trimmed.isBlank() || !trimmed.startsWith("<")) return emptyList()
+
+    val parser = org.xmlpull.v1.XmlPullParserFactory.newInstance().newPullParser()
+    parser.setInput(xml.reader())
+
+    val out = ArrayList<WebDavPropfindEntry>()
+    var href: String? = null
+    var isDir: Boolean? = null
+
+    fun flush() {
+        val h = href ?: return
+        out += WebDavPropfindEntry(href = h, isDir = isDir == true)
+        href = null
+        isDir = null
+    }
+
+    fun tagName(): String = parser.name.orEmpty().substringAfterLast(':').lowercase()
+
+    var event = parser.eventType
+    while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+        when (event) {
+            org.xmlpull.v1.XmlPullParser.START_TAG -> {
+                when (tagName()) {
+                    "response" -> {
+                        href = null
+                        isDir = null
+                    }
+                    "href" -> href = parser.nextText()
+                    "collection" -> isDir = true
+                }
+            }
+
+            org.xmlpull.v1.XmlPullParser.END_TAG -> {
+                if (tagName() == "response") flush()
+            }
+        }
+        event = parser.next()
+    }
+
+    return out
+}
+
+// Convert a DAV:href into a path relative to the requested WebDAV base path.
+// If the href is an absolute path outside the base path, ignore it to avoid accidentally treating
+// the whole WebDAV root as the current folder.
+private fun normalizeWebDavHrefToRelativePath(href: String, basePath: String): String? {
+    val decoded = Uri.decode(href)
+    val path = Uri.parse(decoded).path ?: decoded
+    val trimmedBase = Uri.decode(basePath).trimEnd('/')
+    val trimmedPath = path.trimEnd('/')
+    return when {
+        trimmedPath == trimmedBase -> ""
+        trimmedPath.startsWith("$trimmedBase/") -> trimmedPath.removePrefix("$trimmedBase/").trimStart('/')
+        else -> {
+            if (trimmedPath.startsWith("/")) null else trimmedPath.trimStart('/')
+        }
+    }
 }
 
 @Composable
@@ -1134,6 +1206,19 @@ private fun SyncSettingsScreen(
     var includeIndexSqlite by remember { mutableStateOf(saved.includeIndexSqlite) }
     var conflictStrategy by remember { mutableStateOf(saved.conflictStrategy) }
 
+    fun normalizeRemoteFolderPath(raw: String): String {
+        val cleaned = raw.trim().replace('\\', '/')
+        if (cleaned.isBlank() || cleaned == "/") return "/"
+        val withSlash = if (cleaned.startsWith("/")) cleaned else "/$cleaned"
+        return withSlash.trimEnd('/').ifBlank { "/" }
+    }
+
+    var remoteFolderPickerPath by rememberSaveable { mutableStateOf("/") }
+    var remoteFolderPickerLoading by remember { mutableStateOf(false) }
+    var remoteFolderPickerError by remember { mutableStateOf<String?>(null) }
+    var remoteFolderPickerFolders by remember { mutableStateOf<List<WebDavRemoteFolder>>(emptyList()) }
+    var remoteFolderPickerReloadKey by remember { mutableStateOf(0) }
+
     var webDavPairName by remember { mutableStateOf(savedWebDavPairName) }
 
     var showConflictStrategyDialog by remember { mutableStateOf(false) }
@@ -1298,6 +1383,7 @@ private fun SyncSettingsScreen(
                 SyncSettingsPage.OfficialServer -> SyncSettingsPage.Main
                 SyncSettingsPage.WebDavService -> SyncSettingsPage.Main
                 SyncSettingsPage.WebDavFolderPair -> SyncSettingsPage.WebDavService
+                SyncSettingsPage.WebDavRemoteFolderPicker -> SyncSettingsPage.WebDavFolderPair
                 SyncSettingsPage.WebDavManual -> SyncSettingsPage.WebDavService
             }
     }
@@ -1312,7 +1398,92 @@ private fun SyncSettingsScreen(
     val officialServerListState = rememberLazyListState()
     val webDavServiceListState = rememberLazyListState()
     val webDavFolderPairListState = rememberLazyListState()
+    val webDavRemoteFolderPickerListState = rememberLazyListState()
     val webDavManualListState = rememberLazyListState()
+
+    androidx.compose.runtime.LaunchedEffect(page) {
+        if (page == SyncSettingsPage.WebDavRemoteFolderPicker) {
+            remoteFolderPickerPath = normalizeRemoteFolderPath(remoteRoot)
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(
+        page,
+        remoteFolderPickerPath,
+        remoteFolderPickerReloadKey,
+        baseUrl,
+        username,
+        password,
+    ) {
+        if (page != SyncSettingsPage.WebDavRemoteFolderPicker) return@LaunchedEffect
+
+        remoteFolderPickerLoading = true
+        remoteFolderPickerError = null
+        remoteFolderPickerFolders = emptyList()
+
+        val base = baseUrl.trim()
+        if (base.isBlank()) {
+            remoteFolderPickerError = context.getString(R.string.webdav_remote_folder_picker_error_empty_url)
+            remoteFolderPickerLoading = false
+            return@LaunchedEffect
+        }
+        if (!base.startsWith("http://") && !base.startsWith("https://")) {
+            remoteFolderPickerError = context.getString(R.string.webdav_remote_folder_picker_error_invalid_url)
+            remoteFolderPickerLoading = false
+            return@LaunchedEffect
+        }
+
+        val baseRootUrl = base.trimEnd('/') + "/"
+        val baseRootPath = Uri.parse(baseRootUrl).path ?: "/"
+        val current = normalizeRemoteFolderPath(remoteFolderPickerPath)
+        val dirUrl =
+            if (current == "/") {
+                baseRootUrl
+            } else {
+                WebDavClient.normalizeJoin(base, current).trimEnd('/') + "/"
+            }
+
+        val (code, xml) = WebDavClient.propfind(currentConfig(), dirUrl, depth = "1")
+        if (code != 207 && code !in 200..299) {
+            remoteFolderPickerError = context.getString(R.string.webdav_remote_folder_picker_error_http_fmt, code)
+            remoteFolderPickerLoading = false
+            return@LaunchedEffect
+        }
+
+        val currentRel = current.trim('/').trim()
+        val folders =
+            parseWebDavPropfind(xml)
+                .asSequence()
+                .filter { it.isDir }
+                .mapNotNull { entry ->
+                    val rel = normalizeWebDavHrefToRelativePath(entry.href, baseRootPath) ?: return@mapNotNull null
+                    if (rel.isBlank()) return@mapNotNull null
+                    if (currentRel.isNotBlank() && rel == currentRel) return@mapNotNull null
+
+                    val (childName, childPath) =
+                        if (currentRel.isBlank()) {
+                            if (rel.contains('/')) return@mapNotNull null
+                            rel to normalizeRemoteFolderPath("/$rel")
+                        } else {
+                            if (rel.startsWith("$currentRel/")) {
+                                val child = rel.removePrefix("$currentRel/").trimStart('/')
+                                if (child.isBlank() || child.contains('/')) return@mapNotNull null
+                                child to normalizeRemoteFolderPath("/$rel")
+                            } else {
+                                // Some servers return hrefs relative to the current directory.
+                                if (rel.contains('/')) return@mapNotNull null
+                                rel to normalizeRemoteFolderPath("$current/$rel")
+                            }
+                        }
+                    WebDavRemoteFolder(name = childName, path = childPath)
+                }
+                .distinctBy { it.path }
+                .sortedBy { it.name.lowercase() }
+                .toList()
+
+        remoteFolderPickerFolders = folders
+        remoteFolderPickerLoading = false
+    }
 
     if (showConflictStrategyDialog) {
         AlertDialog(
@@ -1524,6 +1695,7 @@ private fun SyncSettingsScreen(
                                 SyncSettingsPage.OfficialServer -> stringResource(R.string.official_sync_title)
                                 SyncSettingsPage.WebDavService -> stringResource(R.string.webdav_service_title)
                                 SyncSettingsPage.WebDavFolderPair -> stringResource(R.string.webdav_folder_pair_title)
+                                SyncSettingsPage.WebDavRemoteFolderPicker -> stringResource(R.string.webdav_remote_folder_picker_title)
                                 SyncSettingsPage.WebDavManual -> stringResource(R.string.webdav_manual_title)
                             }
                         Text(title, style = MaterialTheme.typography.titleMedium)
@@ -1539,8 +1711,24 @@ private fun SyncSettingsScreen(
                         }
                     },
                     actions = {
-                        if (page == SyncSettingsPage.WebDavFolderPair) {
-                            TextButton(onClick = ::save) { Text(stringResource(R.string.action_save)) }
+                        when (page) {
+                            SyncSettingsPage.WebDavFolderPair -> {
+                                TextButton(onClick = ::save) { Text(stringResource(R.string.action_save)) }
+                            }
+
+                            SyncSettingsPage.WebDavRemoteFolderPicker -> {
+                                TextButton(
+                                    enabled = !remoteFolderPickerLoading,
+                                    onClick = {
+                                        val selected = normalizeRemoteFolderPath(remoteFolderPickerPath)
+                                        remoteRoot = selected
+                                        scope.launch { prefs.setWebDavRemoteRoot(selected) }
+                                        popPage()
+                                    },
+                                ) { Text(stringResource(R.string.webdav_remote_folder_picker_select)) }
+                            }
+
+                            else -> Unit
                         }
                     },
                 )
@@ -1783,12 +1971,34 @@ private fun SyncSettingsScreen(
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
                             )
-                            ZhixuTextField(
-                                value = remoteRoot,
-                                onValueChange = { remoteRoot = it },
-                                label = { Text(stringResource(R.string.webdav_folder_pair_remote_folder)) },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
+                            ListItem(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable { page = SyncSettingsPage.WebDavRemoteFolderPicker },
+                                leadingContent = {
+                                    Icon(
+                                        painter = painterResource(Ionicons.Vault),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                },
+                                headlineContent = { Text(stringResource(R.string.webdav_folder_pair_remote_folder)) },
+                                supportingContent = {
+                                    Text(
+                                        text = normalizeRemoteFolderPath(remoteRoot),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                                trailingContent = {
+                                    Icon(
+                                        painter = painterResource(Ionicons.ChevronForward),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                },
                             )
                             ZhixuTextField(
                                 value = localFolderLabel,
@@ -1828,6 +2038,137 @@ private fun SyncSettingsScreen(
                                     )
                                 },
                             )
+                        }
+                    }
+                }
+            }
+
+            SyncSettingsPage.WebDavRemoteFolderPicker ->
+                PageLazyColumn(webDavRemoteFolderPickerListState) {
+                val current = normalizeRemoteFolderPath(remoteFolderPickerPath)
+                val currentRel = current.trim('/').trim()
+                val canGoUp = current != "/"
+                val parentPath =
+                    if (!canGoUp) {
+                        "/"
+                    } else {
+                        val parts = currentRel.split('/').filter { it.isNotBlank() }
+                        if (parts.size <= 1) "/" else "/" + parts.dropLast(1).joinToString("/")
+                    }
+
+                item { Spacer(modifier = Modifier.height(12.dp)) }
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = MaterialTheme.shapes.extraLarge,
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.webdav_remote_folder_picker_current_path_fmt, current),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 13.sp,
+                            )
+
+                            if (!remoteFolderPickerError.isNullOrBlank()) {
+                                Text(
+                                    text = remoteFolderPickerError!!,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontSize = 13.sp,
+                                )
+                            }
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(
+                                    enabled = !remoteFolderPickerLoading,
+                                    onClick = { remoteFolderPickerReloadKey += 1 },
+                                ) { Text(stringResource(R.string.action_refresh)) }
+
+                                Button(
+                                    enabled = !remoteFolderPickerLoading,
+                                    onClick = {
+                                        remoteRoot = current
+                                        scope.launch { prefs.setWebDavRemoteRoot(current) }
+                                        popPage()
+                                    },
+                                ) { Text(stringResource(R.string.webdav_remote_folder_picker_select)) }
+                            }
+                        }
+                    }
+                }
+
+                item { Spacer(modifier = Modifier.height(12.dp)) }
+
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = MaterialTheme.shapes.extraLarge,
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            if (canGoUp) {
+                                ListItem(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .clickable { remoteFolderPickerPath = parentPath },
+                                    leadingContent = {
+                                        Icon(
+                                            painter = painterResource(Ionicons.ChevronBack),
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    },
+                                    headlineContent = { Text(stringResource(R.string.webdav_remote_folder_picker_parent)) },
+                                )
+                                HorizontalDivider(color = dividerColor)
+                            }
+
+                            if (remoteFolderPickerLoading) {
+                                Box(modifier = Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                }
+                            } else if (remoteFolderPickerFolders.isEmpty()) {
+                                Text(
+                                    text = stringResource(R.string.webdav_remote_folder_picker_empty),
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 13.sp,
+                                )
+                            } else {
+                                remoteFolderPickerFolders.forEachIndexed { index, folder ->
+                                    ListItem(
+                                        modifier =
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .clickable { remoteFolderPickerPath = folder.path },
+                                        leadingContent = {
+                                            Icon(
+                                                painter = painterResource(Ionicons.Vault),
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        },
+                                        headlineContent = { Text(folder.name) },
+                                        supportingContent = { Text(folder.path, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                        trailingContent = {
+                                            Icon(
+                                                painter = painterResource(Ionicons.ChevronForward),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        },
+                                    )
+                                    if (index != remoteFolderPickerFolders.lastIndex) {
+                                        HorizontalDivider(color = dividerColor)
+                                    }
+                                }
+                            }
                         }
                     }
                 }

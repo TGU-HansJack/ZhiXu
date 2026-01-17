@@ -1199,13 +1199,15 @@ class WebDavSyncEngine(
     private fun normalizeHrefToPath(href: String, rootPath: String): String {
         val decoded = Uri.decode(href)
         val path = Uri.parse(decoded).path ?: decoded
-        val trimmedRoot = rootPath.trimEnd('/')
+        val trimmedRoot = Uri.decode(rootPath).trimEnd('/')
         val trimmedPath = path.trimEnd('/')
         val rel =
             when {
                 trimmedPath == trimmedRoot -> ""
                 trimmedPath.startsWith("$trimmedRoot/") -> trimmedPath.removePrefix("$trimmedRoot/").trimStart('/')
-                else -> trimmedPath.trimStart('/')
+                // Some servers may return relative hrefs. Accept those, but ignore absolute paths that are outside
+                // the requested root to avoid accidentally treating the whole WebDAV root as the current folder.
+                else -> if (trimmedPath.startsWith("/")) "" else trimmedPath.trimStart('/')
             }
         return rel
     }
