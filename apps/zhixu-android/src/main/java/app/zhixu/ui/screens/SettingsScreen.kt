@@ -264,7 +264,7 @@ fun SettingsScreen(
 
                     HorizontalDivider(color = dividerColor)
                     SettingsRow(
-                        iconRes = Ionicons.Sync,
+                        iconRes = Ionicons.Cloud,
                         title = stringResource(R.string.settings_section_sync),
                         subtitle = stringResource(R.string.settings_sync_subtitle),
                         enabled = vaultRootUri != null,
@@ -818,7 +818,7 @@ private fun UiSettingsFullScreen(
                         supportingContent = {
                             Text(
                                 stringResource(R.string.settings_ui_strict_preview_subtitle),
-                                maxLines = 2,
+                                maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         },
@@ -1795,7 +1795,7 @@ private fun SyncSettingsScreen(
                                     .clickable { page = SyncSettingsPage.OfficialServer },
                             leadingContent = {
                                 Icon(
-                                    painter = painterResource(Ionicons.CloudDownloadOutline),
+                                    painter = painterResource(Ionicons.Cloud),
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(20.dp),
@@ -1828,7 +1828,7 @@ private fun SyncSettingsScreen(
                                     .clickable { page = SyncSettingsPage.WebDavService },
                             leadingContent = {
                                 Icon(
-                                    painter = painterResource(Ionicons.Sync),
+                                    painter = painterResource(Ionicons.Cloud),
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(20.dp),
@@ -1994,7 +1994,7 @@ private fun SyncSettingsScreen(
                                 supportingContent = {
                                     Text(
                                         text = normalizeRemoteFolderPath(remoteRoot),
-                                        maxLines = 2,
+                                        maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                 },
@@ -2028,7 +2028,7 @@ private fun SyncSettingsScreen(
                                         .fillMaxWidth()
                                         .clickable { showConflictStrategyDialog = true },
                                 headlineContent = { Text(stringResource(R.string.webdav_conflict_strategy_title)) },
-                                supportingContent = { Text(strategyLabel, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                                supportingContent = { Text(strategyLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             )
 
                             ListItem(
@@ -2241,7 +2241,7 @@ private fun SyncSettingsScreen(
                                 )
                             },
                             headlineContent = { Text(stringResource(R.string.webdav_account_title)) },
-                            supportingContent = { Text(accountSubtitle, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                            supportingContent = { Text(accountSubtitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             trailingContent = {
                                 Icon(
                                     painter = painterResource(Ionicons.ChevronForward),
@@ -2265,7 +2265,7 @@ private fun SyncSettingsScreen(
                                 )
                             },
                             headlineContent = { Text(stringResource(R.string.webdav_folder_pair_title)) },
-                            supportingContent = { Text(pairSubtitle, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                            supportingContent = { Text(pairSubtitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             trailingContent = {
                                 Icon(
                                     painter = painterResource(Ionicons.ChevronForward),
@@ -2297,7 +2297,7 @@ private fun SyncSettingsScreen(
                                         webDavAutomation.retryCount,
                                         webDavAutomation.retryIntervalSeconds,
                                     )
-                                Text(subtitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             },
                             trailingContent = {
                                 Icon(
@@ -2328,7 +2328,7 @@ private fun SyncSettingsScreen(
                                         .lineSequence()
                                         .firstOrNull()
                                         .orEmpty()
-                                Text(intro, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(intro, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             },
                             trailingContent = {
                                 Icon(
@@ -2586,7 +2586,7 @@ private fun ProSettingsScreen(
                                 )
                             },
                             headlineContent = { Text(stringResource(R.string.pro_feature_ai_title)) },
-                            supportingContent = { Text(stringResource(R.string.pro_feature_ai_desc), maxLines = 3, overflow = TextOverflow.Ellipsis) },
+                            supportingContent = { Text(stringResource(R.string.pro_feature_ai_desc), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         )
 
                         HorizontalDivider(color = dividerColor)
@@ -2601,7 +2601,7 @@ private fun ProSettingsScreen(
                                 )
                             },
                             headlineContent = { Text(stringResource(R.string.pro_feature_workshop_title)) },
-                            supportingContent = { Text(stringResource(R.string.pro_feature_workshop_desc), maxLines = 3, overflow = TextOverflow.Ellipsis) },
+                            supportingContent = { Text(stringResource(R.string.pro_feature_workshop_desc), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         )
 
                         HorizontalDivider(color = dividerColor)
@@ -2616,7 +2616,7 @@ private fun ProSettingsScreen(
                                 )
                             },
                             headlineContent = { Text(stringResource(R.string.pro_feature_sync_title)) },
-                            supportingContent = { Text(stringResource(R.string.pro_feature_sync_desc), maxLines = 3, overflow = TextOverflow.Ellipsis) },
+                            supportingContent = { Text(stringResource(R.string.pro_feature_sync_desc), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         )
 
                         HorizontalDivider(color = dividerColor)
@@ -2631,7 +2631,7 @@ private fun ProSettingsScreen(
                                 )
                             },
                             headlineContent = { Text(stringResource(R.string.pro_feature_drawing_title)) },
-                            supportingContent = { Text(stringResource(R.string.pro_feature_drawing_desc), maxLines = 3, overflow = TextOverflow.Ellipsis) },
+                            supportingContent = { Text(stringResource(R.string.pro_feature_drawing_desc), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         )
                     }
                 }
@@ -2983,7 +2983,7 @@ private fun UiSettingsDialog(
                         supportingContent = {
                             Text(
                                 stringResource(R.string.settings_ui_strict_preview_subtitle),
-                                maxLines = 2,
+                                maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         },
@@ -3176,7 +3176,7 @@ private fun SyncDialog(
                     ListItem(
                         modifier = Modifier.fillMaxWidth(),
                         headlineContent = { Text(stringResource(R.string.webdav_enable)) },
-                        supportingContent = { Text(stringResource(R.string.settings_sync_subtitle), maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = { Text(stringResource(R.string.settings_sync_subtitle), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         leadingContent = {
                             Icon(
                                 painter = painterResource(Ionicons.Sync),

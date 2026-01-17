@@ -200,7 +200,7 @@ fun WebDavSyncPanel(
                             webDavAutomation.intervalMinutes,
                             webDavAutomation.retryCount,
                         ),
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             },
@@ -290,11 +290,18 @@ fun WebDavSyncPanel(
                 headlineContent = { Text(stringResource(R.string.webdav_sync_panel_history_title)) },
                 supportingContent = {
                     if (history.isEmpty()) {
-                        Text(stringResource(R.string.webdav_sync_panel_history_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = stringResource(R.string.webdav_sync_panel_history_empty),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     } else {
                         Text(
-                            stringResource(R.string.webdav_sync_panel_history_subtitle_fmt, minOf(history.size, 5)),
+                            text = stringResource(R.string.webdav_sync_panel_history_subtitle_fmt, minOf(history.size, 5)),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 },
@@ -335,7 +342,7 @@ fun WebDavSyncPanel(
                                     append(t.run?.error)
                                 }
                             }
-                        Text(line, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(line, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     },
                 )
                 if (idx != minOf(history.size, 5) - 1) HorizontalDivider(color = dividerColor)
