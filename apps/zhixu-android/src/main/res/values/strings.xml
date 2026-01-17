@@ -291,6 +291,21 @@
 
     <!-- WebDAV -->
     <string name="webdav_enable">Enable WebDAV</string>
+    <string name="webdav_service_title">WebDAV service</string>
+    <string name="webdav_account_title">WebDAV account</string>
+    <string name="webdav_account_subtitle_empty">Not configured</string>
+    <string name="webdav_account_subtitle_fmt">%1$s · %2$s</string>
+    <string name="webdav_account_connect">Connect</string>
+    <string name="webdav_folder_pair_title">Add sync folder pair</string>
+    <string name="webdav_folder_pair_name">Pair name</string>
+    <string name="webdav_folder_pair_remote_folder">Remote folder path</string>
+    <string name="webdav_folder_pair_local_folder">Local folder</string>
+    <string name="webdav_automation_title">Automation</string>
+    <string name="webdav_automation_interval_minutes">Auto sync interval (minutes)</string>
+    <string name="webdav_automation_retry_count">Retries after failure</string>
+    <string name="webdav_automation_retry_interval_seconds">Retry interval (seconds)</string>
+    <string name="webdav_manual_title">User manual</string>
+    <string name="webdav_manual_content">WebDAV sync keeps the current Vault folder consistent across devices while remaining local-first, and provides a controllable remote backup.\n\nSetup:\n1) WebDAV account: enter server URL, username and password, then tap Connect.\n2) Add sync folder pair: set the remote folder path for the current Vault, choose a conflict strategy, and decide whether to sync the database file.\n3) Automation: configure auto sync interval, retry count and retry interval.\n\nCommon scenarios:\n- Phone + tablet: point both devices to the same remote folder.\n- Frequent edits across devices: prefer “Keep both” or “Ask each time” to reduce accidental overwrites.\n\nNotes:\n- First sync can be slow; keep network stable.\n- If conflicts happen, resolve them in Conflict Center.\n- Avoid editing the same file offline on multiple devices for long periods.</string>
     <string name="webdav_base_url">Base URL</string>
     <string name="webdav_remote_root">Remote root path</string>
     <string name="webdav_username">Username</string>
