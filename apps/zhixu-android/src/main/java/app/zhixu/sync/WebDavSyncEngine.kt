@@ -774,8 +774,12 @@ class WebDavSyncEngine(
                 }
             }
 
-            if (!dryRun && !config.includeIndexSqlite) {
-                runCatching { repository.rebuildIndex(rootUri) }
+            if (!dryRun) {
+                val localMutated = downloaded > 0 || deletedLocal > 0
+                if (localMutated) {
+                    repository.invalidateDocListCache(rootUri)
+                    runCatching { repository.rebuildIndex(rootUri, forceScan = true) }
+                }
             }
 
             if (!dryRun) {
@@ -1157,22 +1161,34 @@ class WebDavSyncEngine(
     private suspend fun listRemoteFiles(remoteRootUrl: String, config: WebDavConfig): List<RemoteEntry> {
         val rootPath = Uri.parse(remoteRootUrl).path ?: "/"
         val toVisit = ArrayDeque<String>()
-        toVisit.add(remoteRootUrl)
+        val visited = HashSet<String>()
+        toVisit.add("")
         val out = ArrayList<RemoteEntry>()
 
         while (toVisit.isNotEmpty()) {
-            val dirUrl = toVisit.removeFirst()
+            val dirRel = toVisit.removeFirst()
+            if (!visited.add(dirRel)) continue
+            val dirUrl =
+                if (dirRel.isBlank()) {
+                    remoteRootUrl.ensureTrailingSlash()
+                } else {
+                    buildRemoteUrl(remoteRootUrl, dirRel).ensureTrailingSlash()
+                }
+
             val (code, xml) = WebDavClient.propfind(config, dirUrl, depth = "1")
             if (code != 207 && code !in 200..299) continue
             val entries = parsePropfind(xml)
             for (entry in entries) {
-                val href = entry.path
-                val normalizedPath = normalizeHrefToPath(href, rootPath)
+                val normalizedPath = normalizeHrefToPath(entry.path, rootPath)
                 if (normalizedPath.isEmpty()) continue
                 val remote = entry.copy(path = normalizedPath)
                 out += remote
                 if (remote.isDir) {
-                    toVisit.add(remoteRootUrl + normalizedPath.trimEnd('/') + "/")
+                    val childDir = normalizedPath.trimEnd('/')
+                    // PROPFIND depth=1 includes the directory itself; avoid re-queuing it.
+                    if (childDir != dirRel) {
+                        toVisit.add(childDir)
+                    }
                 }
             }
         }
@@ -1219,11 +1235,13 @@ class WebDavSyncEngine(
             etag = null
         }
 
+        fun tagName(): String = parser.name.orEmpty().substringAfterLast(':').lowercase()
+
         var event = parser.eventType
         while (event != XmlPullParser.END_DOCUMENT) {
             when (event) {
                 XmlPullParser.START_TAG -> {
-                    when (parser.name.lowercase()) {
+                    when (tagName()) {
                         "response" -> {
                             href = null; isDir = null; size = null; lastModified = null; etag = null
                         }
@@ -1237,7 +1255,7 @@ class WebDavSyncEngine(
                 }
 
                 XmlPullParser.END_TAG -> {
-                    if (parser.name.lowercase() == "response") flush()
+                    if (tagName() == "response") flush()
                 }
             }
             event = parser.next()
