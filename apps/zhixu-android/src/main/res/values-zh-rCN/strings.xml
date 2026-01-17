@@ -280,6 +280,7 @@
     <string name="webdav_folder_pair_remote_folder">云端远程文件夹路径</string>
     <string name="webdav_folder_pair_local_folder">本地文件夹</string>
     <string name="webdav_automation_title">自动化设定</string>
+    <string name="webdav_automation_subtitle_fmt">间隔 %1$d 分钟 · 重试 %2$d 次 · 重试间隔 %3$d 秒</string>
     <string name="webdav_automation_interval_minutes">自动同步时间间隔（分钟）</string>
     <string name="webdav_automation_retry_count">同步失败后的自动重试次数</string>
     <string name="webdav_automation_retry_interval_seconds">重试时间间隔（秒）</string>

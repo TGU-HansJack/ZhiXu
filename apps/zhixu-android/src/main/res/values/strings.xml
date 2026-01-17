@@ -301,6 +301,7 @@
     <string name="webdav_folder_pair_remote_folder">Remote folder path</string>
     <string name="webdav_folder_pair_local_folder">Local folder</string>
     <string name="webdav_automation_title">Automation</string>
+    <string name="webdav_automation_subtitle_fmt">Every %1$d min · Retries %2$d · Retry interval %3$d s</string>
     <string name="webdav_automation_interval_minutes">Auto sync interval (minutes)</string>
     <string name="webdav_automation_retry_count">Retries after failure</string>
     <string name="webdav_automation_retry_interval_seconds">Retry interval (seconds)</string>

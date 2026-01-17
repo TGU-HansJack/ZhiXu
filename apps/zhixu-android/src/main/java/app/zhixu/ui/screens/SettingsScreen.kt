@@ -1942,6 +1942,16 @@ private fun SyncSettingsScreen(
                                 )
                             },
                             headlineContent = { Text(stringResource(R.string.webdav_automation_title)) },
+                            supportingContent = {
+                                val subtitle =
+                                    stringResource(
+                                        R.string.webdav_automation_subtitle_fmt,
+                                        webDavAutomation.intervalMinutes,
+                                        webDavAutomation.retryCount,
+                                        webDavAutomation.retryIntervalSeconds,
+                                    )
+                                Text(subtitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            },
                             trailingContent = {
                                 Icon(
                                     painter = painterResource(Ionicons.ChevronForward),
@@ -1965,6 +1975,14 @@ private fun SyncSettingsScreen(
                                 )
                             },
                             headlineContent = { Text(stringResource(R.string.webdav_manual_title)) },
+                            supportingContent = {
+                                val intro =
+                                    stringResource(R.string.webdav_manual_content)
+                                        .lineSequence()
+                                        .firstOrNull()
+                                        .orEmpty()
+                                Text(intro, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            },
                             trailingContent = {
                                 Icon(
                                     painter = painterResource(Ionicons.ChevronForward),
