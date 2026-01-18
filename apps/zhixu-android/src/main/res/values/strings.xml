@@ -403,6 +403,7 @@
 
     <string name="webdav_task_detail_title">Sync task</string>
     <string name="webdav_task_execute">Execute</string>
+    <string name="webdav_task_no_executable_ops">No executable operations</string>
     <string name="webdav_task_created_at_fmt">Created: %1$s</string>
     <string name="webdav_task_ended_at_fmt">Ended: %1$s</string>
     <string name="webdav_task_config_changed">Config changed; regenerate task</string>

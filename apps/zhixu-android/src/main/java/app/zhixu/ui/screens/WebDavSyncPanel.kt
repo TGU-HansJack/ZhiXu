@@ -474,12 +474,19 @@ private fun WebDavTaskDetailScreen(
     val unresolvedConflicts =
         task.operations.any { it.kind == WebDavPlannedOpKind.CONFLICT && it.resolution == null }
 
+    val hasExecutableOps =
+        task.operations.any { op ->
+            if (op.state == WebDavSyncTaskOpState.SKIPPED) return@any false
+            if (op.kind == WebDavPlannedOpKind.CONFLICT) op.resolution != null else true
+        }
+
     val canExecute =
         isCurrent &&
             !configMismatch &&
             vaultRootUri != null &&
             webDavConfig.enabled &&
             !unresolvedConflicts &&
+            hasExecutableOps &&
             !working
 
     Scaffold(
@@ -548,12 +555,20 @@ private fun WebDavTaskDetailScreen(
                                     },
                                     shape = CircleShape,
                                     border = null,
-                                    colors =
-                                        AssistChipDefaults.assistChipColors(
-                                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                            labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        ),
-                                    label = { Text(stringResource(R.string.webdav_task_execute), maxLines = 1) },
+                                     colors =
+                                         AssistChipDefaults.assistChipColors(
+                                             containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                             labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                         ),
+                                    label = {
+                                        Text(
+                                            text =
+                                                stringResource(
+                                                    if (hasExecutableOps) R.string.webdav_task_execute else R.string.webdav_task_no_executable_ops,
+                                                ),
+                                            maxLines = 1,
+                                        )
+                                    },
                                 )
                             }
                         }

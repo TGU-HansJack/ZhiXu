@@ -141,6 +141,18 @@ class WebDavSyncEngine(
                     )
                 }
                 .filter { it.path.isNotBlank() }
+        // Task semantics: if the task declares no operations, the engine must not infer any.
+        // This prevents "empty expected plan" from triggering a full scan that can discover conflicts.
+        if (normalizedExpected.isEmpty()) {
+            return WebDavSyncSummary(
+                uploaded = 0,
+                downloaded = 0,
+                deletedRemote = 0,
+                deletedLocal = 0,
+                conflicts = 0,
+                failed = 0,
+            )
+        }
         val onlyPaths = normalizedExpected.map { it.path }.toSet()
         return syncVaultInternal(
             rootUri = rootUri,
