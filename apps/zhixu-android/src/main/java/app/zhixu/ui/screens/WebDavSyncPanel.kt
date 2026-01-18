@@ -95,10 +95,23 @@ fun WebDavSyncPanel(
         val root = vaultRootUri ?: return
         loading = true
         error = null
-        state =
+        val loaded =
             runCatching { manager.load(root) }
                 .onFailure { error = it.message ?: it.javaClass.simpleName }
                 .getOrNull()
+        state = loaded
+
+        // Keep the detail dialog in sync; otherwise in-dialog edits (skip / conflict resolution)
+        // are persisted but won't reflect until the user re-enters the task page.
+        val detailId = detailTask?.id
+        if (showTaskDetail && detailId != null && loaded != null) {
+            val refreshed =
+                loaded.current?.takeIf { it.id == detailId } ?:
+                    loaded.history.firstOrNull { it.id == detailId }
+            if (refreshed != null) {
+                detailTask = refreshed
+            }
+        }
         loading = false
     }
 
