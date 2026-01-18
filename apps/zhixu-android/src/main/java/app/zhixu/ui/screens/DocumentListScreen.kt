@@ -122,6 +122,8 @@ import io.noties.markwon.Markwon
 import io.noties.markwon.core.MarkwonTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -184,15 +186,14 @@ fun DocumentListScreen(
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
-    var lastRefreshBannerAtMs by remember { mutableStateOf(0L) }
+    var lastRefreshBannerAtMs by remember(vaultRootUri) { mutableStateOf(0L) }
+    var manualRefreshToken by remember(vaultRootUri) { mutableLongStateOf(0L) }
     var showSearchSheet by remember { mutableStateOf(false) }
     var showSortFilterSheet by remember { mutableStateOf(false) }
     var pendingOpenSearch by remember { mutableStateOf(false) }
     var pendingOpenSortFilter by remember { mutableStateOf(false) }
     var lastSearchToken by remember { mutableLongStateOf(searchRequestToken) }
     var lastSortFilterToken by remember { mutableLongStateOf(sortFilterRequestToken) }
-    var pendingShowUpdatedBanner by remember { mutableStateOf(false) }
-    var sawRefreshingForBanner by remember { mutableStateOf(false) }
 
     var selectedDoc by remember { mutableStateOf<UiDoc?>(null) }
     var showDocMenu by remember { mutableStateOf(false) }
@@ -353,26 +354,18 @@ fun DocumentListScreen(
         if (vaultRootUri == null) return@LaunchedEffect
         documentIndex.changes.collect {
             reloadFromIndex()
-            if (pendingShowUpdatedBanner) {
-                lastRefreshBannerAtMs = SystemClock.uptimeMillis()
-                pendingShowUpdatedBanner = false
-            }
         }
     }
 
-    LaunchedEffect(isActive, isIndexUpdating) {
+    LaunchedEffect(manualRefreshToken, vaultRootUri, isActive) {
         if (!isActive) return@LaunchedEffect
-        if (pendingShowUpdatedBanner) {
-            if (isIndexUpdating) {
-                sawRefreshingForBanner = true
-            } else if (sawRefreshingForBanner) {
-                lastRefreshBannerAtMs = SystemClock.uptimeMillis()
-                pendingShowUpdatedBanner = false
-                sawRefreshingForBanner = false
-            }
-        } else {
-            sawRefreshingForBanner = false
-        }
+        if (manualRefreshToken <= 0L) return@LaunchedEffect
+        if (vaultRootUri == null) return@LaunchedEffect
+        indexUpdater.requestRefresh()
+        // Wait for a full updating cycle so we don't show "Updated" immediately when already idle.
+        indexUpdater.isUpdating.filter { it }.first()
+        indexUpdater.isUpdating.filter { !it }.first()
+        lastRefreshBannerAtMs = SystemClock.uptimeMillis()
     }
 
     fun clearSearch() {
@@ -429,8 +422,8 @@ fun DocumentListScreen(
                 isRefreshing = isActive && isIndexUpdating,
                 onRefresh = {
                     if (!isActive) return@PullToRefreshBox
-                    pendingShowUpdatedBanner = true
-                    indexUpdater.requestRefresh()
+                    if (isIndexUpdating) return@PullToRefreshBox
+                    manualRefreshToken += 1L
                 },
                 state = pullState,
                 modifier = Modifier.fillMaxSize(),

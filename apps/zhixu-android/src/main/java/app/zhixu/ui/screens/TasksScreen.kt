@@ -84,8 +84,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -126,12 +128,15 @@ import app.zhixu.ui.components.RefreshStatusBanner
 import app.zhixu.ui.components.calendar.CalendarGrid
 import app.zhixu.data.UiTask
 import app.zhixu.data.VaultIndexRepository
+import app.zhixu.data.VaultIndexUpdater
 import app.zhixu.data.VaultRepository
 import app.zhixu.sync.VaultAutoSync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -158,6 +163,7 @@ fun TasksScreen(
     contentPadding: PaddingValues,
     vaultRootUri: Uri?,
     repository: VaultRepository,
+    indexUpdater: VaultIndexUpdater,
     isActive: Boolean,
     onOpenDoc: (String, String?, Int?) -> Unit,
     selectedTasks: Set<TaskKey>,
@@ -181,9 +187,11 @@ fun TasksScreen(
     var lastRefreshAtMs by remember { mutableStateOf(0L) }
     var lastRefreshBannerAtMs by remember { mutableStateOf(0L) }
     var isPullRefreshing by remember(vaultRootUri) { mutableStateOf(false) }
+    var manualRefreshToken by remember(vaultRootUri) { mutableLongStateOf(0L) }
     var cacheUpdatedAtMs by remember(vaultRootUri) { mutableStateOf(initialCacheEntry?.updatedAtMs ?: 0L) }
     var indexReady by remember(vaultRootUri) { mutableStateOf<Boolean?>(null) }
     var indexBuilding by remember(vaultRootUri) { mutableStateOf(false) }
+    val isIndexUpdating by indexUpdater.isUpdating.collectAsState()
 
     suspend fun refresh(force: Boolean, showUpdatedBanner: Boolean) {
         val root = vaultRootUri ?: return
@@ -248,6 +256,18 @@ fun TasksScreen(
         }
     }
 
+    LaunchedEffect(manualRefreshToken, vaultRootUri, isActive) {
+        if (!isActive) return@LaunchedEffect
+        if (manualRefreshToken <= 0L) return@LaunchedEffect
+        if (vaultRootUri == null) return@LaunchedEffect
+        if (isIndexUpdating) return@LaunchedEffect
+        indexUpdater.requestRefresh()
+        // Wait for a full updating cycle so we don't show "Updated" immediately when already idle.
+        indexUpdater.isUpdating.filter { it }.first()
+        indexUpdater.isUpdating.filter { !it }.first()
+        refresh(force = true, showUpdatedBanner = true)
+    }
+
 
     LaunchedEffect(vaultRootUri, isActive, indexReady) {
         if (!isActive) return@LaunchedEffect
@@ -278,8 +298,13 @@ fun TasksScreen(
         ) {
             val pullState = rememberPullToRefreshState()
             PullToRefreshBox(
-                isRefreshing = isActive && isPullRefreshing,
-                onRefresh = { if (isActive) scope.launch { refresh(force = true, showUpdatedBanner = true) } },
+                isRefreshing = isActive && (isIndexUpdating || isPullRefreshing),
+                onRefresh = {
+                    if (!isActive) return@PullToRefreshBox
+                    if (vaultRootUri == null) return@PullToRefreshBox
+                    if (isIndexUpdating || isPullRefreshing) return@PullToRefreshBox
+                    manualRefreshToken += 1L
+                },
                 state = pullState,
                 modifier = Modifier.fillMaxSize(),
                 indicator = {},
@@ -439,7 +464,7 @@ fun TasksScreen(
                     }
 
                     RefreshStatusBanner(
-                        isRefreshing = isPullRefreshing,
+                        isRefreshing = isActive && (isIndexUpdating || isPullRefreshing),
                         lastRefreshedAtMs = lastRefreshBannerAtMs,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
                     )

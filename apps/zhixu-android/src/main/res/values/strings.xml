@@ -507,7 +507,7 @@
 
     <!-- Pull-to-refresh -->
     <string name="pull_refresh_refreshing">Refreshing...</string>
-    <string name="pull_refresh_updated">Synced</string>
+    <string name="pull_refresh_updated">Updated</string>
 
     <!-- Common -->
     <string name="common_loading">Loading...</string>

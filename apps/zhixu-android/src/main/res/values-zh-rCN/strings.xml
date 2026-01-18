@@ -485,7 +485,7 @@
 
     <!-- Pull-to-refresh -->
     <string name="pull_refresh_refreshing">刷新中…</string>
-    <string name="pull_refresh_updated">已同步</string>
+    <string name="pull_refresh_updated">已刷新</string>
 
     <!-- Common -->
     <string name="common_loading">加载中…</string>

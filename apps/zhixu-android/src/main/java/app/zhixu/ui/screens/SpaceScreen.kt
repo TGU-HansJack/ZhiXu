@@ -13,9 +13,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -34,6 +37,7 @@ import app.zhixu.R
 import app.zhixu.data.VaultRepository
 import app.zhixu.data.SearchResult
 import app.zhixu.ui.DocListMutation
+import app.zhixu.ui.components.RefreshStatusBanner
 import app.zhixu.ui.components.VaultSearchDialog
 import app.zhixu.ui.components.ZhixuTextField
 import app.zhixu.ui.components.VaultDrawer
@@ -43,6 +47,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SpaceScreen(
     contentPadding: PaddingValues,
@@ -98,6 +103,10 @@ fun SpaceScreen(
     var searchJob by remember { mutableStateOf<Job?>(null) }
     val highlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     val listBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
+    val pullState = rememberPullToRefreshState()
+    var isPullRefreshing by remember(root) { mutableStateOf(false) }
+    var lastRefreshBannerAtMs by remember(root) { mutableStateOf(0L) }
+    var manualRefreshToken by remember(root) { mutableLongStateOf(0L) }
 
     fun clearSearch() {
         searchQuery = ""
@@ -182,12 +191,20 @@ fun SpaceScreen(
     }
 
 
-    Box(
+    PullToRefreshBox(
+        isRefreshing = isActive && isPullRefreshing,
+        onRefresh = {
+            if (!isActive || isPullRefreshing) return@PullToRefreshBox
+            isPullRefreshing = true
+            manualRefreshToken += 1L
+        },
+        state = pullState,
         modifier =
             Modifier
                 .fillMaxSize()
                 .padding(contentPadding)
                 .background(MaterialTheme.colorScheme.background),
+        indicator = {},
     ) {
         Box(modifier = Modifier.fillMaxSize().background(listBg)) {
             VaultDrawer(
@@ -198,6 +215,11 @@ fun SpaceScreen(
                 isActive = isActive,
                 refreshToken = refreshToken,
                 mutation = mutation,
+                manualRefreshToken = manualRefreshToken,
+                onManualRefreshComplete = { success ->
+                    isPullRefreshing = false
+                    if (success) lastRefreshBannerAtMs = android.os.SystemClock.uptimeMillis()
+                },
                 onDocListMutated = onDocListMutated,
                 enableMultiSelect = true,
                 selectedEntryUris = selectedEntryUris,
@@ -220,6 +242,12 @@ fun SpaceScreen(
                 modifier = Modifier.fillMaxSize(),
                 activeDirectoryRelativePath = activeDirectoryRelativePath,
                 onActiveDirectoryChange = { activeDirectoryRelativePath = it },
+            )
+
+            RefreshStatusBanner(
+                isRefreshing = isPullRefreshing,
+                lastRefreshedAtMs = lastRefreshBannerAtMs,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
             )
         }
     }

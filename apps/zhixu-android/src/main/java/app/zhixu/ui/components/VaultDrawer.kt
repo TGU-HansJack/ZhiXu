@@ -69,6 +69,7 @@ import app.zhixu.data.VaultTreeEntry
 import app.zhixu.draw.ZhixuDrawFormat
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.DocListMutation
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 private object VaultDrawerCache {
@@ -107,6 +108,8 @@ fun VaultDrawer(
     isActive: Boolean,
     refreshToken: Long,
     mutation: DocListMutation?,
+    manualRefreshToken: Long = 0L,
+    onManualRefreshComplete: (Boolean) -> Unit = {},
     onDocListMutated: (DocListMutation) -> Unit = {},
     enableMultiSelect: Boolean = false,
     selectedEntryUris: Set<String> = emptySet(),
@@ -141,6 +144,7 @@ fun VaultDrawer(
     var errorText by remember(vaultRootUri) { mutableStateOf<String?>(null) }
     var cacheUpdatedAtMs by remember(vaultRootUri) { mutableStateOf(initialCache?.updatedAtMs ?: 0L) }
     var handledRefreshToken by remember(vaultRootUri) { mutableStateOf(initialCache?.refreshToken ?: 0L) }
+    var handledManualRefreshToken by remember(vaultRootUri) { mutableStateOf(0L) }
 
     var selectedEntry by remember(vaultRootUri) { mutableStateOf<VaultTreeEntry?>(null) }
     var showEntryMenu by remember(vaultRootUri) { mutableStateOf(false) }
@@ -296,6 +300,36 @@ fun VaultDrawer(
             }
         }
         if (!refreshedAny) persistCache()
+    }
+
+    LaunchedEffect(vaultRootUri, isActive, manualRefreshToken) {
+        if (!isActive) return@LaunchedEffect
+        if (manualRefreshToken == handledManualRefreshToken) return@LaunchedEffect
+        handledManualRefreshToken = manualRefreshToken
+
+        var success = false
+        try {
+            val prevExpanded = expandedDirs.filterValues { it }.keys.toSet()
+            val prevLoaded =
+                loadedDirs
+                    .filterValues { it }
+                    .keys
+                    .filter { it.isNotBlank() }
+                    .sortedBy { it.length }
+
+            // Reload root first (refreshing the dir-index for the root children), then re-load any
+            // previously-loaded directories so expanded trees stay populated.
+            reloadDir("", refresh = true)
+            for (dir in prevExpanded) expandedDirs[dir] = true
+            for (dir in prevLoaded) reloadDir(dir, refresh = true)
+            success = true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            errorText = t.message ?: t.javaClass.simpleName
+        } finally {
+            onManualRefreshComplete(success)
+        }
     }
 
     val entryByPath = remember(entries) { entries.associateBy { it.relativePath } }
