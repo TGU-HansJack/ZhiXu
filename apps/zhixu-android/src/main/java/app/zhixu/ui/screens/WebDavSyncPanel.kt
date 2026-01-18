@@ -14,17 +14,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -32,7 +34,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -224,16 +225,14 @@ fun WebDavSyncPanel(
                 }
 
                 else -> {
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(successCount.toString(), color = successColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(conflictCount.toString(), color = warningColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(failedCount.toString(), color = disabledColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(successCount.toString(), color = successColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(conflictCount.toString(), color = warningColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(failedCount.toString(), color = disabledColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (displayTimeText != null) {
                             Text(displayTimeText, color = neutralColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
@@ -290,10 +289,10 @@ fun WebDavSyncPanel(
         supportingContent = { Text(currentSubtitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         trailingContent = {
             if (current == null) {
-                TextButton(
+                AssistChip(
                     enabled = canGenerateTask,
                     onClick = {
-                        val root = vaultRootUri ?: return@TextButton
+                        val root = vaultRootUri ?: return@AssistChip
                         scope.launch {
                             runCatching {
                                 manager.generateTask(root, webDavConfig, trigger = WebDavSyncTaskTrigger.MANUAL)
@@ -306,7 +305,15 @@ fun WebDavSyncPanel(
                             }.onFailure { error = it.message ?: it.javaClass.simpleName }
                         }
                     },
-                ) { Text(stringResource(R.string.webdav_sync_panel_generate_task)) }
+                    shape = CircleShape,
+                    border = null,
+                    colors =
+                        AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        ),
+                    label = { Text(stringResource(R.string.webdav_sync_panel_generate_task), maxLines = 1) },
+                )
             } else {
                 Icon(
                     painter = painterResource(Ionicons.ChevronForward),
@@ -494,43 +501,61 @@ private fun WebDavTaskDetailScreen(
                     },
                     actions = {
                         if (isCurrent) {
-                            TextButton(
-                                enabled = vaultRootUri != null && !working,
-                                onClick = {
-                                    val root = vaultRootUri ?: return@TextButton
-                                    scope.launch {
-                                        working = true
-                                        localError = null
-                                        runCatching {
-                                            manager.discardCurrentTask(root)
-                                            onReload()
-                                            onClose()
-                                        }.onFailure { e ->
-                                            localError = e.message ?: e.javaClass.simpleName
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                AssistChip(
+                                    enabled = vaultRootUri != null && !working,
+                                    onClick = {
+                                        val root = vaultRootUri ?: return@AssistChip
+                                        scope.launch {
+                                            working = true
+                                            localError = null
+                                            runCatching {
+                                                manager.discardCurrentTask(root)
+                                                onReload()
+                                                onClose()
+                                            }.onFailure { e ->
+                                                localError = e.message ?: e.javaClass.simpleName
+                                            }
+                                            working = false
                                         }
-                                        working = false
-                                    }
-                                },
-                            ) { Text(stringResource(R.string.webdav_sync_panel_discard_task)) }
+                                    },
+                                    shape = CircleShape,
+                                    border = null,
+                                    colors =
+                                        AssistChipDefaults.assistChipColors(
+                                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                                            labelColor = MaterialTheme.colorScheme.onErrorContainer,
+                                        ),
+                                    label = { Text(stringResource(R.string.webdav_sync_panel_discard_task), maxLines = 1) },
+                                )
 
-                            TextButton(
-                                enabled = canExecute,
-                                onClick = {
-                                    val root = vaultRootUri ?: return@TextButton
-                                    scope.launch {
-                                        working = true
-                                        localError = null
-                                        runCatching {
-                                            manager.executeCurrentTask(root, webDavConfig)
-                                            onReload()
-                                            onClose()
-                                        }.onFailure { e ->
-                                            localError = e.message ?: e.javaClass.simpleName
+                                AssistChip(
+                                    enabled = canExecute,
+                                    onClick = {
+                                        val root = vaultRootUri ?: return@AssistChip
+                                        scope.launch {
+                                            working = true
+                                            localError = null
+                                            runCatching {
+                                                manager.executeCurrentTask(root, webDavConfig)
+                                                onReload()
+                                                onClose()
+                                            }.onFailure { e ->
+                                                localError = e.message ?: e.javaClass.simpleName
+                                            }
+                                            working = false
                                         }
-                                        working = false
-                                    }
-                                },
-                            ) { Text(stringResource(R.string.webdav_task_execute)) }
+                                    },
+                                    shape = CircleShape,
+                                    border = null,
+                                    colors =
+                                        AssistChipDefaults.assistChipColors(
+                                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                            labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        ),
+                                    label = { Text(stringResource(R.string.webdav_task_execute), maxLines = 1) },
+                                )
+                            }
                         }
                     },
                 )
@@ -629,10 +654,11 @@ private fun WebDavTaskDetailScreen(
                                     if (op.kind == WebDavPlannedOpKind.CONFLICT) {
                                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                             @Composable fun pick(strategy: WebDavConflictStrategy, labelRes: Int) {
-                                                TextButton(
+                                                FilterChip(
+                                                    selected = op.resolution == strategy,
                                                     enabled = isCurrent && !working,
                                                     onClick = {
-                                                        val root = vaultRootUri ?: return@TextButton
+                                                        val root = vaultRootUri ?: return@FilterChip
                                                         scope.launch {
                                                             manager.updateCurrentTask(root) { cur ->
                                                                 cur.copy(
@@ -645,7 +671,14 @@ private fun WebDavTaskDetailScreen(
                                                             onReload()
                                                         }
                                                     },
-                                                ) { Text(stringResource(labelRes), fontWeight = if (op.resolution == strategy) FontWeight.Bold else FontWeight.Normal) }
+                                                    shape = CircleShape,
+                                                    colors =
+                                                        FilterChipDefaults.filterChipColors(
+                                                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                        ),
+                                                    label = { Text(stringResource(labelRes), fontWeight = if (op.resolution == strategy) FontWeight.Bold else FontWeight.Normal, maxLines = 1) },
+                                                )
                                             }
                                             pick(WebDavConflictStrategy.LOCAL_WINS, R.string.webdav_task_conflict_use_local)
                                             pick(WebDavConflictStrategy.REMOTE_WINS, R.string.webdav_task_conflict_use_remote)
@@ -659,10 +692,10 @@ private fun WebDavTaskDetailScreen(
                                     Text(statusText, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     if (op.kind != WebDavPlannedOpKind.CONFLICT && isCurrent && !working) {
                                         val root = vaultRootUri
-                                        TextButton(
+                                        AssistChip(
                                             enabled = root != null,
                                             onClick = {
-                                                val r = root ?: return@TextButton
+                                                val r = root ?: return@AssistChip
                                                 scope.launch {
                                                     manager.updateCurrentTask(r) { cur ->
                                                         cur.copy(
@@ -680,11 +713,20 @@ private fun WebDavTaskDetailScreen(
                                                     onReload()
                                                 }
                                             },
-                                        ) {
-                                            Text(
-                                                if (op.state == WebDavSyncTaskOpState.SKIPPED) stringResource(R.string.webdav_task_unskip) else stringResource(R.string.webdav_task_skip),
-                                            )
-                                        }
+                                            shape = CircleShape,
+                                            border = null,
+                                            colors =
+                                                AssistChipDefaults.assistChipColors(
+                                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                ),
+                                            label = {
+                                                Text(
+                                                    if (op.state == WebDavSyncTaskOpState.SKIPPED) stringResource(R.string.webdav_task_unskip) else stringResource(R.string.webdav_task_skip),
+                                                    maxLines = 1,
+                                                )
+                                            },
+                                        )
                                     }
                                 }
                             },
