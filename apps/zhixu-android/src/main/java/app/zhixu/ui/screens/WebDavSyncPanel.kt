@@ -57,7 +57,6 @@ import app.zhixu.R
 import app.zhixu.data.VaultRepository
 import app.zhixu.data.WebDavConfig
 import app.zhixu.data.WebDavConflictStrategy
-import app.zhixu.data.WebDavAutomationSettings
 import app.zhixu.sync.WebDavPlannedOpKind
 import app.zhixu.sync.WebDavSyncTask
 import app.zhixu.sync.WebDavSyncTaskManager
@@ -76,8 +75,6 @@ fun WebDavSyncPanel(
     vaultRootUri: Uri?,
     repository: VaultRepository,
     webDavConfig: WebDavConfig,
-    webDavAutomation: WebDavAutomationSettings,
-    autoSyncEnabled: Boolean,
     legacyLastSummaryText: String?,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -194,15 +191,6 @@ fun WebDavSyncPanel(
             ?: last?.operations?.count { it.state == WebDavSyncTaskOpState.FAILED }
             ?: 0
 
-    val autoSyncLabel =
-        buildString {
-            append(stringResource(R.string.webdav_sync_panel_autosync_title))
-            append(" · ")
-            append(
-                if (autoSyncEnabled) stringResource(R.string.webdav_sync_panel_autosync_enabled) else stringResource(R.string.webdav_sync_panel_autosync_disabled),
-            )
-        }
-
     val displayTimeMs =
         when {
             isSyncRunning -> current?.run?.startedAtMs ?: 0L
@@ -210,251 +198,208 @@ fun WebDavSyncPanel(
         }
     val displayTimeText = displayTimeMs.takeIf { it > 0L }?.let { WebDavSyncTaskManager.formatEpochMs(it) }
 
-    Card(
+    ListItem(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(4.dp),
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Icon(
-                    painter = painterResource(statusIconRes),
-                    contentDescription = null,
-                    tint = statusIconTint,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(modifier = Modifier.size(8.dp))
-                Text(
-                    text = stringResource(R.string.webdav_sync_panel_last_status_title),
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(text = lastStatusText, color = statusTextColor, fontWeight = FontWeight.SemiBold)
-            }
-
-            if (last != null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = stringResource(R.string.webdav_sync_panel_result_success_fmt, successCount),
-                        color = successColor,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = stringResource(R.string.webdav_sync_panel_result_conflicts_fmt, conflictCount),
-                        color = warningColor,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = stringResource(R.string.webdav_sync_panel_result_failed_fmt, failedCount),
-                        color = disabledColor,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+        leadingContent = {
+            Icon(
+                painter = painterResource(statusIconRes),
+                contentDescription = null,
+                tint = statusIconTint,
+                modifier = Modifier.size(20.dp),
+            )
+        },
+        headlineContent = { Text(stringResource(R.string.webdav_sync_panel_last_status_title)) },
+        supportingContent = {
+            when {
+                loading -> {
+                    Text(stringResource(R.string.common_loading), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-            } else if (!legacyLastSummaryText.isNullOrBlank()) {
-                val line = legacyLastSummaryText.lineSequence().firstOrNull().orEmpty().trim()
-                val noTime = line.substringBeforeLast(" · ").trim()
-                if (noTime.isNotBlank()) {
-                    Text(text = noTime, color = neutralColor, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+
+                !error.isNullOrBlank() -> {
+                    Text(error!!, color = MaterialTheme.colorScheme.error, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+
+                last == null -> {
+                    Text("-", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+
+                else -> {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(successCount.toString(), color = successColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(conflictCount.toString(), color = warningColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(failedCount.toString(), color = disabledColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        if (displayTimeText != null) {
+                            Text(displayTimeText, color = neutralColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
                 }
             }
+        },
+        trailingContent = {
+            Text(
+                text = lastStatusText,
+                color = statusTextColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+    )
 
-            if (loading) {
-                Text(text = stringResource(R.string.common_loading), color = neutralColor, fontSize = 12.sp)
-            }
+    HorizontalDivider(color = dividerColor)
 
-            if (!error.isNullOrBlank()) {
-                Text(text = error!!, color = disabledColor, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(text = autoSyncLabel, color = neutralColor, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (displayTimeText != null) {
-                    Text(text = displayTimeText, color = neutralColor, fontSize = 12.sp)
-                }
-            }
+    val currentSubtitle =
+        if (current == null) {
+            stringResource(R.string.webdav_sync_panel_no_current_task)
+        } else {
+            val totalOps = current.operations.size
+            val unresolvedConflicts = current.operations.count { it.kind == WebDavPlannedOpKind.CONFLICT && it.resolution == null }
+            stringResource(R.string.webdav_sync_panel_current_task_summary_fmt, totalOps, unresolvedConflicts)
         }
-    }
 
-    Spacer(modifier = Modifier.height(12.dp))
+    val canGenerateTask = vaultRootUri != null && isConfigUsable() && !loading
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = MaterialTheme.shapes.extraLarge,
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Icon(
-                    painter = painterResource(Ionicons.ClipboardList),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(modifier = Modifier.size(8.dp))
-                Text(
-                    text = stringResource(R.string.webdav_sync_panel_current_task_title),
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                )
-                if (current == null) {
-                    TextButton(
-                        enabled = vaultRootUri != null && isConfigUsable() && !loading,
-                        onClick = {
-                            val root = vaultRootUri ?: return@TextButton
-                            scope.launch {
-                                runCatching {
-                                    manager.generateTask(root, webDavConfig, trigger = WebDavSyncTaskTrigger.MANUAL)
-                                    reload()
-                                    val refreshed = manager.load(root).current
-                                    if (refreshed != null) {
-                                        detailTask = refreshed
-                                        showTaskDetail = true
-                                    }
-                                }.onFailure { error = it.message ?: it.javaClass.simpleName }
-                            }
-                        },
-                    ) { Text(stringResource(R.string.webdav_sync_panel_generate_task)) }
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (current == null) {
-                Text(text = stringResource(R.string.webdav_sync_panel_no_current_task), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                val totalOps = current.operations.size
-                val unresolvedConflicts =
-                    current.operations.count { it.kind == WebDavPlannedOpKind.CONFLICT && it.resolution == null }
-                Text(
-                    text = stringResource(R.string.webdav_sync_panel_current_task_summary_fmt, totalOps, unresolvedConflicts),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    TextButton(
-                        onClick = {
+    ListItem(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .then(
+                    if (current != null) {
+                        Modifier.clickable {
                             detailTask = current
                             showTaskDetail = true
-                        },
-                    ) { Text(stringResource(R.string.webdav_sync_panel_review_task)) }
-
-                    TextButton(
-                        enabled = vaultRootUri != null && !loading,
-                        onClick = {
-                            val root = vaultRootUri ?: return@TextButton
-                            scope.launch {
-                                runCatching {
-                                    manager.discardCurrentTask(root)
-                                    reload()
-                                }.onFailure { error = it.message ?: it.javaClass.simpleName }
-                            }
-                        },
-                    ) { Text(stringResource(R.string.webdav_sync_panel_discard_task)) }
-                }
+                        }
+                    } else {
+                        Modifier
+                    },
+                ),
+        leadingContent = {
+            Icon(
+                painter = painterResource(Ionicons.ClipboardList),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        },
+        headlineContent = { Text(stringResource(R.string.webdav_sync_panel_current_task_title)) },
+        supportingContent = { Text(currentSubtitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        trailingContent = {
+            if (current == null) {
+                TextButton(
+                    enabled = canGenerateTask,
+                    onClick = {
+                        val root = vaultRootUri ?: return@TextButton
+                        scope.launch {
+                            runCatching {
+                                manager.generateTask(root, webDavConfig, trigger = WebDavSyncTaskTrigger.MANUAL)
+                                reload()
+                                val refreshed = manager.load(root).current
+                                if (refreshed != null) {
+                                    detailTask = refreshed
+                                    showTaskDetail = true
+                                }
+                            }.onFailure { error = it.message ?: it.javaClass.simpleName }
+                        }
+                    },
+                ) { Text(stringResource(R.string.webdav_sync_panel_generate_task)) }
+            } else {
+                Icon(
+                    painter = painterResource(Ionicons.ChevronForward),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
             }
-        }
-    }
+        },
+    )
 
-    Spacer(modifier = Modifier.height(12.dp))
+    HorizontalDivider(color = dividerColor)
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = MaterialTheme.shapes.extraLarge,
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+    ListItem(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable { historyExpanded = !historyExpanded },
+        leadingContent = {
+            Icon(
+                painter = painterResource(Ionicons.ListTodo),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        },
+        headlineContent = { Text(stringResource(R.string.webdav_sync_panel_history_title)) },
+        supportingContent = {
+            if (history.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.webdav_sync_panel_history_empty),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else {
+                Text(
+                    text = stringResource(R.string.webdav_sync_panel_history_subtitle_fmt, minOf(history.size, 5)),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        },
+        trailingContent = {
+            Icon(
+                painter = painterResource(Ionicons.ChevronDownLucide),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp).rotate(if (historyExpanded) 180f else 0f),
+            )
+        },
+    )
+    if (historyExpanded && history.isNotEmpty()) {
+        HorizontalDivider(color = dividerColor)
+        history.take(5).forEachIndexed { idx, t ->
             ListItem(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .clickable { historyExpanded = !historyExpanded },
+                        .clickable {
+                            detailTask = t
+                            showTaskDetail = true
+                        },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(Ionicons.ListTodo),
+                        painter = painterResource(Ionicons.TimeOutline),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp),
                     )
                 },
-                headlineContent = { Text(stringResource(R.string.webdav_sync_panel_history_title)) },
-                supportingContent = {
-                    if (history.isEmpty()) {
-                        Text(
-                            text = stringResource(R.string.webdav_sync_panel_history_empty),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    } else {
-                        Text(
-                            text = stringResource(R.string.webdav_sync_panel_history_subtitle_fmt, minOf(history.size, 5)),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                headlineContent = {
+                    val title =
+                        when (t.trigger) {
+                            WebDavSyncTaskTrigger.MANUAL -> stringResource(R.string.webdav_sync_panel_task_trigger_manual)
+                            WebDavSyncTaskTrigger.AUTO -> stringResource(R.string.webdav_sync_panel_task_trigger_auto)
+                        }
+                    Text(title)
                 },
-                trailingContent = {
-                    Icon(
-                        painter = painterResource(Ionicons.ChevronDownLucide),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp).rotate(if (historyExpanded) 180f else 0f),
-                    )
+                supportingContent = {
+                    val ended = t.run?.endedAtMs?.takeIf { it > 0L } ?: t.createdAtMs
+                    val line =
+                        buildString {
+                            append(WebDavSyncTaskManager.formatEpochMs(ended))
+                            if (!t.run?.error.isNullOrBlank()) {
+                                append(" · ")
+                                append(t.run?.error)
+                            }
+                        }
+                    Text(line, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
             )
-            if (historyExpanded && history.isNotEmpty()) {
-                HorizontalDivider(color = dividerColor)
-                history.take(5).forEachIndexed { idx, t ->
-                    ListItem(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    detailTask = t
-                                    showTaskDetail = true
-                                },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(Ionicons.TimeOutline),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        },
-                        headlineContent = {
-                            val title =
-                                when (t.trigger) {
-                                    WebDavSyncTaskTrigger.MANUAL -> stringResource(R.string.webdav_sync_panel_task_trigger_manual)
-                                    WebDavSyncTaskTrigger.AUTO -> stringResource(R.string.webdav_sync_panel_task_trigger_auto)
-                                }
-                            Text(title)
-                        },
-                        supportingContent = {
-                            val ended = t.run?.endedAtMs?.takeIf { it > 0L } ?: t.createdAtMs
-                            val line =
-                                buildString {
-                                    append(WebDavSyncTaskManager.formatEpochMs(ended))
-                                    if (!t.run?.error.isNullOrBlank()) {
-                                        append(" · ")
-                                        append(t.run?.error)
-                                    }
-                                }
-                            Text(line, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        },
-                    )
-                    if (idx != minOf(history.size, 5) - 1) HorizontalDivider(color = dividerColor)
-                }
-            }
+            if (idx != minOf(history.size, 5) - 1) HorizontalDivider(color = dividerColor)
         }
     }
 
@@ -511,10 +456,8 @@ private fun WebDavTaskDetailScreen(
     var working by remember { mutableStateOf(false) }
     var localError by remember { mutableStateOf<String?>(null) }
 
-    val isCurrent = remember(task, vaultRootUri) {
-        // Best-effort: treat as current when run is absent; real current is handled by main panel reload.
-        task.run == null
-    }
+    // Best-effort: treat as current when the task isn't finished yet.
+    val isCurrent = task.run == null || task.run.endedAtMs == 0L
 
     val configMismatch =
         task.baseUrl != webDavConfig.baseUrl.trim() ||
@@ -551,6 +494,25 @@ private fun WebDavTaskDetailScreen(
                     },
                     actions = {
                         if (isCurrent) {
+                            TextButton(
+                                enabled = vaultRootUri != null && !working,
+                                onClick = {
+                                    val root = vaultRootUri ?: return@TextButton
+                                    scope.launch {
+                                        working = true
+                                        localError = null
+                                        runCatching {
+                                            manager.discardCurrentTask(root)
+                                            onReload()
+                                            onClose()
+                                        }.onFailure { e ->
+                                            localError = e.message ?: e.javaClass.simpleName
+                                        }
+                                        working = false
+                                    }
+                                },
+                            ) { Text(stringResource(R.string.webdav_sync_panel_discard_task)) }
+
                             TextButton(
                                 enabled = canExecute,
                                 onClick = {

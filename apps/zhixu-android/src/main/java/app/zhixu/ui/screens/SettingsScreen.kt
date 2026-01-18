@@ -2347,6 +2347,13 @@ private fun SyncSettingsScreen(
                             },
                         )
                         HorizontalDivider(color = dividerColor)
+                        WebDavSyncPanel(
+                            vaultRootUri = vaultRootUri,
+                            repository = repository,
+                            webDavConfig = currentConfig(),
+                            legacyLastSummaryText = lastWebDavSummary,
+                        )
+                        HorizontalDivider(color = dividerColor)
                         ListItem(
                             modifier =
                                 Modifier
@@ -2378,18 +2385,6 @@ private fun SyncSettingsScreen(
                             },
                         )
                     }
-                }
-
-                item { Spacer(modifier = Modifier.height(14.dp)) }
-                item {
-                    WebDavSyncPanel(
-                        vaultRootUri = vaultRootUri,
-                        repository = repository,
-                        webDavConfig = currentConfig(),
-                        webDavAutomation = webDavAutomation,
-                        autoSyncEnabled = webDavAutoSyncEnabled,
-                        legacyLastSummaryText = lastWebDavSummary,
-                    )
                 }
 
             }
