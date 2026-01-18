@@ -183,6 +183,40 @@
     <string name="cloud_sync_title">云同步</string>
     <string name="cloud_sync_status_disabled">未开启</string>
     <string name="cloud_sync_status_not_configured">未配置</string>
+    <string name="cloud_sync_state_syncing">同步中</string>
+    <string name="cloud_sync_state_ok">正常</string>
+    <string name="cloud_sync_state_changed">有变更</string>
+    <string name="cloud_sync_state_issue">有问题</string>
+    <string name="cloud_sync_state_failed">同步失败</string>
+
+    <string name="cloud_sync_dialog_done">同步完成</string>
+    <string name="cloud_sync_dialog_subtitle_no_changes">本次同步无变更</string>
+    <string name="cloud_sync_dialog_subtitle_changed">本次同步有文件变更</string>
+    <string name="cloud_sync_dialog_subtitle_remote_cleaned_fmt">已清理 %1$d 个远端文件</string>
+    <string name="cloud_sync_dialog_subtitle_conflicts_fmt">发现冲突 %1$d</string>
+    <string name="cloud_sync_dialog_subtitle_failed_items_fmt">失败 %1$d</string>
+
+    <string name="cloud_sync_dialog_no_record">暂无记录</string>
+    <string name="cloud_sync_dialog_this_sync_title">本次同步</string>
+    <string name="cloud_sync_dialog_item_uploaded_fmt">上传：%1$d</string>
+    <string name="cloud_sync_dialog_item_downloaded_fmt">下载：%1$d</string>
+    <string name="cloud_sync_dialog_item_deleted_remote_fmt">远端清理：%1$d</string>
+    <string name="cloud_sync_dialog_item_deleted_local_fmt">本地删除：%1$d</string>
+    <string name="cloud_sync_dialog_item_conflicts_fmt">冲突：%1$d</string>
+    <string name="cloud_sync_dialog_item_failed_fmt">失败：%1$d</string>
+
+    <string name="cloud_sync_dialog_time_title">时间</string>
+    <string name="cloud_sync_dialog_recent_sync_fmt">最近同步：%1$s</string>
+    <string name="cloud_sync_dialog_autosync_fmt">自动同步：%1$s</string>
+    <string name="cloud_sync_dialog_autosync_off">未开启</string>
+    <string name="cloud_sync_dialog_autosync_on_next_fmt">已开启（下次 %1$s）</string>
+
+    <string name="cloud_sync_dialog_official_hint_disabled">官方服务器未启用（可在设置中开启）</string>
+    <string name="cloud_sync_dialog_webdav_hint_disabled">WebDAV 未启用（可在设置中开启）</string>
+    <string name="cloud_sync_dialog_webdav_hint_enabled">WebDAV 已启用</string>
+
+    <string name="cloud_sync_dialog_open_settings">打开同步设置</string>
+    <string name="cloud_sync_dialog_cancel">取消</string>
 
     <!-- Account -->
     <string name="account_not_logged_in_short">未登录</string>

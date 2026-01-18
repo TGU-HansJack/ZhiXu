@@ -204,6 +204,40 @@
     <string name="cloud_sync_title">Cloud sync</string>
     <string name="cloud_sync_status_disabled">Disabled</string>
     <string name="cloud_sync_status_not_configured">Not configured</string>
+    <string name="cloud_sync_state_syncing">Syncing</string>
+    <string name="cloud_sync_state_ok">OK</string>
+    <string name="cloud_sync_state_changed">Changed</string>
+    <string name="cloud_sync_state_issue">Needs attention</string>
+    <string name="cloud_sync_state_failed">Failed</string>
+
+    <string name="cloud_sync_dialog_done">Synced</string>
+    <string name="cloud_sync_dialog_subtitle_no_changes">No changes this time</string>
+    <string name="cloud_sync_dialog_subtitle_changed">Changes detected</string>
+    <string name="cloud_sync_dialog_subtitle_remote_cleaned_fmt">Cleaned %1$d remote files</string>
+    <string name="cloud_sync_dialog_subtitle_conflicts_fmt">Conflicts: %1$d</string>
+    <string name="cloud_sync_dialog_subtitle_failed_items_fmt">Failed: %1$d</string>
+
+    <string name="cloud_sync_dialog_no_record">No record</string>
+    <string name="cloud_sync_dialog_this_sync_title">This sync</string>
+    <string name="cloud_sync_dialog_item_uploaded_fmt">Uploaded: %1$d</string>
+    <string name="cloud_sync_dialog_item_downloaded_fmt">Downloaded: %1$d</string>
+    <string name="cloud_sync_dialog_item_deleted_remote_fmt">Remote cleaned: %1$d</string>
+    <string name="cloud_sync_dialog_item_deleted_local_fmt">Local deleted: %1$d</string>
+    <string name="cloud_sync_dialog_item_conflicts_fmt">Conflicts: %1$d</string>
+    <string name="cloud_sync_dialog_item_failed_fmt">Failed: %1$d</string>
+
+    <string name="cloud_sync_dialog_time_title">Time</string>
+    <string name="cloud_sync_dialog_recent_sync_fmt">Last sync: %1$s</string>
+    <string name="cloud_sync_dialog_autosync_fmt">Auto sync: %1$s</string>
+    <string name="cloud_sync_dialog_autosync_off">Off</string>
+    <string name="cloud_sync_dialog_autosync_on_next_fmt">On (next %1$s)</string>
+
+    <string name="cloud_sync_dialog_official_hint_disabled">Official server is off (enable in Settings)</string>
+    <string name="cloud_sync_dialog_webdav_hint_disabled">WebDAV is off (enable in Settings)</string>
+    <string name="cloud_sync_dialog_webdav_hint_enabled">WebDAV is on</string>
+
+    <string name="cloud_sync_dialog_open_settings">Open sync settings</string>
+    <string name="cloud_sync_dialog_cancel">Cancel</string>
 
     <!-- Account -->
     <string name="account_not_logged_in_short">Not logged in</string>

@@ -48,6 +48,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -119,7 +121,6 @@ import app.zhixu.ocr.NoopOcrEngine
 import app.zhixu.ocr.OcrEngineCache
 import app.zhixu.ocr.OcrWorkflow
 import app.zhixu.ocr.ppocrv5.PpOcrV5OcrEngine
-import app.zhixu.sync.OfficialSync
 import app.zhixu.sync.VaultAutoSync
 import app.zhixu.sync.WebDavAutoSync
 import app.zhixu.sync.WebDavAutoSyncStateStore
@@ -129,6 +130,7 @@ import app.zhixu.ui.components.CreateQuickNewSheetContent
 import app.zhixu.ui.components.ZhixuCompactDragHandle
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTopAppBar
+import app.zhixu.ui.components.ZhixuDialogDefaults
 import app.zhixu.ui.screens.AccountManagementDialog
 import app.zhixu.ui.screens.AccountScreen
 import app.zhixu.ui.screens.AboutScreen
@@ -172,6 +174,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -183,10 +186,23 @@ private enum class WebDavUiStatusLevel {
     ERROR,
 }
 
+private data class SyncResultSummary(
+    val ok: Boolean,
+    val endedAtMs: Long,
+    val uploaded: Int,
+    val downloaded: Int,
+    val deletedRemote: Int,
+    val deletedLocal: Int,
+    val conflicts: Int,
+    val failed: Int,
+    val error: String?,
+)
+
 private data class WebDavUiStatusSnapshot(
     val level: WebDavUiStatusLevel,
     val text: String?,
     val endedAtMs: Long,
+    val summary: SyncResultSummary?,
 )
 
 private enum class SyncServerUiStatusLevel {
@@ -201,6 +217,7 @@ private data class SyncServerUiStatusSnapshot(
     val level: SyncServerUiStatusLevel,
     val text: String?,
     val endedAtMs: Long,
+    val summary: SyncResultSummary?,
 )
 
 private enum class CloudSyncUiIconState {
@@ -209,6 +226,26 @@ private enum class CloudSyncUiIconState {
     WARNING,
     DISABLED,
 }
+
+private enum class CloudSyncDialogState {
+    SYNCING,
+    OK,
+    CHANGED,
+    ISSUE,
+    FAILED,
+    DISABLED,
+    NOT_CONFIGURED,
+    NOT_LOGGED_IN,
+}
+
+private data class WebDavAutoSyncStatusSnapshot(
+    val enabled: Boolean,
+    val nextAllowedAtMs: Long,
+    val lastSucceededAtMs: Long,
+    val lastAttemptedAtMs: Long,
+    val lastError: String?,
+    val message: String,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -307,7 +344,7 @@ fun ZhixuApp(
     val webDavAutoSyncEnabled by syncPrefs.webDavAutoSyncEnabled.collectAsState(initial = false)
     var showCloudSyncStatusDialog by remember { mutableStateOf(false) }
     var webDavUiStatus by remember { mutableStateOf<WebDavUiStatusSnapshot?>(null) }
-    var webDavAutoSyncStatusText by remember { mutableStateOf<String?>(null) }
+    var webDavAutoSyncStatus by remember { mutableStateOf<WebDavAutoSyncStatusSnapshot?>(null) }
     var syncServerUiStatus by remember { mutableStateOf<SyncServerUiStatusSnapshot?>(null) }
 
     var webDavSyncing by remember { mutableStateOf(false) }
@@ -349,6 +386,20 @@ fun ZhixuApp(
         }.getOrElse { ms.toString() }
     }
 
+    fun formatEpochMsSmart(ms: Long): String {
+        if (ms <= 0L) return "-"
+        return runCatching {
+            val zone = ZoneId.systemDefault()
+            val dt = Instant.ofEpochMilli(ms).atZone(zone)
+            val today = LocalDate.now(zone)
+            if (dt.toLocalDate() == today) {
+                dt.format(DateTimeFormatter.ofPattern("HH:mm"))
+            } else {
+                dt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+            }
+        }.getOrElse { ms.toString() }
+    }
+
     suspend fun reloadWebDavUiStatus() {
         val root = vaultRootUri ?: run {
             webDavUiStatus = null
@@ -362,16 +413,32 @@ fun ZhixuApp(
         val conflicts = obj?.optInt("conflicts", 0) ?: 0
         val failed = obj?.optInt("failed", 0) ?: 0
         val error = obj?.optString("error").orEmpty().trim().ifBlank { null }
+        val uploaded = obj?.optInt("uploaded", 0) ?: 0
+        val downloaded = obj?.optInt("downloaded", 0) ?: 0
+        val deletedRemote = obj?.optInt("deletedRemote", 0) ?: 0
+        val deletedLocal = obj?.optInt("deletedLocal", 0) ?: 0
+        val summary =
+            if (raw.isBlank()) {
+                null
+            } else {
+                SyncResultSummary(
+                    ok = ok,
+                    endedAtMs = endedAt,
+                    uploaded = if (ok) uploaded else 0,
+                    downloaded = if (ok) downloaded else 0,
+                    deletedRemote = if (ok) deletedRemote else 0,
+                    deletedLocal = if (ok) deletedLocal else 0,
+                    conflicts = conflicts,
+                    failed = failed,
+                    error = if (!ok) error else null,
+                )
+            }
         val text =
             if (raw.isBlank()) {
                 null
             } else if (!ok) {
                 context.getString(R.string.webdav_sync_failed, error ?: "-")
             } else {
-                val uploaded = obj?.optInt("uploaded", 0) ?: 0
-                val downloaded = obj?.optInt("downloaded", 0) ?: 0
-                val deletedRemote = obj?.optInt("deletedRemote", 0) ?: 0
-                val deletedLocal = obj?.optInt("deletedLocal", 0) ?: 0
                 context.getString(R.string.webdav_sync_ok_v2, uploaded, downloaded, deletedRemote, deletedLocal, conflicts, failed) +
                     " · " +
                     formatEpochMs(endedAt)
@@ -384,7 +451,7 @@ fun ZhixuApp(
                 conflicts > 0 || failed > 0 -> WebDavUiStatusLevel.WARNING
                 else -> WebDavUiStatusLevel.OK
             }
-        webDavUiStatus = WebDavUiStatusSnapshot(level = level, text = text, endedAtMs = endedAt)
+        webDavUiStatus = WebDavUiStatusSnapshot(level = level, text = text, endedAtMs = endedAt, summary = summary)
     }
 
     suspend fun reloadSyncServerUiStatus() {
@@ -412,16 +479,32 @@ fun ZhixuApp(
         val conflicts = obj?.optInt("conflicts", 0) ?: 0
         val failed = obj?.optInt("failed", 0) ?: 0
         val error = obj?.optString("error").orEmpty().trim().ifBlank { null }
+        val uploaded = obj?.optInt("uploaded", 0) ?: 0
+        val downloaded = obj?.optInt("downloaded", 0) ?: 0
+        val deletedRemote = obj?.optInt("deletedRemote", 0) ?: 0
+        val deletedLocal = obj?.optInt("deletedLocal", 0) ?: 0
+        val summary =
+            if (raw.isBlank()) {
+                null
+            } else {
+                SyncResultSummary(
+                    ok = ok,
+                    endedAtMs = endedAt,
+                    uploaded = if (ok) uploaded else 0,
+                    downloaded = if (ok) downloaded else 0,
+                    deletedRemote = if (ok) deletedRemote else 0,
+                    deletedLocal = if (ok) deletedLocal else 0,
+                    conflicts = conflicts,
+                    failed = failed,
+                    error = if (!ok) error else null,
+                )
+            }
         val text =
             if (raw.isBlank()) {
                 null
             } else if (!ok) {
                 context.getString(R.string.official_sync_failed, error ?: "-")
             } else {
-                val uploaded = obj?.optInt("uploaded", 0) ?: 0
-                val downloaded = obj?.optInt("downloaded", 0) ?: 0
-                val deletedRemote = obj?.optInt("deletedRemote", 0) ?: 0
-                val deletedLocal = obj?.optInt("deletedLocal", 0) ?: 0
                 context.getString(R.string.official_sync_ok, uploaded, downloaded, deletedRemote, deletedLocal, conflicts, failed) +
                     " · " +
                     formatEpochMs(endedAt)
@@ -435,30 +518,58 @@ fun ZhixuApp(
                 conflicts > 0 || failed > 0 -> SyncServerUiStatusLevel.WARNING
                 else -> SyncServerUiStatusLevel.OK
             }
-        syncServerUiStatus = SyncServerUiStatusSnapshot(level = level, text = text, endedAtMs = endedAt)
+        syncServerUiStatus = SyncServerUiStatusSnapshot(level = level, text = text, endedAtMs = endedAt, summary = summary)
     }
 
     suspend fun reloadWebDavAutoSyncStatusForDialog() {
         val root = vaultRootUri ?: run {
-            webDavAutoSyncStatusText = context.getString(R.string.webdav_autosync_status_no_vault)
+            webDavAutoSyncStatus =
+                WebDavAutoSyncStatusSnapshot(
+                    enabled = false,
+                    nextAllowedAtMs = 0L,
+                    lastSucceededAtMs = 0L,
+                    lastAttemptedAtMs = 0L,
+                    lastError = null,
+                    message = context.getString(R.string.webdav_autosync_status_no_vault),
+                )
             return
         }
-        if (!webDavConfig.enabled) {
-            webDavAutoSyncStatusText = context.getString(R.string.webdav_autosync_status_disabled)
-            return
-        }
-        if (!webDavAutoSyncEnabled) {
-            webDavAutoSyncStatusText = context.getString(R.string.webdav_autosync_status_disabled)
+        if (!webDavConfig.enabled || !webDavAutoSyncEnabled) {
+            webDavAutoSyncStatus =
+                WebDavAutoSyncStatusSnapshot(
+                    enabled = false,
+                    nextAllowedAtMs = 0L,
+                    lastSucceededAtMs = 0L,
+                    lastAttemptedAtMs = 0L,
+                    lastError = null,
+                    message = context.getString(R.string.cloud_sync_dialog_autosync_off),
+                )
             return
         }
         val baseUrl = webDavConfig.baseUrl.trim()
         val remoteRoot = webDavConfig.remoteRoot.trim().ifBlank { "/" }
         if (baseUrl.isBlank()) {
-            webDavAutoSyncStatusText = context.getString(R.string.webdav_autosync_status_empty_url)
+            webDavAutoSyncStatus =
+                WebDavAutoSyncStatusSnapshot(
+                    enabled = false,
+                    nextAllowedAtMs = 0L,
+                    lastSucceededAtMs = 0L,
+                    lastAttemptedAtMs = 0L,
+                    lastError = null,
+                    message = context.getString(R.string.webdav_autosync_status_empty_url),
+                )
             return
         }
         if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
-            webDavAutoSyncStatusText = context.getString(R.string.webdav_autosync_status_invalid_url)
+            webDavAutoSyncStatus =
+                WebDavAutoSyncStatusSnapshot(
+                    enabled = false,
+                    nextAllowedAtMs = 0L,
+                    lastSucceededAtMs = 0L,
+                    lastAttemptedAtMs = 0L,
+                    lastError = null,
+                    message = context.getString(R.string.webdav_autosync_status_invalid_url),
+                )
             return
         }
         val key = "$baseUrl|$remoteRoot|$root"
@@ -466,20 +577,15 @@ fun ZhixuApp(
         val state = store.get(key)
         val intervalMs = (webDavAutomationSettings.intervalMinutes.toLong() * 60_000L).coerceAtLeast(60_000L)
         val nextAllowed = state.lastAttemptedAtMs + intervalMs
-        val base =
-            context.getString(
-                R.string.webdav_autosync_status_fmt,
-                formatEpochMs(state.lastSucceededAtMs),
-                formatEpochMs(state.lastAttemptedAtMs),
-                formatEpochMs(nextAllowed),
+        webDavAutoSyncStatus =
+            WebDavAutoSyncStatusSnapshot(
+                enabled = true,
+                nextAllowedAtMs = nextAllowed,
+                lastSucceededAtMs = state.lastSucceededAtMs,
+                lastAttemptedAtMs = state.lastAttemptedAtMs,
+                lastError = state.lastError,
+                message = context.getString(R.string.cloud_sync_dialog_autosync_on_next_fmt, formatEpochMsSmart(nextAllowed)),
             )
-        val errorPart =
-            if (state.lastError.isNullOrBlank()) {
-                ""
-            } else {
-                "\n" + context.getString(R.string.webdav_autosync_status_error_fmt, state.lastError!!)
-            }
-        webDavAutoSyncStatusText = base + errorPart
     }
 
     LaunchedEffect(vaultRootUriString, webDavConfig.enabled) {
@@ -609,81 +715,227 @@ fun ZhixuApp(
     val currentRoute = backStackEntry?.destination?.route
 
     if (showCloudSyncStatusDialog) {
+        val isPrimaryWebDav = vaultSyncConfig.location == VaultStorageLocation.LOCAL
+        val primaryProviderName =
+            when (vaultSyncConfig.location) {
+                VaultStorageLocation.LOCAL -> stringResource(R.string.settings_sync_provider_webdav)
+                VaultStorageLocation.OFFICIAL_SERVER -> stringResource(R.string.official_sync_title)
+                VaultStorageLocation.THIRD_PARTY_SERVICE -> stringResource(R.string.vault_settings_location_third_party)
+            }
+
+        val primarySummary = if (isPrimaryWebDav) webDavUiStatus?.summary else syncServerUiStatus?.summary
+        val primarySyncing = if (isPrimaryWebDav) webDavSyncing else syncServerSyncing
+        val primaryEnabled =
+            if (isPrimaryWebDav) {
+                webDavConfig.enabled
+            } else {
+                when (vaultSyncConfig.location) {
+                    VaultStorageLocation.LOCAL -> false
+                    VaultStorageLocation.OFFICIAL_SERVER -> accountState.token.isNotBlank()
+                    VaultStorageLocation.THIRD_PARTY_SERVICE -> {
+                        val tp = vaultSyncConfig.thirdParty
+                        tp.url.trim().isNotBlank() && tp.username.trim().isNotBlank() && tp.password.isNotBlank()
+                    }
+                }
+            }
+
+        val state: CloudSyncDialogState =
+            when {
+                primarySyncing -> CloudSyncDialogState.SYNCING
+                !primaryEnabled && !isPrimaryWebDav && vaultSyncConfig.location == VaultStorageLocation.OFFICIAL_SERVER -> CloudSyncDialogState.NOT_LOGGED_IN
+                !primaryEnabled -> CloudSyncDialogState.DISABLED
+                primarySummary == null -> CloudSyncDialogState.NOT_CONFIGURED
+                !primarySummary.ok -> CloudSyncDialogState.FAILED
+                primarySummary.conflicts > 0 || primarySummary.failed > 0 -> CloudSyncDialogState.ISSUE
+                primarySummary.uploaded + primarySummary.downloaded + primarySummary.deletedRemote + primarySummary.deletedLocal > 0 -> CloudSyncDialogState.CHANGED
+                else -> CloudSyncDialogState.OK
+            }
+
+        val stateLabel =
+            when (state) {
+                CloudSyncDialogState.SYNCING -> stringResource(R.string.cloud_sync_state_syncing)
+                CloudSyncDialogState.OK -> stringResource(R.string.cloud_sync_state_ok)
+                CloudSyncDialogState.CHANGED -> stringResource(R.string.cloud_sync_state_changed)
+                CloudSyncDialogState.ISSUE -> stringResource(R.string.cloud_sync_state_issue)
+                CloudSyncDialogState.FAILED -> stringResource(R.string.cloud_sync_state_failed)
+                CloudSyncDialogState.DISABLED -> stringResource(R.string.cloud_sync_status_disabled)
+                CloudSyncDialogState.NOT_CONFIGURED -> stringResource(R.string.cloud_sync_status_not_configured)
+                CloudSyncDialogState.NOT_LOGGED_IN -> stringResource(R.string.account_not_logged_in_short)
+            }
+
+        val chipColor =
+            when (state) {
+                CloudSyncDialogState.SYNCING -> Color(0xFF3B82F6)
+                CloudSyncDialogState.OK -> Color(0xFF22C55E)
+                CloudSyncDialogState.CHANGED -> Color(0xFF22C55E)
+                CloudSyncDialogState.ISSUE -> Color(0xFFF59E0B)
+                CloudSyncDialogState.FAILED -> Color(0xFFEF4444)
+                CloudSyncDialogState.DISABLED -> MaterialTheme.colorScheme.onSurfaceVariant
+                CloudSyncDialogState.NOT_CONFIGURED -> MaterialTheme.colorScheme.onSurfaceVariant
+                CloudSyncDialogState.NOT_LOGGED_IN -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+
         AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
             onDismissRequest = { showCloudSyncStatusDialog = false },
-            title = { Text(stringResource(R.string.cloud_sync_title)) },
+            properties = ZhixuDialogDefaults.properties,
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(stringResource(R.string.cloud_sync_title))
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = chipColor.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, chipColor.copy(alpha = 0.25f)),
+                    ) {
+                        Text(
+                            text = "$primaryProviderName · $stateLabel",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            color = chipColor,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                }
+            },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    val locationLabel =
-                        when (vaultSyncConfig.location) {
-                            VaultStorageLocation.LOCAL -> stringResource(R.string.vault_settings_location_local)
-                            VaultStorageLocation.OFFICIAL_SERVER -> stringResource(R.string.vault_settings_location_official)
-                            VaultStorageLocation.THIRD_PARTY_SERVICE -> stringResource(R.string.vault_settings_location_third_party)
-                        }
-                    Text(
-                        text = "${stringResource(R.string.vault_settings_storage_location)}: $locationLabel",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                val headlineText =
+                    when (state) {
+                        CloudSyncDialogState.SYNCING -> stringResource(R.string.cloud_sync_state_syncing)
+                        CloudSyncDialogState.OK, CloudSyncDialogState.CHANGED -> stringResource(R.string.cloud_sync_dialog_done)
+                        CloudSyncDialogState.ISSUE -> stringResource(R.string.cloud_sync_state_issue)
+                        CloudSyncDialogState.FAILED -> stringResource(R.string.cloud_sync_state_failed)
+                        CloudSyncDialogState.DISABLED -> stringResource(R.string.cloud_sync_status_disabled)
+                        CloudSyncDialogState.NOT_CONFIGURED -> stringResource(R.string.cloud_sync_status_not_configured)
+                        CloudSyncDialogState.NOT_LOGGED_IN -> stringResource(R.string.account_not_logged_in_short)
+                    }
 
-                    Text(stringResource(R.string.settings_sync_provider_webdav), fontWeight = FontWeight.SemiBold)
-                    val webDavStatusText =
-                        when {
-                            !webDavConfig.enabled -> stringResource(R.string.cloud_sync_status_disabled)
-                            webDavSyncing -> stringResource(R.string.webdav_syncing)
-                            !webDavUiStatus?.text.isNullOrBlank() -> webDavUiStatus?.text!!
-                            else -> stringResource(R.string.cloud_sync_status_not_configured)
-                        }
-                    Text(
-                        text = webDavStatusText,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = webDavAutoSyncStatusText.orEmpty().ifBlank { "-" },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f))
-
-                    val serverTitle =
-                        when (vaultSyncConfig.location) {
-                            VaultStorageLocation.THIRD_PARTY_SERVICE -> stringResource(R.string.vault_settings_location_third_party)
-                            else -> stringResource(R.string.official_sync_title)
-                        }
-                    Text(serverTitle, fontWeight = FontWeight.SemiBold)
-
-                    val serverEnabled =
-                        when (vaultSyncConfig.location) {
-                            VaultStorageLocation.LOCAL -> false
-                            VaultStorageLocation.OFFICIAL_SERVER -> accountState.token.isNotBlank()
-                            VaultStorageLocation.THIRD_PARTY_SERVICE -> {
-                                val tp = vaultSyncConfig.thirdParty
-                                tp.url.trim().isNotBlank() && tp.username.trim().isNotBlank() && tp.password.isNotBlank()
+                val subtitleText =
+                    when (state) {
+                        CloudSyncDialogState.SYNCING,
+                        CloudSyncDialogState.DISABLED,
+                        CloudSyncDialogState.NOT_CONFIGURED,
+                        CloudSyncDialogState.NOT_LOGGED_IN,
+                        -> ""
+                        CloudSyncDialogState.FAILED -> primarySummary?.error.orEmpty().ifBlank { "-" }
+                        CloudSyncDialogState.ISSUE -> {
+                            when {
+                                (primarySummary?.conflicts ?: 0) > 0 ->
+                                    context.getString(R.string.cloud_sync_dialog_subtitle_conflicts_fmt, primarySummary?.conflicts ?: 0)
+                                (primarySummary?.failed ?: 0) > 0 ->
+                                    context.getString(R.string.cloud_sync_dialog_subtitle_failed_items_fmt, primarySummary?.failed ?: 0)
+                                else -> stringResource(R.string.cloud_sync_state_issue)
                             }
                         }
-                    val serverStatusText =
-                        when {
-                            vaultSyncConfig.location == VaultStorageLocation.LOCAL -> stringResource(R.string.cloud_sync_status_disabled)
-                            !serverEnabled && vaultSyncConfig.location == VaultStorageLocation.OFFICIAL_SERVER -> stringResource(R.string.account_not_logged_in_short)
-                            !serverEnabled -> stringResource(R.string.cloud_sync_status_not_configured)
-                            syncServerSyncing -> stringResource(R.string.official_sync_syncing)
-                            !syncServerUiStatus?.text.isNullOrBlank() -> syncServerUiStatus?.text!!
-                            else -> stringResource(R.string.cloud_sync_status_not_configured)
+                        CloudSyncDialogState.OK -> stringResource(R.string.cloud_sync_dialog_subtitle_no_changes)
+                        CloudSyncDialogState.CHANGED -> {
+                            val s = primarySummary
+                            if (s != null && s.deletedRemote > 0 && s.uploaded == 0 && s.downloaded == 0 && s.deletedLocal == 0) {
+                                context.getString(R.string.cloud_sync_dialog_subtitle_remote_cleaned_fmt, s.deletedRemote)
+                            } else {
+                                stringResource(R.string.cloud_sync_dialog_subtitle_changed)
+                            }
                         }
-                    Text(
-                        text = serverStatusText,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    }
 
-                    val baseUrlText =
-                        when (vaultSyncConfig.location) {
-                            VaultStorageLocation.OFFICIAL_SERVER -> OfficialSync.BASE_URL
-                            VaultStorageLocation.THIRD_PARTY_SERVICE -> vaultSyncConfig.thirdParty.url.trim().ifBlank { "-" }
-                            else -> "-"
+                val thisSyncItems = mutableListOf<String>()
+                val s = primarySummary
+                if (s == null) {
+                    thisSyncItems.add(stringResource(R.string.cloud_sync_dialog_no_record))
+                } else if (!s.ok) {
+                    thisSyncItems.add(s.error.orEmpty().ifBlank { "-" })
+                } else {
+                    if (s.uploaded > 0) thisSyncItems.add(context.getString(R.string.cloud_sync_dialog_item_uploaded_fmt, s.uploaded))
+                    if (s.downloaded > 0) thisSyncItems.add(context.getString(R.string.cloud_sync_dialog_item_downloaded_fmt, s.downloaded))
+                    if (s.deletedRemote > 0) thisSyncItems.add(context.getString(R.string.cloud_sync_dialog_item_deleted_remote_fmt, s.deletedRemote))
+                    if (s.deletedLocal > 0) thisSyncItems.add(context.getString(R.string.cloud_sync_dialog_item_deleted_local_fmt, s.deletedLocal))
+                    if (s.conflicts > 0) thisSyncItems.add(context.getString(R.string.cloud_sync_dialog_item_conflicts_fmt, s.conflicts))
+                    if (s.failed > 0) thisSyncItems.add(context.getString(R.string.cloud_sync_dialog_item_failed_fmt, s.failed))
+                    if (thisSyncItems.isEmpty()) thisSyncItems.add(stringResource(R.string.cloud_sync_dialog_subtitle_no_changes))
+                }
+
+                val recentSyncTime = formatEpochMsSmart(primarySummary?.endedAtMs ?: 0L)
+                val autoSyncLine = webDavAutoSyncStatus?.message.orEmpty().ifBlank { "-" }
+
+                val secondaryHint =
+                    if (isPrimaryWebDav) {
+                        stringResource(R.string.cloud_sync_dialog_official_hint_disabled)
+                    } else {
+                        if (!webDavConfig.enabled) {
+                            stringResource(R.string.cloud_sync_dialog_webdav_hint_disabled)
+                        } else {
+                            stringResource(R.string.cloud_sync_dialog_webdav_hint_enabled)
                         }
+                    }
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = headlineText,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        if (subtitleText.isNotBlank()) {
+                            Text(
+                                text = subtitleText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.cloud_sync_dialog_this_sync_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                thisSyncItems.forEach { item ->
+                                    Text(
+                                        text = "• $item",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = stringResource(R.string.cloud_sync_dialog_time_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = context.getString(R.string.cloud_sync_dialog_recent_sync_fmt, recentSyncTime),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            text = context.getString(R.string.cloud_sync_dialog_autosync_fmt, autoSyncLine),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+
                     Text(
-                        text = context.getString(R.string.account_server_fmt, baseUrlText),
+                        text = secondaryHint,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -695,10 +947,10 @@ fun ZhixuApp(
                         showCloudSyncStatusDialog = false
                         navController.navigate("settingsMain")
                     },
-                ) { Text(stringResource(R.string.nav_settings)) }
+                ) { Text(stringResource(R.string.cloud_sync_dialog_open_settings)) }
             },
             dismissButton = {
-                TextButton(onClick = { showCloudSyncStatusDialog = false }) { Text(stringResource(R.string.action_close)) }
+                TextButton(onClick = { showCloudSyncStatusDialog = false }) { Text(stringResource(R.string.cloud_sync_dialog_cancel)) }
             },
         )
     }
