@@ -144,14 +144,37 @@ class WebDavSyncEngine(
         // Task semantics: if the task declares no operations, the engine must not infer any.
         // This prevents "empty expected plan" from triggering a full scan that can discover conflicts.
         if (normalizedExpected.isEmpty()) {
-            return WebDavSyncSummary(
-                uploaded = 0,
-                downloaded = 0,
-                deletedRemote = 0,
-                deletedLocal = 0,
-                conflicts = 0,
-                failed = 0,
-            )
+            val startedAtMs = System.currentTimeMillis()
+            val endedAtMs = startedAtMs
+            val summary =
+                WebDavSyncSummary(
+                    uploaded = 0,
+                    downloaded = 0,
+                    deletedRemote = 0,
+                    deletedLocal = 0,
+                    conflicts = 0,
+                    failed = 0,
+                )
+            // Best-effort: update `webdav_last_summary.json` so UIs won't keep showing a stale previous run.
+            withContext(Dispatchers.IO) {
+                val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext
+                val remoteRootUrl =
+                    runCatching {
+                        WebDavClient
+                            .normalizeJoin(config.baseUrl.trim(), config.remoteRoot.trim().ifBlank { "/" })
+                            .trimEnd('/') + "/"
+                    }.getOrDefault("")
+                // Ignore failures: this is only used to avoid a stale UI state when we did no work.
+                try {
+                    writeLastSummary(root, startedAtMs, endedAtMs, config, summary, error = null)
+                } catch (_: Throwable) {
+                }
+                try {
+                    writeLastPlan(root, startedAtMs, endedAtMs, remoteRootUrl, config, emptyList(), summary, error = null)
+                } catch (_: Throwable) {
+                }
+            }
+            return summary
         }
         val onlyPaths = normalizedExpected.map { it.path }.toSet()
         return syncVaultInternal(

@@ -124,6 +124,8 @@ import app.zhixu.ocr.ppocrv5.PpOcrV5OcrEngine
 import app.zhixu.sync.VaultAutoSync
 import app.zhixu.sync.WebDavAutoSync
 import app.zhixu.sync.WebDavAutoSyncStateStore
+import app.zhixu.sync.WebDavSyncTaskManager
+import app.zhixu.sync.WebDavSyncTaskTrigger
 import app.zhixu.ui.components.CreateDrawSheetContent
 import app.zhixu.ui.components.CreateMenuSheetContent
 import app.zhixu.ui.components.CreateQuickNewSheetContent
@@ -340,6 +342,7 @@ fun ZhixuApp(
                 conflictStrategy = app.zhixu.data.WebDavConflictStrategy.KEEP_BOTH,
             ),
     )
+    val webDavRemoteRootConfirmed by syncPrefs.webDavRemoteRootConfirmed.collectAsState(initial = false)
     val webDavAutomationSettings by syncPrefs.webDavAutomationSettings.collectAsState(initial = WebDavAutomationSettings.DEFAULT)
     val webDavAutoSyncEnabled by syncPrefs.webDavAutoSyncEnabled.collectAsState(initial = false)
     var showCloudSyncStatusDialog by remember { mutableStateOf(false) }
@@ -946,7 +949,14 @@ fun ZhixuApp(
                 val canSyncNow =
                     vaultRootUri != null &&
                         when (vaultSyncConfig.location) {
-                            VaultStorageLocation.LOCAL -> webDavConfig.enabled && !webDavSyncing
+                            VaultStorageLocation.LOCAL -> {
+                                val base = webDavConfig.baseUrl.trim()
+                                webDavConfig.enabled &&
+                                    webDavRemoteRootConfirmed &&
+                                    base.isNotBlank() &&
+                                    (base.startsWith("http://") || base.startsWith("https://")) &&
+                                    !webDavSyncing
+                            }
                             VaultStorageLocation.OFFICIAL_SERVER -> accountState.token.isNotBlank() && !syncServerSyncing
                             VaultStorageLocation.THIRD_PARTY_SERVICE -> {
                                 val tp = vaultSyncConfig.thirdParty
@@ -966,15 +976,33 @@ fun ZhixuApp(
                                 if (vaultSyncConfig.location == VaultStorageLocation.LOCAL) {
                                     webDavSyncing = true
                                     try {
-                                        runCatching {
-                                            WebDavAutoSync.maybeSyncVault(
-                                                context = context,
-                                                repository = repository,
-                                                vaultRootUri = root,
-                                                config = webDavConfig,
-                                                automation = webDavAutomationSettings,
-                                                force = true,
+                                        val baseUrl = webDavConfig.baseUrl.trim()
+                                        val remoteRoot = webDavConfig.remoteRoot.trim().ifBlank { "/" }
+                                        val normalizedConfig =
+                                            webDavConfig.copy(
+                                                enabled = true,
+                                                baseUrl = baseUrl,
+                                                username = webDavConfig.username.trim(),
+                                                remoteRoot = remoteRoot,
                                             )
+
+                                        try {
+                                            withContext(Dispatchers.IO) {
+                                                val manager = WebDavSyncTaskManager(context, repository)
+                                                manager.generateTask(
+                                                    rootUri = root,
+                                                    config = normalizedConfig,
+                                                    trigger = WebDavSyncTaskTrigger.MANUAL,
+                                                    onlyPaths = null,
+                                                )
+                                                // If there's nothing to do, the task will have 0 ops and still be archived
+                                                // with an updated summary timestamp (see engine logic).
+                                                val currentTask = manager.load(root).current
+                                                if (currentTask != null) {
+                                                    manager.executeCurrentTask(root, normalizedConfig)
+                                                }
+                                            }
+                                        } catch (_: Throwable) {
                                         }
                                     } finally {
                                         webDavSyncing = false
