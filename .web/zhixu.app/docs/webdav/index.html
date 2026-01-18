@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>WebDAV 用户手册 · Zhixu.app</title>
+    <meta
+      name="description"
+      content="Zhixu WebDAV 用户手册：配置步骤、第一次同步建议、同步任务与冲突处理、自动同步与常见问题排查。"
+    />
+    <link rel="icon" href="../../assets/zhixu.png" />
+    <link rel="stylesheet" href="../../site.css" />
+    <style>
+      .docFigure {
+        margin: 12px 0 16px;
+      }
+      .docFigure img {
+        display: block;
+        width: 100%;
+        height: auto;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--card);
+      }
+      .docFigure figcaption {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body class="legalPage">
+    <header class="page">
+      <nav class="topnav" aria-label="主导航">
+        <a class="brand" href="../../" aria-label="Zhixu.app 首页">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="28" height="28" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../../">首页</a>
+          <a role="listitem" href="../">文档</a>
+          <a role="listitem" href="../../plugins/">插件</a>
+          <a role="listitem" href="https://feedback.zhixu.app/">反馈社区</a>
+          <a
+            role="listitem"
+            href="https://qun.qq.com/universal-share/share?ac=1&authKey=rbijGQjYoMt9lxqA0Rk%2F8E1GSFnQhpPY%2FiuAUI0xr%2BqunsuOP%2F7KrDgunyAi%2BzKG&busi_data=eyJncm91cENvZGUiOiI4OTI0MzA3NzciLCJ0b2tlbiI6IjJIR0pycnhGN05ZR2N6dmp5aVdkTEVMVWdQVEJ5UGpmMFV5eU5TZnZseElYaXUvTTk4RXRYY2FXNGV5OVAwTG0iLCJ1aW4iOiIyOTU5NjAyNjk2In0%3D&data=ESyM649OeedpDLdFnINt6siSpfW8uBqxpG3MRkXSR9hpdiGMjIZN8u-rZqkts1QbxdjPIMKsALZCNC9uQ7-gKQ&svctype=4&tempid=h5_group_info"
+            >QQ群</a
+          >
+        </div>
+      </nav>
+    </header>
+
+    <main class="page legal">
+      <h1 class="legal__title">WebDAV 用户手册</h1>
+      <p class="legal__meta">把同步变成“一次可审阅、可裁决、可回看”的同步任务。</p>
+
+      <article class="legal__content" aria-label="WebDAV 用户手册正文">
+        <div class="callout" role="note" aria-label="提示">
+          <h3>你在找“协议层说明”？</h3>
+          <ul>
+            <li>更偏开发/协议的内容在这里：<a href="../sync/">同步协议（草案）</a></li>
+            <li>本文聚焦：如何在应用里配置、如何同步、遇到问题怎么处理。</li>
+          </ul>
+        </div>
+
+        <h2 id="toc">目录</h2>
+        <ul>
+          <li><a href="#before-you-start">开始前（强烈建议先备份）</a></li>
+          <li><a href="#prepare-webdav">准备 WebDAV 信息</a></li>
+          <li><a href="#setup">在 Zhixu 中配置 WebDAV（8 行入口）</a></li>
+          <li><a href="#first-sync">第一次同步建议（两台设备怎么接入）</a></li>
+          <li><a href="#task-model">同步任务：生成 → 审阅 → 执行</a></li>
+          <li><a href="#conflicts">冲突怎么处理（只在任务中裁决）</a></li>
+          <li><a href="#deletes">删除操作与“跳过”</a></li>
+          <li><a href="#autosync">自动同步（自动生成任务 + 自动执行）</a></li>
+          <li><a href="#history">历史任务与重试失败项</a></li>
+          <li><a href="#troubleshooting">常见问题排查</a></li>
+          <li><a href="#safety">安全与最佳实践</a></li>
+        </ul>
+
+        <h2 id="before-you-start">开始前（强烈建议先备份）</h2>
+        <ul>
+          <li>WebDAV 同步的对象是整个 Vault（一个普通文件夹）。同步前建议先把 Vault 整体复制一份作为备份。</li>
+          <li>第一次同步通常会传输很多文件（尤其是附件），建议在稳定网络/充电环境下进行。</li>
+          <li>如果你不确定某个操作（尤其是删除），请先“跳过”，再确认后重试。</li>
+        </ul>
+
+        <h2 id="prepare-webdav">准备 WebDAV 信息</h2>
+        <p>你需要从你的 WebDAV 服务提供方拿到以下信息：</p>
+        <ul>
+          <li><strong>Base URL</strong>：WebDAV 服务地址（必须以 <code>http://</code> 或 <code>https://</code> 开头）。</li>
+          <li><strong>用户名 / 密码</strong>：用于登录 WebDAV 的凭据（如果服务支持“应用密码”，建议使用应用密码）。</li>
+          <li><strong>远端文件夹路径</strong>：用于存放该 Vault 同步内容的目录（建议每个 Vault 使用独立目录）。</li>
+        </ul>
+        <p class="muted tiny">
+          提示：不同服务的 WebDAV 地址格式不同。如果你不确定 Base URL 是否正确，请先在 Zhixu 里用“连接/测试”验证。
+        </p>
+
+        <h2 id="setup">在 Zhixu 中配置 WebDAV（8 行入口）</h2>
+        <p>入口路径：<strong>设置 → 同步 → WebDAV</strong>。</p>
+
+        <figure class="docFigure">
+          <img src="./webdav-panel-overview.png" alt="WebDAV 页面总览（8 行入口）" loading="lazy" />
+          <figcaption>WebDAV 页面总览（8 行入口）</figcaption>
+        </figure>
+
+        <p><strong>1）WebDAV account（账号）</strong></p>
+        <ul>
+          <li>点击 <code>WebDAV account</code> 进入账号配置。</li>
+          <li>填写 <code>Base URL</code>、<code>Username</code>、<code>Password</code>。</li>
+          <li>点击 <code>Connect</code>：应用会测试连接，成功后保存配置。</li>
+        </ul>
+        <figure class="docFigure">
+          <img src="./webdav-account.png" alt="WebDAV account 账号配置" loading="lazy" />
+          <figcaption>WebDAV account：Base URL / 用户名 / 密码 + Connect</figcaption>
+        </figure>
+
+        <p><strong>2）Add sync folder pair（同步目录/策略）</strong></p>
+        <ul>
+          <li>点击 <code>Add sync folder pair</code> 配置远端目录与策略。</li>
+          <li><code>Remote folder path</code>：选择一个远端文件夹作为该 Vault 的同步目录。</li>
+          <li><code>Conflict strategy</code>：建议选择“Keep both（保留双方）”或“Ask each time（每次询问）”降低误覆盖风险。</li>
+          <li><code>Sync .zhixu/index.sqlite</code>：这是可重建索引库。不开启也能正常使用；新设备会重建索引（可能需要一点时间）。</li>
+        </ul>
+        <figure class="docFigure">
+          <img src="./webdav-folder-pair.png" alt="同步目录与冲突策略设置" loading="lazy" />
+          <figcaption>同步目录与冲突策略（Folder Pair）</figcaption>
+        </figure>
+        <figure class="docFigure">
+          <img src="./webdav-remote-folder-picker.png" alt="远端文件夹选择器" loading="lazy" />
+          <figcaption>远端文件夹选择器（Remote folder picker）</figcaption>
+        </figure>
+
+        <p><strong>3）Automation（自动化） + 4）Auto sync（自动同步）</strong></p>
+        <ul>
+          <li>在 <code>Automation</code> 中设置：同步间隔、失败重试次数、重试间隔。</li>
+          <li>在 <code>Auto sync</code> 中开启/关闭自动同步。</li>
+        </ul>
+        <figure class="docFigure">
+          <img src="./webdav-automation.png" alt="自动化设置与自动同步开关" loading="lazy" />
+          <figcaption>Automation 参数 + Auto sync 开关</figcaption>
+        </figure>
+
+        <h2 id="first-sync">第一次同步建议（两台设备怎么接入）</h2>
+        <p>第一次同步建议按“先上传、后下载”的顺序接入，降低冲突概率。</p>
+        <ol>
+          <li>在设备 A（数据最完整的那台）配置好 WebDAV，并选择一个新的远端同步目录。</li>
+          <li>在设备 A 点击“生成任务”，检查操作列表是否以“上传”为主。</li>
+          <li>确认无误后执行任务，等待完成。</li>
+          <li>在设备 B 配置同一个 WebDAV 账号与同一个远端同步目录。</li>
+          <li>在设备 B “生成任务”，一般会以“下载”为主；执行即可把远端内容拉到本地。</li>
+        </ol>
+        <h2 id="task-model">同步任务：生成 → 审阅 → 执行</h2>
+        <p>在 Zhixu 里，同步不是“一个按钮”，而是“一次同步任务”。它由一组明确的文件操作组成。</p>
+
+        <h2 id="task-model-rows">WebDAV 页面里的三行同步信息</h2>
+        <ul>
+          <li><strong>上次同步</strong>：展示上一次同步结果的摘要（彩色数字）与时间；右侧是状态（成功/同步中/失败等）。</li>
+          <li><strong>当前任务</strong>：同一时间只会有一个“当前任务”。没有任务时可以生成新任务；有任务时点击进入任务详情。</li>
+          <li><strong>最近任务</strong>：可展开查看最近 N 次同步任务；可回看做了哪些操作，也可重试失败项。</li>
+        </ul>
+
+        <figure class="docFigure">
+          <img src="./webdav-panel-3rows.png" alt="上次同步 / 当前任务 / 最近任务三行" loading="lazy" />
+          <figcaption>上次同步 / 当前任务 / 最近任务（三行）</figcaption>
+        </figure>
+
+        <h2 id="task-detail">任务详情页：操作列表 + 可追踪状态</h2>
+        <p>打开“当前任务”或“历史任务”，你会看到该任务的操作列表。每一条操作对应一个文件，并包含：</p>
+        <ul>
+          <li><strong>文件路径</strong>（path）</li>
+          <li><strong>原因</strong>（reason，用于解释为何产生该操作）</li>
+          <li><strong>状态</strong>：待执行 / 跳过 / 已完成 / 失败</li>
+        </ul>
+
+        <div class="legal__tableWrap" role="group" aria-label="操作类型说明表">
+          <table class="legal__table">
+            <thead>
+              <tr>
+                <th>类型</th>
+                <th>含义</th>
+                <th>你需要关注什么</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>UPLOAD</code></td>
+                <td>把本地文件上传到远端</td>
+                <td>首次同步通常上传很多；确认远端目录选对了。</td>
+              </tr>
+              <tr>
+                <td><code>DOWNLOAD</code></td>
+                <td>把远端文件下载到本地</td>
+                <td>第二台设备接入时通常下载很多。</td>
+              </tr>
+              <tr>
+                <td><code>DELETE_LOCAL</code></td>
+                <td>删除本地文件</td>
+                <td>高风险：建议先跳过，确认无误再执行。</td>
+              </tr>
+              <tr>
+                <td><code>DELETE_REMOTE</code></td>
+                <td>删除远端文件</td>
+                <td>高风险：建议先跳过，确认无误再执行。</td>
+              </tr>
+              <tr>
+                <td><code>CONFLICT</code></td>
+                <td>冲突（需要你裁决）</td>
+                <td>未解决冲突会阻止执行；必须逐条选择“用本地/用远端/保留双方”。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <figure class="docFigure">
+          <img src="./webdav-task-detail.png" alt="任务详情页与操作列表" loading="lazy" />
+          <figcaption>任务详情页：操作列表（含原因、状态、冲突裁决与跳过）</figcaption>
+        </figure>
+
+        <h2 id="conflicts">冲突怎么处理（只在任务中裁决）</h2>
+        <p>冲突是一条“未完成的操作”。你需要在任务列表里为每条冲突做选择，选择只会写入任务，不会立即生效。</p>
+        <ul>
+          <li><strong>Use local（使用本地版本）</strong>：保留本地版本，必要时覆盖远端。</li>
+          <li><strong>Use remote（使用远端版本）</strong>：以远端为准，把远端覆盖到本地。</li>
+          <li><strong>Keep both（保留双方）</strong>：保留当前版本，并把另一侧版本保存为副本（通常写入 Vault 的 <code>.zhixu/conflicts/</code> 目录）。</li>
+        </ul>
+        <p class="muted tiny">
+          重要：未解决冲突时，任务禁止执行。解决冲突后再点击“执行”。
+        </p>
+        <figure class="docFigure">
+          <img src="./webdav-conflict-pick.png" alt="冲突裁决（用本地 / 用远端 / 保留双方）" loading="lazy" />
+          <figcaption>冲突裁决：用本地 / 用远端 / 保留双方（先裁决，后执行）</figcaption>
+        </figure>
+
+        <h2 id="deletes">删除操作与“跳过”</h2>
+        <p>任何删除都是高风险操作。Zhixu 会把删除作为明确的操作列出，并允许你逐条跳过。</p>
+        <ul>
+          <li>如果你看到不合理的删除（例如第一次同步就出现大量删除），建议先全部跳过。</li>
+          <li>跳过不会丢失这条操作：你可以在任务中“取消跳过”，然后再执行。</li>
+        </ul>
+        <h2 id="autosync">自动同步（自动生成任务 + 自动执行）</h2>
+        <p>自动同步本质上是“自动生成任务 + 自动执行”，并遵守以下规则：</p>
+        <ul>
+          <li><strong>不覆盖当前任务</strong>：如果你手动生成了任务（或自动生成的任务还没处理），自动同步不会在后台重新生成并覆盖它。</li>
+          <li><strong>遇到冲突会停下</strong>：一旦检测到冲突，自动同步会留下一个“当前任务”给你处理（需要你裁决后才能执行）。</li>
+          <li><strong>失败会按重试策略尝试</strong>：重试次数与间隔由 Automation 设置控制。</li>
+        </ul>
+
+        <h2 id="history">历史任务与重试失败项</h2>
+        <ul>
+          <li>在“最近任务”中展开列表，点击某一条任务可查看详情。</li>
+          <li>如果某次任务有失败项，你可以在任务详情页选择“重试失败项”（只针对失败文件生成新任务）。</li>
+        </ul>
+        <figure class="docFigure">
+          <img src="./webdav-history-expanded.png" alt="最近任务展开列表" loading="lazy" />
+          <figcaption>最近任务：展开查看历史任务</figcaption>
+        </figure>
+
+        <h2 id="troubleshooting">常见问题排查</h2>
+        <p><strong>1）Connect 失败 / HTTP 报错</strong></p>
+        <ul>
+          <li>确认 <code>Base URL</code> 是否是 WebDAV 地址（不是网页首页地址）。</li>
+          <li>确认必须以 <code>http://</code> 或 <code>https://</code> 开头。</li>
+          <li>如果是 401/403：通常是用户名/密码不正确，或需要应用密码。</li>
+          <li>如果是 404：通常是路径不对（WebDAV 端点不同），请回到服务提供方文档确认。</li>
+        </ul>
+
+        <p><strong>2）生成任务按钮不可用</strong></p>
+        <ul>
+          <li>请先选择 Vault（未选择 Vault 时无法同步）。</li>
+          <li>确认已启用 WebDAV，并且 Base URL 合法。</li>
+          <li>如果正在加载/有错误提示，先等待加载完成或修复错误。</li>
+        </ul>
+
+        <p><strong>3）提示 “WebDAV config changed; regenerate task”</strong></p>
+        <ul>
+          <li>你在生成任务后修改了账号/远端目录/是否同步 index.sqlite。</li>
+          <li>解决方式：丢弃当前任务，然后重新生成任务。</li>
+        </ul>
+
+        <p><strong>4）自动同步没有动静</strong></p>
+        <ul>
+          <li>确认 <code>Auto sync</code> 已开启，并且 <code>Automation</code> 的间隔不是太长。</li>
+          <li>如果当前存在“当前任务”（尤其是冲突未处理），自动同步会停止，直到你处理该任务。</li>
+          <li>Android 可能限制后台任务：可尝试为 Zhixu 关闭电池优化/允许后台运行。</li>
+        </ul>
+
+        <p><strong>5）同步很慢 / 首次同步耗时很长</strong></p>
+        <ul>
+          <li>首次同步需要扫描与传输大量文件；建议 Wi‑Fi + 充电。</li>
+          <li>附件较多时会明显变慢，属于正常现象。</li>
+        </ul>
+
+        <h2 id="safety">安全与最佳实践</h2>
+        <ul>
+          <li>建议使用 HTTPS；避免把 WebDAV 凭据暴露在不安全网络中。</li>
+          <li>建议每个 Vault 使用独立远端目录，避免多个 Vault 混用同一目录。</li>
+          <li>跨设备频繁编辑同一文件时，更容易产生冲突：尽量缩短离线编辑时间，或选择“保留双方”。</li>
+          <li>不要手动修改 <code>.zhixu/</code> 下的同步元数据文件（除非你知道自己在做什么）。</li>
+        </ul>
+      </article>
+    </main>
+
+    <footer class="page footer">
+      <nav class="footnav" aria-label="页脚导航">
+        <a class="brand" href="../../">
+          <img class="brand__logo" src="../../assets/zhixu.png" alt="" width="24" height="24" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../">Docs</a>
+          <a role="listitem" href="../../tos/">Terms</a>
+          <a role="listitem" href="../../privacy/">Privacy</a>
+          <a role="listitem" href="../../license/">License</a>
+        </div>
+      </nav>
+      <p class="tiny muted">&copy; <span id="year"></span> Zhixu contributors.</p>
+    </footer>
+
+    <script src="../../main.js"></script>
+  </body>
+</html>
