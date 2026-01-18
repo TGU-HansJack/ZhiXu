@@ -896,6 +896,8 @@ private enum class SyncSettingsPage {
     WebDavManual,
 }
 
+private const val WEBDAV_MANUAL_URL = "https://zhixu.app/docs/webdav/"
+
 private data class WebDavRemoteFolder(
     val name: String,
     val path: String,
@@ -1392,6 +1394,17 @@ private fun SyncSettingsScreen(
                 SyncSettingsPage.WebDavRemoteFolderPicker -> SyncSettingsPage.WebDavFolderPair
                 SyncSettingsPage.WebDavManual -> SyncSettingsPage.WebDavService
             }
+    }
+
+    // WebDAV user manual lives on the website so it can be updated without app releases.
+    if (page == SyncSettingsPage.WebDavManual) {
+        WebPageScreen(
+            contentPadding = contentPadding,
+            titleRes = R.string.webdav_manual_title,
+            url = WEBDAV_MANUAL_URL,
+            onBack = ::popPage,
+        )
+        return
     }
 
     BackHandler(enabled = page != SyncSettingsPage.Main) {
