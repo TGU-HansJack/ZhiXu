@@ -362,6 +362,10 @@
     <string name="webdav_sync_panel_last_status_partial">部分完成</string>
     <string name="webdav_sync_panel_last_status_failed">失败</string>
 
+    <string name="webdav_sync_panel_result_success_fmt">成功 %1$d</string>
+    <string name="webdav_sync_panel_result_conflicts_fmt">冲突 %1$d</string>
+    <string name="webdav_sync_panel_result_failed_fmt">失败 %1$d</string>
+
     <string name="webdav_sync_panel_autosync_title">自动同步</string>
     <string name="webdav_sync_panel_autosync_enabled">已开启</string>
     <string name="webdav_sync_panel_autosync_disabled">已关闭</string>

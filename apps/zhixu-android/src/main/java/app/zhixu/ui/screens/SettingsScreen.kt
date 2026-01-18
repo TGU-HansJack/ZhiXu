@@ -2312,6 +2312,45 @@ private fun SyncSettingsScreen(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
+                                    .clickable {
+                                        val next = !webDavAutoSyncEnabled
+                                        scope.launch { prefs.setWebDavAutoSyncEnabled(next) }
+                                    },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(Ionicons.Workflow),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            headlineContent = { Text(stringResource(R.string.webdav_sync_panel_autosync_title)) },
+                            supportingContent = {
+                                Text(
+                                    text =
+                                        if (webDavAutoSyncEnabled) {
+                                            stringResource(R.string.webdav_sync_panel_autosync_enabled)
+                                        } else {
+                                            stringResource(R.string.webdav_sync_panel_autosync_disabled)
+                                        },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            trailingContent = {
+                                ZhixuSwitch(
+                                    checked = webDavAutoSyncEnabled,
+                                    onCheckedChange = { checked ->
+                                        scope.launch { prefs.setWebDavAutoSyncEnabled(checked) }
+                                    },
+                                )
+                            },
+                        )
+                        HorizontalDivider(color = dividerColor)
+                        ListItem(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
                                     .clickable { page = SyncSettingsPage.WebDavManual },
                             leadingContent = {
                                 Icon(
@@ -2349,9 +2388,7 @@ private fun SyncSettingsScreen(
                         webDavConfig = currentConfig(),
                         webDavAutomation = webDavAutomation,
                         autoSyncEnabled = webDavAutoSyncEnabled,
-                        onAutoSyncEnabledChange = { checked -> scope.launch { prefs.setWebDavAutoSyncEnabled(checked) } },
                         legacyLastSummaryText = lastWebDavSummary,
-                        autoSyncStatusText = webDavAutoSyncStatus,
                     )
                 }
 

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -39,8 +40,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -64,7 +67,6 @@ import app.zhixu.sync.WebDavSyncTaskTrigger
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
-import app.zhixu.ui.components.ZhixuSwitch
 import app.zhixu.ui.components.ZhixuTopAppBar
 import kotlinx.coroutines.launch
 
@@ -76,9 +78,7 @@ fun WebDavSyncPanel(
     webDavConfig: WebDavConfig,
     webDavAutomation: WebDavAutomationSettings,
     autoSyncEnabled: Boolean,
-    onAutoSyncEnabledChange: (Boolean) -> Unit,
     legacyLastSummaryText: String?,
-    autoSyncStatusText: String?,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
@@ -91,6 +91,7 @@ fun WebDavSyncPanel(
 
     var showTaskDetail by remember { mutableStateOf(false) }
     var detailTask by remember { mutableStateOf<WebDavSyncTask?>(null) }
+    var historyExpanded by remember { mutableStateOf(false) }
 
     suspend fun reload() {
         val root = vaultRootUri ?: return
@@ -123,60 +124,163 @@ fun WebDavSyncPanel(
     val history = state?.history.orEmpty()
     val last = history.firstOrNull()
 
+    val successColor = Color(0xFF2E7D32)
+    val syncingColor = Color(0xFF1976D2)
+    val warningColor = Color(0xFFF9A825)
+    val disabledColor = MaterialTheme.colorScheme.error
+    val neutralColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    val isSyncRunning = current?.run != null && current.run.endedAtMs == 0L
+
     val lastStatusText =
         when {
+            !webDavConfig.enabled -> stringResource(R.string.cloud_sync_status_disabled)
+            isSyncRunning -> stringResource(R.string.webdav_syncing)
             last == null -> stringResource(R.string.webdav_sync_panel_last_status_none)
             last.run?.error.isNullOrBlank() && last.operations.none { it.state == WebDavSyncTaskOpState.FAILED } -> stringResource(R.string.webdav_sync_panel_last_status_ok)
             last.operations.any { it.state == WebDavSyncTaskOpState.DONE } -> stringResource(R.string.webdav_sync_panel_last_status_partial)
             else -> stringResource(R.string.webdav_sync_panel_last_status_failed)
         }
 
+    val statusKind: String =
+        when {
+            !webDavConfig.enabled -> "disabled"
+            isSyncRunning -> "syncing"
+            last == null -> "none"
+            last.run?.error.isNullOrBlank() && last.operations.none { it.state == WebDavSyncTaskOpState.FAILED } -> "ok"
+            last.operations.any { it.state == WebDavSyncTaskOpState.DONE } -> "partial"
+            else -> "failed"
+        }
+
+    val statusIconRes =
+        when (statusKind) {
+            "disabled" -> Ionicons.CloudOff
+            "syncing" -> Ionicons.CloudBackup
+            "ok" -> Ionicons.CloudCheck
+            "partial" -> Ionicons.CloudAlert
+            "failed" -> Ionicons.CloudAlert
+            else -> Ionicons.Cloud
+        }
+    val statusIconTint =
+        when (statusKind) {
+            "disabled" -> disabledColor
+            "syncing" -> syncingColor
+            "ok" -> successColor
+            "partial" -> warningColor
+            "failed" -> warningColor
+            else -> neutralColor
+        }
+    val statusTextColor =
+        when (statusKind) {
+            "disabled" -> disabledColor
+            "syncing" -> syncingColor
+            "ok" -> successColor
+            "partial" -> warningColor
+            "failed" -> disabledColor
+            else -> neutralColor
+        }
+
+    val lastSummary = last?.run?.summary
+    val successCount =
+        lastSummary?.let { it.uploaded + it.downloaded + it.deletedRemote + it.deletedLocal }
+            ?: last?.operations?.count { it.state == WebDavSyncTaskOpState.DONE && it.kind != WebDavPlannedOpKind.CONFLICT }
+            ?: 0
+    val conflictCount =
+        lastSummary?.conflicts
+            ?: last?.operations?.count { it.kind == WebDavPlannedOpKind.CONFLICT }
+            ?: 0
+    val failedCount =
+        lastSummary?.failed
+            ?: last?.operations?.count { it.state == WebDavSyncTaskOpState.FAILED }
+            ?: 0
+
+    val autoSyncLabel =
+        buildString {
+            append(stringResource(R.string.webdav_sync_panel_autosync_title))
+            append(" · ")
+            append(
+                if (autoSyncEnabled) stringResource(R.string.webdav_sync_panel_autosync_enabled) else stringResource(R.string.webdav_sync_panel_autosync_disabled),
+            )
+        }
+
+    val displayTimeMs =
+        when {
+            isSyncRunning -> current?.run?.startedAtMs ?: 0L
+            else -> last?.run?.endedAtMs?.takeIf { it > 0L } ?: last?.createdAtMs ?: 0L
+        }
+    val displayTimeText = displayTimeMs.takeIf { it > 0L }?.let { WebDavSyncTaskManager.formatEpochMs(it) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = MaterialTheme.shapes.extraLarge,
+        shape = RoundedCornerShape(4.dp),
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            Text(
-                text = stringResource(R.string.webdav_sync_panel_last_status_title),
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = lastStatusText,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (!legacyLastSummaryText.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = legacyLastSummaryText,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 12.sp,
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Icon(
+                    painter = painterResource(statusIconRes),
+                    contentDescription = null,
+                    tint = statusIconTint,
+                    modifier = Modifier.size(20.dp),
                 )
+                Spacer(modifier = Modifier.size(8.dp))
+                Text(
+                    text = stringResource(R.string.webdav_sync_panel_last_status_title),
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(text = lastStatusText, color = statusTextColor, fontWeight = FontWeight.SemiBold)
             }
-            val lastTime = last?.run?.endedAtMs?.takeIf { it > 0L } ?: last?.createdAtMs ?: 0L
-            if (lastTime > 0L) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = WebDavSyncTaskManager.formatEpochMs(lastTime),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 12.sp,
-                )
+
+            if (last != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = stringResource(R.string.webdav_sync_panel_result_success_fmt, successCount),
+                        color = successColor,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = stringResource(R.string.webdav_sync_panel_result_conflicts_fmt, conflictCount),
+                        color = warningColor,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = stringResource(R.string.webdav_sync_panel_result_failed_fmt, failedCount),
+                        color = disabledColor,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            } else if (!legacyLastSummaryText.isNullOrBlank()) {
+                val line = legacyLastSummaryText.lineSequence().firstOrNull().orEmpty().trim()
+                val noTime = line.substringBeforeLast(" · ").trim()
+                if (noTime.isNotBlank()) {
+                    Text(text = noTime, color = neutralColor, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
 
             if (loading) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(text = stringResource(R.string.common_loading), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = stringResource(R.string.common_loading), color = neutralColor, fontSize = 12.sp)
             }
 
             if (!error.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(text = error!!, color = MaterialTheme.colorScheme.error)
+                Text(text = error!!, color = disabledColor, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
 
-            if (!autoSyncStatusText.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(text = autoSyncStatusText, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(text = autoSyncLabel, color = neutralColor, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (displayTimeText != null) {
+                    Text(text = displayTimeText, color = neutralColor, fontSize = 12.sp)
+                }
             }
         }
     }
@@ -188,62 +292,44 @@ fun WebDavSyncPanel(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = MaterialTheme.shapes.extraLarge,
     ) {
-        ListItem(
-            modifier = Modifier.fillMaxWidth(),
-            headlineContent = { Text(stringResource(R.string.webdav_sync_panel_autosync_title)) },
-            supportingContent = {
-                Text(
-                    text =
-                        stringResource(
-                            R.string.webdav_sync_panel_autosync_subtitle_fmt,
-                            if (autoSyncEnabled) stringResource(R.string.webdav_sync_panel_autosync_enabled) else stringResource(R.string.webdav_sync_panel_autosync_disabled),
-                            webDavAutomation.intervalMinutes,
-                            webDavAutomation.retryCount,
-                        ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            trailingContent = {
-                ZhixuSwitch(
-                    checked = autoSyncEnabled,
-                    onCheckedChange = onAutoSyncEnabledChange,
-                )
-            },
-        )
-    }
-
-    Spacer(modifier = Modifier.height(12.dp))
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = MaterialTheme.shapes.extraLarge,
-    ) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            Text(text = stringResource(R.string.webdav_sync_panel_current_task_title), fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Icon(
+                    painter = painterResource(Ionicons.ClipboardList),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                Text(
+                    text = stringResource(R.string.webdav_sync_panel_current_task_title),
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                if (current == null) {
+                    TextButton(
+                        enabled = vaultRootUri != null && isConfigUsable() && !loading,
+                        onClick = {
+                            val root = vaultRootUri ?: return@TextButton
+                            scope.launch {
+                                runCatching {
+                                    manager.generateTask(root, webDavConfig, trigger = WebDavSyncTaskTrigger.MANUAL)
+                                    reload()
+                                    val refreshed = manager.load(root).current
+                                    if (refreshed != null) {
+                                        detailTask = refreshed
+                                        showTaskDetail = true
+                                    }
+                                }.onFailure { error = it.message ?: it.javaClass.simpleName }
+                            }
+                        },
+                    ) { Text(stringResource(R.string.webdav_sync_panel_generate_task)) }
+                }
+            }
             Spacer(modifier = Modifier.height(8.dp))
 
             if (current == null) {
                 Text(text = stringResource(R.string.webdav_sync_panel_no_current_task), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(modifier = Modifier.height(10.dp))
-                Button(
-                    enabled = vaultRootUri != null && isConfigUsable() && !loading,
-                    onClick = {
-                        val root = vaultRootUri ?: return@Button
-                        scope.launch {
-                            runCatching {
-                                manager.generateTask(root, webDavConfig, trigger = WebDavSyncTaskTrigger.MANUAL)
-                                reload()
-                                val refreshed = manager.load(root).current
-                                if (refreshed != null) {
-                                    detailTask = refreshed
-                                    showTaskDetail = true
-                                }
-                            }.onFailure { error = it.message ?: it.javaClass.simpleName }
-                        }
-                    },
-                ) { Text(stringResource(R.string.webdav_sync_panel_generate_task)) }
             } else {
                 val totalOps = current.operations.size
                 val unresolvedConflicts =
@@ -287,6 +373,18 @@ fun WebDavSyncPanel(
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             ListItem(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { historyExpanded = !historyExpanded },
+                leadingContent = {
+                    Icon(
+                        painter = painterResource(Ionicons.ListTodo),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                },
                 headlineContent = { Text(stringResource(R.string.webdav_sync_panel_history_title)) },
                 supportingContent = {
                     if (history.isEmpty()) {
@@ -305,47 +403,57 @@ fun WebDavSyncPanel(
                         )
                     }
                 },
+                trailingContent = {
+                    Icon(
+                        painter = painterResource(Ionicons.ChevronDownLucide),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp).rotate(if (historyExpanded) 180f else 0f),
+                    )
+                },
             )
-            if (history.isNotEmpty()) HorizontalDivider(color = dividerColor)
-            history.take(5).forEachIndexed { idx, t ->
-                ListItem(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                detailTask = t
-                                showTaskDetail = true
-                            },
-                    leadingContent = {
-                        Icon(
-                            painter = painterResource(Ionicons.TimeOutline),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    },
-                    headlineContent = {
-                        val title =
-                            when (t.trigger) {
-                                WebDavSyncTaskTrigger.MANUAL -> stringResource(R.string.webdav_sync_panel_task_trigger_manual)
-                                WebDavSyncTaskTrigger.AUTO -> stringResource(R.string.webdav_sync_panel_task_trigger_auto)
-                            }
-                        Text(title)
-                    },
-                    supportingContent = {
-                        val ended = t.run?.endedAtMs?.takeIf { it > 0L } ?: t.createdAtMs
-                        val line =
-                            buildString {
-                                append(WebDavSyncTaskManager.formatEpochMs(ended))
-                                if (!t.run?.error.isNullOrBlank()) {
-                                    append(" · ")
-                                    append(t.run?.error)
+            if (historyExpanded && history.isNotEmpty()) {
+                HorizontalDivider(color = dividerColor)
+                history.take(5).forEachIndexed { idx, t ->
+                    ListItem(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    detailTask = t
+                                    showTaskDetail = true
+                                },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(Ionicons.TimeOutline),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        },
+                        headlineContent = {
+                            val title =
+                                when (t.trigger) {
+                                    WebDavSyncTaskTrigger.MANUAL -> stringResource(R.string.webdav_sync_panel_task_trigger_manual)
+                                    WebDavSyncTaskTrigger.AUTO -> stringResource(R.string.webdav_sync_panel_task_trigger_auto)
                                 }
-                            }
-                        Text(line, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    },
-                )
-                if (idx != minOf(history.size, 5) - 1) HorizontalDivider(color = dividerColor)
+                            Text(title)
+                        },
+                        supportingContent = {
+                            val ended = t.run?.endedAtMs?.takeIf { it > 0L } ?: t.createdAtMs
+                            val line =
+                                buildString {
+                                    append(WebDavSyncTaskManager.formatEpochMs(ended))
+                                    if (!t.run?.error.isNullOrBlank()) {
+                                        append(" · ")
+                                        append(t.run?.error)
+                                    }
+                                }
+                            Text(line, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        },
+                    )
+                    if (idx != minOf(history.size, 5) - 1) HorizontalDivider(color = dividerColor)
+                }
             }
         }
     }

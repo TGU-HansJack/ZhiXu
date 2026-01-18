@@ -383,6 +383,10 @@
     <string name="webdav_sync_panel_last_status_partial">Partial</string>
     <string name="webdav_sync_panel_last_status_failed">Failed</string>
 
+    <string name="webdav_sync_panel_result_success_fmt">Success %1$d</string>
+    <string name="webdav_sync_panel_result_conflicts_fmt">Conflicts %1$d</string>
+    <string name="webdav_sync_panel_result_failed_fmt">Failed %1$d</string>
+
     <string name="webdav_sync_panel_autosync_title">Auto sync</string>
     <string name="webdav_sync_panel_autosync_enabled">On</string>
     <string name="webdav_sync_panel_autosync_disabled">Off</string>

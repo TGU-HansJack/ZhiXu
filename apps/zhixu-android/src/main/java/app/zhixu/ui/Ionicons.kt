@@ -42,6 +42,14 @@ object Ionicons {
     @DrawableRes val ExtensionPuzzleOutline: Int = R.drawable.ic_ion_extension_puzzle_outline
     @DrawableRes val CloudDownloadOutline: Int = R.drawable.ic_ion_cloud_download_outline
     @DrawableRes val Cloud: Int = R.drawable.ic_lucide_cloud
+    @DrawableRes val CloudCheck: Int = R.drawable.ic_lucide_cloud_check
+    @DrawableRes val CloudBackup: Int = R.drawable.ic_lucide_cloud_backup
+    @DrawableRes val CloudAlert: Int = R.drawable.ic_lucide_cloud_alert
+    @DrawableRes val CloudOff: Int = R.drawable.ic_lucide_cloud_off
+    @DrawableRes val Workflow: Int = R.drawable.ic_lucide_workflow
+    @DrawableRes val ClipboardList: Int = R.drawable.ic_lucide_clipboard_list
+    @DrawableRes val ListTodo: Int = R.drawable.ic_lucide_list_todo
+    @DrawableRes val ChevronDownLucide: Int = R.drawable.ic_lucide_chevron_down
     @DrawableRes val CloseCircleOutline: Int = R.drawable.ic_ion_close_circle_outline
     @DrawableRes val AddCircleOutline: Int = R.drawable.ic_ion_add_circle_outline
     @DrawableRes val RemoveCircleOutline: Int = R.drawable.ic_ion_remove_circle_outline
