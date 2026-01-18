@@ -53,6 +53,7 @@ class SyncPreferences(
     private val webdavPasswordKey = stringPreferencesKey("webdav_password")
     private val webdavRemoteRootKey = stringPreferencesKey("webdav_remote_root")
     private val webdavPairNameKey = stringPreferencesKey("webdav_pair_name")
+    private val webdavRemoteRootConfirmedKey = booleanPreferencesKey("webdav_remote_root_confirmed")
     private val includeIndexSqliteKey = booleanPreferencesKey("sync_include_index_sqlite")
     private val webdavConflictStrategyKey = stringPreferencesKey("webdav_conflict_strategy")
     private val webdavAutoSyncEnabledKey = booleanPreferencesKey("webdav_autosync_enabled")
@@ -79,12 +80,25 @@ class SyncPreferences(
 
     val webDavPairName: Flow<String> = context.dataStore.data.map { it[webdavPairNameKey] ?: "" }
 
-    val webDavAutoSyncEnabled: Flow<Boolean> = context.dataStore.data.map { it[webdavAutoSyncEnabledKey] ?: true }
+    // Default OFF: avoid surprise background-ish behavior, and prevent accidental sync when remoteRoot isn't configured yet.
+    val webDavAutoSyncEnabled: Flow<Boolean> = context.dataStore.data.map { it[webdavAutoSyncEnabledKey] ?: false }
+
+    // "Remote root explicitly selected" gate for all sync actions.
+    //
+    // Backward compatible default:
+    // - if the confirmed flag is missing but remoteRoot != "/", treat it as confirmed (user likely configured it already)
+    // - if remoteRoot == "/", require explicit confirmation to avoid accidental syncing to the root folder.
+    val webDavRemoteRootConfirmed: Flow<Boolean> =
+        context.dataStore.data.map { prefs ->
+            prefs[webdavRemoteRootConfirmedKey]
+                ?: ((prefs[webdavRemoteRootKey] ?: "/").trim().ifBlank { "/" } != "/")
+        }
 
     val webDavAutomationSettings: Flow<WebDavAutomationSettings> =
         context.dataStore.data.map { prefs ->
             WebDavAutomationSettings(
-                intervalMinutes = (prefs[webdavAutoSyncIntervalMinutesKey] ?: WebDavAutomationSettings.DEFAULT.intervalMinutes).coerceIn(1, 24 * 60),
+                // Safety: keep a conservative minimum interval to avoid excessive battery/network usage.
+                intervalMinutes = (prefs[webdavAutoSyncIntervalMinutesKey] ?: WebDavAutomationSettings.DEFAULT.intervalMinutes).coerceIn(15, 24 * 60),
                 retryCount = (prefs[webdavAutoSyncRetryCountKey] ?: WebDavAutomationSettings.DEFAULT.retryCount).coerceIn(0, 10),
                 retryIntervalSeconds =
                     (prefs[webdavAutoSyncRetryIntervalSecondsKey] ?: WebDavAutomationSettings.DEFAULT.retryIntervalSeconds).coerceIn(1, 60 * 60),
@@ -110,6 +124,7 @@ class SyncPreferences(
         val trimmed = remoteRoot.trim()
         context.dataStore.edit { prefs ->
             prefs[webdavRemoteRootKey] = trimmed.ifBlank { "/" }
+            prefs[webdavRemoteRootConfirmedKey] = true
         }
     }
 
@@ -121,7 +136,7 @@ class SyncPreferences(
 
     suspend fun saveWebDavAutomationSettings(settings: WebDavAutomationSettings) {
         context.dataStore.edit { prefs ->
-            prefs[webdavAutoSyncIntervalMinutesKey] = settings.intervalMinutes.coerceIn(1, 24 * 60)
+            prefs[webdavAutoSyncIntervalMinutesKey] = settings.intervalMinutes.coerceIn(15, 24 * 60)
             prefs[webdavAutoSyncRetryCountKey] = settings.retryCount.coerceIn(0, 10)
             prefs[webdavAutoSyncRetryIntervalSecondsKey] = settings.retryIntervalSeconds.coerceIn(1, 60 * 60)
         }
@@ -129,11 +144,23 @@ class SyncPreferences(
 
     suspend fun saveWebDavConfig(config: WebDavConfig) {
         context.dataStore.edit { prefs ->
+            val nextRemoteRoot = config.remoteRoot.trim().ifBlank { "/" }
+            val prevRemoteRoot = (prefs[webdavRemoteRootKey] ?: "/").trim().ifBlank { "/" }
+            if (prevRemoteRoot != nextRemoteRoot) {
+                // Require explicit selection again if the remote root changes.
+                prefs[webdavRemoteRootConfirmedKey] = false
+                // Auto-sync can't stay enabled when the target folder changes.
+                prefs[webdavAutoSyncEnabledKey] = false
+            }
+            if (!config.enabled) {
+                // Sync disabled -> auto-sync must be disabled as well.
+                prefs[webdavAutoSyncEnabledKey] = false
+            }
             prefs[webdavEnabledKey] = config.enabled
             prefs[webdavBaseUrlKey] = config.baseUrl
             prefs[webdavUsernameKey] = config.username
             prefs[webdavPasswordKey] = config.password
-            prefs[webdavRemoteRootKey] = config.remoteRoot
+            prefs[webdavRemoteRootKey] = nextRemoteRoot
             prefs[includeIndexSqliteKey] = config.includeIndexSqlite
             prefs[webdavConflictStrategyKey] = config.conflictStrategy.name
         }

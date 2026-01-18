@@ -34,7 +34,7 @@ data class WebDavSyncTaskOp(
     val reason: String,
     val state: WebDavSyncTaskOpState = WebDavSyncTaskOpState.PENDING,
     val error: String? = null,
-    // Only for CONFLICT ops. Null means unresolved.
+    // Only for CONFLICT ops. Null means "inherit global conflict strategy".
     val resolution: WebDavConflictStrategy? = null,
 )
 
@@ -292,7 +292,7 @@ class WebDavSyncTaskManager(
             state
         }.current ?: run {
             val engine = WebDavSyncEngine(context, repository)
-            val planConfig = config.copy(conflictStrategy = WebDavConflictStrategy.ASK_EACH_TIME)
+            val planConfig = config
             val plan =
                 if (normalizedPaths == null) {
                     engine.planVault(rootUri, planConfig)
@@ -369,8 +369,8 @@ class WebDavSyncTaskManager(
             task.operations.map { op ->
                 if (op.state == WebDavSyncTaskOpState.SKIPPED) return@map op
                 if (op.kind == WebDavPlannedOpKind.CONFLICT) {
-                    val r = op.resolution
-                    require(r != null && r != WebDavConflictStrategy.ASK_EACH_TIME) { "Unresolved conflict: ${op.path}" }
+                    val effective = op.resolution ?: config.conflictStrategy
+                    require(effective != WebDavConflictStrategy.ASK_EACH_TIME) { "Unresolved conflict: ${op.path}" }
                 }
                 op.copy(state = WebDavSyncTaskOpState.PENDING, error = null)
             }
@@ -387,8 +387,8 @@ class WebDavSyncTaskManager(
             }
         val conflictOverrides =
             toExecute
-                .filter { it.kind == WebDavPlannedOpKind.CONFLICT }
-                .associate { it.path to (it.resolution ?: WebDavConflictStrategy.ASK_EACH_TIME) }
+                .filter { it.kind == WebDavPlannedOpKind.CONFLICT && it.resolution != null }
+                .associate { it.path to it.resolution!! }
 
         val engine = WebDavSyncEngine(context, repository)
         val observed = ArrayList<WebDavSyncObservedOpResult>()
@@ -421,8 +421,8 @@ class WebDavSyncTaskManager(
                     rootUri = rootUri,
                     config =
                         config.copy(
-                            // Ensure conflicts are never silently resolved.
-                            conflictStrategy = WebDavConflictStrategy.ASK_EACH_TIME,
+                            // Task-level overrides apply via conflictStrategyOverrides; otherwise inherit global strategy.
+                            conflictStrategy = config.conflictStrategy,
                         ),
                     expectedOperations = expected,
                     conflictStrategyOverrides = conflictOverrides,

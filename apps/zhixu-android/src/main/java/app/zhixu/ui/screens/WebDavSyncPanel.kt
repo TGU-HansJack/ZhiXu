@@ -77,6 +77,8 @@ fun WebDavSyncPanel(
     repository: VaultRepository,
     webDavConfig: WebDavConfig,
     legacyLastSummaryText: String?,
+    syncReady: Boolean,
+    syncNotReadyHint: String? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
@@ -124,6 +126,7 @@ fun WebDavSyncPanel(
     }
 
     fun isConfigUsable(): Boolean {
+        if (!syncReady) return false
         if (!webDavConfig.enabled) return false
         val base = webDavConfig.baseUrl.trim()
         if (base.isBlank()) return false
@@ -146,6 +149,8 @@ fun WebDavSyncPanel(
     val lastStatusText =
         when {
             !webDavConfig.enabled -> stringResource(R.string.cloud_sync_status_disabled)
+            !syncReady && !syncNotReadyHint.isNullOrBlank() -> syncNotReadyHint
+            !syncReady -> stringResource(R.string.cloud_sync_status_not_configured)
             isSyncRunning -> stringResource(R.string.webdav_syncing)
             last == null -> stringResource(R.string.webdav_sync_panel_last_status_none)
             last.run?.error.isNullOrBlank() && last.operations.none { it.state == WebDavSyncTaskOpState.FAILED } -> stringResource(R.string.webdav_sync_panel_last_status_ok)
@@ -156,6 +161,7 @@ fun WebDavSyncPanel(
     val statusKind: String =
         when {
             !webDavConfig.enabled -> "disabled"
+            !syncReady -> "disabled"
             isSyncRunning -> "syncing"
             last == null -> "none"
             last.run?.error.isNullOrBlank() && last.operations.none { it.state == WebDavSyncTaskOpState.FAILED } -> "ok"
@@ -270,7 +276,12 @@ fun WebDavSyncPanel(
             stringResource(R.string.webdav_sync_panel_no_current_task)
         } else {
             val totalOps = current.operations.size
-            val unresolvedConflicts = current.operations.count { it.kind == WebDavPlannedOpKind.CONFLICT && it.resolution == null }
+            val unresolvedConflicts =
+                current.operations.count { op ->
+                    if (op.kind != WebDavPlannedOpKind.CONFLICT) return@count false
+                    val effective = op.resolution ?: webDavConfig.conflictStrategy
+                    effective == WebDavConflictStrategy.ASK_EACH_TIME
+                }
             stringResource(R.string.webdav_sync_panel_current_task_summary_fmt, totalOps, unresolvedConflicts)
         }
 
@@ -433,6 +444,8 @@ fun WebDavSyncPanel(
                 manager = manager,
                 webDavConfig = webDavConfig,
                 task = task,
+                syncReady = syncReady,
+                syncNotReadyHint = syncNotReadyHint,
                 onReload = { scope.launch { reload() } },
                 onClose = { showTaskDetail = false },
             )
@@ -466,6 +479,8 @@ private fun WebDavTaskDetailScreen(
     manager: WebDavSyncTaskManager,
     webDavConfig: WebDavConfig,
     task: WebDavSyncTask,
+    syncReady: Boolean,
+    syncNotReadyHint: String?,
     onReload: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -485,12 +500,21 @@ private fun WebDavTaskDetailScreen(
             task.includeIndexSqlite != webDavConfig.includeIndexSqlite
 
     val unresolvedConflicts =
-        task.operations.any { it.kind == WebDavPlannedOpKind.CONFLICT && it.resolution == null }
+        task.operations.any { op ->
+            if (op.kind != WebDavPlannedOpKind.CONFLICT) return@any false
+            val effective = op.resolution ?: webDavConfig.conflictStrategy
+            effective == WebDavConflictStrategy.ASK_EACH_TIME
+        }
 
     val hasExecutableOps =
         task.operations.any { op ->
             if (op.state == WebDavSyncTaskOpState.SKIPPED) return@any false
-            if (op.kind == WebDavPlannedOpKind.CONFLICT) op.resolution != null else true
+            if (op.kind == WebDavPlannedOpKind.CONFLICT) {
+                val effective = op.resolution ?: webDavConfig.conflictStrategy
+                effective != WebDavConflictStrategy.ASK_EACH_TIME
+            } else {
+                true
+            }
         }
 
     val canExecute =
@@ -498,6 +522,7 @@ private fun WebDavTaskDetailScreen(
             !configMismatch &&
             vaultRootUri != null &&
             webDavConfig.enabled &&
+            syncReady &&
             !unresolvedConflicts &&
             hasExecutableOps &&
             !working
@@ -622,6 +647,9 @@ private fun WebDavTaskDetailScreen(
                     if (configMismatch) {
                         Text(text = stringResource(R.string.webdav_task_config_changed), color = MaterialTheme.colorScheme.error)
                     }
+                    if (!syncReady && !syncNotReadyHint.isNullOrBlank()) {
+                        Text(text = syncNotReadyHint, color = MaterialTheme.colorScheme.error)
+                    }
                     if (unresolvedConflicts) {
                         Text(text = stringResource(R.string.webdav_task_unresolved_conflicts), color = MaterialTheme.colorScheme.error)
                     }
@@ -681,9 +709,9 @@ private fun WebDavTaskDetailScreen(
                                     }
                                     if (op.kind == WebDavPlannedOpKind.CONFLICT) {
                                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                            @Composable fun pick(strategy: WebDavConflictStrategy, labelRes: Int) {
-                                                FilterChip(
-                                                    selected = op.resolution == strategy,
+                                    @Composable fun pick(strategy: WebDavConflictStrategy, labelRes: Int) {
+                                        FilterChip(
+                                                    selected = (op.resolution ?: webDavConfig.conflictStrategy) == strategy,
                                                     enabled = isCurrent && !working,
                                                     onClick = {
                                                         val root = vaultRootUri ?: return@FilterChip
@@ -692,7 +720,12 @@ private fun WebDavTaskDetailScreen(
                                                                 cur.copy(
                                                                     operations =
                                                                         cur.operations.mapIndexed { i, x ->
-                                                                            if (i != idx) x else x.copy(resolution = strategy)
+                                                                            if (i != idx) {
+                                                                                x
+                                                                            } else {
+                                                                                val nextResolution = if (x.resolution == strategy) null else strategy
+                                                                                x.copy(resolution = nextResolution)
+                                                                            }
                                                                         },
                                                                 )
                                                             }
@@ -705,7 +738,10 @@ private fun WebDavTaskDetailScreen(
                                                             selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                                                             selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
                                                         ),
-                                                    label = { Text(stringResource(labelRes), fontWeight = if (op.resolution == strategy) FontWeight.Bold else FontWeight.Normal, maxLines = 1) },
+                                                    label = {
+                                                        val selected = (op.resolution ?: webDavConfig.conflictStrategy) == strategy
+                                                        Text(stringResource(labelRes), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
+                                                    },
                                                 )
                                             }
                                             pick(WebDavConflictStrategy.LOCAL_WINS, R.string.webdav_task_conflict_use_local)

@@ -1194,7 +1194,8 @@ private fun SyncSettingsScreen(
         )
     val savedWebDavPairName by prefs.webDavPairName.collectAsState(initial = "")
     val webDavAutomation by prefs.webDavAutomationSettings.collectAsState(initial = WebDavAutomationSettings.DEFAULT)
-    val webDavAutoSyncEnabled by prefs.webDavAutoSyncEnabled.collectAsState(initial = true)
+    val webDavAutoSyncEnabled by prefs.webDavAutoSyncEnabled.collectAsState(initial = false)
+    val webDavRemoteRootConfirmed by prefs.webDavRemoteRootConfirmed.collectAsState(initial = false)
 
     var page by rememberSaveable { mutableStateOf(SyncSettingsPage.Main) }
 
@@ -1265,6 +1266,13 @@ private fun SyncSettingsScreen(
 
     androidx.compose.runtime.LaunchedEffect(savedWebDavPairName) {
         webDavPairName = savedWebDavPairName
+    }
+
+    // Safety: if the remote folder isn't explicitly selected, auto-sync must stay off.
+    androidx.compose.runtime.LaunchedEffect(webDavRemoteRootConfirmed, webDavAutoSyncEnabled) {
+        if (!webDavRemoteRootConfirmed && webDavAutoSyncEnabled) {
+            prefs.setWebDavAutoSyncEnabled(false)
+        }
     }
 
     fun currentConfig(): WebDavConfig {
@@ -2234,6 +2242,29 @@ private fun SyncSettingsScreen(
                         else -> context.getString(R.string.webdav_account_subtitle_empty)
                     }
 
+                val baseUrlOk =
+                    trimmedUrl.isNotBlank() && (trimmedUrl.startsWith("http://") || trimmedUrl.startsWith("https://"))
+                val syncReady =
+                    vaultRootUri != null &&
+                        saved.enabled &&
+                        baseUrlOk &&
+                        webDavRemoteRootConfirmed
+                val autoSyncNotReadyHint =
+                    when {
+                        vaultRootUri == null -> context.getString(R.string.webdav_autosync_status_no_vault)
+                        !saved.enabled -> context.getString(R.string.cloud_sync_status_not_configured)
+                        trimmedUrl.isBlank() -> context.getString(R.string.webdav_autosync_status_empty_url)
+                        !baseUrlOk -> context.getString(R.string.webdav_autosync_status_invalid_url)
+                        !webDavRemoteRootConfirmed -> context.getString(R.string.webdav_sync_not_ready_select_remote_folder)
+                        else -> null
+                    }
+                val syncPanelNotReadyHint =
+                    if (!webDavRemoteRootConfirmed) {
+                        context.getString(R.string.webdav_sync_not_ready_select_remote_folder)
+                    } else {
+                        null
+                    }
+
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -2327,6 +2358,10 @@ private fun SyncSettingsScreen(
                                     .fillMaxWidth()
                                     .clickable {
                                         val next = !webDavAutoSyncEnabled
+                                        if (next && !syncReady) {
+                                            Toast.makeText(context, autoSyncNotReadyHint.orEmpty().ifBlank { "-" }, Toast.LENGTH_SHORT).show()
+                                            return@clickable
+                                        }
                                         scope.launch { prefs.setWebDavAutoSyncEnabled(next) }
                                     },
                             leadingContent = {
@@ -2341,7 +2376,9 @@ private fun SyncSettingsScreen(
                             supportingContent = {
                                 Text(
                                     text =
-                                        if (webDavAutoSyncEnabled) {
+                                        if (!syncReady && !autoSyncNotReadyHint.isNullOrBlank()) {
+                                            autoSyncNotReadyHint
+                                        } else if (webDavAutoSyncEnabled) {
                                             stringResource(R.string.webdav_sync_panel_autosync_enabled)
                                         } else {
                                             stringResource(R.string.webdav_sync_panel_autosync_disabled)
@@ -2354,8 +2391,13 @@ private fun SyncSettingsScreen(
                                 ZhixuSwitch(
                                     checked = webDavAutoSyncEnabled,
                                     onCheckedChange = { checked ->
+                                        if (checked && !syncReady) {
+                                            Toast.makeText(context, autoSyncNotReadyHint.orEmpty().ifBlank { "-" }, Toast.LENGTH_SHORT).show()
+                                            return@ZhixuSwitch
+                                        }
                                         scope.launch { prefs.setWebDavAutoSyncEnabled(checked) }
                                     },
+                                    enabled = syncReady || webDavAutoSyncEnabled,
                                 )
                             },
                         )
@@ -2365,6 +2407,8 @@ private fun SyncSettingsScreen(
                             repository = repository,
                             webDavConfig = currentConfig(),
                             legacyLastSummaryText = lastWebDavSummary,
+                            syncReady = syncReady,
+                            syncNotReadyHint = syncPanelNotReadyHint,
                         )
                         HorizontalDivider(color = dividerColor)
                         ListItem(

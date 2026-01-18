@@ -384,8 +384,9 @@
     <string name="webdav_sync_panel_last_status_failed">Failed</string>
 
     <string name="webdav_sync_panel_autosync_title">Auto sync</string>
-    <string name="webdav_sync_panel_autosync_enabled">On</string>
+    <string name="webdav_sync_panel_autosync_enabled">On (foreground only)</string>
     <string name="webdav_sync_panel_autosync_disabled">Off</string>
+    <string name="webdav_sync_not_ready_select_remote_folder">Select a sync folder</string>
     <string name="webdav_sync_panel_autosync_subtitle_fmt">%1$s · Every %2$d min · Retries %3$d</string>
 
     <string name="webdav_sync_panel_current_task_title">Current task</string>
