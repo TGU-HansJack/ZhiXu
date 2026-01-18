@@ -1,5 +1,6 @@
 :root {
   --page-width: 760px;
+  --control-height: 36px;
   --accent: #066adf;
   --fg: #111;
   --muted: #666;
@@ -137,15 +138,18 @@ code {
 }
 
 .button {
+  appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: var(--control-height);
   padding: 9px 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: transparent;
   font-weight: 650;
   font-size: 14px;
+  line-height: 1;
   color: var(--fg);
 }
 
