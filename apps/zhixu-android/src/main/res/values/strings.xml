@@ -237,6 +237,7 @@
     <string name="cloud_sync_dialog_webdav_hint_enabled">WebDAV is on</string>
 
     <string name="cloud_sync_dialog_open_settings">Open sync settings</string>
+    <string name="cloud_sync_dialog_sync_now">Sync now</string>
     <string name="cloud_sync_dialog_cancel">Cancel</string>
 
     <!-- Account -->

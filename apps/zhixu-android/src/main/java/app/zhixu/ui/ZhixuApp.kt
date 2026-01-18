@@ -715,6 +715,7 @@ fun ZhixuApp(
     val currentRoute = backStackEntry?.destination?.route
 
     if (showCloudSyncStatusDialog) {
+        val dialogScope = rememberCoroutineScope()
         val isPrimaryWebDav = vaultSyncConfig.location == VaultStorageLocation.LOCAL
         val primaryProviderName =
             when (vaultSyncConfig.location) {
@@ -942,12 +943,71 @@ fun ZhixuApp(
                 }
             },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        showCloudSyncStatusDialog = false
-                        navController.navigate("settingsMain")
-                    },
-                ) { Text(stringResource(R.string.cloud_sync_dialog_open_settings)) }
+                val canSyncNow =
+                    vaultRootUri != null &&
+                        when (vaultSyncConfig.location) {
+                            VaultStorageLocation.LOCAL -> webDavConfig.enabled && !webDavSyncing
+                            VaultStorageLocation.OFFICIAL_SERVER -> accountState.token.isNotBlank() && !syncServerSyncing
+                            VaultStorageLocation.THIRD_PARTY_SERVICE -> {
+                                val tp = vaultSyncConfig.thirdParty
+                                tp.url.trim().isNotBlank() &&
+                                    tp.username.trim().isNotBlank() &&
+                                    tp.password.isNotBlank() &&
+                                    !syncServerSyncing
+                            }
+                        }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        enabled = canSyncNow,
+                        onClick = {
+                            val root = vaultRootUri ?: return@TextButton
+                            dialogScope.launch {
+                                if (vaultSyncConfig.location == VaultStorageLocation.LOCAL) {
+                                    webDavSyncing = true
+                                    try {
+                                        runCatching {
+                                            WebDavAutoSync.maybeSyncVault(
+                                                context = context,
+                                                repository = repository,
+                                                vaultRootUri = root,
+                                                config = webDavConfig,
+                                                automation = webDavAutomationSettings,
+                                                force = true,
+                                            )
+                                        }
+                                    } finally {
+                                        webDavSyncing = false
+                                        reloadWebDavUiStatus()
+                                        reloadWebDavAutoSyncStatusForDialog()
+                                    }
+                                } else {
+                                    syncServerSyncing = true
+                                    try {
+                                        runCatching {
+                                            VaultAutoSync.maybeSyncVault(
+                                                context = context,
+                                                repository = repository,
+                                                vaultRootUri = root,
+                                                force = true,
+                                            )
+                                        }
+                                    } finally {
+                                        syncServerSyncing = false
+                                        reloadSyncServerUiStatus()
+                                    }
+                                }
+                            }
+                        },
+                    ) { Text(stringResource(R.string.cloud_sync_dialog_sync_now)) }
+
+                    TextButton(
+                        onClick = {
+                            showCloudSyncStatusDialog = false
+                            navController.navigate("settingsMain")
+                        },
+                    ) { Text(stringResource(R.string.cloud_sync_dialog_open_settings)) }
+                }
             },
             dismissButton = {
                 TextButton(onClick = { showCloudSyncStatusDialog = false }) { Text(stringResource(R.string.cloud_sync_dialog_cancel)) }

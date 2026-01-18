@@ -216,6 +216,7 @@
     <string name="cloud_sync_dialog_webdav_hint_enabled">WebDAV 已启用</string>
 
     <string name="cloud_sync_dialog_open_settings">打开同步设置</string>
+    <string name="cloud_sync_dialog_sync_now">立即同步</string>
     <string name="cloud_sync_dialog_cancel">取消</string>
 
     <!-- Account -->
