@@ -246,6 +246,10 @@ class WebDavSyncEngine(
                 }
 
                 var expectedIndex = 0
+                // Some passes (e.g., local-only upload) can mutate local/remote maps and make a path
+                // appear again in later passes. Treat each path as "handled" once we record an op,
+                // to avoid emitting extra ops (e.g., an extra conflict after a successful upload).
+                val handledPaths = HashSet<String>()
 
                 fun record(kind: WebDavPlannedOpKind, path: String, reason: String, strategy: WebDavConflictStrategy? = null): WebDavPlannedOp {
                     val op = WebDavPlannedOp(kind = kind, path = normalizeOpPath(path), reason = reason, strategy = strategy?.name)
@@ -264,6 +268,7 @@ class WebDavSyncEngine(
                         expectedIndex += 1
                     }
 
+                    handledPaths += op.path
                     planOps += op
                     return op
                 }
@@ -843,6 +848,7 @@ class WebDavSyncEngine(
             // Pass 3: files existing on both sides (true two-way: only conflict when both changed).
             for ((path, local) in localByPath.toMap()) {
                 if (!inScope(path)) continue
+                if (handledPaths.contains(path)) continue
                 if (shouldSkipBecauseUnresolved(path)) {
                     recordConflict(path, "unresolved_conflict")
                     conflicts += 1
