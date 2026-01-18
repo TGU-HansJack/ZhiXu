@@ -1,0 +1,313 @@
+:root {
+  --page-width: 980px;
+}
+
+.consoleMain {
+  padding-top: 18px;
+}
+
+.consoleTitle {
+  margin-top: 10px;
+}
+
+.consoleMeta {
+  margin-bottom: 0;
+}
+
+.consoleHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-bottom: 6px;
+}
+
+.consoleHeaderRight {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.consoleCard {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  background: var(--card);
+}
+
+.consoleTabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 2px 0 12px;
+}
+
+.consoleTabs--sticky {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 0;
+  margin: 0 0 14px;
+}
+
+.consoleTabBtn {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--fg);
+  font-weight: 750;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.consoleTabBtn[aria-selected="true"] {
+  border-color: rgba(6, 106, 223, 0.35);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.consoleGrid,
+.consoleGrid2 {
+  display: grid;
+  gap: 12px;
+}
+
+.consoleGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.consoleGrid2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+@media (max-width: 820px) {
+  .consoleGrid,
+  .consoleGrid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.consoleField__label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.consoleField__row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.consoleInput {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 14px;
+  outline: none;
+}
+
+.consoleInput:focus {
+  border-color: rgba(6, 106, 223, 0.5);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.consoleInput--small {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.consoleHint {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.consoleActions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.consoleH2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.consoleKV__row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.consoleKV__row:last-child {
+  border-bottom: none;
+}
+
+.consoleKV__k {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.consoleKV__v {
+  font-size: 13px;
+  font-weight: 800;
+  text-align: right;
+  word-break: break-word;
+}
+
+.consoleTableHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.consoleTableWrap {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  overflow: auto;
+}
+
+.consoleTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.consoleTable th,
+.consoleTable td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.consoleTable th {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 850;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--accent) 4%, var(--card));
+}
+
+.consoleTable tr:last-child td {
+  border-bottom: none;
+}
+
+.consolePager {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.consolePager__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.consoleAuthPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 6%, var(--card));
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.consoleToast {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--card));
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.consoleToast[data-kind="error"] {
+  background: color-mix(in srgb, #d93535 10%, var(--card));
+  border-color: color-mix(in srgb, #d93535 30%, var(--border));
+}
+
+.consoleAvatarRow {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.consoleAvatar {
+  width: 74px;
+  height: 74px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 10%, var(--card));
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.consoleAvatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.consoleAvatarFallback {
+  font-size: 22px;
+  font-weight: 950;
+  letter-spacing: -0.4px;
+}
+
+.consoleAvatarActions {
+  flex: 1;
+  min-width: 240px;
+}
+
+.consoleSection {
+  margin-top: 12px;
+}
+
+@media (max-width: 740px) {
+  .consoleTabs--sticky {
+    top: 0;
+  }
+  .consoleTable th,
+  .consoleTable td {
+    padding: 9px 10px;
+  }
+}
+

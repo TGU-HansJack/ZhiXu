@@ -48,6 +48,21 @@ function sha256BytesUtf8(text) {
   return crypto.createHash("sha256").update(String(text), "utf8").digest();
 }
 
+async function logSyncEvent(req, { userId, action, path = "", sizeBytes = 0 }) {
+  const sessionId = String(req.sessionId || "").trim();
+  const ip = String(req.ip || "").trim().slice(0, 64);
+  const client = String(req.header("User-Agent") || "").trim().slice(0, 255);
+  const now = Date.now();
+  try {
+    await pool.query(
+      "INSERT INTO sync_logs (user_id, session_id, action, path, ip, client, size_bytes, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [userId, sessionId, String(action || "").slice(0, 32), String(path || "").slice(0, 1024), ip, client, Math.max(0, Number(sizeBytes) || 0), now]
+    );
+  } catch (_) {
+    // ignore best-effort log
+  }
+}
+
 async function getCurrentFileRow(db, userId, path, pathHash, { forUpdate = false } = {}) {
   const lock = forUpdate ? " FOR UPDATE" : "";
   const [rows] = await db.query(
@@ -119,6 +134,8 @@ ORDER BY path ASC
       sha256: String(r.sha256 || ""),
       deleted: Boolean(r.deleted)
     }));
+
+    void logSyncEvent(req, { userId, action: "changes_snapshot", sizeBytes: changes.length });
     return res.json({ serverTime: Date.now(), cursor: serverCursor, snapshot: true, changes, nextSince: 0, hasMore: false });
   }
 
@@ -145,6 +162,7 @@ LIMIT ?
   }));
   const nextSince = changes.length ? Number(changes[changes.length - 1].changeId) || sinceId : sinceId;
   const hasMore = changes.length >= limit;
+  void logSyncEvent(req, { userId, action: "changes_delta", sizeBytes: changes.length });
   return res.json({ serverTime: Date.now(), cursor: serverCursor, snapshot: false, changes, nextSince, hasMore });
 });
 
@@ -179,6 +197,7 @@ LIMIT 2
   res.setHeader("X-Zhixu-Mtime-Ms", String(Number(row.mtime_ms) || 0));
   res.setHeader("X-Zhixu-Size", String(Number(row.size_bytes) || 0));
   res.setHeader("X-Zhixu-Sha256", String(row.sha256 || ""));
+  void logSyncEvent(req, { userId, action: "file_get", path, sizeBytes: Number(row.size_bytes) || 0 });
   try {
     await fs.promises.access(absPath, fs.constants.R_OK);
   } catch (_) {
@@ -277,6 +296,7 @@ ON DUPLICATE KEY UPDATE
       });
 
       await conn.commit();
+      void logSyncEvent(req, { userId, action: "file_put", path, sizeBytes });
       return res.json({
         ok: true,
         serverTime: now,
@@ -374,6 +394,7 @@ ON DUPLICATE KEY UPDATE
 
     const obj = buildObjectPath(storageRoot, userId, path);
     if (obj) await deleteFileBestEffort(obj.absPath);
+    void logSyncEvent(req, { userId, action: "file_delete", path, sizeBytes: 0 });
     return res.json({ ok: true, serverTime: now, path, deleted: true, rev: newRev, changeId });
   } catch (e) {
     try {

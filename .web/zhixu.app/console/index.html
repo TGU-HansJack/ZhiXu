@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>控制台 · Zhixu.app</title>
+    <meta name="description" content="Zhixu 官方服务器控制台：登录/注册/邮箱验证，账号与存储管理，设备与同步记录查看。" />
+    <link rel="icon" href="../assets/zhixu.png" />
+    <link rel="stylesheet" href="../site.css" />
+    <link rel="stylesheet" href="./console.css" />
+  </head>
+  <body class="legalPage consolePage">
+    <header class="page">
+      <nav class="topnav" aria-label="主导航">
+        <a class="brand" href="../" aria-label="Zhixu.app 首页">
+          <img class="brand__logo" src="../assets/zhixu.png" alt="" width="28" height="28" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../">首页</a>
+          <a role="listitem" href="../docs/">文档</a>
+          <a role="listitem" href="../plugins/">插件</a>
+          <a role="listitem" href="./">控制台</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="page legal consoleMain" aria-label="控制台">
+      <div class="consoleHeader">
+        <div>
+          <h1 class="legal__title consoleTitle">控制台</h1>
+          <p class="legal__meta consoleMeta">官方服务器：登录/注册/验证、账号与存储管理、设备与同步记录。</p>
+        </div>
+        <div class="consoleHeaderRight">
+          <div class="consoleField">
+            <div class="consoleField__label">服务地址</div>
+            <div class="consoleField__row">
+              <input id="baseUrlInput" class="consoleInput" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://zhixu.app" />
+              <button id="baseUrlSaveBtn" class="button" type="button">保存</button>
+            </div>
+          </div>
+          <div class="consoleAuthPill">
+            <span id="authPillText">未登录</span>
+            <button id="logoutBtn" class="button" type="button" hidden>退出</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="toast" class="consoleToast" hidden></div>
+
+      <section id="authView" class="consoleCard" aria-label="登录与注册">
+        <div class="consoleTabs" role="tablist" aria-label="身份验证选项">
+          <button class="consoleTabBtn" type="button" data-tab="login" aria-selected="true">登录</button>
+          <button class="consoleTabBtn" type="button" data-tab="register" aria-selected="false">注册</button>
+          <button class="consoleTabBtn" type="button" data-tab="verify" aria-selected="false">邮箱验证</button>
+        </div>
+
+        <div class="consolePanel" data-panel="login">
+          <div class="consoleGrid">
+            <div class="consoleField">
+              <div class="consoleField__label">账号（用户名或邮箱）</div>
+              <input id="loginUsername" class="consoleInput" type="text" autocomplete="username" spellcheck="false" />
+            </div>
+            <div class="consoleField">
+              <div class="consoleField__label">密码</div>
+              <input id="loginPassword" class="consoleInput" type="password" autocomplete="current-password" />
+            </div>
+          </div>
+          <div class="consoleActions">
+            <button id="loginBtn" class="button primary" type="button">登录</button>
+          </div>
+        </div>
+
+        <div class="consolePanel" data-panel="register" hidden>
+          <div class="consoleGrid">
+            <div class="consoleField">
+              <div class="consoleField__label">用户名</div>
+              <input id="registerUsername" class="consoleInput" type="text" autocomplete="username" spellcheck="false" />
+            </div>
+            <div class="consoleField">
+              <div class="consoleField__label">密码（至少 6 位）</div>
+              <input id="registerPassword" class="consoleInput" type="password" autocomplete="new-password" />
+            </div>
+            <div class="consoleField">
+              <div class="consoleField__label">邮箱（可选）</div>
+              <input id="registerEmail" class="consoleInput" type="email" autocomplete="email" spellcheck="false" />
+            </div>
+            <div class="consoleField">
+              <div class="consoleField__label">邮箱验证码（可选）</div>
+              <div class="consoleField__row">
+                <input id="registerEmailCode" class="consoleInput" type="text" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" />
+                <button id="registerSendCodeBtn" class="button" type="button">发送验证码</button>
+              </div>
+              <div class="consoleHint muted">若服务器未配置 SMTP，发送验证码会失败，但仍可仅用用户名注册。</div>
+            </div>
+          </div>
+          <div class="consoleActions">
+            <button id="registerBtn" class="button primary" type="button">注册</button>
+          </div>
+        </div>
+
+        <div class="consolePanel" data-panel="verify" hidden>
+          <div class="consoleGrid">
+            <div class="consoleField">
+              <div class="consoleField__label">邮箱</div>
+              <input id="verifyEmail" class="consoleInput" type="email" autocomplete="email" spellcheck="false" />
+            </div>
+            <div class="consoleField">
+              <div class="consoleField__label">验证码</div>
+              <div class="consoleField__row">
+                <input id="verifyCode" class="consoleInput" type="text" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" />
+                <button id="verifySendCodeBtn" class="button" type="button">发送验证码</button>
+              </div>
+            </div>
+          </div>
+          <div class="consoleActions">
+            <button id="verifyBtn" class="button primary" type="button">验证</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="consoleView" class="consoleAuthed" aria-label="后台面板" hidden>
+        <div class="consoleTabs consoleTabs--sticky" role="tablist" aria-label="控制台功能">
+          <button class="consoleTabBtn" type="button" data-console-tab="overview" aria-selected="true">概览</button>
+          <button class="consoleTabBtn" type="button" data-console-tab="account" aria-selected="false">账号</button>
+          <button class="consoleTabBtn" type="button" data-console-tab="storage" aria-selected="false">存储</button>
+          <button class="consoleTabBtn" type="button" data-console-tab="devices" aria-selected="false">设备</button>
+          <button class="consoleTabBtn" type="button" data-console-tab="sync" aria-selected="false">同步记录</button>
+        </div>
+
+        <section class="consoleSection" data-console-panel="overview">
+          <div class="consoleGrid2">
+            <div class="consoleCard">
+              <h2 class="consoleH2">账号概览</h2>
+              <div class="consoleKV">
+                <div class="consoleKV__row"><div class="consoleKV__k">用户名</div><div id="meUsername" class="consoleKV__v">-</div></div>
+                <div class="consoleKV__row"><div class="consoleKV__k">邮箱</div><div id="meEmail" class="consoleKV__v">-</div></div>
+                <div class="consoleKV__row"><div class="consoleKV__k">邮箱状态</div><div id="meEmailStatus" class="consoleKV__v">-</div></div>
+                <div class="consoleKV__row"><div class="consoleKV__k">套餐</div><div id="mePlan" class="consoleKV__v">-</div></div>
+              </div>
+            </div>
+            <div class="consoleCard">
+              <h2 class="consoleH2">存储概览</h2>
+              <div class="consoleKV">
+                <div class="consoleKV__row"><div class="consoleKV__k">已用</div><div id="storageUsed" class="consoleKV__v">-</div></div>
+                <div class="consoleKV__row"><div class="consoleKV__k">文件数</div><div id="storageFileCount" class="consoleKV__v">-</div></div>
+                <div class="consoleKV__row"><div class="consoleKV__k">上次更新</div><div id="storageLastUpdated" class="consoleKV__v">-</div></div>
+              </div>
+              <div class="consoleActions">
+                <button id="refreshOverviewBtn" class="button" type="button">刷新</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="consoleSection" data-console-panel="account" hidden>
+          <div class="consoleGrid2">
+            <div class="consoleCard">
+              <h2 class="consoleH2">头像</h2>
+              <div class="consoleAvatarRow">
+                <div class="consoleAvatar">
+                  <img id="avatarImg" alt="头像" hidden />
+                  <div id="avatarFallback" class="consoleAvatarFallback" aria-hidden="true">Z</div>
+                </div>
+                <div class="consoleAvatarActions">
+                  <input id="avatarFile" class="consoleInput" type="file" accept="image/*" />
+                  <div class="consoleActions">
+                    <button id="uploadAvatarBtn" class="button primary" type="button">上传</button>
+                    <button id="deleteAvatarBtn" class="button" type="button">移除</button>
+                  </div>
+                  <div class="consoleHint muted">支持 PNG / JPG / WebP / GIF，最大 5MB。</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="consoleCard">
+              <h2 class="consoleH2">邮箱</h2>
+              <div class="consoleGrid">
+                <div class="consoleField">
+                  <div class="consoleField__label">邮箱（留空即清除）</div>
+                  <input id="emailInput" class="consoleInput" type="email" autocomplete="email" spellcheck="false" />
+                  <div class="consoleHint muted">更新邮箱后，若服务器配置 SMTP，将自动发送验证码。</div>
+                </div>
+                <div class="consoleField">
+                  <div class="consoleField__label">验证码</div>
+                  <div class="consoleField__row">
+                    <input id="emailVerifyCode" class="consoleInput" type="text" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" />
+                    <button id="emailSendVerifyCodeBtn" class="button" type="button">发送验证码</button>
+                  </div>
+                </div>
+              </div>
+              <div class="consoleActions">
+                <button id="saveEmailBtn" class="button primary" type="button">保存邮箱</button>
+                <button id="emailVerifyBtn" class="button" type="button">验证</button>
+              </div>
+            </div>
+
+            <div class="consoleCard">
+              <h2 class="consoleH2">修改密码</h2>
+              <div class="consoleGrid">
+                <div class="consoleField">
+                  <div class="consoleField__label">当前密码</div>
+                  <input id="currentPassword" class="consoleInput" type="password" autocomplete="current-password" />
+                </div>
+                <div class="consoleField">
+                  <div class="consoleField__label">新密码</div>
+                  <input id="newPassword" class="consoleInput" type="password" autocomplete="new-password" />
+                </div>
+              </div>
+              <div class="consoleActions">
+                <button id="changePasswordBtn" class="button primary" type="button">修改</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="consoleSection" data-console-panel="storage" hidden>
+          <div class="consoleCard">
+            <h2 class="consoleH2">存储备份导出</h2>
+            <p class="muted">导出当前服务器端 Vault 文件为 zip（包含 `zhixu-export.json` 清单）。</p>
+            <div class="consoleActions">
+              <button id="exportZipBtn" class="button primary" type="button">导出 ZIP</button>
+              <button id="refreshStorageBtn" class="button" type="button">刷新列表</button>
+            </div>
+          </div>
+
+          <div class="consoleCard">
+            <div class="consoleTableHeader">
+              <h2 class="consoleH2">文件列表</h2>
+              <div class="consoleTableHeader__right">
+                <input id="storageSearch" class="consoleInput consoleInput--small" type="search" placeholder="搜索路径…" />
+              </div>
+            </div>
+            <div class="consoleTableWrap">
+              <table class="consoleTable">
+                <thead>
+                  <tr>
+                    <th>路径</th>
+                    <th>大小</th>
+                    <th>更新时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="storageFilesTbody"></tbody>
+              </table>
+            </div>
+            <div class="consolePager">
+              <div id="storagePagerText" class="muted tiny">-</div>
+              <div class="consolePager__actions">
+                <button id="storagePrevBtn" class="button" type="button">上一页</button>
+                <button id="storageNextBtn" class="button" type="button">下一页</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="consoleSection" data-console-panel="devices" hidden>
+          <div class="consoleCard">
+            <div class="consoleTableHeader">
+              <h2 class="consoleH2">设备列表</h2>
+              <div class="consoleTableHeader__right">
+                <button id="refreshDevicesBtn" class="button" type="button">刷新</button>
+              </div>
+            </div>
+            <div class="consoleTableWrap">
+              <table class="consoleTable">
+                <thead>
+                  <tr>
+                    <th>设备</th>
+                    <th>IP</th>
+                    <th>最近活跃</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="devicesTbody"></tbody>
+              </table>
+            </div>
+            <div class="consoleHint muted">设备/IP 来源于会话记录，撤销后该设备需要重新登录。</div>
+          </div>
+        </section>
+
+        <section class="consoleSection" data-console-panel="sync" hidden>
+          <div class="consoleCard">
+            <div class="consoleTableHeader">
+              <h2 class="consoleH2">同步记录</h2>
+              <div class="consoleTableHeader__right">
+                <button id="refreshSyncLogsBtn" class="button" type="button">刷新</button>
+              </div>
+            </div>
+            <div class="consoleTableWrap">
+              <table class="consoleTable">
+                <thead>
+                  <tr>
+                    <th>时间</th>
+                    <th>动作</th>
+                    <th>路径</th>
+                    <th>设备</th>
+                    <th>IP</th>
+                  </tr>
+                </thead>
+                <tbody id="syncLogsTbody"></tbody>
+              </table>
+            </div>
+            <div class="consoleHint muted">同步记录由服务器按请求写入（changes/file 操作）。</div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <footer class="page footer">
+      <nav class="footnav" aria-label="页脚导航">
+        <a class="brand" href="../">
+          <img class="brand__logo" src="../assets/zhixu.png" alt="" width="24" height="24" />
+          <span class="brand__name">Zhixu</span>
+        </a>
+        <div class="navlinks" role="list">
+          <a role="listitem" href="../docs/">Docs</a>
+          <a role="listitem" href="../tos/">Terms</a>
+          <a role="listitem" href="../privacy/">Privacy</a>
+          <a role="listitem" href="../license/">License</a>
+          <a role="listitem" href="mailto:zhixu@hast.one">Contact</a>
+        </div>
+      </nav>
+      <p class="tiny muted">&copy; <span id="year"></span> Zhixu contributors.</p>
+    </footer>
+
+    <script src="../main.js"></script>
+    <script src="./console.js" defer></script>
+  </body>
+</html>

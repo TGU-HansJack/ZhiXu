@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS users (
   username VARCHAR(64) NOT NULL,
   email VARCHAR(255) NULL,
   email_verified_at_ms BIGINT NOT NULL DEFAULT 0,
+  avatar_mime VARCHAR(64) NOT NULL DEFAULT '',
+  avatar_updated_at_ms BIGINT NOT NULL DEFAULT 0,
   password_hash VARCHAR(255) NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -31,6 +33,26 @@ CREATE TABLE IF NOT EXISTS users (
     const hasCol = Array.isArray(colRows) && colRows.length > 0;
     if (!hasCol) {
       await pool.query("ALTER TABLE users ADD COLUMN email_verified_at_ms BIGINT NOT NULL DEFAULT 0 AFTER email");
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  try {
+    const [colRows] = await pool.query("SHOW COLUMNS FROM users LIKE 'avatar_mime'");
+    const hasCol = Array.isArray(colRows) && colRows.length > 0;
+    if (!hasCol) {
+      await pool.query("ALTER TABLE users ADD COLUMN avatar_mime VARCHAR(64) NOT NULL DEFAULT '' AFTER email_verified_at_ms");
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  try {
+    const [colRows] = await pool.query("SHOW COLUMNS FROM users LIKE 'avatar_updated_at_ms'");
+    const hasCol = Array.isArray(colRows) && colRows.length > 0;
+    if (!hasCol) {
+      await pool.query("ALTER TABLE users ADD COLUMN avatar_updated_at_ms BIGINT NOT NULL DEFAULT 0 AFTER avatar_mime");
     }
   } catch (_) {
     // ignore
@@ -173,6 +195,24 @@ CREATE TABLE IF NOT EXISTS vault_changes (
   KEY idx_vault_changes_user_change (user_id, change_id),
   KEY idx_vault_changes_user_path (user_id, path_hash),
   CONSTRAINT fk_vault_changes_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+`);
+
+  await pool.query(`
+CREATE TABLE IF NOT EXISTS sync_logs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  session_id CHAR(36) NOT NULL DEFAULT '',
+  action VARCHAR(32) NOT NULL,
+  path VARCHAR(1024) NOT NULL DEFAULT '',
+  ip VARCHAR(64) NOT NULL DEFAULT '',
+  client VARCHAR(255) NOT NULL DEFAULT '',
+  size_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  created_at_ms BIGINT NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_sync_logs_user_created (user_id, created_at_ms),
+  KEY idx_sync_logs_user_session (user_id, session_id),
+  CONSTRAINT fk_sync_logs_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `);
 }
