@@ -7,5 +7,5 @@
     <color name="zhixu_onSurfaceVariant">#57606A</color>
     <color name="zhixu_outline">#D0D7DE</color>
     <color name="zhixu_outlineVariant">#EAECEF</color>
+    <color name="zhixu_dialog_scrim">#52000000</color>
 </resources>
-

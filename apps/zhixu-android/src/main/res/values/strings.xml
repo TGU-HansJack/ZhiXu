@@ -307,6 +307,7 @@
     <string name="account_sync_logs_action_changes_delta">Changes (delta)</string>
 
     <string name="action_confirm">Confirm</string>
+    <string name="action_crop">Crop</string>
     <string name="account_storage_title">Storage</string>
     <string name="account_storage_used">Storage used</string>
     <string name="account_storage_used_subtitle_fmt">%1$s / %2$s</string>

@@ -2,15 +2,21 @@ package app.zhixu
 
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
-import android.view.WindowManager
+import android.widget.ImageButton
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import app.zhixu.data.UiPreferences
 import app.zhixu.data.UiThemeMode
+import com.canhub.cropper.CropImageOptions
 import com.canhub.cropper.CropImageView
 import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.flow.first
@@ -32,10 +38,19 @@ class AvatarCropActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_avatar_crop)
 
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        val topBar = findViewById<View>(R.id.avatar_crop_topbar)
+        ViewCompat.setOnApplyWindowInsetsListener(topBar) { view, insets ->
+            val statusBars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+            view.updatePadding(top = statusBars.top)
+            insets
+        }
+        ViewCompat.requestApplyInsets(topBar)
+
         val cropView = findViewById<CropImageView>(R.id.avatar_crop_view)
-        val cancelButton = findViewById<MaterialButton>(R.id.avatar_crop_cancel)
         val confirmButton = findViewById<MaterialButton>(R.id.avatar_crop_confirm)
-        val backdrop = findViewById<View>(R.id.avatar_crop_backdrop)
+        val backButton = findViewById<ImageButton>(R.id.avatar_crop_back)
 
         fun finishCanceled() {
             setResult(RESULT_CANCELED)
@@ -52,13 +67,19 @@ class AvatarCropActivity : AppCompatActivity() {
                     return
                 }
 
-        val metrics = resources.displayMetrics
-        window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
-        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        cropView.setImageCropOptions(
+            CropImageOptions().apply {
+                backgroundColor = Color.argb(180, 0, 0, 0)
+                borderLineColor = Color.WHITE
+                guidelinesColor = Color.argb(170, 255, 255, 255)
+                progressBarColor = Color.WHITE
+            },
+        )
 
         cropView.setFixedAspectRatio(true)
         cropView.setAspectRatio(1, 1)
         cropView.cropShape = CropImageView.CropShape.OVAL
+        cropView.guidelines = CropImageView.Guidelines.OFF
 
         cropView.setOnSetImageUriCompleteListener { _, _, error ->
             if (error != null) {
@@ -69,7 +90,7 @@ class AvatarCropActivity : AppCompatActivity() {
 
         cropView.setOnCropImageCompleteListener { _, result ->
             confirmButton.isEnabled = true
-            cancelButton.isEnabled = true
+            backButton.isEnabled = true
 
             if (!result.isSuccessful) {
                 Toast.makeText(this, getString(R.string.account_avatar_pick_failed), Toast.LENGTH_SHORT).show()
@@ -85,11 +106,10 @@ class AvatarCropActivity : AppCompatActivity() {
             finish()
         }
 
-        backdrop.setOnClickListener { finishCanceled() }
-        cancelButton.setOnClickListener { finishCanceled() }
+        backButton.setOnClickListener { finishCanceled() }
         confirmButton.setOnClickListener {
             confirmButton.isEnabled = false
-            cancelButton.isEnabled = false
+            backButton.isEnabled = false
 
             runCatching {
                 cropView.croppedImageAsync(
@@ -101,7 +121,7 @@ class AvatarCropActivity : AppCompatActivity() {
                 )
             }.onFailure {
                 confirmButton.isEnabled = true
-                cancelButton.isEnabled = true
+                backButton.isEnabled = true
                 Toast.makeText(this, it.message.orEmpty().ifBlank { getString(R.string.common_failed) }, Toast.LENGTH_SHORT).show()
             }
         }

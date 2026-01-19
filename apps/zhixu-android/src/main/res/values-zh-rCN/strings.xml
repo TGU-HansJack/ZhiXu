@@ -286,6 +286,7 @@
     <string name="account_sync_logs_action_changes_delta">变更列表（增量）</string>
 
     <string name="action_confirm">确定</string>
+    <string name="action_crop">裁切</string>
     <string name="account_storage_title">存储</string>
     <string name="account_storage_used">已用空间</string>
     <string name="account_storage_used_subtitle_fmt">%1$s / %2$s</string>

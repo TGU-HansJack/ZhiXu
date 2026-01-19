@@ -34,7 +34,7 @@
         <activity
             android:name=".AvatarCropActivity"
             android:exported="false"
-            android:theme="@style/Theme.Zhixu.CropDialog" />
+            android:theme="@style/Theme.Zhixu.CropFullScreen" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
