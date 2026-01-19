@@ -49,6 +49,7 @@ import androidx.core.content.ContextCompat
 import app.zhixu.R
 import app.zhixu.data.UiDoc
 import app.zhixu.data.VaultRepository
+import app.zhixu.sync.VaultAutoSync
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
@@ -165,6 +166,25 @@ fun CameraCaptureScreen(
                                 }
                             repository.writeText(created.uri, markdown)
                             runCatching { repository.indexDocUri(created.uri) }
+
+                            runCatching {
+                                VaultAutoSync.maybeUploadDoc(
+                                    context = context,
+                                    repository = repository,
+                                    vaultRootUri = vaultRootUri,
+                                    docUri = targetUri,
+                                    force = true,
+                                )
+                            }
+                            runCatching {
+                                VaultAutoSync.maybeUploadDoc(
+                                    context = context,
+                                    repository = repository,
+                                    vaultRootUri = vaultRootUri,
+                                    docUri = created.uri,
+                                    force = true,
+                                )
+                            }
 
                             onCreated(created)
                         } catch (t: Throwable) {

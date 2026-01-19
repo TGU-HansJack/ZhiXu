@@ -293,11 +293,40 @@ fun VaultDrawer(
 
         val dirsToRefresh = dirsToRefreshInitial
 
-        var refreshedAny = false
+        // Always refresh the dir-index DB so later expansions don't show stale names,
+        // even if the affected directory isn't currently loaded in the UI.
         for (dir in dirsToRefresh) {
+            runCatching {
+                repository.refreshDirIndexForDirectory(
+                    rootUri = vaultRootUri,
+                    parentRelativePath = dir.takeIf { it.isNotBlank() },
+                )
+            }
+        }
+
+        var refreshedAny = false
+
+        // Reload root without collapsing expanded state.
+        if (dirsToRefresh.contains("") && loadedDirs[""] == true) {
+            refreshedAny = true
+            val prevExpanded = expandedDirs.filterValues { it }.keys.toSet()
+            val prevLoaded =
+                loadedDirs
+                    .filterValues { it }
+                    .keys
+                    .filter { it.isNotBlank() }
+                    .sortedBy { it.length }
+
+            reloadDir("", refresh = false)
+            for (dir in prevExpanded) expandedDirs[dir] = true
+            for (dir in prevLoaded) reloadDir(dir, refresh = false)
+        }
+
+        for (dir in dirsToRefresh) {
+            if (dir.isBlank()) continue
             if (loadedDirs[dir] == true) {
                 refreshedAny = true
-                reloadDir(dir, refresh = true)
+                reloadDir(dir, refresh = false)
             }
         }
         if (!refreshedAny) persistCache()

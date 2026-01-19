@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import app.zhixu.R
 import app.zhixu.data.VaultRepository
 import app.zhixu.data.SearchResult
+import app.zhixu.sync.VaultAutoSync
 import app.zhixu.ui.DocListMutation
 import app.zhixu.ui.components.RefreshStatusBanner
 import app.zhixu.ui.components.VaultSearchDialog
@@ -147,6 +148,17 @@ fun SpaceScreen(
                         )
                     val any = created.firstOrNull() ?: return@runCatching
                     onDocListMutated(DocListMutation.EntryChanged(any))
+                    created.forEach { createdUri ->
+                        runCatching {
+                            VaultAutoSync.maybeUploadDoc(
+                                context = context,
+                                repository = repository,
+                                vaultRootUri = root,
+                                docUri = createdUri,
+                                force = true,
+                            )
+                        }
+                    }
                 }.onFailure {
                     Toast.makeText(context, it.message ?: context.getString(R.string.common_failed), Toast.LENGTH_SHORT).show()
                 }

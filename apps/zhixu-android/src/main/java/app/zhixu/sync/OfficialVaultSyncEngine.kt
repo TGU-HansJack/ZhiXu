@@ -306,7 +306,11 @@ class OfficialVaultSyncEngine(
 
             val remoteMetaPaths =
                 normalizedExpected
-                    .filter { it.kind == WebDavPlannedOpKind.DELETE_LOCAL || it.kind == WebDavPlannedOpKind.CONFLICT }
+                    .filter {
+                        it.kind == WebDavPlannedOpKind.DELETE_LOCAL ||
+                            it.kind == WebDavPlannedOpKind.DELETE_REMOTE ||
+                            it.kind == WebDavPlannedOpKind.CONFLICT
+                    }
                     .map { it.path }
                     .toSet()
             val remoteMeta = loadRemoteMeta(remoteMetaPaths)
@@ -434,10 +438,46 @@ class OfficialVaultSyncEngine(
                                 deletedRemote++
                                 state = state.withDeleted(op.path, rev = del.value.rev)
                                 ok = true
+                            } else if (del.statusCode == 404) {
+                                deletedRemote++
+                                state = state.withDeleted(op.path, rev = remoteMeta[op.path]?.rev ?: baseRev)
+                                ok = true
                             } else if (del.statusCode == 409) {
                                 conflicts++
                                 logger.conflict(op.path, "delete_rev_conflict")
-                                err = del.errorMessage ?: "Delete conflict"
+                                val meta = remoteMeta[op.path]
+                                when {
+                                    meta != null && meta.deleted -> {
+                                        deletedRemote++
+                                        state = state.withDeleted(op.path, rev = meta.rev)
+                                        ok = true
+                                    }
+
+                                    meta != null -> {
+                                        val retry = SyncServerClient.deleteVaultFileV2(baseUrl, token, op.path, baseRev = meta.rev)
+                                        when {
+                                            retry.ok && retry.value != null -> {
+                                                deletedRemote++
+                                                state = state.withDeleted(op.path, rev = retry.value.rev)
+                                                ok = true
+                                            }
+
+                                            retry.statusCode == 404 -> {
+                                                deletedRemote++
+                                                state = state.withDeleted(op.path, rev = meta.rev)
+                                                ok = true
+                                            }
+
+                                            else -> {
+                                                err = retry.errorMessage ?: "Delete conflict"
+                                            }
+                                        }
+                                    }
+
+                                    else -> {
+                                        err = del.errorMessage ?: "Delete conflict"
+                                    }
+                                }
                             } else {
                                 err = del.errorMessage ?: "Delete remote failed"
                             }
@@ -628,12 +668,14 @@ class OfficialVaultSyncEngine(
             }
 
             suspend fun applyRemote(path: String, remoteRev: Long, remoteDeleted: Boolean): Boolean {
-                if (!shouldSyncPath(path)) return true
+                val normalized = path.trim().trimStart('/').replace('\\', '/')
+                if (normalized.isBlank()) return true
+                if (!shouldSyncPath(normalized)) return true
 
                 val localFilesNow = listLocalFiles(root, includeIndexSqlite = includeIndexSqlite).filter { shouldSyncPath(it.path) }
                 val localByPathNow = localFilesNow.associateBy { it.path }
-                val local = localByPathNow[path]
-                val st = state.files[path]
+                val local = localByPathNow[normalized]
+                val st = state.files[normalized]
 
                 val localDirty =
                     when {
@@ -649,53 +691,74 @@ class OfficialVaultSyncEngine(
                     if (remoteDeleted) {
                         val ok = local?.file?.delete() ?: true
                         if (ok) {
-                            state = state.withDeleted(path, remoteRev)
+                            state = state.withDeleted(normalized, remoteRev)
                             return true
                         }
                         return false
                     }
 
-                    val download = SyncServerClient.downloadVaultFileV2(baseUrl, token, path)
+                    val download = SyncServerClient.downloadVaultFileV2(baseUrl, token, normalized)
                     val bytes = download.value?.bytes ?: return false
-                    val dest = ensureLocalFile(root, path) ?: return false
+                    val dest = ensureLocalFile(root, normalized) ?: return false
                     repository.writeBytes(dest.uri, bytes)
                     val localMtime = repository.getDocumentLastModified(dest.uri)
                     val sha = download.value.sha256
-                    state = state.withUploaded(path, rev = remoteRev, sha256 = sha, size = bytes.size.toLong(), localMtimeMs = localMtime)
+                    state =
+                        state.withUploaded(
+                            normalized,
+                            rev = remoteRev,
+                            sha256 = sha,
+                            size = bytes.size.toLong(),
+                            localMtimeMs = localMtime,
+                        )
                     return true
                 }
 
                 // Conflict: try best-effort text 3-way merge; otherwise keep both by writing remote under .zhixu/conflicts/.
                 if (remoteDeleted) {
                     val localBytes = local?.let { repository.readBytes(it.file.uri) } ?: ByteArray(0)
-                    if (localBytes.isNotEmpty()) ensureConflictArtifact(path, "local", localBytes)
-                    state = state.withDeleted(path, remoteRev)
+                    if (localBytes.isNotEmpty()) ensureConflictArtifact(normalized, "local", localBytes)
+                    state = state.withDeleted(normalized, remoteRev)
                     return true
                 }
 
-                val remote = SyncServerClient.downloadVaultFileV2(baseUrl, token, path).value ?: return false
+                val remote = SyncServerClient.downloadVaultFileV2(baseUrl, token, normalized).value ?: return false
                 val localBytes = local?.let { repository.readBytes(it.file.uri) } ?: ByteArray(0)
                 if (local == null) {
-                    val dest = ensureLocalFile(root, path) ?: return false
+                    val dest = ensureLocalFile(root, normalized) ?: return false
                     repository.writeBytes(dest.uri, remote.bytes)
                     val localMtime = repository.getDocumentLastModified(dest.uri)
-                    state = state.withUploaded(path, rev = remoteRev, sha256 = remote.sha256, size = remote.bytes.size.toLong(), localMtimeMs = localMtime)
+                    state =
+                        state.withUploaded(
+                            normalized,
+                            rev = remoteRev,
+                            sha256 = remote.sha256,
+                            size = remote.bytes.size.toLong(),
+                            localMtimeMs = localMtime,
+                        )
                     return true
                 }
 
-                ensureConflictArtifact(path, "remote-r${remote.rev}", remote.bytes)
-                logger.conflict(path, "remote_changed")
+                ensureConflictArtifact(normalized, "remote-r${remote.rev}", remote.bytes)
+                logger.conflict(normalized, "remote_changed")
 
                 // Without server-side history, resolve by keeping both:
                 // - write remote under .zhixu/conflicts/
                 // - upload local to remote (local wins)
-                state = state.withUploaded(path, rev = remote.rev, sha256 = "", size = localBytes.size.toLong(), localMtimeMs = local.lastModifiedEpochMs)
+                state =
+                    state.withUploaded(
+                        normalized,
+                        rev = remote.rev,
+                        sha256 = "",
+                        size = localBytes.size.toLong(),
+                        localMtimeMs = local.lastModifiedEpochMs,
+                    )
                 if (localBytes.isNotEmpty()) {
                     val put =
                         SyncServerClient.uploadVaultFileV2(
                             baseUrl = baseUrl,
                             token = token,
-                            path = path,
+                            path = normalized,
                             mtimeMs = local.lastModifiedEpochMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
                             bytes = localBytes,
                             baseRev = remote.rev,
@@ -704,7 +767,7 @@ class OfficialVaultSyncEngine(
                         val localMtime = repository.getDocumentLastModified(local.file.uri).takeIf { it > 0L } ?: local.lastModifiedEpochMs
                         state =
                             state.withUploaded(
-                                path,
+                                normalized,
                                 rev = put.value.rev,
                                 sha256 = put.value.sha256,
                                 size = localBytes.size.toLong(),
@@ -734,7 +797,7 @@ class OfficialVaultSyncEngine(
                         if (st != null && st.baseRev >= c.rev && st.deleted == c.deleted) {
                             continue
                         }
-                        val ok = applyRemote(c.path, c.rev, c.deleted)
+                        val ok = applyRemote(p, c.rev, c.deleted)
                         if (ok) {
                             if (c.deleted) deletedLocal++ else downloaded++
                         } else {
@@ -752,7 +815,7 @@ class OfficialVaultSyncEngine(
                             since = maxOf(since, c.changeId)
                             continue
                         }
-                        val ok = applyRemote(c.path, c.rev, c.deleted)
+                        val ok = applyRemote(p, c.rev, c.deleted)
                         if (ok) {
                             if (c.deleted) deletedLocal++ else downloaded++
                         } else {
@@ -804,6 +867,26 @@ class OfficialVaultSyncEngine(
             }
 
             // Propagate local deletions.
+            data class DeleteRemoteMeta(val rev: Long, val deleted: Boolean)
+            var deleteRemoteMetaCache: Map<String, DeleteRemoteMeta>? = null
+
+            suspend fun getDeleteRemoteMeta(path: String): DeleteRemoteMeta? {
+                val cached = deleteRemoteMetaCache
+                if (cached != null) return cached[path]
+                val res = SyncServerClient.vaultChangesV2(baseUrl, token, since = 0L, limit = 5000)
+                val v = res.value
+                val map = HashMap<String, DeleteRemoteMeta>(v?.changes?.size ?: 0)
+                if (v != null) {
+                    for (c in v.changes) {
+                        val p = c.path.trim().trimStart('/').replace('\\', '/')
+                        if (p.isBlank()) continue
+                        map[p] = DeleteRemoteMeta(rev = c.rev, deleted = c.deleted)
+                    }
+                }
+                deleteRemoteMetaCache = map
+                return map[path]
+            }
+
             for ((path, st) in state.files) {
                 if (st.deleted) continue
                 if (!shouldSyncPath(path)) continue
@@ -812,9 +895,28 @@ class OfficialVaultSyncEngine(
                 if (del.ok && del.value != null) {
                     deletedRemote++
                     state = state.withDeleted(path, del.value.rev)
+                } else if (del.statusCode == 404) {
+                    deletedRemote++
+                    state = state.withDeleted(path, st.baseRev)
                 } else if (del.statusCode == 409) {
                     conflicts++
                     logger.conflict(path, "delete_rev_conflict")
+                    // Best-effort resolve: refresh remote rev and retry delete.
+                    val meta = getDeleteRemoteMeta(path)
+                    if (meta == null) continue
+                    if (meta.deleted) {
+                        deletedRemote++
+                        state = state.withDeleted(path, meta.rev)
+                        continue
+                    }
+                    val retry = SyncServerClient.deleteVaultFileV2(baseUrl, token, path, baseRev = meta.rev)
+                    if (retry.ok && retry.value != null) {
+                        deletedRemote++
+                        state = state.withDeleted(path, retry.value.rev)
+                    } else if (retry.statusCode == 404) {
+                        deletedRemote++
+                        state = state.withDeleted(path, meta.rev)
+                    }
                 } else {
                     failed++
                 }

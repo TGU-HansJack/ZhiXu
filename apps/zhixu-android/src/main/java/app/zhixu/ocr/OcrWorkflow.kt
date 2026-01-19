@@ -163,6 +163,15 @@ class OcrWorkflow(
                 force = true,
             )
         }
+        runCatching {
+            VaultAutoSync.maybeUploadDoc(
+                context = context,
+                repository = repository,
+                vaultRootUri = vaultRootUri,
+                docUri = recognize.imported.vaultUri,
+                force = true,
+            )
+        }
 
         RunResult(
             doc = created,

@@ -1805,8 +1805,15 @@ class VaultRepository(
                 .getOrNull()
         if (renamedUri != null) {
             val newName = DocumentFile.fromSingleUri(context, renamedUri)?.name ?: finalName
-            runCatching { indexRepository.migrateDocUri(oldUri = docUri.toString(), newUri = renamedUri.toString(), newName = newName) }
-                .onSuccess { signalIndexChanged() }
+            val oldUri = docUri.toString()
+            val newUri = renamedUri.toString()
+            runCatching {
+                if (oldUri == newUri) {
+                    indexRepository.updateDocName(docUri = oldUri, newName = newName)
+                } else {
+                    indexRepository.migrateDocUri(oldUri = oldUri, newUri = newUri, newName = newName)
+                }
+            }.onSuccess { signalIndexChanged() }
             return@withContext renamedUri
         }
 
@@ -1872,8 +1879,15 @@ class VaultRepository(
         val renamedUri = runCatching { DocumentsContract.renameDocument(resolver, fileUri, finalName) }.getOrNull()
         if (renamedUri != null) {
             val newName = DocumentFile.fromSingleUri(context, renamedUri)?.name ?: finalName
-            runCatching { indexRepository.migrateDocUri(oldUri = fileUri.toString(), newUri = renamedUri.toString(), newName = newName) }
-                .onSuccess { signalIndexChanged() }
+            val oldUri = fileUri.toString()
+            val newUri = renamedUri.toString()
+            runCatching {
+                if (oldUri == newUri) {
+                    indexRepository.updateDocName(docUri = oldUri, newName = newName)
+                } else {
+                    indexRepository.migrateDocUri(oldUri = oldUri, newUri = newUri, newName = newName)
+                }
+            }.onSuccess { signalIndexChanged() }
             return@withContext renamedUri
         }
 

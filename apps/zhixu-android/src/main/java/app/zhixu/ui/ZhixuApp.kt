@@ -502,8 +502,20 @@ fun ZhixuApp(
             }
 
         val uri = repository.resolveVaultFileUri(root, ".zhixu/sync/server_last_summary.json")
-        val raw = uri?.let { runCatching { repository.readText(it) }.getOrNull().orEmpty().trim() }.orEmpty()
-        val obj = runCatching { JSONObject(raw) }.getOrNull()
+        val raw0 = uri?.let { runCatching { repository.readText(it) }.getOrNull().orEmpty().trim() }.orEmpty()
+        var raw = raw0
+        var obj = runCatching { JSONObject(raw) }.getOrNull()
+
+        val expectedBaseUrl =
+            when (cfg.location) {
+                VaultStorageLocation.LOCAL, VaultStorageLocation.OFFICIAL_SERVER -> OfficialSync.BASE_URL
+                VaultStorageLocation.THIRD_PARTY_SERVICE -> cfg.thirdParty.url.trim()
+            }.trim()
+        val recordBaseUrl = obj?.optString("baseUrl").orEmpty().trim()
+        if (recordBaseUrl.isNotBlank() && expectedBaseUrl.isNotBlank() && !recordBaseUrl.equals(expectedBaseUrl, ignoreCase = true)) {
+            raw = ""
+            obj = null
+        }
         val ok = obj?.optBoolean("ok", false) ?: false
         val endedAt = obj?.optLong("endedAt", 0L) ?: 0L
         val conflicts = obj?.optInt("conflicts", 0) ?: 0
@@ -540,9 +552,14 @@ fun ZhixuApp(
                     formatEpochMs(endedAt)
             }
 
+        val enabledEffective =
+            when (cfg.location) {
+                VaultStorageLocation.LOCAL -> accountState.token.isNotBlank() && (officialSyncEnabled || raw.isNotBlank())
+                else -> enabled
+            }
         val level =
             when {
-                !enabled -> SyncServerUiStatusLevel.DISABLED
+                !enabledEffective && raw.isBlank() -> SyncServerUiStatusLevel.DISABLED
                 text.isNullOrBlank() -> SyncServerUiStatusLevel.UNKNOWN
                 !ok -> SyncServerUiStatusLevel.ERROR
                 conflicts > 0 || failed > 0 -> SyncServerUiStatusLevel.WARNING
@@ -912,7 +929,7 @@ fun ZhixuApp(
                             root == null -> stringResource(R.string.cloud_sync_status_not_configured)
                             syncServerSyncing -> stringResource(R.string.cloud_sync_state_syncing)
                             accountState.token.isBlank() -> stringResource(R.string.account_not_logged_in_short)
-                            vaultSyncConfig.location == VaultStorageLocation.LOCAL && !officialSyncEnabled ->
+                            vaultSyncConfig.location == VaultStorageLocation.LOCAL && !officialSyncEnabled && syncServerUiStatus?.text.isNullOrBlank() ->
                                 stringResource(R.string.cloud_sync_dialog_official_hint_disabled)
                             !syncServerUiStatus?.text.isNullOrBlank() -> syncServerUiStatus?.text.orEmpty()
                             else -> stringResource(R.string.cloud_sync_dialog_no_record)
@@ -1683,7 +1700,9 @@ fun ZhixuApp(
                                             when (vaultSyncConfig.location) {
                                                 VaultStorageLocation.LOCAL -> {
                                                     val webDavEnabled = webDavConfig.enabled
-                                                    val officialEnabled = officialSyncEnabled && accountState.token.isNotBlank()
+                                                    val hasOfficialRecord = !syncServerUiStatus?.text.isNullOrBlank()
+                                                    val officialEnabled =
+                                                        accountState.token.isNotBlank() && (officialSyncEnabled || hasOfficialRecord)
                                                     when {
                                                         !webDavEnabled && !officialEnabled -> CloudSyncUiIconState.DISABLED
                                                         webDavSyncing || syncServerSyncing -> CloudSyncUiIconState.SYNCING
