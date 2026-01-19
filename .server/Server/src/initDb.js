@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   username VARCHAR(64) NOT NULL,
   email VARCHAR(255) NULL,
   email_verified_at_ms BIGINT NOT NULL DEFAULT 0,
+  sync_disabled TINYINT(1) NOT NULL DEFAULT 0,
   avatar_mime VARCHAR(64) NOT NULL DEFAULT '',
   avatar_updated_at_ms BIGINT NOT NULL DEFAULT 0,
   password_hash VARCHAR(255) NOT NULL,
@@ -33,6 +34,16 @@ CREATE TABLE IF NOT EXISTS users (
     const hasCol = Array.isArray(colRows) && colRows.length > 0;
     if (!hasCol) {
       await pool.query("ALTER TABLE users ADD COLUMN email_verified_at_ms BIGINT NOT NULL DEFAULT 0 AFTER email");
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  try {
+    const [colRows] = await pool.query("SHOW COLUMNS FROM users LIKE 'sync_disabled'");
+    const hasCol = Array.isArray(colRows) && colRows.length > 0;
+    if (!hasCol) {
+      await pool.query("ALTER TABLE users ADD COLUMN sync_disabled TINYINT(1) NOT NULL DEFAULT 0 AFTER email_verified_at_ms");
     }
   } catch (_) {
     // ignore
@@ -76,6 +87,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
   client VARCHAR(255) NOT NULL DEFAULT '',
   ip VARCHAR(64) NOT NULL DEFAULT '',
   location VARCHAR(128) NOT NULL DEFAULT '',
+  auth_method VARCHAR(16) NOT NULL DEFAULT 'password',
   refresh_token_hash CHAR(64) NOT NULL DEFAULT '',
   refresh_token_expires_at_ms BIGINT NOT NULL DEFAULT 0,
   created_at_ms BIGINT NOT NULL,
@@ -86,6 +98,17 @@ CREATE TABLE IF NOT EXISTS user_sessions (
   CONSTRAINT fk_user_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `);
+
+  // Best-effort migration for older schemas.
+  try {
+    const [colRows] = await pool.query("SHOW COLUMNS FROM user_sessions LIKE 'auth_method'");
+    const hasCol = Array.isArray(colRows) && colRows.length > 0;
+    if (!hasCol) {
+      await pool.query("ALTER TABLE user_sessions ADD COLUMN auth_method VARCHAR(16) NOT NULL DEFAULT 'password' AFTER location");
+    }
+  } catch (_) {
+    // ignore
+  }
 
   await pool.query(`
 CREATE TABLE IF NOT EXISTS email_codes (
@@ -153,11 +176,43 @@ CREATE TABLE IF NOT EXISTS sync_logs (
   ip VARCHAR(64) NOT NULL DEFAULT '',
   client VARCHAR(255) NOT NULL DEFAULT '',
   size_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  status_code INT NOT NULL DEFAULT 200,
+  error_code VARCHAR(64) NOT NULL DEFAULT '',
   created_at_ms BIGINT NOT NULL,
   PRIMARY KEY (id),
   KEY idx_sync_logs_user_created (user_id, created_at_ms),
   KEY idx_sync_logs_user_session (user_id, session_id),
   CONSTRAINT fk_sync_logs_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+`);
+
+  // Best-effort migration for older schemas.
+  try {
+    const [colRows] = await pool.query("SHOW COLUMNS FROM sync_logs LIKE 'status_code'");
+    const hasCol = Array.isArray(colRows) && colRows.length > 0;
+    if (!hasCol) {
+      await pool.query("ALTER TABLE sync_logs ADD COLUMN status_code INT NOT NULL DEFAULT 200 AFTER size_bytes");
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  try {
+    const [colRows] = await pool.query("SHOW COLUMNS FROM sync_logs LIKE 'error_code'");
+    const hasCol = Array.isArray(colRows) && colRows.length > 0;
+    if (!hasCol) {
+      await pool.query("ALTER TABLE sync_logs ADD COLUMN error_code VARCHAR(64) NOT NULL DEFAULT '' AFTER status_code");
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  await pool.query(`
+CREATE TABLE IF NOT EXISTS server_settings (
+  k VARCHAR(64) NOT NULL,
+  v TEXT NOT NULL,
+  updated_at_ms BIGINT NOT NULL,
+  PRIMARY KEY (k)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `);
 }

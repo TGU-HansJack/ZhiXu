@@ -5,7 +5,7 @@ const jwt = require("jsonwebtoken");
 const { pool } = require("../db");
 const { isSmtpConfigured, sendMail } = require("../mailer");
 const { authRequired } = require("../middleware/auth");
-const { bcryptRounds, jwtSecret, jwtAccessTtl, refreshTokenTtlDays } = require("../config");
+const { bcryptRounds, jwtSecret, jwtAccessTtl, refreshTokenTtlDays, adminEmail } = require("../config");
 const { getRequestIp } = require("../http");
 
 const router = express.Router();
@@ -48,6 +48,12 @@ function normalizeEmail(raw) {
   // Basic sanity check; full RFC validation is intentionally skipped.
   if (!email.includes("@") || email.startsWith("@") || email.endsWith("@")) return null;
   return email;
+}
+
+function isAdminEmail(email) {
+  const needle = String(adminEmail || "").trim().toLowerCase();
+  if (!needle) return false;
+  return String(email || "").trim().toLowerCase() === needle;
 }
 
 function generateEmailCode() {
@@ -93,15 +99,33 @@ router.post("/email/code", async (req, res) => {
   if (!email) return res.status(400).json({ error: "invalid_email" });
 
   const rawPurpose = String(req.body?.purpose || "register").trim().toLowerCase();
-  const purpose = rawPurpose === "verify" ? "verify" : "register";
+  const purpose = rawPurpose === "verify" ? "verify" : rawPurpose === "login" ? "login" : "register";
 
   if (!isSmtpConfigured()) return res.status(503).json({ error: "smtp_not_configured" });
 
   try {
+    if (purpose === "login") {
+      const [[u]] = await pool.query("SELECT id, COALESCE(email_verified_at_ms, 0) AS email_verified_at_ms FROM users WHERE email = ? LIMIT 1", [
+        email
+      ]);
+      // Avoid letting this become an email-spam endpoint. Require an existing verified user,
+      // except that the configured ADMIN_EMAIL is allowed (it may be auto-provisioned on first login).
+      if (!u && !isAdminEmail(email)) return res.status(404).json({ error: "not_found" });
+      if (u && !isAdminEmail(email) && (Number(u.email_verified_at_ms) || 0) <= 0) return res.status(403).json({ error: "email_not_verified" });
+    }
+
     const issued = await issueEmailCode(email, purpose);
     const mins = Math.max(1, Math.floor(EMAIL_CODE_TTL_MS / 60_000));
-    const subject = purpose === "verify" ? "Zhixu: Verify your email" : "Zhixu: Email verification code";
-    const text = `Your Zhixu verification code is: ${issued.code}\n\nThis code expires in ${mins} minutes.`;
+    const subject =
+      purpose === "verify"
+        ? "Zhixu: Verify your email"
+        : purpose === "login"
+          ? "Zhixu: Login code"
+          : "Zhixu: Email verification code";
+    const text =
+      purpose === "login"
+        ? `Your Zhixu login code is: ${issued.code}\n\nThis code expires in ${mins} minutes.`
+        : `Your Zhixu verification code is: ${issued.code}\n\nThis code expires in ${mins} minutes.`;
 
     const sent = await sendMail({ to: email, subject, text });
     if (!sent.ok) return res.status(500).json({ error: sent.error || "send_failed" });
@@ -139,42 +163,35 @@ router.post("/register", async (req, res) => {
   const username = String(req.body?.username || "").trim();
   const password = String(req.body?.password || "");
   const emailRaw = String(req.body?.email || "").trim();
-  const email = emailRaw ? normalizeEmail(emailRaw) : null;
+  const email = normalizeEmail(emailRaw);
   const emailCode = String(req.body?.emailCode || "").trim();
   if (!username || username.length < 3) return res.status(400).json({ error: "invalid_username" });
   if (!password || password.length < 6) return res.status(400).json({ error: "invalid_password" });
-  if (emailRaw && !email) return res.status(400).json({ error: "invalid_email" });
+  if (!email) return res.status(400).json({ error: "invalid_email" });
+  if (!emailCode) return res.status(400).json({ error: "invalid_email_code" });
+  if (!isSmtpConfigured()) return res.status(503).json({ error: "smtp_not_configured" });
 
   const passwordHash = await bcrypt.hash(password, bcryptRounds);
   const now = Date.now();
-  let emailVerifiedAtMs = 0;
 
-  if (email && emailCode) {
-    const consumed = await consumeEmailCode(email, "register", emailCode);
-    if (!consumed.ok) return res.status(400).json({ error: consumed.error || "invalid_email_code" });
-    emailVerifiedAtMs = now;
-  }
+  // Avoid consuming codes when the registration will fail anyway.
+  const [[emailExists]] = await pool.query("SELECT id FROM users WHERE email = ? LIMIT 1", [email]);
+  if (emailExists) return res.status(409).json({ error: "email_taken" });
+  const [[usernameExists]] = await pool.query("SELECT id FROM users WHERE username = ? LIMIT 1", [username]);
+  if (usernameExists) return res.status(409).json({ error: "username_taken" });
+
+  const consumed = await consumeEmailCode(email, "register", emailCode);
+  if (!consumed.ok) return res.status(400).json({ error: consumed.error || "invalid_email_code" });
+
+  const emailVerifiedAtMs = now;
 
   try {
-    const [result] = await pool.query("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)", [
+    const [result] = await pool.query("INSERT INTO users (username, email, email_verified_at_ms, password_hash) VALUES (?, ?, ?, ?)", [
       username,
       email,
+      emailVerifiedAtMs,
       passwordHash
     ]);
-
-    if (email && emailVerifiedAtMs > 0) {
-      await pool.query("UPDATE users SET email_verified_at_ms = ? WHERE id = ? LIMIT 1", [emailVerifiedAtMs, Number(result.insertId)]);
-    } else if (email && isSmtpConfigured()) {
-      try {
-        const issued = await issueEmailCode(email, "verify");
-        const mins = Math.max(1, Math.floor(EMAIL_CODE_TTL_MS / 60_000));
-        const subject = "Zhixu: Verify your email";
-        const text = `Your Zhixu verification code is: ${issued.code}\n\nThis code expires in ${mins} minutes.`;
-        await sendMail({ to: email, subject, text });
-      } catch (_) {
-        // ignore best-effort verification email
-      }
-    }
     return res.status(201).json({ userId: Number(result.insertId) || 0 });
   } catch (e) {
     if (String(e?.code) === "ER_DUP_ENTRY") {
@@ -184,6 +201,84 @@ router.post("/register", async (req, res) => {
     }
     return res.status(500).json({ error: "server_error" });
   }
+});
+
+router.post("/email/login", async (req, res) => {
+  const emailRaw = String(req.body?.email || "").trim();
+  const email = normalizeEmail(emailRaw);
+  const code = String(req.body?.code || "").trim();
+  if (!email) return res.status(400).json({ error: "invalid_email" });
+  if (!code) return res.status(400).json({ error: "invalid_email_code" });
+
+  const consumed = await consumeEmailCode(email, "login", code);
+  if (!consumed.ok) return res.status(400).json({ error: consumed.error || "invalid_email_code" });
+
+  const admin = isAdminEmail(email);
+
+  let user = null;
+  const [rows] = await pool.query(
+    "SELECT id, username, COALESCE(email_verified_at_ms, 0) AS email_verified_at_ms FROM users WHERE email = ? LIMIT 1",
+    [email]
+  );
+  if (rows && rows[0]) user = rows[0];
+
+  if (!user && !admin) return res.status(404).json({ error: "not_found" });
+
+  if (!user && admin) {
+    // Auto-provision the admin account on first login (no password required).
+    const now = Date.now();
+    const base = "admin";
+    let candidate = base;
+    for (let i = 0; i < 50; i += 1) {
+      const [[taken]] = await pool.query("SELECT id FROM users WHERE username = ? LIMIT 1", [candidate]);
+      if (!taken) break;
+      candidate = `${base}_${String(crypto.randomInt(1000, 10000))}`;
+    }
+
+    const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), bcryptRounds);
+    const [result] = await pool.query("INSERT INTO users (username, email, email_verified_at_ms, password_hash) VALUES (?, ?, ?, ?)", [
+      candidate,
+      email,
+      now,
+      passwordHash
+    ]);
+    user = { id: Number(result.insertId) || 0, username: candidate, email_verified_at_ms: now };
+  }
+
+  if (!admin && (Number(user?.email_verified_at_ms) || 0) <= 0) return res.status(403).json({ error: "email_not_verified" });
+
+  const now = Date.now();
+  const sessionId = generateId();
+  const refreshToken = generateRefreshToken();
+  const refreshTokenHash = sha256HexUtf8(refreshToken);
+  const refreshTokenExpiresAtMs = now + Math.max(1, Number(refreshTokenTtlDays) || 30) * 24 * 60 * 60 * 1000;
+
+  const sessionName = String(req.body?.deviceName || req.body?.sessionName || req.header("X-Zhixu-Device-Name") || "").trim();
+  const safeSessionName = sessionName.length > 128 ? sessionName.slice(0, 128) : sessionName;
+  const client = String(req.header("User-Agent") || "").trim().slice(0, 255);
+  const ip = getRequestIp(req).slice(0, 64);
+
+  try {
+    await pool.query(
+      `
+INSERT INTO user_sessions (
+  id, user_id, name, client, ip, location,
+  auth_method, refresh_token_hash, refresh_token_expires_at_ms,
+  created_at_ms, last_seen_at_ms, revoked_at_ms
+)
+VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, NULL)
+`,
+      [sessionId, Number(user.id), safeSessionName, client, ip, "email", refreshTokenHash, refreshTokenExpiresAtMs, now, now]
+    );
+  } catch (_) {
+    return res.status(500).json({ error: "server_error" });
+  }
+
+  const token = jwt.sign({ username: String(user.username || ""), sid: sessionId, am: "email" }, jwtSecret, {
+    subject: String(user.id),
+    expiresIn: jwtAccessTtl
+  });
+  return res.json({ token, sessionId, refreshToken, isAdmin: admin });
 });
 
 router.post("/login", async (req, res) => {
@@ -218,18 +313,21 @@ router.post("/login", async (req, res) => {
       `
 INSERT INTO user_sessions (
   id, user_id, name, client, ip, location,
-  refresh_token_hash, refresh_token_expires_at_ms,
+  auth_method, refresh_token_hash, refresh_token_expires_at_ms,
   created_at_ms, last_seen_at_ms, revoked_at_ms
 )
-VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?, NULL)
+VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, NULL)
 `,
-      [sessionId, Number(user.id), safeSessionName, client, ip, refreshTokenHash, refreshTokenExpiresAtMs, now, now]
+      [sessionId, Number(user.id), safeSessionName, client, ip, "password", refreshTokenHash, refreshTokenExpiresAtMs, now, now]
     );
   } catch (_) {
     return res.status(500).json({ error: "server_error" });
   }
 
-  const token = jwt.sign({ username: user.username, sid: sessionId }, jwtSecret, { subject: String(user.id), expiresIn: jwtAccessTtl });
+  const token = jwt.sign({ username: user.username, sid: sessionId, am: "password" }, jwtSecret, {
+    subject: String(user.id),
+    expiresIn: jwtAccessTtl
+  });
   return res.json({ token, sessionId, refreshToken });
 });
 
@@ -239,7 +337,7 @@ router.post("/refresh", async (req, res) => {
   if (!sessionId || !refreshToken) return res.status(400).json({ error: "invalid_refresh" });
 
   const [[row]] = await pool.query(
-    "SELECT user_id, refresh_token_hash, refresh_token_expires_at_ms, revoked_at_ms FROM user_sessions WHERE id = ? LIMIT 1",
+    "SELECT user_id, refresh_token_hash, refresh_token_expires_at_ms, revoked_at_ms, COALESCE(auth_method, 'password') AS auth_method FROM user_sessions WHERE id = ? LIMIT 1",
     [sessionId]
   );
   if (!row) return res.status(401).json({ error: "invalid_refresh" });
@@ -264,11 +362,20 @@ router.post("/refresh", async (req, res) => {
   );
   if (Number(uResult?.affectedRows) !== 1) return res.status(401).json({ error: "invalid_refresh" });
 
-  const [[u]] = await pool.query("SELECT id, username FROM users WHERE id = ? LIMIT 1", [Number(row.user_id)]);
+  const [[u]] = await pool.query("SELECT id, username, COALESCE(email, '') AS email FROM users WHERE id = ? LIMIT 1", [Number(row.user_id)]);
   if (!u) return res.status(401).json({ error: "invalid_refresh" });
 
-  const token = jwt.sign({ username: u.username, sid: sessionId }, jwtSecret, { subject: String(u.id), expiresIn: jwtAccessTtl });
-  return res.json({ token, sessionId, refreshToken: newRefreshToken });
+  const authMethod = String(row?.auth_method || "password") || "password";
+  const token = jwt.sign({ username: u.username, sid: sessionId, am: authMethod }, jwtSecret, {
+    subject: String(u.id),
+    expiresIn: jwtAccessTtl
+  });
+  return res.json({
+    token,
+    sessionId,
+    refreshToken: newRefreshToken,
+    isAdmin: authMethod === "email" && isAdminEmail(String(u.email || ""))
+  });
 });
 
 router.post("/logout", authRequired, async (req, res) => {

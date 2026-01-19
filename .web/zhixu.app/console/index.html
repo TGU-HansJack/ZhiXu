@@ -51,7 +51,7 @@
         <div class="consoleTabs" role="tablist" aria-label="身份验证选项">
           <button class="consoleTabBtn" type="button" data-tab="login" aria-selected="true">登录</button>
           <button class="consoleTabBtn" type="button" data-tab="register" aria-selected="false">注册</button>
-          <button class="consoleTabBtn" type="button" data-tab="verify" aria-selected="false">邮箱验证</button>
+          <button class="consoleTabBtn" type="button" data-tab="verify" aria-selected="false">邮箱登录</button>
         </div>
 
         <div class="consolePanel" data-panel="login">
@@ -81,16 +81,16 @@
               <input id="registerPassword" class="consoleInput" type="password" autocomplete="new-password" />
             </div>
             <div class="consoleField">
-              <div class="consoleField__label">邮箱（可选）</div>
+              <div class="consoleField__label">邮箱（必填）</div>
               <input id="registerEmail" class="consoleInput" type="email" autocomplete="email" spellcheck="false" />
             </div>
             <div class="consoleField">
-              <div class="consoleField__label">邮箱验证码（可选）</div>
+              <div class="consoleField__label">邮箱验证码（必填）</div>
               <div class="consoleField__row">
                 <input id="registerEmailCode" class="consoleInput" type="text" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" />
                 <button id="registerSendCodeBtn" class="button" type="button">发送验证码</button>
               </div>
-              <div class="consoleHint muted">若服务器未配置 SMTP，发送验证码会失败，但仍可仅用用户名注册。</div>
+              <div class="consoleHint muted">注册必须完成邮箱验证。请确保服务器已配置 SMTP，否则无法注册。</div>
             </div>
           </div>
           <div class="consoleActions">
@@ -110,10 +110,11 @@
                 <input id="verifyCode" class="consoleInput" type="text" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" />
                 <button id="verifySendCodeBtn" class="button" type="button">发送验证码</button>
               </div>
+              <div class="consoleHint muted">提示：管理员邮箱使用邮箱登录将进入管理员面板。</div>
             </div>
           </div>
           <div class="consoleActions">
-            <button id="verifyBtn" class="button primary" type="button">验证</button>
+            <button id="verifyBtn" class="button primary" type="button">登录</button>
           </div>
         </div>
       </section>
@@ -125,6 +126,7 @@
           <button class="consoleTabBtn" type="button" data-console-tab="storage" aria-selected="false">存储</button>
           <button class="consoleTabBtn" type="button" data-console-tab="devices" aria-selected="false">设备</button>
           <button class="consoleTabBtn" type="button" data-console-tab="sync" aria-selected="false">同步记录</button>
+          <button id="adminTabBtn" class="consoleTabBtn" type="button" data-console-tab="admin" aria-selected="false" hidden>管理员</button>
         </div>
 
         <section class="consoleSection" data-console-panel="overview">
@@ -303,6 +305,106 @@
               </table>
             </div>
             <div class="consoleHint muted">同步记录由服务器按请求写入（changes/file 操作）。</div>
+          </div>
+        </section>
+
+        <section class="consoleSection" data-console-panel="admin" hidden>
+          <div class="consoleGrid2">
+            <div class="consoleCard">
+              <h2 class="consoleH2">管理员状态</h2>
+              <div class="consoleKV">
+                <div class="consoleKV__row"><div class="consoleKV__k">管理员邮箱</div><div id="adminEmailText" class="consoleKV__v">-</div></div>
+                <div class="consoleKV__row"><div class="consoleKV__k">SMTP</div><div id="adminSmtpText" class="consoleKV__v">-</div></div>
+                <div class="consoleKV__row"><div class="consoleKV__k">全体同步服务</div><div id="adminSyncAllText" class="consoleKV__v">-</div></div>
+              </div>
+              <div class="consoleActions">
+                <button id="adminRefreshStatusBtn" class="button" type="button">刷新</button>
+                <button id="adminToggleSyncAllBtn" class="button" type="button">切换全体同步</button>
+              </div>
+              <div class="consoleHint muted">管理员面板仅可通过“邮箱登录”（一次性验证码）进入。</div>
+            </div>
+
+            <div class="consoleCard">
+              <div class="consoleTableHeader">
+                <h2 class="consoleH2">全站同步概览</h2>
+                <div class="consoleTableHeader__right">
+                  <input id="adminSyncDaysInput" class="consoleInput consoleInput--small" type="number" min="1" max="365" value="30" style="width: 92px" />
+                  <button id="adminRefreshSyncSummaryBtn" class="button" type="button">刷新</button>
+                </div>
+              </div>
+              <canvas id="adminSyncChart" height="180" style="width: 100%; display: block"></canvas>
+              <div class="consoleHint muted">蓝色：请求量；红色：错误量。</div>
+              <div class="consoleHint muted">Top Error Codes：<span id="adminSyncTopErrors">-</span></div>
+            </div>
+          </div>
+
+          <div class="consoleCard">
+            <div class="consoleTableHeader">
+              <h2 class="consoleH2">用户管理</h2>
+              <div class="consoleTableHeader__right">
+                <input id="adminUsersSearch" class="consoleInput consoleInput--small" type="text" placeholder="搜索用户名/邮箱/ID" style="width: 220px" />
+                <button id="adminUsersRefreshBtn" class="button" type="button">刷新</button>
+              </div>
+            </div>
+            <div class="consoleTableWrap consoleTableWrap--wide">
+              <table class="consoleTable consoleTable--admin">
+                <thead>
+                  <tr>
+                    <th><input id="adminUsersSelectAll" type="checkbox" /></th>
+                    <th>ID</th>
+                    <th>用户名</th>
+                    <th>邮箱</th>
+                    <th>存储</th>
+                    <th>文件</th>
+                    <th>同步</th>
+                    <th>错误率</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="adminUsersTbody"></tbody>
+              </table>
+            </div>
+            <div class="consolePager">
+              <div id="adminUsersPagerText" class="muted tiny">-</div>
+              <div class="consolePager__actions">
+                <button id="adminUsersPrevBtn" class="button" type="button">上一页</button>
+                <button id="adminUsersNextBtn" class="button" type="button">下一页</button>
+              </div>
+            </div>
+            <div class="consoleHint muted">“禁用同步”将阻止该用户访问官方同步接口（/api/v2/vault）。</div>
+          </div>
+
+          <div class="consoleGrid2">
+            <div class="consoleCard">
+              <h2 class="consoleH2">群发邮件（选中用户）</h2>
+              <div class="consoleGrid">
+                <div class="consoleField">
+                  <div class="consoleField__label">主题</div>
+                  <input id="adminMailSubject" class="consoleInput" type="text" />
+                </div>
+                <div class="consoleField">
+                  <div class="consoleField__label">正文（Text）</div>
+                  <textarea id="adminMailBody" class="consoleInput" rows="6" spellcheck="false"></textarea>
+                </div>
+              </div>
+              <div class="consoleActions">
+                <button id="adminSendMailBtn" class="button primary" type="button">发送</button>
+              </div>
+              <div class="consoleHint muted">为保护隐私，邮件将按用户逐个发送（非公开收件人群发）。</div>
+            </div>
+
+            <div class="consoleCard">
+              <div class="consoleTableHeader">
+                <h2 id="adminUserSyncTitle" class="consoleH2">用户同步详情</h2>
+                <div class="consoleTableHeader__right">
+                  <input id="adminUserSyncDaysInput" class="consoleInput consoleInput--small" type="number" min="1" max="365" value="30" style="width: 92px" />
+                  <button id="adminRefreshUserSyncBtn" class="button" type="button">刷新</button>
+                </div>
+              </div>
+              <canvas id="adminUserSyncChart" height="180" style="width: 100%; display: block"></canvas>
+              <div class="consoleHint muted">Top Error Codes：<span id="adminUserSyncTopErrors">-</span></div>
+              <div class="consoleHint muted">在“用户管理”中点击“详情”查看。</div>
+            </div>
           </div>
         </section>
       </section>

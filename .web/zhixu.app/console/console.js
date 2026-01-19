@@ -74,7 +74,37 @@
     devicesTbody: $("devicesTbody"),
 
     refreshSyncLogsBtn: $("refreshSyncLogsBtn"),
-    syncLogsTbody: $("syncLogsTbody")
+    syncLogsTbody: $("syncLogsTbody"),
+
+    adminTabBtn: $("adminTabBtn"),
+    adminEmailText: $("adminEmailText"),
+    adminSmtpText: $("adminSmtpText"),
+    adminSyncAllText: $("adminSyncAllText"),
+    adminRefreshStatusBtn: $("adminRefreshStatusBtn"),
+    adminToggleSyncAllBtn: $("adminToggleSyncAllBtn"),
+
+    adminSyncDaysInput: $("adminSyncDaysInput"),
+    adminRefreshSyncSummaryBtn: $("adminRefreshSyncSummaryBtn"),
+    adminSyncChart: $("adminSyncChart"),
+    adminSyncTopErrors: $("adminSyncTopErrors"),
+
+    adminUsersSearch: $("adminUsersSearch"),
+    adminUsersRefreshBtn: $("adminUsersRefreshBtn"),
+    adminUsersSelectAll: $("adminUsersSelectAll"),
+    adminUsersTbody: $("adminUsersTbody"),
+    adminUsersPagerText: $("adminUsersPagerText"),
+    adminUsersPrevBtn: $("adminUsersPrevBtn"),
+    adminUsersNextBtn: $("adminUsersNextBtn"),
+
+    adminMailSubject: $("adminMailSubject"),
+    adminMailBody: $("adminMailBody"),
+    adminSendMailBtn: $("adminSendMailBtn"),
+
+    adminUserSyncTitle: $("adminUserSyncTitle"),
+    adminUserSyncDaysInput: $("adminUserSyncDaysInput"),
+    adminRefreshUserSyncBtn: $("adminRefreshUserSyncBtn"),
+    adminUserSyncChart: $("adminUserSyncChart"),
+    adminUserSyncTopErrors: $("adminUserSyncTopErrors")
   };
 
   const state = {
@@ -82,12 +112,27 @@
     token: "",
     sessionId: "",
     refreshToken: "",
+    isAdmin: false,
     avatarObjectUrl: "",
     storage: {
       total: 0,
       offset: 0,
       limit: 50,
       files: []
+    },
+    admin: {
+      syncDisabledAll: false,
+      users: {
+        total: 0,
+        offset: 0,
+        limit: 50,
+        q: "",
+        rows: []
+      },
+      selectedUserIds: new Set(),
+      selectedUserId: 0,
+      syncSummary: { days: 30, series: [], topErrorCodes: [] },
+      userSyncSummary: { userId: 0, days: 30, series: [], topErrorCodes: [] }
     }
   };
 
@@ -138,6 +183,7 @@
     state.token = "";
     state.sessionId = "";
     state.refreshToken = "";
+    state.isAdmin = false;
     localStorage.removeItem(LS.token);
     localStorage.removeItem(LS.sessionId);
     localStorage.removeItem(LS.refreshToken);
@@ -164,6 +210,7 @@
       state.token = String(obj.token || "");
       state.sessionId = String(obj.sessionId || state.sessionId);
       state.refreshToken = String(obj.refreshToken || state.refreshToken);
+      if (Object.prototype.hasOwnProperty.call(obj, "isAdmin")) state.isAdmin = Boolean(obj.isAdmin);
       saveState();
       return true;
     } catch (_) {
@@ -248,6 +295,80 @@
       return new Date(t).toLocaleString();
     } catch {
       return String(t);
+    }
+  }
+
+  function setAdminTabVisible(visible) {
+    if (!el.adminTabBtn) return;
+    el.adminTabBtn.hidden = !visible;
+
+    const currentBtn = document.querySelector('.consoleTabs [data-console-tab][aria-selected="true"]');
+    const current = String(currentBtn?.dataset?.consoleTab || "");
+    if (!visible && current === "admin") switchConsoleTab("overview");
+  }
+
+  function formatErrorRate(rate) {
+    const n = Number(rate);
+    if (!Number.isFinite(n) || n <= 0) return "0%";
+    const pct = Math.min(100, Math.max(0, n * 100));
+    return `${pct.toFixed(pct < 10 ? 1 : 0)}%`;
+  }
+
+  function ensureCanvasResolution(canvas) {
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const cssW = Math.max(1, Math.floor(rect.width || canvas.width || 1));
+    const cssH = Math.max(1, Math.floor(rect.height || canvas.height || 1));
+    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    canvas.width = Math.floor(cssW * dpr);
+    canvas.height = Math.floor(cssH * dpr);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx, width: cssW, height: cssH };
+  }
+
+  function drawSyncSummaryChart(canvas, series) {
+    const g = ensureCanvasResolution(canvas);
+    if (!g) return;
+    const { ctx, width, height } = g;
+    ctx.clearRect(0, 0, width, height);
+
+    const data = Array.isArray(series) ? series : [];
+    if (!data.length) {
+      ctx.fillStyle = "rgba(120,120,120,0.9)";
+      ctx.font = "14px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      ctx.fillText("暂无数据", 10, 24);
+      return;
+    }
+
+    const maxTotal = Math.max(1, ...data.map((d) => Number(d.total) || 0));
+    const padX = 8;
+    const padY = 18;
+    const chartW = Math.max(1, width - padX * 2);
+    const chartH = Math.max(1, height - padY * 2);
+    const barW = chartW / data.length;
+
+    ctx.fillStyle = "rgba(120,120,120,0.35)";
+    ctx.fillRect(padX, padY + chartH, chartW, 1);
+
+    for (let i = 0; i < data.length; i += 1) {
+      const total = Math.max(0, Number(data[i]?.total) || 0);
+      const errors = Math.max(0, Number(data[i]?.errors) || 0);
+
+      const totalH = (total / maxTotal) * chartH;
+      const errH = (errors / maxTotal) * chartH;
+      const x = padX + i * barW;
+      const w = Math.max(1, barW * 0.7);
+      const x0 = x + (barW - w) / 2;
+
+      ctx.fillStyle = "rgba(6, 106, 223, 0.55)";
+      ctx.fillRect(x0, padY + chartH - totalH, w, totalH);
+
+      if (errH > 0) {
+        ctx.fillStyle = "rgba(217, 53, 53, 0.7)";
+        ctx.fillRect(x0, padY + chartH - errH, w, errH);
+      }
     }
   }
 
@@ -344,6 +465,7 @@
       state.token = String(r.value?.token || "");
       state.sessionId = String(r.value?.sessionId || "");
       state.refreshToken = String(r.value?.refreshToken || "");
+      state.isAdmin = false;
       saveState();
       await enterConsole();
       showToast("登录成功");
@@ -357,16 +479,14 @@
     const password = String(el.registerPassword.value || "");
     const email = String(el.registerEmail.value || "").trim();
     const emailCode = String(el.registerEmailCode.value || "").trim();
-    if (!username || !password) {
-      showToast("请输入用户名与密码", "error");
+    if (!username || !password || !email || !emailCode) {
+      showToast("请输入用户名、密码、邮箱与邮箱验证码", "error");
       return;
     }
 
     setButtonLoading(el.registerBtn, true);
     try {
-      const body = { username, password };
-      if (email) body.email = email;
-      if (emailCode) body.emailCode = emailCode;
+      const body = { username, password, email, emailCode };
       const r = await requestJson("/api/auth/register", { method: "POST", body, auth: false });
       if (!r.ok) {
         showToast(r.error || "注册失败", "error");
@@ -400,7 +520,7 @@
     }
   }
 
-  async function doVerifyEmail() {
+  async function doEmailLogin() {
     const email = String(el.verifyEmail.value || "").trim();
     const code = String(el.verifyCode.value || "").trim();
     if (!email || !code) {
@@ -410,13 +530,19 @@
 
     setButtonLoading(el.verifyBtn, true);
     try {
-      const r = await requestJson("/api/auth/email/verify", { method: "POST", body: { email, code }, auth: false });
+      const deviceName = `Zhixu-Web (${navigator.platform || "Web"})`;
+      const r = await requestJson("/api/auth/email/login", { method: "POST", body: { email, code, deviceName }, auth: false });
       if (!r.ok) {
-        showToast(r.error || "验证失败", "error");
+        showToast(r.error || "邮箱登录失败", "error");
         return;
       }
-      showToast(r.value?.alreadyVerified ? "邮箱已验证" : "验证成功");
-      if (state.token) await loadMe();
+      state.token = String(r.value?.token || "");
+      state.sessionId = String(r.value?.sessionId || "");
+      state.refreshToken = String(r.value?.refreshToken || "");
+      state.isAdmin = Boolean(r.value?.isAdmin);
+      saveState();
+      await enterConsole();
+      showToast(state.isAdmin ? "管理员邮箱登录成功" : "登录成功");
     } finally {
       setButtonLoading(el.verifyBtn, false);
     }
@@ -911,6 +1037,349 @@
     await loadStorageFilesPage();
   }
 
+  async function refreshAdminStatus({ silent = false } = {}) {
+    if (!state.token) {
+      state.isAdmin = false;
+      setAdminTabVisible(false);
+      return false;
+    }
+
+    const r = await requestJson("/api/admin/status", { method: "GET", auth: true });
+    if (!r.ok) {
+      state.isAdmin = false;
+      setAdminTabVisible(false);
+      if (!silent && r.status !== 401 && r.status !== 403) showToast(r.error || "管理员状态获取失败", "error");
+      return false;
+    }
+
+    state.isAdmin = true;
+    setAdminTabVisible(true);
+
+    const status = r.value || {};
+    state.admin.syncDisabledAll = Boolean(status.syncDisabledAll);
+
+    if (el.adminEmailText) el.adminEmailText.textContent = String(status.adminEmail || "-") || "-";
+    if (el.adminSmtpText) el.adminSmtpText.textContent = status.smtpConfigured ? "已配置" : "未配置";
+    if (el.adminSyncAllText) el.adminSyncAllText.textContent = state.admin.syncDisabledAll ? "已禁用" : "已启用";
+    if (el.adminToggleSyncAllBtn) el.adminToggleSyncAllBtn.textContent = state.admin.syncDisabledAll ? "启用全体同步" : "禁用全体同步";
+    return true;
+  }
+
+  async function loadAdminSyncSummary() {
+    if (!state.isAdmin) return;
+    const daysRaw = Number(el.adminSyncDaysInput?.value || 30);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.floor(daysRaw), 1), 365) : 30;
+
+    setButtonLoading(el.adminRefreshSyncSummaryBtn, true);
+    try {
+      const r = await requestJson(`/api/admin/sync/summary?days=${encodeURIComponent(String(days))}`, { method: "GET", auth: true });
+      if (!r.ok) {
+        showToast(r.error || "同步概览获取失败", "error");
+        return;
+      }
+      const v = r.value || {};
+      state.admin.syncSummary = { days, series: v.series || [], topErrorCodes: v.topErrorCodes || [] };
+      drawSyncSummaryChart(el.adminSyncChart, state.admin.syncSummary.series);
+
+      if (el.adminSyncTopErrors) {
+        const list = Array.isArray(state.admin.syncSummary.topErrorCodes) ? state.admin.syncSummary.topErrorCodes : [];
+        el.adminSyncTopErrors.textContent = list.length
+          ? list
+              .slice(0, 8)
+              .map((x) => `${String(x.code || "") || "?"}(${Number(x.count) || 0})`)
+              .join(", ")
+          : "-";
+      }
+    } finally {
+      setButtonLoading(el.adminRefreshSyncSummaryBtn, false);
+    }
+  }
+
+  function updateAdminUsersSelectAllCheckbox() {
+    if (!el.adminUsersSelectAll) return;
+    const rows = Array.isArray(state.admin.users.rows) ? state.admin.users.rows : [];
+    if (!rows.length) {
+      el.adminUsersSelectAll.checked = false;
+      el.adminUsersSelectAll.indeterminate = false;
+      return;
+    }
+    const selectedCount = rows.filter((u) => state.admin.selectedUserIds.has(Number(u.userId) || 0)).length;
+    el.adminUsersSelectAll.checked = selectedCount === rows.length;
+    el.adminUsersSelectAll.indeterminate = selectedCount > 0 && selectedCount < rows.length;
+  }
+
+  function renderAdminUsers() {
+    if (!el.adminUsersTbody) return;
+    el.adminUsersTbody.textContent = "";
+
+    const rows = Array.isArray(state.admin.users.rows) ? state.admin.users.rows : [];
+    for (const u of rows) {
+      const userId = Number(u.userId) || 0;
+
+      const tr = document.createElement("tr");
+
+      const tdSel = document.createElement("td");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = state.admin.selectedUserIds.has(userId);
+      cb.addEventListener("change", () => {
+        if (cb.checked) state.admin.selectedUserIds.add(userId);
+        else state.admin.selectedUserIds.delete(userId);
+        updateAdminUsersSelectAllCheckbox();
+      });
+      tdSel.appendChild(cb);
+
+      const tdId = document.createElement("td");
+      tdId.textContent = String(userId || "-");
+      tdId.style.whiteSpace = "nowrap";
+
+      const tdUser = document.createElement("td");
+      tdUser.className = "consoleCell--ellipsis";
+      tdUser.textContent = String(u.username || "-");
+      tdUser.title = String(u.username || "");
+
+      const tdEmail = document.createElement("td");
+      const email = String(u.email || "");
+      tdEmail.className = "consoleCell--ellipsis";
+      tdEmail.textContent = email ? `${email}${u.emailVerified ? "（已验证）" : "（未验证）"}` : "-";
+      tdEmail.title = email;
+
+      const tdStorage = document.createElement("td");
+      tdStorage.textContent = formatBytes(Number(u.storage?.usedBytes) || 0);
+      tdStorage.style.whiteSpace = "nowrap";
+
+      const tdFiles = document.createElement("td");
+      tdFiles.textContent = String(Number(u.storage?.fileCount) || 0);
+      tdFiles.style.whiteSpace = "nowrap";
+
+      const tdSync = document.createElement("td");
+      const lastSync = Number(u.sync?.lastSyncAtMs) || 0;
+      const total = Number(u.sync?.totalCount) || 0;
+      tdSync.textContent = total ? `${formatTime(lastSync)} / ${total}` : "-";
+      tdSync.style.whiteSpace = "nowrap";
+
+      const tdErr = document.createElement("td");
+      const errRate = Number(u.sync?.errorRate) || 0;
+      const errCount = Number(u.sync?.errorCount) || 0;
+      tdErr.textContent = total ? `${formatErrorRate(errRate)} (${errCount}/${total})` : "-";
+      tdErr.style.whiteSpace = "nowrap";
+
+      const tdActions = document.createElement("td");
+      tdActions.style.whiteSpace = "nowrap";
+
+      const btnDetail = document.createElement("button");
+      btnDetail.type = "button";
+      btnDetail.className = "button";
+      btnDetail.textContent = "详情";
+      btnDetail.addEventListener("click", () => void loadAdminUserSyncSummary(userId));
+
+      const btnToggleSync = document.createElement("button");
+      btnToggleSync.type = "button";
+      btnToggleSync.className = "button";
+      btnToggleSync.textContent = u.syncDisabled ? "启用同步" : "禁用同步";
+      btnToggleSync.addEventListener("click", () => void adminSetUserSyncDisabled(userId, !u.syncDisabled));
+
+      const btnDelete = document.createElement("button");
+      btnDelete.type = "button";
+      btnDelete.className = "button";
+      btnDelete.textContent = "删除";
+      btnDelete.addEventListener("click", () => {
+        const ok = window.confirm(`删除用户 #${userId} 并清空数据/存储？此操作不可恢复。`);
+        if (ok) void adminDeleteUser(userId);
+      });
+
+      tdActions.appendChild(btnDetail);
+      tdActions.appendChild(document.createTextNode(" "));
+      tdActions.appendChild(btnToggleSync);
+      tdActions.appendChild(document.createTextNode(" "));
+      tdActions.appendChild(btnDelete);
+
+      tr.appendChild(tdSel);
+      tr.appendChild(tdId);
+      tr.appendChild(tdUser);
+      tr.appendChild(tdEmail);
+      tr.appendChild(tdStorage);
+      tr.appendChild(tdFiles);
+      tr.appendChild(tdSync);
+      tr.appendChild(tdErr);
+      tr.appendChild(tdActions);
+
+      el.adminUsersTbody.appendChild(tr);
+    }
+
+    updateAdminUsersSelectAllCheckbox();
+  }
+
+  async function loadAdminUsersPage({ resetOffset = false } = {}) {
+    if (!state.isAdmin) return;
+
+    const q = String(el.adminUsersSearch?.value ?? state.admin.users.q ?? "").trim();
+    state.admin.users.q = q;
+    if (resetOffset) state.admin.users.offset = 0;
+
+    const limit = state.admin.users.limit || 50;
+    const offset = state.admin.users.offset || 0;
+    const url = `/api/admin/users?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}${q ? `&q=${encodeURIComponent(q)}` : ""}`;
+
+    setButtonLoading(el.adminUsersRefreshBtn, true);
+    try {
+      const r = await requestJson(url, { method: "GET", auth: true });
+      if (!r.ok) {
+        showToast(r.error || "用户列表获取失败", "error");
+        return;
+      }
+      state.admin.users.total = Number(r.value?.total) || 0;
+      state.admin.users.offset = Number(r.value?.offset) || 0;
+      state.admin.users.limit = Number(r.value?.limit) || limit;
+      state.admin.users.rows = Array.isArray(r.value?.users) ? r.value.users : [];
+      renderAdminUsers();
+
+      if (el.adminUsersPagerText) {
+        const total = state.admin.users.total;
+        const start = total ? state.admin.users.offset + 1 : 0;
+        const end = Math.min(state.admin.users.offset + state.admin.users.limit, total);
+        el.adminUsersPagerText.textContent = total ? `${start}-${end} / ${total}` : "0 / 0";
+      }
+
+      if (el.adminUsersPrevBtn) el.adminUsersPrevBtn.disabled = state.admin.users.offset <= 0;
+      if (el.adminUsersNextBtn) el.adminUsersNextBtn.disabled = state.admin.users.offset + state.admin.users.limit >= state.admin.users.total;
+    } finally {
+      setButtonLoading(el.adminUsersRefreshBtn, false);
+    }
+  }
+
+  async function adminToggleSyncAll() {
+    if (!state.isAdmin) return;
+    const next = !state.admin.syncDisabledAll;
+    setButtonLoading(el.adminToggleSyncAllBtn, true);
+    try {
+      const r = await requestJson("/api/admin/sync/disableAll", { method: "POST", body: { disabled: next }, auth: true });
+      if (!r.ok) {
+        showToast(r.error || "操作失败", "error");
+        return;
+      }
+      state.admin.syncDisabledAll = Boolean(r.value?.syncDisabledAll);
+      await refreshAdminStatus({ silent: true });
+      showToast(state.admin.syncDisabledAll ? "已禁用全体同步" : "已启用全体同步");
+    } finally {
+      setButtonLoading(el.adminToggleSyncAllBtn, false);
+    }
+  }
+
+  async function adminSetUserSyncDisabled(userId, disabled) {
+    if (!state.isAdmin) return;
+    const safeId = Number(userId);
+    if (!Number.isFinite(safeId) || safeId <= 0) return;
+
+    const r = await requestJson(`/api/admin/users/${encodeURIComponent(String(safeId))}/sync`, {
+      method: "POST",
+      body: { disabled },
+      auth: true
+    });
+    if (!r.ok) {
+      showToast(r.error || "操作失败", "error");
+      return;
+    }
+    showToast(disabled ? `已禁用用户 #${safeId} 同步` : `已启用用户 #${safeId} 同步`);
+    await loadAdminUsersPage();
+  }
+
+  async function adminDeleteUser(userId) {
+    if (!state.isAdmin) return;
+    const safeId = Number(userId);
+    if (!Number.isFinite(safeId) || safeId <= 0) return;
+
+    const r = await requestJson(`/api/admin/users/${encodeURIComponent(String(safeId))}`, { method: "DELETE", auth: true });
+    if (!r.ok) {
+      showToast(r.error || "删除失败", "error");
+      return;
+    }
+    state.admin.selectedUserIds.delete(safeId);
+    if (state.admin.selectedUserId === safeId) {
+      state.admin.selectedUserId = 0;
+      if (el.adminUserSyncTitle) el.adminUserSyncTitle.textContent = "用户同步详情";
+      if (el.adminUserSyncTopErrors) el.adminUserSyncTopErrors.textContent = "-";
+      drawSyncSummaryChart(el.adminUserSyncChart, []);
+    }
+    showToast(`已删除用户 #${safeId}`);
+    await loadAdminUsersPage({ resetOffset: true });
+  }
+
+  async function loadAdminUserSyncSummary(userId) {
+    if (!state.isAdmin) return;
+    const safeId = Number(userId);
+    if (!Number.isFinite(safeId) || safeId <= 0) return;
+    state.admin.selectedUserId = safeId;
+    if (el.adminUserSyncTitle) el.adminUserSyncTitle.textContent = `用户同步详情：#${safeId}`;
+
+    const daysRaw = Number(el.adminUserSyncDaysInput?.value || 30);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.floor(daysRaw), 1), 365) : 30;
+
+    setButtonLoading(el.adminRefreshUserSyncBtn, true);
+    try {
+      const r = await requestJson(`/api/admin/users/${encodeURIComponent(String(safeId))}/sync/summary?days=${encodeURIComponent(String(days))}`, {
+        method: "GET",
+        auth: true
+      });
+      if (!r.ok) {
+        showToast(r.error || "用户同步详情获取失败", "error");
+        return;
+      }
+      const v = r.value || {};
+      state.admin.userSyncSummary = { userId: safeId, days, series: v.series || [], topErrorCodes: v.topErrorCodes || [] };
+      drawSyncSummaryChart(el.adminUserSyncChart, state.admin.userSyncSummary.series);
+
+      if (el.adminUserSyncTopErrors) {
+        const list = Array.isArray(state.admin.userSyncSummary.topErrorCodes) ? state.admin.userSyncSummary.topErrorCodes : [];
+        el.adminUserSyncTopErrors.textContent = list.length
+          ? list
+              .slice(0, 8)
+              .map((x) => `${String(x.code || "") || "?"}(${Number(x.count) || 0})`)
+              .join(", ")
+          : "-";
+      }
+    } finally {
+      setButtonLoading(el.adminRefreshUserSyncBtn, false);
+    }
+  }
+
+  async function adminSendBroadcast() {
+    if (!state.isAdmin) return;
+    const userIds = Array.from(state.admin.selectedUserIds);
+    if (!userIds.length) {
+      showToast("请先在用户列表中勾选收件人", "error");
+      return;
+    }
+
+    const subject = String(el.adminMailSubject?.value || "").trim();
+    const body = String(el.adminMailBody?.value || "").trim();
+    if (!subject || !body) {
+      showToast("请输入邮件主题与正文", "error");
+      return;
+    }
+
+    setButtonLoading(el.adminSendMailBtn, true);
+    try {
+      const r = await requestJson("/api/admin/email/broadcast", { method: "POST", body: { userIds, subject, text: body }, auth: true });
+      if (!r.ok) {
+        showToast(r.error || "发送失败", "error");
+        return;
+      }
+      showToast(`发送完成：成功 ${Number(r.value?.sentCount) || 0}，失败 ${Number(r.value?.failedCount) || 0}`);
+    } finally {
+      setButtonLoading(el.adminSendMailBtn, false);
+    }
+  }
+
+  async function loadAdminDashboard() {
+    const ok = await refreshAdminStatus({ silent: true });
+    if (!ok) return false;
+    await loadAdminSyncSummary();
+    await loadAdminUsersPage({ resetOffset: true });
+    if (state.admin.selectedUserId) await loadAdminUserSyncSummary(state.admin.selectedUserId);
+    return true;
+  }
+
   async function enterConsole() {
     const me = await loadMe();
     if (!me) {
@@ -918,9 +1387,18 @@
       setAuthedUI(false, "");
       return;
     }
+
     setAuthedUI(true, `已登录：${String(me.username || "") || "账号"}`);
+
+    const adminOk = await refreshAdminStatus({ silent: true });
+    if (adminOk) {
+      switchConsoleTab("admin");
+      await loadAdminDashboard();
+      return;
+    }
+
     switchConsoleTab("overview");
-    await refreshOverview();
+    await loadStorageStats();
   }
 
   function initBaseUrl() {
@@ -965,6 +1443,13 @@
         if (tab === "devices") await loadDevices();
         if (tab === "sync") await loadSyncLogs();
         if (tab === "account") await loadMe();
+        if (tab === "admin") {
+          const ok = await loadAdminDashboard();
+          if (!ok) {
+            showToast("无管理员权限（需：管理员邮箱 + 邮箱登录）", "error");
+            switchConsoleTab("overview");
+          }
+        }
       });
     });
 
@@ -975,8 +1460,8 @@
     el.registerBtn.addEventListener("click", () => void doRegister());
     el.registerSendCodeBtn.addEventListener("click", () => void doSendEmailCode("register", el.registerEmail, el.registerSendCodeBtn));
 
-    el.verifySendCodeBtn.addEventListener("click", () => void doSendEmailCode("verify", el.verifyEmail, el.verifySendCodeBtn));
-    el.verifyBtn.addEventListener("click", () => void doVerifyEmail());
+    el.verifySendCodeBtn.addEventListener("click", () => void doSendEmailCode("login", el.verifyEmail, el.verifySendCodeBtn));
+    el.verifyBtn.addEventListener("click", () => void doEmailLogin());
 
     el.refreshOverviewBtn.addEventListener("click", () => void refreshOverview());
 
@@ -1004,6 +1489,39 @@
 
     el.refreshDevicesBtn.addEventListener("click", () => void loadDevices());
     el.refreshSyncLogsBtn.addEventListener("click", () => void loadSyncLogs());
+
+    el.adminRefreshStatusBtn?.addEventListener("click", () => void refreshAdminStatus());
+    el.adminToggleSyncAllBtn?.addEventListener("click", () => void adminToggleSyncAll());
+    el.adminRefreshSyncSummaryBtn?.addEventListener("click", () => void loadAdminSyncSummary());
+
+    el.adminUsersRefreshBtn?.addEventListener("click", () => void loadAdminUsersPage({ resetOffset: true }));
+    el.adminUsersSearch?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") void loadAdminUsersPage({ resetOffset: true });
+    });
+    el.adminUsersPrevBtn?.addEventListener("click", () => {
+      state.admin.users.offset = Math.max(0, (Number(state.admin.users.offset) || 0) - (Number(state.admin.users.limit) || 50));
+      void loadAdminUsersPage();
+    });
+    el.adminUsersNextBtn?.addEventListener("click", () => {
+      state.admin.users.offset = (Number(state.admin.users.offset) || 0) + (Number(state.admin.users.limit) || 50);
+      void loadAdminUsersPage();
+    });
+    el.adminUsersSelectAll?.addEventListener("change", () => {
+      const checked = Boolean(el.adminUsersSelectAll.checked);
+      const rows = Array.isArray(state.admin.users.rows) ? state.admin.users.rows : [];
+      for (const u of rows) {
+        const id = Number(u.userId) || 0;
+        if (!id) continue;
+        if (checked) state.admin.selectedUserIds.add(id);
+        else state.admin.selectedUserIds.delete(id);
+      }
+      renderAdminUsers();
+    });
+
+    el.adminSendMailBtn?.addEventListener("click", () => void adminSendBroadcast());
+    el.adminRefreshUserSyncBtn?.addEventListener("click", () => {
+      if (state.admin.selectedUserId) void loadAdminUserSyncSummary(state.admin.selectedUserId);
+    });
   }
 
   async function boot() {

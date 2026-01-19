@@ -33,6 +33,9 @@ module.exports = {
   storageLimitBytes: parseIntEnv("STORAGE_LIMIT_BYTES", 5 * 1024 * 1024 * 1024),
   corsOrigin: process.env.CORS_ORIGIN || "*",
   storageRoot: path.resolve(process.env.STORAGE_ROOT || path.join(__dirname, "..", "storage")),
+  adminEmail: String(process.env.ADMIN_EMAIL || "")
+    .trim()
+    .toLowerCase(),
   mysql: {
     host: requireEnv("MYSQL_HOST", "127.0.0.1"),
     port: parseIntEnv("MYSQL_PORT", 3306),

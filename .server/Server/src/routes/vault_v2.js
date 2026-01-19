@@ -4,11 +4,29 @@ const express = require("express");
 const { pool } = require("../db");
 const { authRequired } = require("../middleware/auth");
 const { rawBodyLimitBytes, storageRoot, storageLimitBytes } = require("../config");
+const { getSetting } = require("../settings");
 const { buildObjectPath, atomicWriteFile, deleteFileBestEffort } = require("../storage");
 const { getRequestIp } = require("../http");
 
 const router = express.Router();
 router.use(authRequired);
+
+router.use(async (req, res, next) => {
+  const userId = Number(req.user?.id);
+  if (!Number.isFinite(userId) || userId <= 0) return res.status(401).json({ error: "invalid_user" });
+
+  try {
+    const disabledAll = String(await getSetting("sync_disabled_all", "0")) === "1";
+    if (disabledAll) return res.status(403).json({ error: "sync_disabled_all" });
+
+    const [[u]] = await pool.query("SELECT COALESCE(sync_disabled, 0) AS sync_disabled FROM users WHERE id = ? LIMIT 1", [userId]);
+    if ((Number(u?.sync_disabled) || 0) > 0) return res.status(403).json({ error: "sync_disabled_user" });
+
+    return next();
+  } catch (_) {
+    return res.status(500).json({ error: "server_error" });
+  }
+});
 
 function normalizeVaultPath(raw) {
   const value = String(raw || "").trim();
@@ -49,19 +67,37 @@ function sha256BytesUtf8(text) {
   return crypto.createHash("sha256").update(String(text), "utf8").digest();
 }
 
-async function logSyncEvent(req, { userId, action, path = "", sizeBytes = 0 }) {
+async function logSyncEvent(req, { userId, action, path = "", sizeBytes = 0, statusCode = 200, errorCode = "" }) {
   const sessionId = String(req.sessionId || "").trim();
   const ip = getRequestIp(req).slice(0, 64);
   const client = String(req.header("User-Agent") || "").trim().slice(0, 255);
   const now = Date.now();
   try {
     await pool.query(
-      "INSERT INTO sync_logs (user_id, session_id, action, path, ip, client, size_bytes, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [userId, sessionId, String(action || "").slice(0, 32), String(path || "").slice(0, 1024), ip, client, Math.max(0, Number(sizeBytes) || 0), now]
+      "INSERT INTO sync_logs (user_id, session_id, action, path, ip, client, size_bytes, status_code, error_code, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [
+        userId,
+        sessionId,
+        String(action || "").slice(0, 32),
+        String(path || "").slice(0, 1024),
+        ip,
+        client,
+        Math.max(0, Number(sizeBytes) || 0),
+        Math.max(0, Number(statusCode) || 0),
+        String(errorCode || "").slice(0, 64),
+        now
+      ]
     );
   } catch (_) {
     // ignore best-effort log
   }
+}
+
+function respondError(req, res, { userId, action, path = "", status = 400, error = "error", sizeBytes = 0, extra = undefined }) {
+  void logSyncEvent(req, { userId, action, path, sizeBytes, statusCode: status, errorCode: error });
+  const payload = { error };
+  if (extra && typeof extra === "object") Object.assign(payload, extra);
+  return res.status(status).json(payload);
 }
 
 async function getCurrentFileRow(db, userId, path, pathHash, { forUpdate = false } = {}) {
@@ -172,7 +208,7 @@ router.get("/file", async (req, res) => {
   if (!Number.isFinite(userId)) return res.status(401).json({ error: "invalid_user" });
 
   const path = normalizeVaultPath(req.query?.path);
-  if (!path) return res.status(400).json({ error: "invalid_path" });
+  if (!path) return respondError(req, res, { userId, action: "file_get", status: 400, error: "invalid_path" });
   const pathHash = sha256BytesUtf8(path);
 
   const [rows] = await pool.query(
@@ -181,16 +217,16 @@ SELECT path, rev, mtime_ms, size_bytes, sha256, deleted
 FROM vault_files
 WHERE user_id = ? AND path_hash = ?
 LIMIT 2
-`,
+  `,
     [userId, pathHash]
   );
   const row = rows?.[0];
-  if (!row) return res.status(404).json({ error: "not_found" });
-  if (String(row.path || "") !== path) return res.status(409).json({ error: "path_hash_collision" });
-  if (row.deleted) return res.status(410).json({ error: "deleted" });
+  if (!row) return respondError(req, res, { userId, action: "file_get", path, status: 404, error: "not_found" });
+  if (String(row.path || "") !== path) return respondError(req, res, { userId, action: "file_get", path, status: 409, error: "path_hash_collision" });
+  if (row.deleted) return respondError(req, res, { userId, action: "file_get", path, status: 410, error: "deleted" });
 
   const obj = buildObjectPath(storageRoot, userId, path);
-  if (!obj) return res.status(400).json({ error: "invalid_path" });
+  if (!obj) return respondError(req, res, { userId, action: "file_get", path, status: 400, error: "invalid_path" });
   const absPath = obj.absPath;
 
   res.setHeader("Content-Type", "application/octet-stream");
@@ -198,13 +234,13 @@ LIMIT 2
   res.setHeader("X-Zhixu-Mtime-Ms", String(Number(row.mtime_ms) || 0));
   res.setHeader("X-Zhixu-Size", String(Number(row.size_bytes) || 0));
   res.setHeader("X-Zhixu-Sha256", String(row.sha256 || ""));
-  void logSyncEvent(req, { userId, action: "file_get", path, sizeBytes: Number(row.size_bytes) || 0 });
   try {
     await fs.promises.access(absPath, fs.constants.R_OK);
   } catch (_) {
-    return res.status(404).json({ error: "file_missing" });
+    return respondError(req, res, { userId, action: "file_get", path, status: 404, error: "file_missing" });
   }
 
+  void logSyncEvent(req, { userId, action: "file_get", path, sizeBytes: Number(row.size_bytes) || 0 });
   const stream = fs.createReadStream(absPath);
   stream.on("error", () => {
     if (!res.headersSent) res.status(500);
@@ -221,18 +257,18 @@ router.put(
     if (!Number.isFinite(userId)) return res.status(401).json({ error: "invalid_user" });
 
     const path = normalizeVaultPath(req.query?.path);
-    if (!path) return res.status(400).json({ error: "invalid_path" });
+    if (!path) return respondError(req, res, { userId, action: "file_put", status: 400, error: "invalid_path" });
     const pathHash = sha256BytesUtf8(path);
 
     const baseRevRaw = Number(req.query?.baseRev || req.header("X-Zhixu-Base-Rev") || 0);
     const baseRev = Number.isFinite(baseRevRaw) && baseRevRaw >= 0 ? baseRevRaw : NaN;
-    if (!Number.isFinite(baseRev)) return res.status(400).json({ error: "invalid_baseRev" });
+    if (!Number.isFinite(baseRev)) return respondError(req, res, { userId, action: "file_put", path, status: 400, error: "invalid_baseRev" });
 
     const mtimeMs = Number(req.query?.mtimeMs || req.header("X-Zhixu-Mtime-Ms") || 0);
     const safeMtimeMs = Number.isFinite(mtimeMs) && mtimeMs > 0 ? mtimeMs : Date.now();
 
     const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
-    if (!bytes.length) return res.status(400).json({ error: "empty_body" });
+    if (!bytes.length) return respondError(req, res, { userId, action: "file_put", path, status: 400, error: "empty_body" });
 
     const now = Date.now();
     const hash = sha256Hex(bytes);
@@ -245,17 +281,20 @@ router.put(
       const current = await getCurrentFileRow(conn, userId, path, pathHash, { forUpdate: true });
       if (current?.error) {
         await conn.rollback();
-        return res.status(409).json({ error: current.error });
+        return respondError(req, res, { userId, action: "file_put", path, status: 409, error: current.error, sizeBytes });
       }
       const currentRev = current?.rev || 0;
 
       if (baseRev !== currentRev) {
         await conn.rollback();
-        return res.status(409).json({
-          error: "rev_conflict",
+        return respondError(req, res, {
+          userId,
+          action: "file_put",
           path,
-          expectedBaseRev: currentRev,
-          current: current || { path, rev: 0, deleted: false }
+          status: 409,
+          error: "rev_conflict",
+          sizeBytes,
+          extra: { path, expectedBaseRev: currentRev, current: current || { path, rev: 0, deleted: false } }
         });
       }
 
@@ -276,11 +315,14 @@ FOR UPDATE
         const nextUsed = Math.max(0, usedBytes - Math.max(0, prevSize)) + sizeBytes;
         if (nextUsed > quotaLimitBytes) {
           await conn.rollback();
-          return res.status(413).json({
+          return respondError(req, res, {
+            userId,
+            action: "file_put",
+            path,
+            status: 413,
             error: "storage_quota_exceeded",
-            limitBytes: quotaLimitBytes,
-            usedBytes,
-            requiredBytes: nextUsed
+            sizeBytes,
+            extra: { limitBytes: quotaLimitBytes, usedBytes, requiredBytes: nextUsed }
           });
         }
       }
@@ -288,7 +330,7 @@ FOR UPDATE
       const obj = buildObjectPath(storageRoot, userId, path);
       if (!obj) {
         await conn.rollback();
-        return res.status(400).json({ error: "invalid_path" });
+        return respondError(req, res, { userId, action: "file_put", path, status: 400, error: "invalid_path", sizeBytes });
       }
       await atomicWriteFile(obj.absPath, bytes);
 
@@ -338,7 +380,7 @@ ON DUPLICATE KEY UPDATE
       } catch (_) {
         // ignore
       }
-      return res.status(500).json({ error: "internal_error" });
+      return respondError(req, res, { userId, action: "file_put", path, status: 500, error: "internal_error", sizeBytes });
     } finally {
       conn.release();
     }
@@ -350,12 +392,12 @@ router.delete("/file", async (req, res) => {
   if (!Number.isFinite(userId)) return res.status(401).json({ error: "invalid_user" });
 
   const path = normalizeVaultPath(req.query?.path);
-  if (!path) return res.status(400).json({ error: "invalid_path" });
+  if (!path) return respondError(req, res, { userId, action: "file_delete", status: 400, error: "invalid_path" });
   const pathHash = sha256BytesUtf8(path);
 
   const baseRevRaw = Number(req.query?.baseRev || req.header("X-Zhixu-Base-Rev") || 0);
   const baseRev = Number.isFinite(baseRevRaw) && baseRevRaw >= 0 ? baseRevRaw : NaN;
-  if (!Number.isFinite(baseRev)) return res.status(400).json({ error: "invalid_baseRev" });
+  if (!Number.isFinite(baseRev)) return respondError(req, res, { userId, action: "file_delete", path, status: 400, error: "invalid_baseRev" });
 
   const now = Date.now();
 
@@ -366,17 +408,19 @@ router.delete("/file", async (req, res) => {
     const current = await getCurrentFileRow(conn, userId, path, pathHash, { forUpdate: true });
     if (current?.error) {
       await conn.rollback();
-      return res.status(409).json({ error: current.error });
+      return respondError(req, res, { userId, action: "file_delete", path, status: 409, error: current.error });
     }
     const currentRev = current?.rev || 0;
 
     if (baseRev !== currentRev) {
       await conn.rollback();
-      return res.status(409).json({
-        error: "rev_conflict",
+      return respondError(req, res, {
+        userId,
+        action: "file_delete",
         path,
-        expectedBaseRev: currentRev,
-        current: current || { path, rev: 0, deleted: false }
+        status: 409,
+        error: "rev_conflict",
+        extra: { path, expectedBaseRev: currentRev, current: current || { path, rev: 0, deleted: false } }
       });
     }
 
@@ -427,7 +471,7 @@ ON DUPLICATE KEY UPDATE
     } catch (_) {
       // ignore
     }
-    return res.status(500).json({ error: "internal_error" });
+    return respondError(req, res, { userId, action: "file_delete", path, status: 500, error: "internal_error" });
   } finally {
     conn.release();
   }
