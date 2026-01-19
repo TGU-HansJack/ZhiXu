@@ -463,6 +463,7 @@
 
     <!-- 官方服务器同步 -->
     <string name="official_sync_title">官方服务器</string>
+    <string name="official_sync_enable">启用官方服务器同步</string>
     <string name="official_sync_now">立即同步</string>
     <string name="official_sync_syncing">同步中…</string>
     <string name="official_sync_ok">同步完成：上传 %1$d，下载 %2$d，远端删除 %3$d，本地删除 %4$d，冲突 %5$d，失败 %6$d</string>

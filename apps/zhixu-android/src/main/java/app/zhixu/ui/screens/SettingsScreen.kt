@@ -114,6 +114,7 @@ import app.zhixu.sync.WebDavSyncEngine
 import app.zhixu.sync.WebDavSyncPlan
 import app.zhixu.sync.WebDavPlannedOpKind
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
@@ -1179,6 +1180,8 @@ private fun SyncSettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = remember(context) { SyncPreferences(context.applicationContext) }
+    val vaultSyncPrefs = remember(context) { VaultSyncPreferences(context.applicationContext) }
+    val vaultStorageLocation by vaultSyncPrefs.config.map { it.location }.collectAsState(initial = VaultStorageLocation.LOCAL)
     val saved by
         prefs.webDavConfig.collectAsState(
             initial =
@@ -1196,6 +1199,7 @@ private fun SyncSettingsScreen(
     val webDavAutomation by prefs.webDavAutomationSettings.collectAsState(initial = WebDavAutomationSettings.DEFAULT)
     val webDavAutoSyncEnabled by prefs.webDavAutoSyncEnabled.collectAsState(initial = false)
     val webDavRemoteRootConfirmed by prefs.webDavRemoteRootConfirmed.collectAsState(initial = false)
+    val officialSyncEnabled by prefs.officialSyncEnabled.collectAsState(initial = false)
 
     var page by rememberSaveable { mutableStateOf(SyncSettingsPage.Main) }
 
@@ -1870,12 +1874,37 @@ private fun SyncSettingsScreen(
                 PageLazyColumn(officialServerListState) {
                 item { SettingsSectionTitle(text = stringResource(R.string.official_sync_title)) }
                 item {
+                    val officialSyncEnabledEffective =
+                        vaultStorageLocation == VaultStorageLocation.OFFICIAL_SERVER ||
+                            (vaultStorageLocation == VaultStorageLocation.LOCAL && officialSyncEnabled)
+                    val canToggleOfficialSync = vaultStorageLocation == VaultStorageLocation.LOCAL
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         shape = MaterialTheme.shapes.extraLarge,
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
+                            ListItem(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            if (!canToggleOfficialSync) return@clickable
+                                            val next = !officialSyncEnabled
+                                            scope.launch { prefs.setOfficialSyncEnabled(next) }
+                                        },
+                                headlineContent = { Text(stringResource(R.string.official_sync_enable)) },
+                                trailingContent = {
+                                    ZhixuSwitch(
+                                        checked = officialSyncEnabledEffective,
+                                        onCheckedChange = { checked ->
+                                            if (!canToggleOfficialSync) return@ZhixuSwitch
+                                            scope.launch { prefs.setOfficialSyncEnabled(checked) }
+                                        },
+                                    )
+                                },
+                            )
+                            HorizontalDivider(color = dividerColor)
                             ListItem(
                                 modifier =
                                     Modifier
@@ -1903,12 +1932,12 @@ private fun SyncSettingsScreen(
                                 baseUrl = OfficialSync.BASE_URL,
                                 token = accountState.token,
                                 includeIndexSqlite = includeIndexSqlite,
-                                syncReady = accountState.isLoggedIn && vaultRootUri != null,
+                                syncReady = officialSyncEnabledEffective && accountState.isLoggedIn && vaultRootUri != null,
                                 syncNotReadyHint =
-                                    if (!accountState.isLoggedIn) {
-                                        stringResource(R.string.official_sync_not_logged_in)
-                                    } else {
-                                        null
+                                    when {
+                                        !officialSyncEnabledEffective -> stringResource(R.string.cloud_sync_dialog_official_hint_disabled)
+                                        !accountState.isLoggedIn -> stringResource(R.string.official_sync_not_logged_in)
+                                        else -> null
                                     },
                             )
                         }

@@ -128,6 +128,7 @@ import app.zhixu.sync.WebDavSyncTaskManager
 import app.zhixu.sync.WebDavSyncTaskTrigger
 import app.zhixu.sync.OfficialSync
 import app.zhixu.sync.SyncServerClient
+import app.zhixu.sync.SyncServerSyncRuntime
 import app.zhixu.sync.SyncServerSyncTaskManager
 import app.zhixu.sync.SyncServerStorageStats
 import app.zhixu.ui.components.CreateDrawSheetContent
@@ -349,6 +350,7 @@ fun ZhixuApp(
     val webDavRemoteRootConfirmed by syncPrefs.webDavRemoteRootConfirmed.collectAsState(initial = false)
     val webDavAutomationSettings by syncPrefs.webDavAutomationSettings.collectAsState(initial = WebDavAutomationSettings.DEFAULT)
     val webDavAutoSyncEnabled by syncPrefs.webDavAutoSyncEnabled.collectAsState(initial = false)
+    val officialSyncEnabled by syncPrefs.officialSyncEnabled.collectAsState(initial = false)
     var showCloudSyncStatusDialog by remember { mutableStateOf(false) }
     var webDavUiStatus by remember { mutableStateOf<WebDavUiStatusSnapshot?>(null) }
     var webDavAutoSyncStatus by remember { mutableStateOf<WebDavAutoSyncStatusSnapshot?>(null) }
@@ -358,7 +360,8 @@ fun ZhixuApp(
     var officialStorageStatsError by remember { mutableStateOf<String?>(null) }
 
     var webDavSyncing by remember { mutableStateOf(false) }
-    var syncServerSyncing by remember { mutableStateOf(false) }
+    val syncServerRunningCount by SyncServerSyncRuntime.runningCount.collectAsState(initial = 0)
+    val syncServerSyncing = syncServerRunningCount > 0
 
     LaunchedEffect(Unit) {
         withFrameNanos { }
@@ -490,7 +493,7 @@ fun ZhixuApp(
         val cfg = vaultSyncConfig
         val enabled =
             when (cfg.location) {
-                VaultStorageLocation.LOCAL -> accountState.token.isNotBlank()
+                VaultStorageLocation.LOCAL -> officialSyncEnabled && accountState.token.isNotBlank()
                 VaultStorageLocation.OFFICIAL_SERVER -> accountState.token.isNotBlank()
                 VaultStorageLocation.THIRD_PARTY_SERVICE -> {
                     val tp = cfg.thirdParty
@@ -549,7 +552,10 @@ fun ZhixuApp(
     }
 
     suspend fun reloadOfficialStorageStatsForDialog() {
-        if (vaultSyncConfig.location != VaultStorageLocation.OFFICIAL_SERVER || accountState.token.isBlank()) {
+        val enabled =
+            vaultSyncConfig.location == VaultStorageLocation.OFFICIAL_SERVER ||
+                (vaultSyncConfig.location == VaultStorageLocation.LOCAL && officialSyncEnabled)
+        if (!enabled || accountState.token.isBlank()) {
             officialStorageStats = null
             officialStorageStatsError = null
             officialStorageStatsLoading = false
@@ -644,11 +650,31 @@ fun ZhixuApp(
         vaultRootUriString,
         vaultSyncConfig.location,
         accountState.token,
+        officialSyncEnabled,
         vaultSyncConfig.thirdParty.url,
         vaultSyncConfig.thirdParty.username,
         vaultSyncConfig.thirdParty.password,
     ) {
         reloadSyncServerUiStatus()
+    }
+
+    LaunchedEffect(
+        vaultRootUriString,
+        vaultSyncConfig.location,
+        accountState.token,
+        officialSyncEnabled,
+        vaultSyncConfig.thirdParty.url,
+        vaultSyncConfig.thirdParty.username,
+        vaultSyncConfig.thirdParty.password,
+    ) {
+        var wasSyncing = false
+        SyncServerSyncRuntime.runningCount.collect { count ->
+            val syncing = count > 0
+            if (wasSyncing && !syncing) {
+                reloadSyncServerUiStatus()
+            }
+            wasSyncing = syncing
+        }
     }
 
     LaunchedEffect(
@@ -662,6 +688,7 @@ fun ZhixuApp(
         webDavAutomationSettings.retryIntervalSeconds,
         vaultSyncConfig.location,
         accountState.token,
+        officialSyncEnabled,
         vaultSyncConfig.thirdParty.url,
         vaultSyncConfig.thirdParty.username,
         vaultSyncConfig.thirdParty.password,
@@ -695,13 +722,13 @@ fun ZhixuApp(
         vaultRootUriString,
         vaultSyncConfig.location,
         accountState.token,
+        officialSyncEnabled,
         vaultSyncConfig.thirdParty.url,
         vaultSyncConfig.thirdParty.username,
         vaultSyncConfig.thirdParty.password,
     ) {
-        if (vaultSyncConfig.location == VaultStorageLocation.LOCAL) return@LaunchedEffect
+        if (vaultSyncConfig.location == VaultStorageLocation.LOCAL && !officialSyncEnabled) return@LaunchedEffect
         val root = vaultRootUri ?: return@LaunchedEffect
-        syncServerSyncing = true
         try {
             runCatching {
                 VaultAutoSync.maybeSyncVault(
@@ -712,7 +739,6 @@ fun ZhixuApp(
                 )
             }
         } finally {
-            syncServerSyncing = false
             reloadSyncServerUiStatus()
         }
     }
@@ -765,9 +791,23 @@ fun ZhixuApp(
 
     if (showCloudSyncStatusDialog) {
         val dialogScope = rememberCoroutineScope()
-        val isPrimaryWebDav = vaultSyncConfig.location == VaultStorageLocation.LOCAL
-        val primaryProviderName =
+        var manualSyncServerWorking by remember { mutableStateOf(false) }
+        val syncServerPrimaryLocation =
             when (vaultSyncConfig.location) {
+                VaultStorageLocation.THIRD_PARTY_SERVICE -> VaultStorageLocation.THIRD_PARTY_SERVICE
+                else -> VaultStorageLocation.OFFICIAL_SERVER
+            }
+        val primaryLocation =
+            when {
+                webDavSyncing -> VaultStorageLocation.LOCAL
+                syncServerSyncing -> syncServerPrimaryLocation
+                vaultSyncConfig.location != VaultStorageLocation.LOCAL -> vaultSyncConfig.location
+                webDavConfig.enabled -> VaultStorageLocation.LOCAL
+                else -> if (officialSyncEnabled) VaultStorageLocation.OFFICIAL_SERVER else VaultStorageLocation.LOCAL
+            }
+        val isPrimaryWebDav = primaryLocation == VaultStorageLocation.LOCAL
+        val primaryProviderName =
+            when (primaryLocation) {
                 VaultStorageLocation.LOCAL -> stringResource(R.string.settings_sync_provider_webdav)
                 VaultStorageLocation.OFFICIAL_SERVER -> stringResource(R.string.official_sync_title)
                 VaultStorageLocation.THIRD_PARTY_SERVICE -> stringResource(R.string.vault_settings_location_third_party)
@@ -779,9 +819,11 @@ fun ZhixuApp(
             if (isPrimaryWebDav) {
                 webDavConfig.enabled
             } else {
-                when (vaultSyncConfig.location) {
+                when (primaryLocation) {
                     VaultStorageLocation.LOCAL -> false
-                    VaultStorageLocation.OFFICIAL_SERVER -> accountState.token.isNotBlank()
+                    VaultStorageLocation.OFFICIAL_SERVER ->
+                        accountState.token.isNotBlank() &&
+                            (vaultSyncConfig.location == VaultStorageLocation.OFFICIAL_SERVER || officialSyncEnabled)
                     VaultStorageLocation.THIRD_PARTY_SERVICE -> {
                         val tp = vaultSyncConfig.thirdParty
                         tp.url.trim().isNotBlank() && tp.username.trim().isNotBlank() && tp.password.isNotBlank()
@@ -792,7 +834,8 @@ fun ZhixuApp(
         val state: CloudSyncDialogState =
             when {
                 primarySyncing -> CloudSyncDialogState.SYNCING
-                !primaryEnabled && !isPrimaryWebDav && vaultSyncConfig.location == VaultStorageLocation.OFFICIAL_SERVER -> CloudSyncDialogState.NOT_LOGGED_IN
+                !primaryEnabled && !isPrimaryWebDav && primaryLocation == VaultStorageLocation.OFFICIAL_SERVER && accountState.token.isBlank() ->
+                    CloudSyncDialogState.NOT_LOGGED_IN
                 !primaryEnabled -> CloudSyncDialogState.DISABLED
                 primarySummary == null -> CloudSyncDialogState.NOT_CONFIGURED
                 !primarySummary.ok -> CloudSyncDialogState.FAILED
@@ -851,7 +894,8 @@ fun ZhixuApp(
                     val officialReady =
                         root != null &&
                             accountState.token.isNotBlank() &&
-                            !syncServerSyncing
+                            !syncServerSyncing &&
+                            !manualSyncServerWorking
 
                     val webDavStatus =
                         when {
@@ -868,6 +912,8 @@ fun ZhixuApp(
                             root == null -> stringResource(R.string.cloud_sync_status_not_configured)
                             syncServerSyncing -> stringResource(R.string.cloud_sync_state_syncing)
                             accountState.token.isBlank() -> stringResource(R.string.account_not_logged_in_short)
+                            vaultSyncConfig.location == VaultStorageLocation.LOCAL && !officialSyncEnabled ->
+                                stringResource(R.string.cloud_sync_dialog_official_hint_disabled)
                             !syncServerUiStatus?.text.isNullOrBlank() -> syncServerUiStatus?.text.orEmpty()
                             else -> stringResource(R.string.cloud_sync_dialog_no_record)
                         }
@@ -969,9 +1015,12 @@ fun ZhixuApp(
                                     enabled = officialReady,
                                     onClick = {
                                         val r = root ?: return@TextButton
+                                        manualSyncServerWorking = true
                                         dialogScope.launch {
-                                            syncServerSyncing = true
                                             try {
+                                                if (vaultSyncConfig.location == VaultStorageLocation.LOCAL && !officialSyncEnabled) {
+                                                    runCatching { syncPrefs.setOfficialSyncEnabled(true) }
+                                                }
                                                 try {
                                                     withContext(Dispatchers.IO) {
                                                         val manager = SyncServerSyncTaskManager(context, repository)
@@ -995,7 +1044,7 @@ fun ZhixuApp(
                                                 } catch (_: Throwable) {
                                                 }
                                             } finally {
-                                                syncServerSyncing = false
+                                                manualSyncServerWorking = false
                                                 reloadSyncServerUiStatus()
                                             }
                                         }
@@ -1633,11 +1682,14 @@ fun ZhixuApp(
                                         val cloudState =
                                             when (vaultSyncConfig.location) {
                                                 VaultStorageLocation.LOCAL -> {
+                                                    val webDavEnabled = webDavConfig.enabled
+                                                    val officialEnabled = officialSyncEnabled && accountState.token.isNotBlank()
                                                     when {
-                                                        !webDavConfig.enabled -> CloudSyncUiIconState.DISABLED
-                                                        webDavSyncing -> CloudSyncUiIconState.SYNCING
-                                                        webDavUiStatus?.level == WebDavUiStatusLevel.OK -> CloudSyncUiIconState.OK
-                                                        else -> CloudSyncUiIconState.WARNING
+                                                        !webDavEnabled && !officialEnabled -> CloudSyncUiIconState.DISABLED
+                                                        webDavSyncing || syncServerSyncing -> CloudSyncUiIconState.SYNCING
+                                                        (webDavEnabled && webDavUiStatus?.level != WebDavUiStatusLevel.OK) ||
+                                                            (officialEnabled && syncServerUiStatus?.level != SyncServerUiStatusLevel.OK) -> CloudSyncUiIconState.WARNING
+                                                        else -> CloudSyncUiIconState.OK
                                                     }
                                                 }
                                                 VaultStorageLocation.OFFICIAL_SERVER -> {
@@ -1823,7 +1875,19 @@ fun ZhixuApp(
                                                     for (uriStr in toDelete) {
                                                         val uri = runCatching { Uri.parse(uriStr) }.getOrNull() ?: continue
                                                         val ok = withContext(Dispatchers.IO) { repository.deleteDoc(uri) }
-                                                        if (ok) onDocListMutated(DocListMutation.Deleted(docUri = uri)) else failed += 1
+                                                        if (ok) {
+                                                            onDocListMutated(DocListMutation.Deleted(docUri = uri))
+                                                            runCatching {
+                                                                VaultAutoSync.maybeDeleteDoc(
+                                                                    context = context,
+                                                                    repository = repository,
+                                                                    vaultRootUri = root,
+                                                                    docUri = uri,
+                                                                )
+                                                            }
+                                                        } else {
+                                                            failed += 1
+                                                        }
                                                     }
                                                 }
 

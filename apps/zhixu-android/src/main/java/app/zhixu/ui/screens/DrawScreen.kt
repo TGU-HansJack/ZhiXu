@@ -118,6 +118,7 @@ import app.zhixu.draw.editor.DrawTiltMapping
 import app.zhixu.draw.tools.DrawToolMachine
 import app.zhixu.draw.tools.EraserToolMachine
 import app.zhixu.draw.tools.HighlighterToolMachine
+import app.zhixu.sync.VaultAutoSync
 import app.zhixu.draw.tools.LassoToolMachine
 import app.zhixu.draw.tools.PanToolMachine
 import app.zhixu.draw.tools.PenToolMachine
@@ -1188,6 +1189,14 @@ fun DrawScreen(
                             val ok = repository.deleteDoc(uri)
                             if (ok) {
                                 onDocListMutated(DocListMutation.Deleted(docUri = uri))
+                                runCatching {
+                                    VaultAutoSync.maybeDeleteDoc(
+                                        context = context,
+                                        repository = repository,
+                                        vaultRootUri = vaultRootUri,
+                                        docUri = uri,
+                                    )
+                                }
                                 onBack()
                             } else {
                                 snackbarHostState.showSnackbar("删除失败")

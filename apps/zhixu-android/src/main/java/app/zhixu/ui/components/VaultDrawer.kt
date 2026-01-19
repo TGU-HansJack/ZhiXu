@@ -67,6 +67,7 @@ import app.zhixu.R
 import app.zhixu.data.VaultRepository
 import app.zhixu.data.VaultTreeEntry
 import app.zhixu.draw.ZhixuDrawFormat
+import app.zhixu.sync.VaultAutoSync
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.DocListMutation
 import kotlinx.coroutines.CancellationException
@@ -788,26 +789,46 @@ fun VaultDrawer(
                             return@TextButton
                         }
                         scope.launch {
-                            val ok =
+                            val renamed =
                                 runCatching {
                                     if (entry.isDirectory) {
-                                        val renamedDir = repository.renameDirectory(uri, desiredName) ?: return@runCatching false
+                                        val renamedDir = repository.renameDirectory(uri, desiredName) ?: return@runCatching null
                                         onDocListMutated(DocListMutation.Renamed(oldUri = uri, newUri = renamedDir))
-                                    } else {
-                                        if (entry.name.endsWith(".md", ignoreCase = true)) {
-                                            val renamedDoc = repository.renameDoc(uri, desiredName) ?: return@runCatching false
-                                            onDocListMutated(DocListMutation.Renamed(oldUri = uri, newUri = renamedDoc))
-                                        } else {
-                                            val renamedFile = repository.renameFile(uri, desiredName) ?: return@runCatching false
-                                            onDocListMutated(DocListMutation.Renamed(oldUri = uri, newUri = renamedFile))
-                                        }
+                                        return@runCatching renamedDir
                                     }
-                                    true
-                                }.getOrElse { false }
-                            if (!ok) {
+
+                                    val renamedUri =
+                                        if (entry.name.endsWith(".md", ignoreCase = true)) {
+                                            repository.renameDoc(uri, desiredName)
+                                        } else {
+                                            repository.renameFile(uri, desiredName)
+                                        } ?: return@runCatching null
+                                    onDocListMutated(DocListMutation.Renamed(oldUri = uri, newUri = renamedUri))
+                                    renamedUri
+                                }.getOrNull()
+
+                            if (renamed == null) {
                                 android.widget.Toast
                                     .makeText(context, context.getString(R.string.editor_rename_failed_generic), android.widget.Toast.LENGTH_SHORT)
                                     .show()
+                            } else if (renamed != null && !entry.isDirectory) {
+                                runCatching {
+                                    VaultAutoSync.maybeDeleteDoc(
+                                        context = context,
+                                        repository = repository,
+                                        vaultRootUri = vaultRootUri,
+                                        docUri = uri,
+                                    )
+                                }
+                                runCatching {
+                                    VaultAutoSync.maybeUploadDoc(
+                                        context = context,
+                                        repository = repository,
+                                        vaultRootUri = vaultRootUri,
+                                        docUri = renamed,
+                                        force = true,
+                                    )
+                                }
                             }
                         }
                     },
@@ -853,6 +874,16 @@ fun VaultDrawer(
                                             val deleted = repository.deleteEntry(uri)
                                             if (deleted) onDocListMutated(DocListMutation.Deleted(docUri = uri))
                                             if (!deleted) return@runCatching false
+                                        }
+                                    }
+                                    if (!entry.isDirectory) {
+                                        runCatching {
+                                            VaultAutoSync.maybeDeleteDoc(
+                                                context = context,
+                                                repository = repository,
+                                                vaultRootUri = vaultRootUri,
+                                                docUri = uri,
+                                            )
                                         }
                                     }
                                     true

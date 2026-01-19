@@ -110,6 +110,7 @@ import app.zhixu.data.VaultRepository
 import app.zhixu.draw.ZhixuDrawFormat
 import app.zhixu.draw.ZhixuDrawPage
 import app.zhixu.draw.ui.DrawDocumentPreviewRow
+import app.zhixu.sync.VaultAutoSync
 import app.zhixu.ui.Ionicons
 import app.zhixu.ui.DocListMutation
 import app.zhixu.ui.components.RefreshStatusBanner
@@ -885,6 +886,23 @@ fun DocumentListScreen(
                                 Toast.makeText(context, context.getString(R.string.editor_rename_failed_generic), Toast.LENGTH_SHORT).show()
                             } else {
                                 onDocListMutated(DocListMutation.Renamed(oldUri = doc.uri, newUri = renamed))
+                                runCatching {
+                                    VaultAutoSync.maybeDeleteDoc(
+                                        context = context,
+                                        repository = repository,
+                                        vaultRootUri = vaultRootUri,
+                                        docUri = doc.uri,
+                                    )
+                                }
+                                runCatching {
+                                    VaultAutoSync.maybeUploadDoc(
+                                        context = context,
+                                        repository = repository,
+                                        vaultRootUri = vaultRootUri,
+                                        docUri = renamed,
+                                        force = true,
+                                    )
+                                }
                             }
                         }
                     },
@@ -921,6 +939,14 @@ fun DocumentListScreen(
                                 Toast.makeText(context, context.getString(R.string.doc_delete_failed), Toast.LENGTH_SHORT).show()
                             } else {
                                 onDocListMutated(DocListMutation.Deleted(docUri = doc.uri))
+                                runCatching {
+                                    VaultAutoSync.maybeDeleteDoc(
+                                        context = context,
+                                        repository = repository,
+                                        vaultRootUri = vaultRootUri,
+                                        docUri = doc.uri,
+                                    )
+                                }
                             }
                             showDeleteDialog = false
                             selectedDoc = null

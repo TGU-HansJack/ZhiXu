@@ -58,16 +58,21 @@ object VaultAutoSync {
         val root = vaultRootUri ?: return
         val relPath = repository.computeRelativePath(root, docUri) ?: return
         val auth = resolveSyncServerAuth(context) ?: return
-        withContext(Dispatchers.IO) {
-            val state = OfficialVaultSyncStateStore(context, repository).load(root)
-            val baseRev = state.files[relPath]?.baseRev ?: 0L
-            val r = SyncServerClient.deleteVaultFileV2(auth.baseUrl, auth.token, relPath, baseRev = baseRev)
-            if (r.ok) {
-                val next = state.withDeleted(relPath, r.value?.rev ?: (baseRev + 1))
-                OfficialVaultSyncStateStore(context, repository).save(root, next)
-            } else if (r.statusCode == 409) {
-                resolveDeleteConflictV2(context, repository, root, auth.baseUrl, auth.token, relPath, baseRev)
+        val lease = SyncServerSyncRuntime.begin()
+        try {
+            withContext(Dispatchers.IO) {
+                val state = OfficialVaultSyncStateStore(context, repository).load(root)
+                val baseRev = state.files[relPath]?.baseRev ?: 0L
+                val r = SyncServerClient.deleteVaultFileV2(auth.baseUrl, auth.token, relPath, baseRev = baseRev)
+                if (r.ok) {
+                    val next = state.withDeleted(relPath, r.value?.rev ?: (baseRev + 1))
+                    OfficialVaultSyncStateStore(context, repository).save(root, next)
+                } else if (r.statusCode == 409) {
+                    resolveDeleteConflictV2(context, repository, root, auth.baseUrl, auth.token, relPath, baseRev)
+                }
             }
+        } finally {
+            lease.close()
         }
     }
 
@@ -95,13 +100,18 @@ object VaultAutoSync {
             }
         if (!shouldRun) return
 
-        withContext(Dispatchers.IO) {
-            OfficialVaultSyncEngine(context, repository).syncVault(
-                rootUri = root,
-                baseUrl = auth.baseUrl,
-                token = auth.token,
-                includeIndexSqlite = includeIndexSqlite,
-            )
+        val lease = SyncServerSyncRuntime.begin()
+        try {
+            withContext(Dispatchers.IO) {
+                OfficialVaultSyncEngine(context, repository).syncVault(
+                    rootUri = root,
+                    baseUrl = auth.baseUrl,
+                    token = auth.token,
+                    includeIndexSqlite = includeIndexSqlite,
+                )
+            }
+        } finally {
+            lease.close()
         }
     }
 
@@ -127,31 +137,36 @@ object VaultAutoSync {
             }
         if (!shouldRun) return
 
-        val fileUri = repository.resolveVaultFileUri(vaultRootUri, relativePath) ?: return
-        val bytes = withContext(Dispatchers.IO) { repository.readBytes(fileUri) } ?: return
-        val mtimeMs = repository.getDocumentLastModified(fileUri).takeIf { it > 0 } ?: now
-        withContext(Dispatchers.IO) {
-            val store = OfficialVaultSyncStateStore(context, repository)
-            val state = store.load(vaultRootUri)
-            val baseRev = state.files[relativePath]?.baseRev ?: 0L
-            val r = SyncServerClient.uploadVaultFileV2(auth.baseUrl, auth.token, relativePath, mtimeMs, bytes, baseRev = baseRev)
-            if (r.ok) {
-                val rev = r.value?.rev ?: (baseRev + 1)
-                val sha = r.value?.sha256.orEmpty()
-                val next = state.withUploaded(relativePath, rev = rev, sha256 = sha, size = bytes.size.toLong(), localMtimeMs = mtimeMs)
-                store.save(vaultRootUri, next)
-            } else if (r.statusCode == 409) {
-                resolveUploadConflictV2(
-                    context = context,
-                    repository = repository,
-                    rootUri = vaultRootUri,
-                    baseUrl = auth.baseUrl,
-                    token = auth.token,
-                    path = relativePath,
-                    localBytes = bytes,
-                    localMtimeMs = mtimeMs,
-                )
+        val lease = SyncServerSyncRuntime.begin()
+        try {
+            val fileUri = repository.resolveVaultFileUri(vaultRootUri, relativePath) ?: return
+            val bytes = withContext(Dispatchers.IO) { repository.readBytes(fileUri) } ?: return
+            val mtimeMs = repository.getDocumentLastModified(fileUri).takeIf { it > 0 } ?: now
+            withContext(Dispatchers.IO) {
+                val store = OfficialVaultSyncStateStore(context, repository)
+                val state = store.load(vaultRootUri)
+                val baseRev = state.files[relativePath]?.baseRev ?: 0L
+                val r = SyncServerClient.uploadVaultFileV2(auth.baseUrl, auth.token, relativePath, mtimeMs, bytes, baseRev = baseRev)
+                if (r.ok) {
+                    val rev = r.value?.rev ?: (baseRev + 1)
+                    val sha = r.value?.sha256.orEmpty()
+                    val next = state.withUploaded(relativePath, rev = rev, sha256 = sha, size = bytes.size.toLong(), localMtimeMs = mtimeMs)
+                    store.save(vaultRootUri, next)
+                } else if (r.statusCode == 409) {
+                    resolveUploadConflictV2(
+                        context = context,
+                        repository = repository,
+                        rootUri = vaultRootUri,
+                        baseUrl = auth.baseUrl,
+                        token = auth.token,
+                        path = relativePath,
+                        localBytes = bytes,
+                        localMtimeMs = mtimeMs,
+                    )
+                }
             }
+        } finally {
+            lease.close()
         }
     }
 

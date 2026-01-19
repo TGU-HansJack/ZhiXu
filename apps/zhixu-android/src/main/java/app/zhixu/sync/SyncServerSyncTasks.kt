@@ -329,97 +329,102 @@ class SyncServerSyncTaskManager(
             error("Sync server config changed; regenerate task")
         }
 
-        val opsResolved =
-            task.operations.map { op ->
-                if (op.state == SyncServerSyncTaskOpState.SKIPPED) return@map op
-                op.copy(state = SyncServerSyncTaskOpState.PENDING, error = null)
-            }
-        val toExecute = opsResolved.filter { it.state != SyncServerSyncTaskOpState.SKIPPED }
-        val expected =
-            toExecute.map { op ->
-                SyncServerPlannedOp(
-                    kind = op.kind,
-                    path = op.path,
-                    reason = op.reason,
-                )
-            }
-
-        val engine = OfficialVaultSyncEngine(context, repository)
-        val observed = ArrayList<SyncServerSyncObservedOpResult>()
-
-        val startedAt = System.currentTimeMillis()
-        store.update(rootUri) { s ->
-            val cur = s.current ?: return@update s
-            if (cur.id != task.id) return@update s
-            s.copy(
-                current =
-                    cur.copy(
-                        operations = opsResolved,
-                        run =
-                            SyncServerSyncTaskRun(
-                                startedAtMs = startedAt,
-                                endedAtMs = 0L,
-                                summary = null,
-                                error = null,
-                            ),
-                    ),
-            )
-        }
-
-        var summary: OfficialVaultSyncSummary?
-        var errorText: String?
+        val lease = SyncServerSyncRuntime.begin()
         try {
-            summary =
-                engine.syncVaultWithExpectedPlan(
-                    rootUri = rootUri,
-                    baseUrl = baseUrlNow,
-                    token = token,
-                    includeIndexSqlite = includeIndexSqlite,
-                    expectedOperations = expected,
-                    observer = { result -> observed += result },
-                )
-            errorText = null
-        } catch (e: Throwable) {
-            summary = null
-            errorText = e.message ?: e.javaClass.simpleName
-        }
-        val endedAt = System.currentTimeMillis()
-
-        val resultsByKey = observed.associateBy({ "${it.op.kind.name}|${it.op.path}" }, { it })
-        val finalOps =
-            opsResolved.map { op ->
-                if (op.state == SyncServerSyncTaskOpState.SKIPPED) return@map op
-                val key = "${op.kind.name}|${op.path}"
-                val res = resultsByKey[key]
-                when {
-                    res != null && res.ok -> op.copy(state = SyncServerSyncTaskOpState.DONE, error = null)
-                    res != null -> op.copy(state = SyncServerSyncTaskOpState.FAILED, error = res.error)
-                    !errorText.isNullOrBlank() -> op.copy(state = SyncServerSyncTaskOpState.FAILED, error = errorText)
-                    else -> op
+            val opsResolved =
+                task.operations.map { op ->
+                    if (op.state == SyncServerSyncTaskOpState.SKIPPED) return@map op
+                    op.copy(state = SyncServerSyncTaskOpState.PENDING, error = null)
                 }
-            }
+            val toExecute = opsResolved.filter { it.state != SyncServerSyncTaskOpState.SKIPPED }
+            val expected =
+                toExecute.map { op ->
+                    SyncServerPlannedOp(
+                        kind = op.kind,
+                        path = op.path,
+                        reason = op.reason,
+                    )
+                }
 
-        val finishedTask =
-            task.copy(
-                operations = finalOps,
-                run =
-                    SyncServerSyncTaskRun(
-                        startedAtMs = startedAt,
-                        endedAtMs = endedAt,
-                        summary = summary,
-                        error = errorText,
-                    ),
-            )
+            val engine = OfficialVaultSyncEngine(context, repository)
+            val observed = ArrayList<SyncServerSyncObservedOpResult>()
 
-        val updated =
+            val startedAt = System.currentTimeMillis()
             store.update(rootUri) { s ->
-                val cur = s.current
-                if (cur == null || cur.id != task.id) return@update s
-                s.copy(current = null, history = listOf(finishedTask) + s.history)
+                val cur = s.current ?: return@update s
+                if (cur.id != task.id) return@update s
+                s.copy(
+                    current =
+                        cur.copy(
+                            operations = opsResolved,
+                            run =
+                                SyncServerSyncTaskRun(
+                                    startedAtMs = startedAt,
+                                    endedAtMs = 0L,
+                                    summary = null,
+                                    error = null,
+                                ),
+                        ),
+                )
             }
 
-        val ran = updated.history.firstOrNull { it.id == finishedTask.id } ?: finishedTask
-        return ExecuteResult(updatedState = updated, ranTask = ran)
+            var summary: OfficialVaultSyncSummary?
+            var errorText: String?
+            try {
+                summary =
+                    engine.syncVaultWithExpectedPlan(
+                        rootUri = rootUri,
+                        baseUrl = baseUrlNow,
+                        token = token,
+                        includeIndexSqlite = includeIndexSqlite,
+                        expectedOperations = expected,
+                        observer = { result -> observed += result },
+                    )
+                errorText = null
+            } catch (e: Throwable) {
+                summary = null
+                errorText = e.message ?: e.javaClass.simpleName
+            }
+            val endedAt = System.currentTimeMillis()
+
+            val resultsByKey = observed.associateBy({ "${it.op.kind.name}|${it.op.path}" }, { it })
+            val finalOps =
+                opsResolved.map { op ->
+                    if (op.state == SyncServerSyncTaskOpState.SKIPPED) return@map op
+                    val key = "${op.kind.name}|${op.path}"
+                    val res = resultsByKey[key]
+                    when {
+                        res != null && res.ok -> op.copy(state = SyncServerSyncTaskOpState.DONE, error = null)
+                        res != null -> op.copy(state = SyncServerSyncTaskOpState.FAILED, error = res.error)
+                        !errorText.isNullOrBlank() -> op.copy(state = SyncServerSyncTaskOpState.FAILED, error = errorText)
+                        else -> op
+                    }
+                }
+
+            val finishedTask =
+                task.copy(
+                    operations = finalOps,
+                    run =
+                        SyncServerSyncTaskRun(
+                            startedAtMs = startedAt,
+                            endedAtMs = endedAt,
+                            summary = summary,
+                            error = errorText,
+                        ),
+                )
+
+            val updated =
+                store.update(rootUri) { s ->
+                    val cur = s.current
+                    if (cur == null || cur.id != task.id) return@update s
+                    s.copy(current = null, history = listOf(finishedTask) + s.history)
+                }
+
+            val ran = updated.history.firstOrNull { it.id == finishedTask.id } ?: finishedTask
+            return ExecuteResult(updatedState = updated, ranTask = ran)
+        } finally {
+            lease.close()
+        }
     }
 
     companion object {

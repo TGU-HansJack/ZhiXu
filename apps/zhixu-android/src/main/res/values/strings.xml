@@ -484,6 +484,7 @@
 
     <!-- Official server sync -->
     <string name="official_sync_title">Official server</string>
+    <string name="official_sync_enable">Enable official server sync</string>
     <string name="official_sync_now">Sync now</string>
     <string name="official_sync_syncing">Syncing…</string>
     <string name="official_sync_ok">Sync complete: up %1$d, down %2$d, delRemote %3$d, delLocal %4$d, conflict %5$d, fail %6$d</string>

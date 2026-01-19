@@ -2,6 +2,7 @@
 
 import android.content.Context
 import app.zhixu.data.AccountPreferences
+import app.zhixu.data.SyncPreferences
 import app.zhixu.data.ThirdPartyAuthPreferences
 import app.zhixu.data.ThirdPartyServiceConfig
 import app.zhixu.data.VaultStorageLocation
@@ -19,7 +20,14 @@ suspend fun resolveSyncServerAuth(context: Context): SyncServerAuth? {
     val config = vaultSyncPrefs.config.first()
 
     return when (config.location) {
-        VaultStorageLocation.LOCAL -> null
+        VaultStorageLocation.LOCAL -> {
+            val enabled = SyncPreferences(appContext).officialSyncEnabled.first()
+            if (!enabled) return null
+            val account = AccountPreferences(appContext).state.first()
+            val token = account.token
+            if (token.isBlank()) return null
+            SyncServerAuth(baseUrl = OfficialSync.BASE_URL, token = token)
+        }
         VaultStorageLocation.OFFICIAL_SERVER -> {
             val account = AccountPreferences(appContext).state.first()
             val token = account.token
@@ -56,4 +64,3 @@ private suspend fun resolveThirdPartyAuth(context: Context, cfg: ThirdPartyServi
     if (token.isBlank()) return null
     return SyncServerAuth(baseUrl = baseUrl, token = token)
 }
-

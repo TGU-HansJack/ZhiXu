@@ -1117,6 +1117,23 @@ fun EditorScreen(
         currentDocUri = renamedUri
         EditorScreenCache.move(oldUri, renamedUri)
         onDocListMutated(DocListMutation.Renamed(oldUri = oldUri, newUri = renamedUri))
+        runCatching {
+            VaultAutoSync.maybeDeleteDoc(
+                context = context,
+                repository = repository,
+                vaultRootUri = vaultRootUri,
+                docUri = oldUri,
+            )
+        }
+        runCatching {
+            VaultAutoSync.maybeUploadDoc(
+                context = context,
+                repository = repository,
+                vaultRootUri = vaultRootUri,
+                docUri = renamedUri,
+                force = true,
+            )
+        }
         originalFileName =
             withContext(Dispatchers.IO) {
                 if (renamedUri.scheme.equals("file", ignoreCase = true)) {
