@@ -10,4 +10,9 @@
         <item name="android:windowSplashScreenIconBackgroundColor" tools:targetApi="31">@android:color/transparent</item>
         <item name="android:windowSplashScreenAnimationDuration" tools:targetApi="31">0</item>
     </style>
+
+    <style name="Theme.Zhixu.CropDialog" parent="Theme.Material3.DayNight.Dialog">
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:windowBackground">?attr/colorSurface</item>
+    </style>
 </resources>
