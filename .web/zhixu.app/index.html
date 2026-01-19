@@ -7,7 +7,7 @@
     <title>Zhixu.app · 知序</title>
     <meta
       name="description"
-      content="Zhixu（知序）是原生优先的个人知识与任务系统：以文件为数据边界，Markdown + 任务语义 + 插件 + 同步协议，隐私优先。"
+      content="Zhixu（知序）是 AI 原生、隐私优先的个人知识与任务系统：数据存放在本地 Vault（文件夹），Markdown + 任务语法 + OCR + 插件；同步与 AI 可选启用。"
     />
     <link rel="icon" href="./assets/zhixu.png" />
     <link rel="stylesheet" href="./site.css" />
@@ -31,16 +31,16 @@
       </nav>
 
       <div class="hero" id="top">
-        <h1 class="hero__title">原生优先的个人知识与任务系统</h1>
+        <h1 class="hero__title">AI 原生的个人知识与任务系统</h1>
         <p class="hero__lede">
-          Zhixu（知序）把 <strong>Markdown</strong>、<strong>任务语义</strong>、<strong>插件</strong> 与
-          <strong>同步协议</strong> 做成一套一致的核心：数据以文件存储在 Vault 中，<strong>可迁移、可导出、隐私优先</strong>。
+          Zhixu（知序）把数据放回你的 <strong>Vault（本地文件夹）</strong>：<strong>Markdown 写作</strong>、<strong>任务语法</strong>、<strong>本地 OCR</strong>
+          与 <strong>插件工作流</strong>。同步与 AI 仅在你启用后才会联网；当前 <strong>Android</strong> 版本最完整，Desktop（Tauri）实验中。
         </p>
 
         <div class="hero__cta" role="list" aria-label="快速入口">
           <a role="listitem" class="button primary" href="#download">下载 Android</a>
-          <a role="listitem" class="button" href="./docs/">阅读文档</a>
-          <a role="listitem" class="button" href="./docs/plugins/">插件开发</a>
+          <a role="listitem" class="button" href="./docs/">开始使用</a>
+          <a role="listitem" class="button" href="./update/">更新日志</a>
         </div>
         <p style="text-align:center;margin-top:1rem;">
           <a href="https://feedback.zhixu.app/">反馈社区</a>
@@ -53,43 +53,43 @@
 
     <main class="page">
       <section id="features" class="section">
-        <h2>特性</h2>
+        <h2>功能亮点</h2>
         <div class="grid">
           <div class="card">
-            <h3>Vault 文件存储</h3>
-            <p>把数据放回你的文件系统：结构清晰、可备份、可迁移、可导出。</p>
-          </div>
-          <div class="card">
-            <h3>任务语义</h3>
-            <p>用明确语法表达任务与状态，保存时自动补全 ID，便于追踪与同步。</p>
+            <h3>Vault（本地文件夹）</h3>
+            <p>数据就是一个普通目录：可备份、可迁移、可导出；索引/缓存可删可重建。</p>
           </div>
           <div class="card">
             <h3>Markdown 编辑与预览</h3>
-            <p>写作与阅读同屏协作：快速输入、稳定渲染、细节一致。</p>
+            <p>CodeMirror（WebView）+ 源码/实时预览；表格/任务列表/代码高亮，内置 KaTeX、Mermaid、PDF/图片与长图导出。</p>
           </div>
           <div class="card">
-            <h3>插件系统（JS）</h3>
-            <p>以文件夹形式安装插件，Actions 驱动自动化与工作流扩展。</p>
+            <h3>任务语法（@id）</h3>
+            <p>用 <code>- [ ]</code> 与 <code>@id(...)</code> 保持任务身份稳定；支持截止/完成字段与本地统计。</p>
           </div>
           <div class="card">
-            <h3>同步协议</h3>
-            <p>从底层统一数据格式与协议，降低多端实现成本，避免“重复造 UI”。</p>
+            <h3>OCR（本地）</h3>
+            <p>集成 PaddleOCR v5：从图片生成可编辑文本/待办，默认离线完成识别。</p>
+          </div>
+          <div class="card">
+            <h3>AI（可选）</h3>
+            <p>OCR+AI 整理与行动项提取；支持 OpenAI 兼容接口，启用后才会联网。</p>
+          </div>
+          <div class="card">
+            <h3>插件工作坊</h3>
+            <p>JS Actions 扩展工作流：本地文件夹/官方列表/Git 仓库安装（插件为可执行代码）。</p>
+          </div>
+          <div class="card">
+            <h3>同步（官方 / WebDAV）</h3>
+            <p>按文件对比与传输 Vault，冲突记录可追溯；规则与协议写进文档。</p>
+          </div>
+          <div class="card">
+            <h3>番茄钟</h3>
+            <p>后台服务与通知 + 专注统计，让计划真正落到每天。</p>
           </div>
           <div class="card">
             <h3>原生优先</h3>
-            <p>先把 Android 原生端做稳，再逐步扩展到 Web / Desktop。</p>
-          </div>
-          <div class="card">
-            <h3>隐私优先</h3>
-            <p>本地优先、离线可用；云端能力可选，默认最小化数据暴露。</p>
-          </div>
-          <div class="card">
-            <h3>可扩展工作坊</h3>
-            <p>把“写作、会议、行动项、归档”变成可组合的模块，逐步演进。</p>
-          </div>
-          <div class="card">
-            <h3>可审计与可维护</h3>
-            <p>规则与协议写入文档：Vault 规范、任务语法、同步协议、编辑器方案。</p>
+            <p>Android 主力开发与可用版本；Desktop（Tauri）实验中，Web 路线规划中。</p>
           </div>
         </div>
       </section>
@@ -97,19 +97,21 @@
       <section id="docs" class="section">
         <h2>文档</h2>
         <p class="muted">
-          下面这些是 Zhixu 的“语义核心”。它们决定了跨端一致性，也让插件与同步有共同的边界。
+          下面这些是 Zhixu 的“语义核心”与使用手册：它们决定了跨端一致性，也让插件与同步有共同的边界。
         </p>
         <div class="listCols">
           <ul>
             <li><a href="./docs/">开始使用</a></li>
             <li><a href="./docs/vault/">Vault 规范</a></li>
             <li><a href="./docs/tasks/">任务语法</a></li>
-            <li><a href="./docs/plugins/">插件开发</a></li>
+            <li><a href="./docs/editor/">编辑器方案</a></li>
+            <li><a href="./update/">更新日志</a></li>
           </ul>
           <ul>
             <li><a href="./docs/sync/">同步协议</a></li>
-            <li><a href="./docs/editor/">编辑器方案</a></li>
+            <li><a href="./docs/webdav/">WebDAV 使用手册</a></li>
             <li><a href="./plugins/">插件目录</a></li>
+            <li><a href="./docs/plugins/">插件开发</a></li>
             <li><a href="./docs/faq/">常见问题</a></li>
           </ul>
         </div>
@@ -123,9 +125,11 @@
               插件以 <code>.zhixu/plugins/&lt;pluginId&gt;/</code> 的形式安装在 Vault 中，由
               <code>manifest.json</code> 描述，并通过 JS 入口导出可执行的 <code>actions</code>。
             </p>
-            <p class="muted">典型场景：模板插入、批量处理、与外部服务对接、会议纪要与行动项提取。</p>
+            <p class="muted">典型场景：模板插入、批量处理、发布到博客、对接外部服务、会议纪要与行动项提取。</p>
+            <p class="muted">提示：插件是可执行代码，可能读取文档内容并发起网络请求，请仅安装信任来源。</p>
             <p>
-              <a class="button" href="./docs/plugins/">打开插件开发指南</a>
+              <a class="button" href="./plugins/">打开插件目录</a>
+              <a class="button" href="./docs/plugins/">插件开发指南</a>
             </p>
           </div>
           <div class="callout">
@@ -144,21 +148,23 @@
         <div class="split">
           <div>
             <p>
-              Zhixu 从一开始就把“多端同步难”当成核心问题：用一致的数据模型与协议，降低同步与冲突处理的复杂度。
+              同步是可选项：你可以使用官方服务（控制台管理账号/设备/同步记录），也可以使用 WebDAV 自建。核心原则仍然是以文件为边界，同步与冲突可追溯。
             </p>
             <p class="muted">
               目标是让 Android / Web / Desktop 都能复用同一套核心语义，而不是各端各写一套“差不多”的规则。
             </p>
             <p>
-              <a class="button" href="./docs/sync/">阅读同步协议</a>
+              <a class="button" href="./docs/webdav/">WebDAV 使用手册</a>
+              <a class="button" href="./docs/sync/">同步协议</a>
+              <a class="button" href="./console/">控制台</a>
             </p>
           </div>
           <div class="callout">
             <h3>你能获得什么</h3>
             <ul>
               <li>清晰的“文件级”同步边界</li>
-              <li>可渐进实现的多端路线</li>
-              <li>兼顾离线与一致性的策略</li>
+              <li>可追溯的冲突记录与回滚策略</li>
+              <li>官方服务与 WebDAV 的自由选择</li>
             </ul>
           </div>
         </div>
@@ -169,12 +175,13 @@
         <div class="download">
           <div class="download__card">
             <h3>Android（推荐）</h3>
-            <p class="muted">当前重点是把 Android 原生端做稳。</p>
+            <p class="muted">当前最完整版本：原生端 + 本地 OCR + 插件与同步（可选）。</p>
             <a class="button primary" href="./downloads/zhixu-android-release.apk" download>下载 APK</a>
+            <a class="button" href="./update/">更新日志</a>
           </div>
           <div class="download__card">
             <h3>Web / Desktop</h3>
-            <p class="muted">路线规划与进度将在网站文档中持续更新。</p>
+            <p class="muted">Desktop（Tauri）实验中；Web 路线规划中。</p>
             <a class="button" href="./docs/" aria-disabled="true">规划中</a>
           </div>
         </div>
@@ -198,5 +205,6 @@
       <p class="tiny muted">&copy; <span id="year"></span> Zhixu contributors. Built for clarity, portability, and privacy.</p>
     </footer>
 
+    <script src="./main.js"></script>
   </body>
 </html>
