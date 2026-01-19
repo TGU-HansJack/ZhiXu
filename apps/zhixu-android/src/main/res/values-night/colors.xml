@@ -1,0 +1,11 @@
+<resources>
+    <color name="zhixu_primary">#2F81F7</color>
+    <color name="zhixu_onPrimary">#0D1117</color>
+    <color name="zhixu_surface">#0D1117</color>
+    <color name="zhixu_onSurface">#C9D1D9</color>
+    <color name="zhixu_surfaceVariant">#161B22</color>
+    <color name="zhixu_onSurfaceVariant">#8B949E</color>
+    <color name="zhixu_outline">#30363D</color>
+    <color name="zhixu_outlineVariant">#21262D</color>
+</resources>
+

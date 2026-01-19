@@ -1,54 +1,83 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/avatar_crop_backdrop"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
+    android:clickable="true"
+    android:focusable="true"
+    android:padding="12dp">
 
-    <TextView
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/avatar_crop_dialog"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp"
-        android:text="@string/account_avatar_crop_title"
-        android:textAppearance="?attr/textAppearanceTitleMedium" />
+        android:layout_height="match_parent"
+        android:layout_marginTop="48dp"
+        android:layout_marginBottom="48dp"
+        android:clickable="true"
+        android:focusable="true"
+        app:cardBackgroundColor="@color/zhixu_surface"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="0dp">
 
-    <com.canhub.cropper.CropImageView
-        android:id="@+id/avatar_crop_view"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        app:cropFixAspectRatio="true"
-        app:cropAspectRatioX="1"
-        app:cropAspectRatioY="1"
-        app:cropShowProgressBar="true"
-        app:cropShowCropOverlay="true" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="16dp">
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:orientation="horizontal">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:text="@string/account_avatar_crop_title"
+                android:textAppearance="?attr/textAppearanceTitleMedium" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/avatar_crop_cancel"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/action_cancel" />
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                app:cardBackgroundColor="@color/zhixu_surface"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/zhixu_outlineVariant"
+                app:strokeWidth="1dp">
 
-        <Space
-            android:layout_width="12dp"
-            android:layout_height="0dp" />
+                <com.canhub.cropper.CropImageView
+                    android:id="@+id/avatar_crop_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    app:cropFixAspectRatio="true"
+                    app:cropAspectRatioX="1"
+                    app:cropAspectRatioY="1"
+                    app:cropShowProgressBar="true"
+                    app:cropShowCropOverlay="true" />
+            </com.google.android.material.card.MaterialCardView>
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/avatar_crop_confirm"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/action_confirm" />
-    </LinearLayout>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="end"
+                android:orientation="horizontal">
 
-</LinearLayout>
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/avatar_crop_cancel"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/action_cancel" />
 
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/avatar_crop_confirm"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/action_confirm" />
+            </LinearLayout>
+
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+</FrameLayout>

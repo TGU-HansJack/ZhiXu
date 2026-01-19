@@ -13,6 +13,16 @@
 
     <style name="Theme.Zhixu.CropDialog" parent="Theme.Material3.DayNight.Dialog">
         <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
-        <item name="android:windowBackground">?attr/colorSurface</item>
+        <item name="colorPrimary">@color/zhixu_primary</item>
+        <item name="colorOnPrimary">@color/zhixu_onPrimary</item>
+        <item name="colorSurface">@color/zhixu_surface</item>
+        <item name="colorOnSurface">@color/zhixu_onSurface</item>
+        <item name="colorSurfaceVariant">@color/zhixu_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/zhixu_onSurfaceVariant</item>
+        <item name="colorOutline">@color/zhixu_outline</item>
+        <item name="colorOutlineVariant">@color/zhixu_outlineVariant</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.32</item>
     </style>
 </resources>

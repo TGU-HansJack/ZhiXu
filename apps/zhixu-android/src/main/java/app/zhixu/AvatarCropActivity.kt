@@ -4,20 +4,38 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
+import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.app.AppCompatActivity
+import app.zhixu.data.UiPreferences
+import app.zhixu.data.UiThemeMode
 import com.canhub.cropper.CropImageView
 import com.google.android.material.button.MaterialButton
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 
 class AvatarCropActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        val themeMode =
+            runCatching {
+                runBlocking { UiPreferences(applicationContext).themeMode.first() }
+            }.getOrNull() ?: UiThemeMode.SYSTEM
+        delegate.localNightMode =
+            when (themeMode) {
+                UiThemeMode.SYSTEM -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+                UiThemeMode.LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
+                UiThemeMode.DARK -> AppCompatDelegate.MODE_NIGHT_YES
+            }
+
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_avatar_crop)
 
         val cropView = findViewById<CropImageView>(R.id.avatar_crop_view)
         val cancelButton = findViewById<MaterialButton>(R.id.avatar_crop_cancel)
         val confirmButton = findViewById<MaterialButton>(R.id.avatar_crop_confirm)
+        val backdrop = findViewById<View>(R.id.avatar_crop_backdrop)
 
         fun finishCanceled() {
             setResult(RESULT_CANCELED)
@@ -35,7 +53,7 @@ class AvatarCropActivity : AppCompatActivity() {
                 }
 
         val metrics = resources.displayMetrics
-        window.setLayout((metrics.widthPixels * 0.94f).toInt(), (metrics.heightPixels * 0.82f).toInt())
+        window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
 
         cropView.setFixedAspectRatio(true)
@@ -67,6 +85,7 @@ class AvatarCropActivity : AppCompatActivity() {
             finish()
         }
 
+        backdrop.setOnClickListener { finishCanceled() }
         cancelButton.setOnClickListener { finishCanceled() }
         confirmButton.setOnClickListener {
             confirmButton.isEnabled = false
@@ -98,4 +117,3 @@ class AvatarCropActivity : AppCompatActivity() {
         const val EXTRA_CROPPED_URI = "croppedUri"
     }
 }
-
