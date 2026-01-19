@@ -5,23 +5,25 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,6 +41,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.zhixu.R
 import app.zhixu.data.VaultRepository
 import app.zhixu.sync.OfficialVaultSyncSummary
@@ -49,6 +53,9 @@ import app.zhixu.sync.SyncServerSyncTaskStoreState
 import app.zhixu.sync.SyncServerSyncTaskTrigger
 import app.zhixu.sync.WebDavPlannedOpKind
 import app.zhixu.ui.Ionicons
+import app.zhixu.ui.ZhixuTopBarIconSize
+import app.zhixu.ui.components.ZhixuIconButton
+import app.zhixu.ui.components.ZhixuTopAppBar
 import kotlinx.coroutines.launch
 
 @Composable
@@ -450,133 +457,189 @@ private fun SyncServerTaskDetailDialog(
         return true
     }
 
-    AlertDialog(
+    Dialog(
         onDismissRequest = { if (!working) onDismiss() },
-        title = { Text(stringResource(R.string.webdav_task_detail_title)) },
-        text = {
-            Column(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.navigationBars),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.webdav_task_created_at_fmt, SyncServerSyncTaskManager.formatEpochMs(task.createdAtMs)),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                val ended = task.run?.endedAtMs ?: 0L
-                if (ended > 0L) {
-                    Text(
-                        text = stringResource(R.string.webdav_task_ended_at_fmt, SyncServerSyncTaskManager.formatEpochMs(ended)),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-
-                if (!syncReady && !syncNotReadyHint.isNullOrBlank()) {
-                    Text(text = syncNotReadyHint, color = MaterialTheme.colorScheme.error)
-                }
-                if (!localError.isNullOrBlank()) {
-                    Text(text = localError!!, color = MaterialTheme.colorScheme.error)
-                }
-
-                HorizontalDivider(color = dividerColor)
-
-                Text(
-                    text = stringResource(R.string.webdav_task_operations_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(0.dp),
-                ) {
-                    items(task.operations) { op ->
-                        val isDelete = op.kind == WebDavPlannedOpKind.DELETE_LOCAL || op.kind == WebDavPlannedOpKind.DELETE_REMOTE
-                        val statusText =
-                            when (op.state) {
-                                SyncServerSyncTaskOpState.PENDING -> stringResource(R.string.webdav_task_op_state_pending)
-                                SyncServerSyncTaskOpState.SKIPPED -> stringResource(R.string.webdav_task_op_state_skipped)
-                                SyncServerSyncTaskOpState.DONE -> stringResource(R.string.webdav_task_op_state_done)
-                                SyncServerSyncTaskOpState.FAILED -> stringResource(R.string.webdav_task_op_state_failed)
-                            }
-                        ListItem(
-                            headlineContent = {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(op.kind.name, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
-                                    if (isDelete) {
-                                        Text(
-                                            text = stringResource(R.string.webdav_task_delete_risk),
-                                            color = MaterialTheme.colorScheme.error,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                        )
-                                    }
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            Scaffold(
+                contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                containerColor = MaterialTheme.colorScheme.background,
+                topBar = {
+                    Column {
+                        ZhixuTopAppBar(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            title = { Text(stringResource(R.string.webdav_task_detail_title), style = MaterialTheme.typography.titleMedium) },
+                            navigationIcon = {
+                                ZhixuIconButton(
+                                    onClick = onDismiss,
+                                    enabled = !working,
+                                ) {
+                                    Icon(
+                                        painter = painterResource(Ionicons.ArrowBack),
+                                        contentDescription = stringResource(R.string.action_back),
+                                        modifier = Modifier.size(ZhixuTopBarIconSize),
+                                    )
                                 }
                             },
-                            supportingContent = {
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(op.path, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    if (op.reason.isNotBlank()) {
-                                        Text(op.reason, fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            actions = {
+                                if (isCurrent) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        AssistChip(
+                                            enabled = vaultRootUri != null && !working,
+                                            onClick = {
+                                                val root = vaultRootUri ?: return@AssistChip
+                                                scope.launch {
+                                                    working = true
+                                                    localError = null
+                                                    runCatching {
+                                                        manager.discardCurrentTask(root, reason = "discarded")
+                                                        onReload()
+                                                        onDismiss()
+                                                    }.onFailure { e ->
+                                                        localError = e.message ?: e.javaClass.simpleName
+                                                    }
+                                                    working = false
+                                                }
+                                            },
+                                            shape = CircleShape,
+                                            border = null,
+                                            colors =
+                                                AssistChipDefaults.assistChipColors(
+                                                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                                                    labelColor = MaterialTheme.colorScheme.onErrorContainer,
+                                                ),
+                                            label = { Text(stringResource(R.string.webdav_sync_panel_discard_task), maxLines = 1) },
+                                        )
+
+                                        AssistChip(
+                                            enabled = canExecute(),
+                                            onClick = {
+                                                val root = vaultRootUri ?: return@AssistChip
+                                                scope.launch {
+                                                    working = true
+                                                    localError = null
+                                                    runCatching {
+                                                        manager.executeCurrentTask(
+                                                            rootUri = root,
+                                                            baseUrl = baseUrl,
+                                                            token = token,
+                                                            includeIndexSqlite = includeIndexSqlite,
+                                                        )
+                                                        onReload()
+                                                        onDismiss()
+                                                    }.onFailure { e ->
+                                                        localError = e.message ?: e.javaClass.simpleName
+                                                    }
+                                                    working = false
+                                                }
+                                            },
+                                            shape = CircleShape,
+                                            border = null,
+                                            colors =
+                                                AssistChipDefaults.assistChipColors(
+                                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                    labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                ),
+                                            label = { Text(stringResource(R.string.webdav_task_execute), maxLines = 1) },
+                                        )
                                     }
-                                    if (!op.error.isNullOrBlank()) {
-                                        Text(op.error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                                    }
-                                    Text(statusText, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                                 }
                             },
                         )
                         HorizontalDivider(color = dividerColor)
                     }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = canExecute(),
-                onClick = {
-                    val root = vaultRootUri ?: return@TextButton
-                    working = true
-                    localError = null
-                    scope.launch {
-                        runCatching {
-                            manager.executeCurrentTask(
-                                rootUri = root,
-                                baseUrl = baseUrl,
-                                token = token,
-                                includeIndexSqlite = includeIndexSqlite,
-                            )
-                        }.onFailure {
-                            localError = it.message ?: it.javaClass.simpleName
-                        }
-                        working = false
-                        onReload()
-                        onDismiss()
-                    }
                 },
-            ) { Text(stringResource(R.string.webdav_task_execute)) }
-        },
-        dismissButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (isCurrent && vaultRootUri != null) {
-                    TextButton(
-                        enabled = !working,
-                        onClick = {
-                            val root = vaultRootUri
-                            scope.launch {
-                                manager.discardCurrentTask(root, reason = "discarded")
-                                onReload()
-                                onDismiss()
-                            }
-                        },
-                    ) { Text(stringResource(R.string.webdav_sync_panel_discard_task)) }
+            ) { innerPadding ->
+                Column(
+                    modifier =
+                        Modifier
+                            .padding(innerPadding)
+                            .windowInsetsPadding(WindowInsets.navigationBars)
+                            .fillMaxSize()
+                            .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.webdav_task_created_at_fmt, SyncServerSyncTaskManager.formatEpochMs(task.createdAtMs)),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    val ended = task.run?.endedAtMs ?: 0L
+                    if (ended > 0L) {
+                        Text(
+                            text = stringResource(R.string.webdav_task_ended_at_fmt, SyncServerSyncTaskManager.formatEpochMs(ended)),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+
+                    if (!syncReady && !syncNotReadyHint.isNullOrBlank()) {
+                        Text(text = syncNotReadyHint, color = MaterialTheme.colorScheme.error)
+                    }
+                    if (!localError.isNullOrBlank()) {
+                        Text(text = localError!!, color = MaterialTheme.colorScheme.error)
+                    }
+
+                    HorizontalDivider(color = dividerColor)
+
+                    Text(
+                        text = stringResource(R.string.webdav_task_operations_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+
+                    LazyColumn(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .weight(1f, fill = true),
+                        verticalArrangement = Arrangement.spacedBy(0.dp),
+                    ) {
+                        items(task.operations) { op ->
+                            val isDelete = op.kind == WebDavPlannedOpKind.DELETE_LOCAL || op.kind == WebDavPlannedOpKind.DELETE_REMOTE
+                            val statusText =
+                                when (op.state) {
+                                    SyncServerSyncTaskOpState.PENDING -> stringResource(R.string.webdav_task_op_state_pending)
+                                    SyncServerSyncTaskOpState.SKIPPED -> stringResource(R.string.webdav_task_op_state_skipped)
+                                    SyncServerSyncTaskOpState.DONE -> stringResource(R.string.webdav_task_op_state_done)
+                                    SyncServerSyncTaskOpState.FAILED -> stringResource(R.string.webdav_task_op_state_failed)
+                                }
+                            ListItem(
+                                headlineContent = {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(op.kind.name, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                        if (isDelete) {
+                                            Text(
+                                                text = stringResource(R.string.webdav_task_delete_risk),
+                                                color = MaterialTheme.colorScheme.error,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                            )
+                                        }
+                                    }
+                                },
+                                supportingContent = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(op.path, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        if (op.reason.isNotBlank()) {
+                                            Text(op.reason, fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        if (!op.error.isNullOrBlank()) {
+                                            Text(op.error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                                        }
+                                        Text(statusText, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                                    }
+                                },
+                            )
+                            HorizontalDivider(color = dividerColor)
+                        }
+                    }
                 }
-                TextButton(enabled = !working, onClick = onDismiss) { Text(stringResource(R.string.action_close)) }
             }
-        },
-    )
+        }
+    }
 }
