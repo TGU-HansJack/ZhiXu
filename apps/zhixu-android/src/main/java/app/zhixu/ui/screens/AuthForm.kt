@@ -1,6 +1,8 @@
 package app.zhixu.ui.screens
 
 import android.widget.Toast
+import android.net.Uri
+import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,8 +41,11 @@ import app.zhixu.sync.SyncServerClient
 import app.zhixu.sync.SyncServerResult
 import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
 import app.zhixu.ui.components.ZhixuTextField
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 @Composable
 fun AuthForm(
@@ -70,6 +75,14 @@ fun AuthForm(
     val sendCodeFailedText = stringResource(R.string.account_send_code_failed)
     val serverUnreachableText = stringResource(R.string.error_server_unreachable)
 
+    val deviceName =
+        remember {
+            val manufacturer = runCatching { Build.MANUFACTURER }.getOrNull().orEmpty().trim()
+            val model = runCatching { Build.MODEL }.getOrNull().orEmpty().trim()
+            val parts = listOf(manufacturer, model).filter { it.isNotBlank() }
+            parts.joinToString(" ").trim().ifBlank { "Android" }
+        }
+
     fun <T> SyncServerResult<T>.toUiMessage(fallback: String): String {
         return when {
             statusCode == 0 || errorMessage == "NETWORK_UNREACHABLE" -> serverUnreachableText
@@ -88,6 +101,37 @@ fun AuthForm(
         busy = on
         if (on) status = null
     }
+
+    suspend fun cacheAvatarToInternal(
+        userId: Long,
+        updatedAtMs: Long,
+        mime: String,
+        bytes: ByteArray,
+    ): String? =
+        withContext(Dispatchers.IO) {
+            if (bytes.isEmpty() || userId <= 0L) return@withContext null
+            val ts = updatedAtMs.takeIf { it > 0L } ?: System.currentTimeMillis()
+            val ext =
+                when (mime.trim().lowercase()) {
+                    "image/png" -> "png"
+                    "image/jpeg" -> "jpg"
+                    "image/webp" -> "webp"
+                    "image/gif" -> "gif"
+                    else -> "img"
+                }
+            val dir = File(context.filesDir, "avatars")
+            if (!dir.exists()) dir.mkdirs()
+            val fileName = "${userId}_$ts.$ext"
+            val file = File(dir, fileName)
+            runCatching { file.writeBytes(bytes) }.getOrNull() ?: return@withContext null
+
+            runCatching {
+                dir.listFiles()?.forEach { f ->
+                    if (f.name.startsWith("${userId}_") && f.name != fileName) f.delete()
+                }
+            }
+            Uri.fromFile(file).toString()
+        }
 
     @Composable
     fun FlatOutlinedField(
@@ -223,7 +267,7 @@ fun AuthForm(
                             }
                             Toast.makeText(context, registerOkText, Toast.LENGTH_SHORT).show()
 
-                            val login = SyncServerClient.login(OfficialSync.BASE_URL, username.trim(), password)
+                            val login = SyncServerClient.login(OfficialSync.BASE_URL, username.trim(), password, deviceName = deviceName)
                             if (!login.ok || login.value.isNullOrBlank()) {
                                 status = login.toUiMessage(loginFailedText)
                                 return@launch
@@ -235,6 +279,24 @@ fun AuthForm(
                             val resolvedEmail = me.value?.email?.ifBlank { email.trim() } ?: email.trim()
                             accountPrefs.setLoggedIn(token = token, username = resolvedUsername, userId = userId, email = resolvedEmail)
                             if (resolvedEmail.isNotBlank()) accountPrefs.setEmail(resolvedEmail)
+
+                            val avatarInfo = me.value?.avatar
+                            if (avatarInfo != null && avatarInfo.hasAvatar) {
+                                val dl = SyncServerClient.downloadAvatar(OfficialSync.BASE_URL, token)
+                                val a = dl.value
+                                if (dl.ok && a != null && a.bytes.isNotEmpty()) {
+                                    val cached =
+                                        cacheAvatarToInternal(
+                                            userId = userId,
+                                            updatedAtMs = a.updatedAtMs,
+                                            mime = a.mime,
+                                            bytes = a.bytes,
+                                        )
+                                    if (!cached.isNullOrBlank()) {
+                                        accountPrefs.setAvatarUri(cached, updatedAtMs = a.updatedAtMs)
+                                    }
+                                }
+                            }
 
                             onAuthed()
                         } finally {
@@ -281,7 +343,7 @@ fun AuthForm(
                     scope.launch {
                         setBusy(true)
                         try {
-                            val login = SyncServerClient.login(OfficialSync.BASE_URL, username.trim(), password)
+                            val login = SyncServerClient.login(OfficialSync.BASE_URL, username.trim(), password, deviceName = deviceName)
                             if (!login.ok || login.value.isNullOrBlank()) {
                                 status = login.toUiMessage(loginFailedText)
                                 return@launch
@@ -293,6 +355,24 @@ fun AuthForm(
                             val resolvedEmail = me.value?.email.orEmpty()
                             accountPrefs.setLoggedIn(token = token, username = resolvedUsername, userId = userId, email = resolvedEmail)
                             if (resolvedEmail.isNotBlank()) accountPrefs.setEmail(resolvedEmail)
+
+                            val avatarInfo = me.value?.avatar
+                            if (avatarInfo != null && avatarInfo.hasAvatar) {
+                                val dl = SyncServerClient.downloadAvatar(OfficialSync.BASE_URL, token)
+                                val a = dl.value
+                                if (dl.ok && a != null && a.bytes.isNotEmpty()) {
+                                    val cached =
+                                        cacheAvatarToInternal(
+                                            userId = userId,
+                                            updatedAtMs = a.updatedAtMs,
+                                            mime = a.mime,
+                                            bytes = a.bytes,
+                                        )
+                                    if (!cached.isNullOrBlank()) {
+                                        accountPrefs.setAvatarUri(cached, updatedAtMs = a.updatedAtMs)
+                                    }
+                                }
+                            }
                             Toast.makeText(context, loginOkText, Toast.LENGTH_SHORT).show()
                             onAuthed()
                         } finally {

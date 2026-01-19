@@ -1,6 +1,8 @@
 # Zhixu Server (Account)
 
-Node.js + MySQL REST API for Zhixu account management (register/login + storage plans) and vault sync.
+Node.js + MySQL REST API for Zhixu account management (register/login + avatar + sessions/devices) and vault sync.
+
+Storage is enforced via a single quota (default: 5GB, configurable via `STORAGE_LIMIT_BYTES`).
 
 ## Quick start
 
@@ -38,7 +40,5 @@ Vault file contents are stored on disk under `STORAGE_ROOT` (default: `./storage
 - `GET /api/account/sessions` (Bearer token)
 - `POST /api/account/sessions/revoke` (Bearer token) `{ "sessionId": "..." }`
 - `GET /api/account/sync/logs` (Bearer token)
-- `GET /api/plans`
-- `POST /api/account/subscription` (Bearer token) `{ "planCode": "storage_1g" | "storage_3g" | "storage_5g" }`
 - Storage management (Bearer token): `GET /api/storage/stats`, `GET /api/storage/files`, `GET /api/storage/export`
 - Vault sync (Bearer token): `GET /api/v2/vault/changes`, `GET/PUT/DELETE /api/v2/vault/file`

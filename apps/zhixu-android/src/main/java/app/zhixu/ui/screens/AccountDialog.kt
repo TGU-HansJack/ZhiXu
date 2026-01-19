@@ -39,7 +39,7 @@ fun AccountManagementDialog(
 ) {
     val scope = rememberCoroutineScope()
     val state by accountPrefs.state.collectAsState(
-        initial = AccountState(token = "", username = "", userId = 0L, email = "", avatarUri = ""),
+        initial = AccountState(token = "", username = "", userId = 0L, email = "", avatarUri = "", avatarUpdatedAtMs = 0L),
     )
 
     var authMode by remember { mutableStateOf(AuthMode.Login) }
@@ -119,4 +119,3 @@ fun AccountManagementDialog(
         },
     )
 }
-

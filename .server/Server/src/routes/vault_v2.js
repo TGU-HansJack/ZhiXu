@@ -3,8 +3,9 @@ const fs = require("fs");
 const express = require("express");
 const { pool } = require("../db");
 const { authRequired } = require("../middleware/auth");
-const { rawBodyLimitBytes, storageRoot } = require("../config");
+const { rawBodyLimitBytes, storageRoot, storageLimitBytes } = require("../config");
 const { buildObjectPath, atomicWriteFile, deleteFileBestEffort } = require("../storage");
+const { getRequestIp } = require("../http");
 
 const router = express.Router();
 router.use(authRequired);
@@ -50,7 +51,7 @@ function sha256BytesUtf8(text) {
 
 async function logSyncEvent(req, { userId, action, path = "", sizeBytes = 0 }) {
   const sessionId = String(req.sessionId || "").trim();
-  const ip = String(req.ip || "").trim().slice(0, 64);
+  const ip = getRequestIp(req).slice(0, 64);
   const client = String(req.header("User-Agent") || "").trim().slice(0, 255);
   const now = Date.now();
   try {
@@ -259,6 +260,30 @@ router.put(
       }
 
       const newRev = currentRev + 1;
+      const quotaLimitBytes = Number.isFinite(storageLimitBytes) ? Number(storageLimitBytes) : 5 * 1024 * 1024 * 1024;
+      if (Number.isFinite(quotaLimitBytes) && quotaLimitBytes > 0) {
+        const prevSize = current && !current.deleted ? Number(current.size) || 0 : 0;
+        const [[usageRow]] = await conn.query(
+          `
+SELECT COALESCE(SUM(CASE WHEN deleted = 0 THEN size_bytes ELSE 0 END), 0) AS used_bytes
+FROM vault_files
+WHERE user_id = ?
+FOR UPDATE
+`,
+          [userId]
+        );
+        const usedBytes = Number(usageRow?.used_bytes) || 0;
+        const nextUsed = Math.max(0, usedBytes - Math.max(0, prevSize)) + sizeBytes;
+        if (nextUsed > quotaLimitBytes) {
+          await conn.rollback();
+          return res.status(413).json({
+            error: "storage_quota_exceeded",
+            limitBytes: quotaLimitBytes,
+            usedBytes,
+            requiredBytes: nextUsed
+          });
+        }
+      }
 
       const obj = buildObjectPath(storageRoot, userId, path);
       if (!obj) {

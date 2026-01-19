@@ -1,8 +1,11 @@
 package app.zhixu.ui.screens
 
 import android.Manifest
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.widget.Toast
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,10 +38,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +60,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import app.zhixu.R
@@ -71,11 +77,12 @@ import app.zhixu.ui.components.ZhixuPasswordToggleIconButton
 import app.zhixu.ui.components.ZhixuTextField
 import app.zhixu.ui.components.ZhixuTopAppBar
 import coil.compose.AsyncImage
-import com.canhub.cropper.CropImageContract
-import com.canhub.cropper.CropImageContractOptions
-import com.canhub.cropper.CropImageOptions
 import com.canhub.cropper.CropImageView
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,44 +91,160 @@ fun AccountScreen(
     accountPrefs: AccountPreferences,
     onBack: () -> Unit,
     onOpenDeviceManagement: () -> Unit,
+    onOpenStorageManagement: () -> Unit,
+    onOpenSyncLogs: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state by accountPrefs.state.collectAsState(
-        initial = AccountState(token = "", username = "", userId = 0L, email = "", avatarUri = ""),
+        initial = AccountState(token = "", username = "", userId = 0L, email = "", avatarUri = "", avatarUpdatedAtMs = 0L),
     )
 
     var showChangePassword by remember { mutableStateOf(false) }
     var authMode by remember { mutableStateOf(AuthMode.Login) }
 
-    val cropLauncher =
-        rememberLauncherForActivityResult(CropImageContract()) { result ->
-            if (result.isSuccessful) {
-                val uri = result.uriContent
-                if (uri != null) {
-                    scope.launch { accountPrefs.setAvatarUri(uri.toString()) }
+    var avatarCropUri by remember { mutableStateOf<Uri?>(null) }
+    var avatarCropLoading by remember { mutableStateOf(false) }
+    var avatarCropLoadError by remember { mutableStateOf<String?>(null) }
+    var avatarCropUploading by remember { mutableStateOf(false) }
+
+    suspend fun cacheAvatarToInternal(
+        userId: Long,
+        updatedAtMs: Long,
+        mime: String,
+        bytes: ByteArray,
+    ): String? =
+        withContext(Dispatchers.IO) {
+            if (bytes.isEmpty()) return@withContext null
+            val ts = updatedAtMs.takeIf { it > 0L } ?: System.currentTimeMillis()
+            val ext =
+                when (mime.trim().lowercase()) {
+                    "image/png" -> "png"
+                    "image/jpeg" -> "jpg"
+                    "image/webp" -> "webp"
+                    "image/gif" -> "gif"
+                    else -> "img"
                 }
-            } else {
-                val msg = result.error?.message.orEmpty().ifBlank { context.getString(R.string.account_avatar_pick_failed) }
-                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            val dir = File(context.filesDir, "avatars")
+            if (!dir.exists()) dir.mkdirs()
+            val safeUserId = state.userId.takeIf { it > 0L } ?: userId
+            val fileName = "${safeUserId}_$ts.$ext"
+            val file = File(dir, fileName)
+            runCatching { file.writeBytes(bytes) }.getOrNull() ?: return@withContext null
+
+            runCatching {
+                dir.listFiles()?.forEach { f ->
+                    if (f.name.startsWith("${safeUserId}_") && f.name != fileName) f.delete()
+                }
             }
+            Uri.fromFile(file).toString()
         }
+
+    suspend fun uploadAvatarBytes(
+        mime: String,
+        bytes: ByteArray,
+    ): Boolean {
+        if (bytes.isEmpty()) {
+            Toast.makeText(context, context.getString(R.string.account_avatar_pick_failed), Toast.LENGTH_SHORT).show()
+            return false
+        }
+        val normalizedMime = mime.trim().ifBlank { "image/jpeg" }
+
+        if (state.isLoggedIn) {
+            val up = SyncServerClient.uploadAvatar(OfficialSync.BASE_URL, token = state.token, mime = normalizedMime, bytes = bytes)
+            if (!up.ok || up.value == null) {
+                val msg =
+                    up.errorMessage
+                        ?.takeIf { it.isNotBlank() && it != "NETWORK_UNREACHABLE" }
+                        ?: context.getString(R.string.common_failed)
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                return false
+            }
+            val cached =
+                cacheAvatarToInternal(
+                    userId = state.userId,
+                    updatedAtMs = up.value.updatedAtMs,
+                    mime = up.value.mime.ifBlank { normalizedMime },
+                    bytes = bytes,
+                )
+            if (!cached.isNullOrBlank()) {
+                accountPrefs.setAvatarUri(cached, updatedAtMs = up.value.updatedAtMs)
+                return true
+            }
+            Toast.makeText(context, context.getString(R.string.common_failed), Toast.LENGTH_SHORT).show()
+            return false
+        }
+
+        val cached = cacheAvatarToInternal(userId = state.userId, updatedAtMs = 0L, mime = normalizedMime, bytes = bytes)
+        if (!cached.isNullOrBlank()) {
+            accountPrefs.setAvatarUri(cached)
+            return true
+        }
+        Toast.makeText(context, context.getString(R.string.common_failed), Toast.LENGTH_SHORT).show()
+        return false
+    }
+
+    fun uploadAvatarFromUri(uri: Uri) {
+        scope.launch {
+            val bytes =
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    }.getOrNull()
+                } ?: ByteArray(0)
+            val mime = context.contentResolver.getType(uri).orEmpty().ifBlank { "image/jpeg" }
+            uploadAvatarBytes(mime = mime, bytes = bytes)
+        }
+    }
+
+    LaunchedEffect(state.token) {
+        if (!state.isLoggedIn) return@LaunchedEffect
+        val me = SyncServerClient.me(OfficialSync.BASE_URL, token = state.token)
+        val v = me.value ?: return@LaunchedEffect
+        if (!me.ok) return@LaunchedEffect
+
+        val serverUserId = v.userId.takeIf { it > 0L } ?: state.userId
+        val serverUsername = v.username.trim().ifBlank { state.username }
+        val serverEmail = v.email.orEmpty()
+
+        if (serverUserId != state.userId || serverUsername != state.username) {
+            accountPrefs.setLoggedIn(token = state.token, username = serverUsername, userId = serverUserId, email = serverEmail)
+        }
+        if (serverEmail != state.email) {
+            accountPrefs.setEmail(serverEmail)
+        }
+
+        val avatarInfo = v.avatar
+        if (avatarInfo != null && avatarInfo.hasAvatar) {
+            val shouldDownload =
+                !state.hasAvatar ||
+                    (avatarInfo.updatedAtMs > 0L && avatarInfo.updatedAtMs != state.avatarUpdatedAtMs)
+            if (shouldDownload) {
+                val dl = SyncServerClient.downloadAvatar(OfficialSync.BASE_URL, token = state.token)
+                val a = dl.value
+                if (dl.ok && a != null && a.bytes.isNotEmpty()) {
+                    val cached =
+                        cacheAvatarToInternal(
+                            userId = serverUserId,
+                            updatedAtMs = a.updatedAtMs,
+                            mime = a.mime,
+                            bytes = a.bytes,
+                        )
+                    if (!cached.isNullOrBlank()) {
+                        accountPrefs.setAvatarUri(cached, updatedAtMs = a.updatedAtMs)
+                    }
+                }
+            }
+        } else if (avatarInfo != null && !avatarInfo.hasAvatar && state.hasAvatar) {
+            accountPrefs.setAvatarUri("")
+        }
+    }
 
     val pickLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             if (uri == null) return@rememberLauncherForActivityResult
-            val opts =
-                CropImageContractOptions(
-                    uri,
-                    CropImageOptions(
-                        fixAspectRatio = true,
-                        aspectRatioX = 1,
-                        aspectRatioY = 1,
-                        cropShape = CropImageView.CropShape.OVAL,
-                        outputCompressQuality = 90,
-                    ),
-                )
-            cropLauncher.launch(opts)
+            avatarCropUploading = false
+            avatarCropUri = uri
         }
 
     val legacyPermission = Manifest.permission.READ_EXTERNAL_STORAGE
@@ -235,6 +358,20 @@ fun AccountScreen(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
 
                 AccountRow(
+                    title = stringResource(R.string.account_avatar_remove),
+                    enabled = state.hasAvatar,
+                    onClick = {
+                        scope.launch {
+                            if (state.isLoggedIn) {
+                                SyncServerClient.deleteAvatar(OfficialSync.BASE_URL, token = state.token)
+                            }
+                            accountPrefs.setAvatarUri("")
+                        }
+                    },
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+
+                AccountRow(
                     title = stringResource(R.string.account_nickname),
                     value = state.username.ifBlank { "-" },
                     enabled = false,
@@ -260,6 +397,20 @@ fun AccountScreen(
                     enabled = state.isLoggedIn,
                     onClick = onOpenDeviceManagement,
                 )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+
+                AccountRow(
+                    title = stringResource(R.string.account_storage_title),
+                    enabled = state.isLoggedIn,
+                    onClick = onOpenStorageManagement,
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+
+                AccountRow(
+                    title = stringResource(R.string.account_sync_logs_title),
+                    enabled = state.isLoggedIn,
+                    onClick = onOpenSyncLogs,
+                )
             }
 
             Spacer(Modifier.height(12.dp))
@@ -277,6 +428,152 @@ fun AccountScreen(
         ChangePasswordDialog(
             token = state.token,
             onDismiss = { showChangePassword = false },
+        )
+    }
+
+
+    val cropUri = avatarCropUri
+    if (cropUri != null) {
+        val cropView =
+            remember(cropUri) {
+                CropImageView(context).apply {
+                    setFixedAspectRatio(true)
+                    setAspectRatio(1, 1)
+                    cropShape = CropImageView.CropShape.OVAL
+                    isShowProgressBar = false
+                }
+            }
+
+        fun decodeAvatarBitmap(bytes: ByteArray, maxEdgePx: Int = 2048): Bitmap? {
+            if (bytes.isEmpty()) return null
+            return runCatching {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                val w = bounds.outWidth
+                val h = bounds.outHeight
+                if (w <= 0 || h <= 0) return@runCatching null
+
+                var sample = 1
+                while (w / sample > maxEdgePx || h / sample > maxEdgePx) {
+                    sample *= 2
+                }
+
+                while (sample <= 512) {
+                    val opts =
+                        BitmapFactory.Options().apply {
+                            inSampleSize = sample
+                            inPreferredConfig = Bitmap.Config.ARGB_8888
+                        }
+                    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                    if (bmp != null) return@runCatching bmp
+                    sample *= 2
+                }
+                null
+            }.getOrNull()
+        }
+
+        LaunchedEffect(cropUri) {
+            avatarCropLoading = true
+            avatarCropLoadError = null
+
+            val bytes =
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openInputStream(cropUri)?.use { it.readBytes() }
+                    }.getOrNull()
+                } ?: ByteArray(0)
+
+            if (bytes.isEmpty()) {
+                avatarCropLoadError = context.getString(R.string.account_avatar_pick_failed)
+                avatarCropLoading = false
+                return@LaunchedEffect
+            }
+
+            val bitmap =
+                withContext(Dispatchers.Default) {
+                    decodeAvatarBitmap(bytes)
+                }
+
+            if (bitmap == null) {
+                avatarCropLoadError = context.getString(R.string.account_avatar_pick_failed)
+                avatarCropLoading = false
+                return@LaunchedEffect
+            }
+
+            cropView.setImageBitmap(bitmap)
+            avatarCropLoading = false
+        }
+
+        AlertDialog(
+            modifier = ZhixuDialogDefaults.modifier(),
+            onDismissRequest = { avatarCropUri = null },
+            properties = ZhixuDialogDefaults.properties,
+            title = { Text(stringResource(R.string.account_avatar_crop_title)) },
+            text = {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(360.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    AndroidView(
+                        factory = { cropView },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    if (avatarCropLoading) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                    val err = avatarCropLoadError
+                    if (!err.isNullOrBlank()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(text = err, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !avatarCropUploading && !avatarCropLoading && avatarCropLoadError.isNullOrBlank(),
+                    onClick = {
+                        scope.launch {
+                            avatarCropUploading = true
+                            val bitmap = runCatching { cropView.getCroppedImage() }.getOrNull()
+                            if (bitmap == null) {
+                                avatarCropUploading = false
+                                Toast.makeText(context, context.getString(R.string.account_avatar_pick_failed), Toast.LENGTH_SHORT).show()
+                                return@launch
+                            }
+                            val bytes =
+                                withContext(Dispatchers.Default) {
+                                    ByteArrayOutputStream().use { out ->
+                                        val ok = bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                                        if (!ok) return@withContext ByteArray(0)
+                                        out.toByteArray()
+                                    }
+                                }
+                            bitmap.recycle()
+
+                            val ok = uploadAvatarBytes(mime = "image/jpeg", bytes = bytes)
+                            avatarCropUploading = false
+                            if (ok) avatarCropUri = null
+                        }
+                    },
+                ) {
+                    Text(stringResource(R.string.action_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !avatarCropUploading,
+                    onClick = { avatarCropUri = null },
+                ) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
         )
     }
 }

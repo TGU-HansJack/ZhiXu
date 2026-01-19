@@ -6,6 +6,7 @@ const { pool } = require("../db");
 const { isSmtpConfigured, sendMail } = require("../mailer");
 const { authRequired } = require("../middleware/auth");
 const { bcryptRounds, jwtSecret, jwtAccessTtl, refreshTokenTtlDays } = require("../config");
+const { getRequestIp } = require("../http");
 
 const router = express.Router();
 
@@ -210,7 +211,7 @@ router.post("/login", async (req, res) => {
   const sessionName = String(req.body?.deviceName || req.body?.sessionName || req.header("X-Zhixu-Device-Name") || "").trim();
   const safeSessionName = sessionName.length > 128 ? sessionName.slice(0, 128) : sessionName;
   const client = String(req.header("User-Agent") || "").trim().slice(0, 255);
-  const ip = String(req.ip || "").trim().slice(0, 64);
+  const ip = getRequestIp(req).slice(0, 64);
 
   try {
     await pool.query(

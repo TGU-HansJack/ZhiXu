@@ -2,7 +2,7 @@ const archiver = require("archiver");
 const express = require("express");
 const { pool } = require("../db");
 const { authRequired } = require("../middleware/auth");
-const { storageRoot } = require("../config");
+const { storageRoot, storageLimitBytes } = require("../config");
 const { buildObjectPath } = require("../storage");
 
 const router = express.Router();
@@ -47,8 +47,12 @@ WHERE user_id = ?
     [userId]
   );
 
+  const usedBytes = Number(row?.used_bytes) || 0;
+  const limitBytes = Number.isFinite(storageLimitBytes) ? Number(storageLimitBytes) : 5 * 1024 * 1024 * 1024;
   return res.json({
-    usedBytes: Number(row?.used_bytes) || 0,
+    usedBytes,
+    limitBytes,
+    remainingBytes: Math.max(0, limitBytes - usedBytes),
     fileCount: Number(row?.file_count) || 0,
     deletedCount: Number(row?.deleted_count) || 0,
     lastUpdatedAtMs: Number(row?.last_updated_at_ms) || 0
@@ -170,4 +174,3 @@ ORDER BY path ASC
 });
 
 module.exports = router;
-

@@ -13,6 +13,7 @@ data class AccountState(
     val userId: Long,
     val email: String,
     val avatarUri: String,
+    val avatarUpdatedAtMs: Long,
 ) {
     val isLoggedIn: Boolean get() = token.isNotBlank()
     val hasAvatar: Boolean get() = avatarUri.isNotBlank()
@@ -26,6 +27,7 @@ class AccountPreferences(
     private val userIdKey = longPreferencesKey("account_user_id")
     private val emailKey = stringPreferencesKey("account_email")
     private val avatarUriKey = stringPreferencesKey("account_avatar_uri")
+    private val avatarUpdatedAtMsKey = longPreferencesKey("account_avatar_updated_at_ms")
 
     val state: Flow<AccountState> =
         context.dataStore.data.map { prefs ->
@@ -35,6 +37,7 @@ class AccountPreferences(
                 userId = prefs[userIdKey] ?: 0L,
                 email = prefs[emailKey] ?: "",
                 avatarUri = prefs[avatarUriKey] ?: "",
+                avatarUpdatedAtMs = prefs[avatarUpdatedAtMsKey] ?: 0L,
             )
         }
 
@@ -58,9 +61,15 @@ class AccountPreferences(
         }
     }
 
-    suspend fun setAvatarUri(uri: String) {
+    suspend fun setAvatarUri(uri: String, updatedAtMs: Long = 0L) {
         context.dataStore.edit { prefs ->
-            if (uri.isBlank()) prefs.remove(avatarUriKey) else prefs[avatarUriKey] = uri
+            if (uri.isBlank()) {
+                prefs.remove(avatarUriKey)
+                prefs.remove(avatarUpdatedAtMsKey)
+            } else {
+                prefs[avatarUriKey] = uri
+                if (updatedAtMs > 0L) prefs[avatarUpdatedAtMsKey] = updatedAtMs else prefs.remove(avatarUpdatedAtMsKey)
+            }
         }
     }
 
@@ -71,6 +80,7 @@ class AccountPreferences(
             prefs.remove(userIdKey)
             prefs.remove(emailKey)
             prefs.remove(avatarUriKey)
+            prefs.remove(avatarUpdatedAtMsKey)
         }
     }
 }

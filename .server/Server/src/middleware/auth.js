@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const { pool } = require("../db");
 const { jwtSecret } = require("../config");
+const { getRequestIp } = require("../http");
 
 async function authRequired(req, res, next) {
   const header = String(req.header("Authorization") || "");
@@ -27,9 +28,11 @@ async function authRequired(req, res, next) {
         const lastSeenAtMs = Number(row?.last_seen_at_ms) || 0;
         const now = Date.now();
         if (now - lastSeenAtMs >= 60_000) {
+          const ip = getRequestIp(req).slice(0, 64);
+          const client = String(req.header("User-Agent") || "").trim().slice(0, 255);
           await pool.query(
-            "UPDATE user_sessions SET last_seen_at_ms = ? WHERE id = ? AND user_id = ? AND last_seen_at_ms < ?",
-            [now, sessionId, userId, now - 60_000]
+            "UPDATE user_sessions SET last_seen_at_ms = ?, ip = ?, client = ? WHERE id = ? AND user_id = ? AND last_seen_at_ms < ?",
+            [now, ip, client, sessionId, userId, now - 60_000]
           );
         }
 

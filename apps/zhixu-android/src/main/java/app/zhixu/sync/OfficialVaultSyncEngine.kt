@@ -21,6 +21,26 @@ data class OfficialVaultSyncSummary(
     val failed: Int,
 )
 
+data class SyncServerPlannedOp(
+    val kind: WebDavPlannedOpKind,
+    val path: String,
+    val reason: String,
+)
+
+data class SyncServerSyncPlan(
+    val generatedAtMs: Long,
+    val baseUrl: String,
+    val includeIndexSqlite: Boolean,
+    val operations: List<SyncServerPlannedOp>,
+    val summary: OfficialVaultSyncSummary,
+)
+
+data class SyncServerSyncObservedOpResult(
+    val op: SyncServerPlannedOp,
+    val ok: Boolean,
+    val error: String?,
+)
+
 internal data class OfficialRemoteEntry(
     val path: String,
     val updatedAt: Long,
@@ -41,6 +61,527 @@ class OfficialVaultSyncEngine(
     private val context: Context,
     private val repository: VaultRepository,
 ) {
+    suspend fun planVault(
+        rootUri: Uri,
+        baseUrl: String,
+        token: String,
+        includeIndexSqlite: Boolean,
+    ): SyncServerSyncPlan = withContext(Dispatchers.IO) {
+        val generatedAtMs = System.currentTimeMillis()
+        require(token.isNotBlank()) { "Not logged in" }
+
+        repository.ensureVaultStructure(rootUri)
+        if (includeIndexSqlite) {
+            repository.exportIndexSqlite(rootUri)
+        }
+
+        val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
+        val store = OfficialVaultSyncStateStore(context, repository)
+        val state = store.load(rootUri)
+
+        val localFiles = listLocalFiles(root, includeIndexSqlite = includeIndexSqlite).filter { shouldSyncPath(it.path) }
+        val localByPath = localFiles.associateBy { it.path }
+
+        fun isProbablySame(local: OfficialLocalEntry, st: OfficialVaultSyncFileState): Boolean {
+            val mtimeClose = local.lastModifiedEpochMs > 0 && st.localMtimeMs > 0 && abs(local.lastModifiedEpochMs - st.localMtimeMs) < 2_000
+            return local.size == st.size && mtimeClose
+        }
+
+        suspend fun localSha256(local: OfficialLocalEntry): String {
+            val bytes = repository.readBytes(local.file.uri) ?: return ""
+            return sha256Hex(bytes)
+        }
+
+        val operations = ArrayList<SyncServerPlannedOp>()
+        val seenPaths = HashSet<String>()
+
+        var uploaded = 0
+        var downloaded = 0
+        var deletedRemote = 0
+        var deletedLocal = 0
+        var conflicts = 0
+        var failed = 0
+
+        fun norm(raw: String): String = raw.trim().trimStart('/').replace('\\', '/')
+
+        suspend fun planRemoteChange(change: VaultChangeEntry) {
+            val path = norm(change.path)
+            if (path.isBlank()) return
+            if (!shouldSyncPath(path)) return
+
+            val st = state.files[path]
+            if (st != null && st.baseRev >= change.rev && st.deleted == change.deleted) return
+
+            seenPaths.add(path)
+
+            val local = localByPath[path]
+
+            val localDirty =
+                when {
+                    local == null -> st != null && !st.deleted
+                    st == null -> true
+                    st.deleted -> true
+                    isProbablySame(local, st) -> false
+                    st.sha256.isBlank() -> true
+                    else -> localSha256(local) != st.sha256
+                }
+
+            if (change.deleted) {
+                if (local == null) return
+                if (localDirty) {
+                    conflicts++
+                    operations += SyncServerPlannedOp(WebDavPlannedOpKind.CONFLICT, path, "remote deleted vs local changed")
+                } else {
+                    deletedLocal++
+                    operations += SyncServerPlannedOp(WebDavPlannedOpKind.DELETE_LOCAL, path, "remote deleted")
+                }
+                return
+            }
+
+            // Remote file exists/updated.
+            if (local == null) {
+                downloaded++
+                operations += SyncServerPlannedOp(WebDavPlannedOpKind.DOWNLOAD, path, "missing local")
+                return
+            }
+
+            if (localDirty) {
+                conflicts++
+                operations += SyncServerPlannedOp(WebDavPlannedOpKind.CONFLICT, path, "remote changed vs local changed")
+            } else {
+                downloaded++
+                operations += SyncServerPlannedOp(WebDavPlannedOpKind.DOWNLOAD, path, "remote changed")
+            }
+        }
+
+        // Pull remote changes (snapshot on first run, then incremental).
+        var since = state.serverCursor
+        while (true) {
+            val r = SyncServerClient.vaultChangesV2(baseUrl, token, since = since, limit = 2000)
+            val v = r.value ?: error(r.errorMessage ?: "Failed to pull changes")
+            if (v.snapshot) {
+                for (c in v.changes) {
+                    runCatching { planRemoteChange(c) }.onFailure { failed++ }
+                }
+                break
+            } else {
+                for (c in v.changes) {
+                    runCatching { planRemoteChange(c) }.onFailure { failed++ }
+                    since = maxOf(since, c.changeId)
+                }
+                if (!v.hasMore) break
+            }
+        }
+
+        // Push local changes (including brand-new files).
+        for (local in localFiles) {
+            if (seenPaths.contains(local.path)) continue
+            val st = state.files[local.path]
+            if (st != null && !st.deleted && isProbablySame(local, st)) continue
+
+            val bytes = repository.readBytes(local.file.uri)
+            if (bytes == null) {
+                failed++
+                continue
+            }
+            val sha = sha256Hex(bytes)
+            if (st != null && !st.deleted && st.sha256.isNotBlank() && st.sha256 == sha) continue
+
+            uploaded++
+            operations += SyncServerPlannedOp(WebDavPlannedOpKind.UPLOAD, local.path, "local changed")
+        }
+
+        // Propagate local deletions.
+        for ((path, st) in state.files) {
+            if (seenPaths.contains(path)) continue
+            if (st.deleted) continue
+            if (!shouldSyncPath(path)) continue
+            if (localByPath.containsKey(path)) continue
+            deletedRemote++
+            operations += SyncServerPlannedOp(WebDavPlannedOpKind.DELETE_REMOTE, path, "missing local")
+        }
+
+        SyncServerSyncPlan(
+            generatedAtMs = generatedAtMs,
+            baseUrl = baseUrl.trim(),
+            includeIndexSqlite = includeIndexSqlite,
+            operations = operations,
+            summary =
+                OfficialVaultSyncSummary(
+                    uploaded = uploaded,
+                    downloaded = downloaded,
+                    deletedRemote = deletedRemote,
+                    deletedLocal = deletedLocal,
+                    conflicts = conflicts,
+                    failed = failed,
+                ),
+        )
+    }
+
+    suspend fun syncVaultWithExpectedPlan(
+        rootUri: Uri,
+        baseUrl: String,
+        token: String,
+        includeIndexSqlite: Boolean,
+        expectedOperations: List<SyncServerPlannedOp>,
+        observer: ((SyncServerSyncObservedOpResult) -> Unit)? = null,
+    ): OfficialVaultSyncSummary = withContext(Dispatchers.IO) {
+        val startedAtMs = System.currentTimeMillis()
+        require(token.isNotBlank()) { "Not logged in" }
+
+        fun norm(raw: String): String = raw.trim().trimStart('/').replace('\\', '/')
+
+        val normalizedExpected =
+            expectedOperations
+                .map { op -> op.copy(path = norm(op.path)) }
+                .filter { it.path.isNotBlank() }
+                .filter { shouldSyncPath(it.path) }
+
+        // Task semantics: if the task declares no operations, do nothing.
+        if (normalizedExpected.isEmpty()) {
+            val root = vaultRootToDocumentFile(context, rootUri) ?: return@withContext OfficialVaultSyncSummary(0, 0, 0, 0, 0, 0)
+            val endedAtMs = startedAtMs
+            val summary = OfficialVaultSyncSummary(0, 0, 0, 0, 0, 0)
+            runCatching {
+                writeLastSummary(
+                    root = root,
+                    startedAtMs = startedAtMs,
+                    endedAtMs = endedAtMs,
+                    baseUrl = baseUrl.trim(),
+                    includeIndexSqlite = includeIndexSqlite,
+                    summary = summary,
+                    error = null,
+                )
+            }
+            return@withContext summary
+        }
+
+        repository.ensureVaultStructure(rootUri)
+        if (includeIndexSqlite) {
+            repository.exportIndexSqlite(rootUri)
+        }
+
+        val root = vaultRootToDocumentFile(context, rootUri) ?: error("Invalid vault root Uri")
+
+        val logFile = ensureLocalFile(root, ".zhixu/sync/log.jsonl")
+        val conflictsFile = ensureLocalFile(root, ".zhixu/sync/conflicts.jsonl")
+        val logger = SyncLogger(logFile?.uri, conflictsFile?.uri)
+        logger.logEvent("start", mapOf("engine" to "official_task", "includeIndexSqlite" to includeIndexSqlite.toString()))
+
+        data class RemoteMeta(val rev: Long, val deleted: Boolean)
+
+        suspend fun loadRemoteMeta(paths: Set<String>): Map<String, RemoteMeta> {
+            if (paths.isEmpty()) return emptyMap()
+            val r = SyncServerClient.vaultChangesV2(baseUrl, token, since = 0L, limit = 5000)
+            val v = r.value ?: return emptyMap()
+            val out = HashMap<String, RemoteMeta>(paths.size)
+            for (c in v.changes) {
+                val p = norm(c.path)
+                if (!paths.contains(p)) continue
+                out[p] = RemoteMeta(rev = c.rev, deleted = c.deleted)
+            }
+            return out
+        }
+
+        suspend fun ensureConflictArtifact(path: String, kind: String, bytes: ByteArray) {
+            val safePath = path.trimStart('/').replace('\\', '/')
+            val now = System.currentTimeMillis()
+            val baseDir = ".zhixu/conflicts/$safePath"
+            val name = "$now-$kind"
+            val destPath = "$baseDir/$name"
+            val dest = ensureLocalFile(root, destPath) ?: return
+            repository.writeBytes(dest.uri, bytes)
+        }
+
+        runCatching {
+            val store = OfficialVaultSyncStateStore(context, repository)
+            var state = store.load(rootUri)
+
+            val onlyPaths = normalizedExpected.map { it.path }.toSet()
+            val localByPath =
+                listLocalFiles(root, includeIndexSqlite = includeIndexSqlite)
+                    .filter { shouldSyncPath(it.path) && onlyPaths.contains(it.path) }
+                    .associateBy { it.path }
+                    .toMutableMap()
+
+            val remoteMetaPaths =
+                normalizedExpected
+                    .filter { it.kind == WebDavPlannedOpKind.DELETE_LOCAL || it.kind == WebDavPlannedOpKind.CONFLICT }
+                    .map { it.path }
+                    .toSet()
+            val remoteMeta = loadRemoteMeta(remoteMetaPaths)
+
+            var uploaded = 0
+            var downloaded = 0
+            var deletedRemote = 0
+            var deletedLocal = 0
+            var conflicts = 0
+            var failed = 0
+
+            for (op in normalizedExpected) {
+                var ok = false
+                var err: String? = null
+                try {
+                    when (op.kind) {
+                        WebDavPlannedOpKind.UPLOAD -> {
+                            val local = localByPath[op.path]
+                            if (local == null) {
+                                err = "Missing local file"
+                            } else {
+                                val bytes = repository.readBytes(local.file.uri)
+                                if (bytes == null) {
+                                    err = "Failed to read local file"
+                                } else {
+                                    val baseRev = state.files[op.path]?.baseRev ?: 0L
+                                    val put =
+                                        SyncServerClient.uploadVaultFileV2(
+                                            baseUrl = baseUrl,
+                                            token = token,
+                                            path = op.path,
+                                            mtimeMs = local.lastModifiedEpochMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                                            bytes = bytes,
+                                            baseRev = baseRev,
+                                        )
+                                    if (put.ok && put.value != null) {
+                                        uploaded++
+                                        state =
+                                            state.withUploaded(
+                                                op.path,
+                                                rev = put.value.rev,
+                                                sha256 = put.value.sha256,
+                                                size = bytes.size.toLong(),
+                                                localMtimeMs = local.lastModifiedEpochMs,
+                                            )
+                                        ok = true
+                                    } else if (put.statusCode == 409) {
+                                        conflicts++
+                                        logger.conflict(op.path, "rev_conflict")
+                                        // Best-effort resolve: keep remote as artifact and upload local (local wins).
+                                        val latest = SyncServerClient.downloadVaultFileV2(baseUrl, token, op.path)
+                                        val remote = latest.value
+                                        if (remote != null) {
+                                            ensureConflictArtifact(op.path, "remote-r${remote.rev}", remote.bytes)
+                                            val retry =
+                                                SyncServerClient.uploadVaultFileV2(
+                                                    baseUrl = baseUrl,
+                                                    token = token,
+                                                    path = op.path,
+                                                    mtimeMs = local.lastModifiedEpochMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                                                    bytes = bytes,
+                                                    baseRev = remote.rev,
+                                                )
+                                            if (retry.ok && retry.value != null) {
+                                                uploaded++
+                                                state =
+                                                    state.withUploaded(
+                                                        op.path,
+                                                        rev = retry.value.rev,
+                                                        sha256 = retry.value.sha256,
+                                                        size = bytes.size.toLong(),
+                                                        localMtimeMs = local.lastModifiedEpochMs,
+                                                    )
+                                                ok = true
+                                            } else {
+                                                err = retry.errorMessage ?: "Upload conflict"
+                                            }
+                                        } else {
+                                            err = put.errorMessage ?: "Upload conflict"
+                                        }
+                                    } else {
+                                        err = put.errorMessage ?: "Upload failed"
+                                    }
+                                }
+                            }
+                        }
+
+                        WebDavPlannedOpKind.DOWNLOAD -> {
+                            val r = SyncServerClient.downloadVaultFileV2(baseUrl, token, op.path)
+                            val remote = r.value
+                            if (remote == null) {
+                                err = r.errorMessage ?: "Download failed"
+                            } else {
+                                val dest = ensureLocalFile(root, op.path)
+                                if (dest == null) {
+                                    err = "Failed to create local file"
+                                } else {
+                                    repository.writeBytes(dest.uri, remote.bytes)
+                                    val localMtime = repository.getDocumentLastModified(dest.uri)
+                                    downloaded++
+                                    state =
+                                        state.withUploaded(
+                                            op.path,
+                                            rev = remote.rev,
+                                            sha256 = remote.sha256,
+                                            size = remote.bytes.size.toLong(),
+                                            localMtimeMs = localMtime,
+                                        )
+                                    localByPath[op.path] =
+                                        OfficialLocalEntry(
+                                            path = op.path,
+                                            file = dest,
+                                            size = remote.bytes.size.toLong(),
+                                            lastModifiedEpochMs = localMtime,
+                                        )
+                                    ok = true
+                                }
+                            }
+                        }
+
+                        WebDavPlannedOpKind.DELETE_REMOTE -> {
+                            val baseRev = state.files[op.path]?.baseRev ?: 0L
+                            val del = SyncServerClient.deleteVaultFileV2(baseUrl, token, op.path, baseRev = baseRev)
+                            if (del.ok && del.value != null) {
+                                deletedRemote++
+                                state = state.withDeleted(op.path, rev = del.value.rev)
+                                ok = true
+                            } else if (del.statusCode == 409) {
+                                conflicts++
+                                logger.conflict(op.path, "delete_rev_conflict")
+                                err = del.errorMessage ?: "Delete conflict"
+                            } else {
+                                err = del.errorMessage ?: "Delete remote failed"
+                            }
+                        }
+
+                        WebDavPlannedOpKind.DELETE_LOCAL -> {
+                            val local = localByPath[op.path]
+                            val deletedOk = local?.file?.delete() ?: true
+                            if (!deletedOk) {
+                                err = "Failed to delete local file"
+                            } else {
+                                localByPath.remove(op.path)
+
+                                val remoteRev = remoteMeta[op.path]?.rev ?: state.files[op.path]?.baseRev ?: 0L
+                                deletedLocal++
+                                state = state.withDeleted(op.path, rev = remoteRev)
+                                ok = true
+                            }
+                        }
+
+                        WebDavPlannedOpKind.CONFLICT -> {
+                            conflicts++
+                            val local = localByPath[op.path]
+                            if (local == null) {
+                                err = "Missing local file"
+                            } else {
+                                val localBytes = repository.readBytes(local.file.uri)
+                                if (localBytes == null) {
+                                    err = "Failed to read local file"
+                                } else {
+                                    val remoteRes = SyncServerClient.downloadVaultFileV2(baseUrl, token, op.path)
+                                    val remote = remoteRes.value
+                                    val remoteRev =
+                                        if (remote != null) {
+                                            remote.rev
+                                        } else {
+                                            remoteMeta[op.path]?.rev ?: state.files[op.path]?.baseRev ?: 0L
+                                        }
+
+                                    if (remote != null) {
+                                        ensureConflictArtifact(op.path, "remote-r${remote.rev}", remote.bytes)
+                                        logger.conflict(op.path, "remote_changed")
+                                    } else {
+                                        logger.conflict(op.path, "remote_deleted")
+                                    }
+
+                                    val put =
+                                        SyncServerClient.uploadVaultFileV2(
+                                            baseUrl = baseUrl,
+                                            token = token,
+                                            path = op.path,
+                                            mtimeMs = local.lastModifiedEpochMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                                            bytes = localBytes,
+                                            baseRev = remoteRev,
+                                        )
+                                    if (put.ok && put.value != null) {
+                                        uploaded++
+                                        state =
+                                            state.withUploaded(
+                                                op.path,
+                                                rev = put.value.rev,
+                                                sha256 = put.value.sha256,
+                                                size = localBytes.size.toLong(),
+                                                localMtimeMs = local.lastModifiedEpochMs,
+                                            )
+                                        ok = true
+                                    } else {
+                                        err = put.errorMessage ?: "Conflict resolution failed"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Throwable) {
+                    err = e.message ?: e.javaClass.simpleName
+                }
+
+                if (!ok) {
+                    failed++
+                }
+                observer?.invoke(SyncServerSyncObservedOpResult(op = op, ok = ok, error = err))
+            }
+
+            if (!includeIndexSqlite) {
+                runCatching { repository.rebuildIndex(rootUri) }
+            }
+            runCatching { store.save(rootUri, state) }
+
+            OfficialVaultSyncSummary(
+                uploaded = uploaded,
+                downloaded = downloaded,
+                deletedRemote = deletedRemote,
+                deletedLocal = deletedLocal,
+                conflicts = conflicts,
+                failed = failed,
+            )
+        }.fold(
+            onSuccess = { summary ->
+                val endedAtMs = System.currentTimeMillis()
+                logger.logEvent(
+                    "end",
+                    mapOf(
+                        "ok" to "true",
+                        "uploaded" to summary.uploaded.toString(),
+                        "downloaded" to summary.downloaded.toString(),
+                        "deletedRemote" to summary.deletedRemote.toString(),
+                        "deletedLocal" to summary.deletedLocal.toString(),
+                        "conflicts" to summary.conflicts.toString(),
+                        "failed" to summary.failed.toString(),
+                    ),
+                )
+                runCatching {
+                    writeLastSummary(
+                        root = root,
+                        startedAtMs = startedAtMs,
+                        endedAtMs = endedAtMs,
+                        baseUrl = baseUrl,
+                        includeIndexSqlite = includeIndexSqlite,
+                        summary = summary,
+                        error = null,
+                    )
+                }
+                summary
+            },
+            onFailure = { e ->
+                val endedAtMs = System.currentTimeMillis()
+                val error = e.message ?: e.javaClass.simpleName
+                logger.logEvent("end", mapOf("ok" to "false", "error" to error))
+                runCatching {
+                    writeLastSummary(
+                        root = root,
+                        startedAtMs = startedAtMs,
+                        endedAtMs = endedAtMs,
+                        baseUrl = baseUrl,
+                        includeIndexSqlite = includeIndexSqlite,
+                        summary = null,
+                        error = error,
+                    )
+                }
+                throw e
+            },
+        )
+    }
+
     suspend fun syncVault(
         rootUri: Uri,
         baseUrl: String,
@@ -188,6 +729,11 @@ class OfficialVaultSyncEngine(
                 val v = r.value ?: error(r.errorMessage ?: "Failed to pull changes")
                 if (v.snapshot) {
                     for (c in v.changes) {
+                        val p = c.path.trim().trimStart('/').replace('\\', '/')
+                        val st = state.files[p]
+                        if (st != null && st.baseRev >= c.rev && st.deleted == c.deleted) {
+                            continue
+                        }
                         val ok = applyRemote(c.path, c.rev, c.deleted)
                         if (ok) {
                             if (c.deleted) deletedLocal++ else downloaded++
@@ -200,6 +746,12 @@ class OfficialVaultSyncEngine(
                     break
                 } else {
                     for (c in v.changes) {
+                        val p = c.path.trim().trimStart('/').replace('\\', '/')
+                        val st = state.files[p]
+                        if (st != null && st.baseRev >= c.rev && st.deleted == c.deleted) {
+                            since = maxOf(since, c.changeId)
+                            continue
+                        }
                         val ok = applyRemote(c.path, c.rev, c.deleted)
                         if (ok) {
                             if (c.deleted) deletedLocal++ else downloaded++

@@ -102,61 +102,6 @@ CREATE TABLE IF NOT EXISTS email_codes (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `);
 
-  await pool.query(`
-CREATE TABLE IF NOT EXISTS plans (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  code VARCHAR(64) NOT NULL,
-  name VARCHAR(128) NOT NULL,
-  storage_bytes BIGINT UNSIGNED NOT NULL,
-  price_cny_year INT UNSIGNED NOT NULL DEFAULT 0,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY uq_plans_code (code)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-`);
-
-  // Best-effort migration for older schemas (must happen before seeding).
-  try {
-    const [colRows] = await pool.query("SHOW COLUMNS FROM plans LIKE 'price_cny_year'");
-    const hasPrice = Array.isArray(colRows) && colRows.length > 0;
-    if (!hasPrice) {
-      await pool.query("ALTER TABLE plans ADD COLUMN price_cny_year INT UNSIGNED NOT NULL DEFAULT 0 AFTER storage_bytes");
-    }
-  } catch (_) {
-    // ignore
-  }
-
-  await pool.query(`
-CREATE TABLE IF NOT EXISTS user_subscriptions (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  user_id BIGINT UNSIGNED NOT NULL,
-  plan_id BIGINT UNSIGNED NOT NULL,
-  status VARCHAR(32) NOT NULL DEFAULT 'active',
-  started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY uq_user_subscriptions_user (user_id),
-  KEY idx_user_subscriptions_plan (plan_id),
-  CONSTRAINT fk_user_subscriptions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  CONSTRAINT fk_user_subscriptions_plan FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-`);
-
-  // Seed built-in plans (purchase/payment integrates later).
-  await pool.query(
-    `
-INSERT INTO plans (code, name, storage_bytes, price_cny_year)
-VALUES
-  ('storage_512m', 'Storage 512MB', 536870912, 20),
-  ('storage_1g', 'Storage 1G', 1073741824, 30),
-  ('storage_2g', 'Storage 2G', 2147483648, 40)
-ON DUPLICATE KEY UPDATE
-  name = VALUES(name),
-  storage_bytes = VALUES(storage_bytes),
-  price_cny_year = VALUES(price_cny_year)
-`
-  );
-
   // Vault file sync tables (v2).
   await pool.query(`
 CREATE TABLE IF NOT EXISTS vault_files (

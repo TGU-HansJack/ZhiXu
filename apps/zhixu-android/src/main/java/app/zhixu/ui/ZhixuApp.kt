@@ -126,6 +126,10 @@ import app.zhixu.sync.WebDavAutoSync
 import app.zhixu.sync.WebDavAutoSyncStateStore
 import app.zhixu.sync.WebDavSyncTaskManager
 import app.zhixu.sync.WebDavSyncTaskTrigger
+import app.zhixu.sync.OfficialSync
+import app.zhixu.sync.SyncServerClient
+import app.zhixu.sync.SyncServerSyncTaskManager
+import app.zhixu.sync.SyncServerStorageStats
 import app.zhixu.ui.components.CreateDrawSheetContent
 import app.zhixu.ui.components.CreateMenuSheetContent
 import app.zhixu.ui.components.CreateQuickNewSheetContent
@@ -327,7 +331,7 @@ fun ZhixuApp(
     )
     val accountPrefs = remember(appContext) { AccountPreferences(appContext) }
     val accountState by accountPrefs.state.collectAsState(
-        initial = AccountState(token = "", username = "", userId = 0L, email = "", avatarUri = ""),
+        initial = AccountState(token = "", username = "", userId = 0L, email = "", avatarUri = "", avatarUpdatedAtMs = 0L),
     )
     val syncPrefs = remember(appContext) { SyncPreferences(appContext) }
     val webDavConfig by syncPrefs.webDavConfig.collectAsState(
@@ -349,6 +353,9 @@ fun ZhixuApp(
     var webDavUiStatus by remember { mutableStateOf<WebDavUiStatusSnapshot?>(null) }
     var webDavAutoSyncStatus by remember { mutableStateOf<WebDavAutoSyncStatusSnapshot?>(null) }
     var syncServerUiStatus by remember { mutableStateOf<SyncServerUiStatusSnapshot?>(null) }
+    var officialStorageStats by remember { mutableStateOf<SyncServerStorageStats?>(null) }
+    var officialStorageStatsLoading by remember { mutableStateOf(false) }
+    var officialStorageStatsError by remember { mutableStateOf<String?>(null) }
 
     var webDavSyncing by remember { mutableStateOf(false) }
     var syncServerSyncing by remember { mutableStateOf(false) }
@@ -401,6 +408,23 @@ fun ZhixuApp(
                 dt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
             }
         }.getOrElse { ms.toString() }
+    }
+
+    fun formatBytes(bytes: Long): String {
+        val safe = bytes.coerceAtLeast(0L).toDouble()
+        val units = arrayOf("B", "KB", "MB", "GB", "TB", "PB")
+        var value = safe
+        var idx = 0
+        while (value >= 1024.0 && idx < units.size - 1) {
+            value /= 1024.0
+            idx++
+        }
+        return if (idx == 0) {
+            "${value.toInt()} ${units[idx]}"
+        } else {
+            val dp = if (value < 10) 2 else 1
+            String.format("%.${dp}f %s", value, units[idx])
+        }
     }
 
     suspend fun reloadWebDavUiStatus() {
@@ -466,7 +490,7 @@ fun ZhixuApp(
         val cfg = vaultSyncConfig
         val enabled =
             when (cfg.location) {
-                VaultStorageLocation.LOCAL -> false
+                VaultStorageLocation.LOCAL -> accountState.token.isNotBlank()
                 VaultStorageLocation.OFFICIAL_SERVER -> accountState.token.isNotBlank()
                 VaultStorageLocation.THIRD_PARTY_SERVICE -> {
                     val tp = cfg.thirdParty
@@ -522,6 +546,27 @@ fun ZhixuApp(
                 else -> SyncServerUiStatusLevel.OK
             }
         syncServerUiStatus = SyncServerUiStatusSnapshot(level = level, text = text, endedAtMs = endedAt, summary = summary)
+    }
+
+    suspend fun reloadOfficialStorageStatsForDialog() {
+        if (vaultSyncConfig.location != VaultStorageLocation.OFFICIAL_SERVER || accountState.token.isBlank()) {
+            officialStorageStats = null
+            officialStorageStatsError = null
+            officialStorageStatsLoading = false
+            return
+        }
+
+        officialStorageStatsLoading = true
+        officialStorageStatsError = null
+        try {
+            val res = SyncServerClient.storageStats(OfficialSync.BASE_URL, token = accountState.token)
+            officialStorageStats = res.value
+            if (!res.ok) officialStorageStatsError = res.errorMessage
+        } catch (e: Throwable) {
+            officialStorageStatsError = e.message ?: e.javaClass.simpleName
+        } finally {
+            officialStorageStatsLoading = false
+        }
     }
 
     suspend fun reloadWebDavAutoSyncStatusForDialog() {
@@ -625,6 +670,7 @@ fun ZhixuApp(
         reloadWebDavUiStatus()
         reloadWebDavAutoSyncStatusForDialog()
         reloadSyncServerUiStatus()
+        reloadOfficialStorageStatsForDialog()
     }
 
     val uiPrefs = remember(appContext) { UiPreferences(appContext) }
@@ -784,258 +830,189 @@ fun ZhixuApp(
             onDismissRequest = { showCloudSyncStatusDialog = false },
             properties = ZhixuDialogDefaults.properties,
             title = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(stringResource(R.string.cloud_sync_title))
-                    Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = chipColor.copy(alpha = 0.12f),
-                        border = BorderStroke(1.dp, chipColor.copy(alpha = 0.25f)),
-                    ) {
-                        Text(
-                            text = "$primaryProviderName · $stateLabel",
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            color = chipColor,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    }
-                }
+                Text(stringResource(R.string.cloud_sync_title))
             },
             text = {
-                val headlineText =
-                    when (state) {
-                        CloudSyncDialogState.SYNCING -> stringResource(R.string.cloud_sync_state_syncing)
-                        CloudSyncDialogState.OK, CloudSyncDialogState.CHANGED -> stringResource(R.string.cloud_sync_dialog_done)
-                        CloudSyncDialogState.ISSUE -> stringResource(R.string.cloud_sync_state_issue)
-                        CloudSyncDialogState.FAILED -> stringResource(R.string.cloud_sync_state_failed)
-                        CloudSyncDialogState.DISABLED -> stringResource(R.string.cloud_sync_status_disabled)
-                        CloudSyncDialogState.NOT_CONFIGURED -> stringResource(R.string.cloud_sync_status_not_configured)
-                        CloudSyncDialogState.NOT_LOGGED_IN -> stringResource(R.string.account_not_logged_in_short)
-                    }
-
-                val subtitleText =
-                    when (state) {
-                        CloudSyncDialogState.SYNCING,
-                        CloudSyncDialogState.DISABLED,
-                        CloudSyncDialogState.NOT_CONFIGURED,
-                        CloudSyncDialogState.NOT_LOGGED_IN,
-                        -> ""
-                        CloudSyncDialogState.FAILED -> primarySummary?.error.orEmpty().ifBlank { "-" }
-                        CloudSyncDialogState.ISSUE -> {
-                            when {
-                                (primarySummary?.conflicts ?: 0) > 0 ->
-                                    context.getString(R.string.cloud_sync_dialog_subtitle_conflicts_fmt, primarySummary?.conflicts ?: 0)
-                                (primarySummary?.failed ?: 0) > 0 ->
-                                    context.getString(R.string.cloud_sync_dialog_subtitle_failed_items_fmt, primarySummary?.failed ?: 0)
-                                else -> stringResource(R.string.cloud_sync_state_issue)
-                            }
-                        }
-                        CloudSyncDialogState.OK -> stringResource(R.string.cloud_sync_dialog_subtitle_no_changes)
-                        CloudSyncDialogState.CHANGED -> {
-                            val s = primarySummary
-                            if (s != null && s.deletedRemote > 0 && s.uploaded == 0 && s.downloaded == 0 && s.deletedLocal == 0) {
-                                context.getString(R.string.cloud_sync_dialog_subtitle_remote_cleaned_fmt, s.deletedRemote)
-                            } else {
-                                stringResource(R.string.cloud_sync_dialog_subtitle_changed)
-                            }
-                        }
-                    }
-
-                val thisSyncItems = mutableListOf<String>()
-                val s = primarySummary
-                if (s == null) {
-                    thisSyncItems.add(stringResource(R.string.cloud_sync_dialog_no_record))
-                } else if (!s.ok) {
-                    thisSyncItems.add(s.error.orEmpty().ifBlank { "-" })
-                } else {
-                    if (s.uploaded > 0) thisSyncItems.add(context.getString(R.string.cloud_sync_dialog_item_uploaded_fmt, s.uploaded))
-                    if (s.downloaded > 0) thisSyncItems.add(context.getString(R.string.cloud_sync_dialog_item_downloaded_fmt, s.downloaded))
-                    if (s.deletedRemote > 0) thisSyncItems.add(context.getString(R.string.cloud_sync_dialog_item_deleted_remote_fmt, s.deletedRemote))
-                    if (s.deletedLocal > 0) thisSyncItems.add(context.getString(R.string.cloud_sync_dialog_item_deleted_local_fmt, s.deletedLocal))
-                    if (s.conflicts > 0) thisSyncItems.add(context.getString(R.string.cloud_sync_dialog_item_conflicts_fmt, s.conflicts))
-                    if (s.failed > 0) thisSyncItems.add(context.getString(R.string.cloud_sync_dialog_item_failed_fmt, s.failed))
-                    if (thisSyncItems.isEmpty()) thisSyncItems.add(stringResource(R.string.cloud_sync_dialog_subtitle_no_changes))
-                }
-
-                val recentSyncTime = formatEpochMsSmart(primarySummary?.endedAtMs ?: 0L)
-                val autoSyncLine = webDavAutoSyncStatus?.message.orEmpty().ifBlank { "-" }
-
-                val secondaryHint =
-                    if (isPrimaryWebDav) {
-                        stringResource(R.string.cloud_sync_dialog_official_hint_disabled)
-                    } else {
-                        if (!webDavConfig.enabled) {
-                            stringResource(R.string.cloud_sync_dialog_webdav_hint_disabled)
-                        } else {
-                            stringResource(R.string.cloud_sync_dialog_webdav_hint_enabled)
-                        }
-                    }
-
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = headlineText,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        if (subtitleText.isNotBlank()) {
+                    val root = vaultRootUri
+
+                    val webDavBaseUrl = webDavConfig.baseUrl.trim()
+                    val webDavReady =
+                        root != null &&
+                            webDavConfig.enabled &&
+                            webDavRemoteRootConfirmed &&
+                            webDavBaseUrl.isNotBlank() &&
+                            (webDavBaseUrl.startsWith("http://") || webDavBaseUrl.startsWith("https://")) &&
+                            !webDavSyncing
+
+                    val officialReady =
+                        root != null &&
+                            accountState.token.isNotBlank() &&
+                            !syncServerSyncing
+
+                    val webDavStatus =
+                        when {
+                            root == null -> stringResource(R.string.cloud_sync_status_not_configured)
+                            webDavSyncing -> stringResource(R.string.cloud_sync_state_syncing)
+                            !webDavConfig.enabled -> stringResource(R.string.cloud_sync_status_disabled)
+                            !webDavRemoteRootConfirmed -> stringResource(R.string.cloud_sync_status_not_configured)
+                            !webDavUiStatus?.text.isNullOrBlank() -> webDavUiStatus?.text.orEmpty()
+                            else -> stringResource(R.string.cloud_sync_dialog_no_record)
+                        }
+
+                    val officialStatus =
+                        when {
+                            root == null -> stringResource(R.string.cloud_sync_status_not_configured)
+                            syncServerSyncing -> stringResource(R.string.cloud_sync_state_syncing)
+                            accountState.token.isBlank() -> stringResource(R.string.account_not_logged_in_short)
+                            !syncServerUiStatus?.text.isNullOrBlank() -> syncServerUiStatus?.text.orEmpty()
+                            else -> stringResource(R.string.cloud_sync_dialog_no_record)
+                        }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(4.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
                             Text(
-                                text = subtitleText,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                text = stringResource(R.string.cloud_sync_dialog_webdav_status_title),
                                 style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
                             )
+                            Text(
+                                text = webDavStatus.ifBlank { "-" },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                TextButton(
+                                    enabled = webDavReady,
+                                    onClick = {
+                                        val r = root ?: return@TextButton
+                                        dialogScope.launch {
+                                            webDavSyncing = true
+                                            try {
+                                                val baseUrl = webDavConfig.baseUrl.trim()
+                                                val remoteRoot = webDavConfig.remoteRoot.trim().ifBlank { "/" }
+                                                val normalizedConfig =
+                                                    webDavConfig.copy(
+                                                        enabled = true,
+                                                        baseUrl = baseUrl,
+                                                        username = webDavConfig.username.trim(),
+                                                        remoteRoot = remoteRoot,
+                                                    )
+
+                                                try {
+                                                    withContext(Dispatchers.IO) {
+                                                        val manager = WebDavSyncTaskManager(context, repository)
+                                                        manager.generateTask(
+                                                            rootUri = r,
+                                                            config = normalizedConfig,
+                                                            trigger = WebDavSyncTaskTrigger.MANUAL,
+                                                            onlyPaths = null,
+                                                        )
+                                                        val currentTask = manager.load(r).current
+                                                        if (currentTask != null) {
+                                                            manager.executeCurrentTask(r, normalizedConfig)
+                                                        }
+                                                    }
+                                                } catch (_: Throwable) {
+                                                }
+                                            } finally {
+                                                webDavSyncing = false
+                                                reloadWebDavUiStatus()
+                                                reloadWebDavAutoSyncStatusForDialog()
+                                            }
+                                        }
+                                    },
+                                ) { Text(stringResource(R.string.cloud_sync_dialog_sync_now)) }
+                            }
                         }
                     }
 
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(4.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                     ) {
                         Column(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Text(
-                                text = stringResource(R.string.cloud_sync_dialog_this_sync_title),
-                                style = MaterialTheme.typography.titleMedium,
+                                text = stringResource(R.string.cloud_sync_dialog_official_status_title),
+                                style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                thisSyncItems.forEach { item ->
-                                    Text(
-                                        text = "• $item",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
-                                }
+                            Text(
+                                text = officialStatus.ifBlank { "-" },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                TextButton(
+                                    enabled = officialReady,
+                                    onClick = {
+                                        val r = root ?: return@TextButton
+                                        dialogScope.launch {
+                                            syncServerSyncing = true
+                                            try {
+                                                try {
+                                                    withContext(Dispatchers.IO) {
+                                                        val manager = SyncServerSyncTaskManager(context, repository)
+                                                        manager.generateTask(
+                                                            rootUri = r,
+                                                            baseUrl = OfficialSync.BASE_URL,
+                                                            token = accountState.token,
+                                                            includeIndexSqlite = webDavConfig.includeIndexSqlite,
+                                                            trigger = app.zhixu.sync.SyncServerSyncTaskTrigger.MANUAL,
+                                                        )
+                                                        val currentTask = manager.load(r).current
+                                                        if (currentTask != null) {
+                                                            manager.executeCurrentTask(
+                                                                rootUri = r,
+                                                                baseUrl = OfficialSync.BASE_URL,
+                                                                token = accountState.token,
+                                                                includeIndexSqlite = webDavConfig.includeIndexSqlite,
+                                                            )
+                                                        }
+                                                    }
+                                                } catch (_: Throwable) {
+                                                }
+                                            } finally {
+                                                syncServerSyncing = false
+                                                reloadSyncServerUiStatus()
+                                            }
+                                        }
+                                    },
+                                ) { Text(stringResource(R.string.cloud_sync_dialog_sync_now)) }
                             }
                         }
                     }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = stringResource(R.string.cloud_sync_dialog_time_title),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = context.getString(R.string.cloud_sync_dialog_recent_sync_fmt, recentSyncTime),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        Text(
-                            text = context.getString(R.string.cloud_sync_dialog_autosync_fmt, autoSyncLine),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-
-                    Text(
-                        text = secondaryHint,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
                 }
             },
             confirmButton = {
-                val canSyncNow =
-                    vaultRootUri != null &&
-                        when (vaultSyncConfig.location) {
-                            VaultStorageLocation.LOCAL -> {
-                                val base = webDavConfig.baseUrl.trim()
-                                webDavConfig.enabled &&
-                                    webDavRemoteRootConfirmed &&
-                                    base.isNotBlank() &&
-                                    (base.startsWith("http://") || base.startsWith("https://")) &&
-                                    !webDavSyncing
-                            }
-                            VaultStorageLocation.OFFICIAL_SERVER -> accountState.token.isNotBlank() && !syncServerSyncing
-                            VaultStorageLocation.THIRD_PARTY_SERVICE -> {
-                                val tp = vaultSyncConfig.thirdParty
-                                tp.url.trim().isNotBlank() &&
-                                    tp.username.trim().isNotBlank() &&
-                                    tp.password.isNotBlank() &&
-                                    !syncServerSyncing
-                            }
-                        }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        enabled = canSyncNow,
-                        onClick = {
-                            val root = vaultRootUri ?: return@TextButton
-                            dialogScope.launch {
-                                if (vaultSyncConfig.location == VaultStorageLocation.LOCAL) {
-                                    webDavSyncing = true
-                                    try {
-                                        val baseUrl = webDavConfig.baseUrl.trim()
-                                        val remoteRoot = webDavConfig.remoteRoot.trim().ifBlank { "/" }
-                                        val normalizedConfig =
-                                            webDavConfig.copy(
-                                                enabled = true,
-                                                baseUrl = baseUrl,
-                                                username = webDavConfig.username.trim(),
-                                                remoteRoot = remoteRoot,
-                                            )
-
-                                        try {
-                                            withContext(Dispatchers.IO) {
-                                                val manager = WebDavSyncTaskManager(context, repository)
-                                                manager.generateTask(
-                                                    rootUri = root,
-                                                    config = normalizedConfig,
-                                                    trigger = WebDavSyncTaskTrigger.MANUAL,
-                                                    onlyPaths = null,
-                                                )
-                                                // If there's nothing to do, the task will have 0 ops and still be archived
-                                                // with an updated summary timestamp (see engine logic).
-                                                val currentTask = manager.load(root).current
-                                                if (currentTask != null) {
-                                                    manager.executeCurrentTask(root, normalizedConfig)
-                                                }
-                                            }
-                                        } catch (_: Throwable) {
-                                        }
-                                    } finally {
-                                        webDavSyncing = false
-                                        reloadWebDavUiStatus()
-                                        reloadWebDavAutoSyncStatusForDialog()
-                                    }
-                                } else {
-                                    syncServerSyncing = true
-                                    try {
-                                        runCatching {
-                                            VaultAutoSync.maybeSyncVault(
-                                                context = context,
-                                                repository = repository,
-                                                vaultRootUri = root,
-                                                force = true,
-                                            )
-                                        }
-                                    } finally {
-                                        syncServerSyncing = false
-                                        reloadSyncServerUiStatus()
-                                    }
-                                }
-                            }
-                        },
-                    ) { Text(stringResource(R.string.cloud_sync_dialog_sync_now)) }
-
-                    TextButton(
-                        onClick = {
-                            showCloudSyncStatusDialog = false
-                            navController.navigate("settingsMain")
-                        },
-                    ) { Text(stringResource(R.string.cloud_sync_dialog_open_settings)) }
-                }
+                TextButton(
+                    onClick = {
+                        showCloudSyncStatusDialog = false
+                        navController.navigate("settingsMain")
+                    },
+                ) { Text(stringResource(R.string.cloud_sync_dialog_open_settings)) }
             },
             dismissButton = {
                 TextButton(onClick = { showCloudSyncStatusDialog = false }) { Text(stringResource(R.string.cloud_sync_dialog_cancel)) }
@@ -1218,7 +1195,6 @@ fun ZhixuApp(
     val showMainUi = currentRoute in setOf("home", "tasks", "pomodoro", "space")
     var docListUseGrid by rememberSaveable(vaultRootUriString) { mutableStateOf(false) }
     var sectionMenuExpanded by remember { mutableStateOf(false) }
-    var showAccountDialog by remember { mutableStateOf(false) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -1307,7 +1283,7 @@ fun ZhixuApp(
                                 .clickable {
                                     scope.launch {
                                         drawerState.close()
-                                        showAccountDialog = true
+                                        navController.navigate("account")
                                     }
                                 },
                     )
@@ -1822,12 +1798,6 @@ fun ZhixuApp(
                     }
                 },
             ) { padding ->
-                if (showAccountDialog) {
-                    AccountManagementDialog(
-                        accountPrefs = accountPrefs,
-                        onDismiss = { showAccountDialog = false },
-                    )
-                }
                     val target = bulkDeleteTarget
                     if (target != null) {
                         val count =
@@ -2271,16 +2241,18 @@ fun ZhixuApp(
                 composable("account") {
                     val accountPrefs = remember(appContext) { app.zhixu.data.AccountPreferences(appContext) }
                     AccountScreen(
-                        contentPadding = padding,
+                        contentPadding = PaddingValues(0.dp),
                         accountPrefs = accountPrefs,
                         onBack = { navController.popBackStack() },
                         onOpenDeviceManagement = { navController.navigate("deviceManagement") },
+                        onOpenStorageManagement = { navController.navigate("accountStorage") },
+                        onOpenSyncLogs = { navController.navigate("accountSyncLogs") },
                     )
                 }
                 composable("auth") {
                     val accountPrefs = remember(appContext) { app.zhixu.data.AccountPreferences(appContext) }
                     AuthScreen(
-                        contentPadding = padding,
+                        contentPadding = PaddingValues(0.dp),
                         accountPrefs = accountPrefs,
                         onBack = { navController.popBackStack() },
                     )
@@ -2288,7 +2260,23 @@ fun ZhixuApp(
                 composable("deviceManagement") {
                     val accountPrefs = remember(appContext) { app.zhixu.data.AccountPreferences(appContext) }
                     DeviceManagementScreen(
-                        contentPadding = padding,
+                        contentPadding = PaddingValues(0.dp),
+                        accountPrefs = accountPrefs,
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable("accountStorage") {
+                    val accountPrefs = remember(appContext) { app.zhixu.data.AccountPreferences(appContext) }
+                    app.zhixu.ui.screens.AccountStorageScreen(
+                        contentPadding = PaddingValues(0.dp),
+                        accountPrefs = accountPrefs,
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable("accountSyncLogs") {
+                    val accountPrefs = remember(appContext) { app.zhixu.data.AccountPreferences(appContext) }
+                    app.zhixu.ui.screens.AccountSyncLogsScreen(
+                        contentPadding = PaddingValues(0.dp),
                         accountPrefs = accountPrefs,
                         onBack = { navController.popBackStack() },
                     )

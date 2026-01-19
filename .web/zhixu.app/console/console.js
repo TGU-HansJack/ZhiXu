@@ -38,9 +38,11 @@
     meUsername: $("meUsername"),
     meEmail: $("meEmail"),
     meEmailStatus: $("meEmailStatus"),
-    mePlan: $("mePlan"),
+    meStorageQuota: $("meStorageQuota"),
 
     storageUsed: $("storageUsed"),
+    storageLimit: $("storageLimit"),
+    storageRemaining: $("storageRemaining"),
     storageFileCount: $("storageFileCount"),
     storageLastUpdated: $("storageLastUpdated"),
 
@@ -200,9 +202,28 @@
       }
     })();
 
+    const looksLikeHtml = (s) => {
+      const raw = String(s || "").trim().toLowerCase();
+      if (!raw) return false;
+      if (raw.startsWith("<!doctype html")) return true;
+      if (raw.startsWith("<html")) return true;
+      return raw.includes("<html") && raw.includes("</html>");
+    };
+
+    const formatHttpError = (response, responseText, parsedObj) => {
+      const msg = String(parsedObj?.error || parsedObj?.message || responseText || `HTTP ${response.status}`).trim();
+      const ct = String(response.headers.get("Content-Type") || "").toLowerCase();
+      const html = ct.includes("text/html") || looksLikeHtml(msg);
+      if (html) {
+        const is1Panel = msg.includes("1Panel") || msg.includes("请求拦截") || msg.includes("恶意参数");
+        return is1Panel ? "请求被 1Panel 防护拦截（WAF）。请在 1Panel 放行该接口或关闭相关拦截规则。" : "服务器返回了 HTML 页面（可能被反向代理/WAF 拦截）。";
+      }
+      return msg || `HTTP ${response.status}`;
+    };
+
     if (!res.ok) {
-      const msg = String(obj?.error || obj?.message || text || `HTTP ${res.status}`).trim();
-      return { ok: false, status: res.status, error: msg || `HTTP ${res.status}`, value: obj };
+      const msg = formatHttpError(res, text, obj);
+      return { ok: false, status: res.status, error: msg, value: obj };
     }
     return { ok: true, status: res.status, value: obj, raw: text };
   }
@@ -451,7 +472,10 @@
     el.meUsername.textContent = String(me.username || "-");
     el.meEmail.textContent = String(me.email || "-");
     el.meEmailStatus.textContent = me.emailVerified ? "已验证" : me.email ? "未验证" : "未设置";
-    el.mePlan.textContent = me.plan ? `${String(me.plan.name || me.plan.code || "")} (${formatBytes(Number(me.plan.storageBytes) || 0)})` : "-";
+
+    const usedBytes = Number(me.storage?.usedBytes) || 0;
+    const limitBytes = Number(me.storage?.limitBytes) || 0;
+    el.meStorageQuota.textContent = limitBytes > 0 ? `${formatBytes(usedBytes)} / ${formatBytes(limitBytes)}` : "-";
 
     el.emailInput.value = String(me.email || "");
 
@@ -551,13 +575,25 @@
       showToast("请选择图片文件", "error");
       return;
     }
+    const mime = String(file.type || "")
+      .trim()
+      .toLowerCase();
+    const allowed = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+    if (!allowed.has(mime)) {
+      showToast("仅支持 PNG / JPG / WebP / GIF", "error");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("图片过大（最大 5MB）", "error");
+      return;
+    }
     setButtonLoading(el.uploadAvatarBtn, true);
     try {
       const res = await apiFetch(
         "/api/account/avatar",
         {
           method: "PUT",
-          headers: { "Content-Type": file.type || "application/octet-stream" },
+          headers: { "Content-Type": "application/octet-stream", "X-Zhixu-Avatar-Mime": mime },
           body: file
         },
         { auth: true }
@@ -571,7 +607,16 @@
         }
       })();
       if (!res.ok) {
-        showToast(String(obj?.error || text || `HTTP ${res.status}`).trim() || "上传失败", "error");
+        const msg = (() => {
+          const raw = String(obj?.error || obj?.message || text || `HTTP ${res.status}`).trim();
+          const ct = String(res.headers.get("Content-Type") || "").toLowerCase();
+          const lower = raw.toLowerCase();
+          const isHtml = ct.includes("text/html") || lower.startsWith("<!doctype html") || lower.includes("<html");
+          if (!isHtml) return raw || `HTTP ${res.status}`;
+          const is1Panel = raw.includes("1Panel") || raw.includes("请求拦截") || raw.includes("恶意参数");
+          return is1Panel ? "请求被 1Panel 防护拦截（WAF）。请在 1Panel 放行该接口或关闭相关拦截规则。" : "上传失败：服务器返回了 HTML 页面（可能被反向代理/WAF 拦截）。";
+        })();
+        showToast(msg || "上传失败", "error");
         return;
       }
       showToast("头像已更新");
@@ -605,6 +650,8 @@
     }
     const s = r.value || {};
     el.storageUsed.textContent = formatBytes(s.usedBytes || 0);
+    el.storageLimit.textContent = formatBytes(s.limitBytes || 0);
+    el.storageRemaining.textContent = formatBytes(s.remainingBytes || Math.max(0, (Number(s.limitBytes) || 0) - (Number(s.usedBytes) || 0)));
     el.storageFileCount.textContent = String(s.fileCount ?? "-");
     el.storageLastUpdated.textContent = formatTime(s.lastUpdatedAtMs || 0);
     return s;

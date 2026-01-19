@@ -7,7 +7,7 @@
     <title>Zhixu.app · 知序</title>
     <meta
       name="description"
-      content="Zhixu（知序）是 AI 原生、隐私优先的个人知识与任务系统：数据存放在本地 Vault（文件夹），Markdown + 任务语法 + OCR + 插件；同步与 AI 可选启用。"
+      content="Zhixu（知序）是本地优先、隐私优先的个人知识与任务系统：数据存放在本地 Vault（文件夹），支持 Markdown、任务语法、本地 OCR 与插件工作流；可选开启官方同步（默认 5GB）或 WebDAV，自由选择同步方式。"
     />
     <link rel="icon" href="./assets/zhixu.png" />
     <link rel="stylesheet" href="./site.css" />
@@ -31,10 +31,10 @@
       </nav>
 
       <div class="hero" id="top">
-        <h1 class="hero__title">AI 原生的个人知识与任务系统</h1>
+        <h1 class="hero__title">本地优先的个人知识与任务系统</h1>
         <p class="hero__lede">
           Zhixu（知序）把数据放回你的 <strong>Vault（本地文件夹）</strong>：<strong>Markdown 写作</strong>、<strong>任务语法</strong>、<strong>本地 OCR</strong>
-          与 <strong>插件工作流</strong>。同步与 AI 仅在你启用后才会联网；当前 <strong>Android</strong> 版本最完整，Desktop（Tauri）实验中。
+          与 <strong>插件工作流</strong>。同步可选：<strong>官方同步（默认 5GB，无套餐）</strong> 或 <strong>WebDAV 自建</strong>，支持<strong>双向同步</strong>与<strong>任务型同步</strong>；AI 也只在你启用后才会联网。
         </p>
 
         <div class="hero__cta" role="list" aria-label="快速入口">
@@ -72,16 +72,24 @@
             <p>集成 PaddleOCR v5：从图片生成可编辑文本/待办，默认离线完成识别。</p>
           </div>
           <div class="card">
-            <h3>AI（可选）</h3>
-            <p>OCR+AI 整理与行动项提取；支持 OpenAI 兼容接口，启用后才会联网。</p>
+            <h3>同步（官方 / WebDAV）</h3>
+            <p>官方同步默认 5GB 配额；也可用 WebDAV 自建。同步以文件为边界，支持双向同步与冲突追溯。</p>
           </div>
           <div class="card">
             <h3>插件工作坊</h3>
             <p>JS Actions 扩展工作流：本地文件夹/官方列表/Git 仓库安装（插件为可执行代码）。</p>
           </div>
           <div class="card">
-            <h3>同步（官方 / WebDAV）</h3>
-            <p>按文件对比与传输 Vault，冲突记录可追溯；规则与协议写进文档。</p>
+            <h3>任务型同步</h3>
+            <p>先生成同步任务，再执行同步：上传/下载/删除一目了然，配合日志与冲突记录便于回溯。</p>
+          </div>
+          <div class="card">
+            <h3>存储与设备管理</h3>
+            <p>支持头像上传；查看与管理登录设备；存储用量/文件列表/导出一站式管理。</p>
+          </div>
+          <div class="card">
+            <h3>AI（可选）</h3>
+            <p>OCR+AI 整理与行动项提取；支持 OpenAI 兼容接口，启用后才会联网。</p>
           </div>
           <div class="card">
             <h3>番茄钟</h3>
@@ -148,7 +156,7 @@
         <div class="split">
           <div>
             <p>
-              同步是可选项：你可以使用官方服务（控制台管理账号/设备/同步记录），也可以使用 WebDAV 自建。核心原则仍然是以文件为边界，同步与冲突可追溯。
+              同步是可选项：你可以使用官方服务（默认 5GB 配额，无套餐；控制台管理账号/头像/设备/存储/同步记录），也可以使用 WebDAV 自建。核心原则仍然是以文件为边界，同步与冲突可追溯。
             </p>
             <p class="muted">
               目标是让 Android / Web / Desktop 都能复用同一套核心语义，而不是各端各写一套“差不多”的规则。
@@ -162,9 +170,10 @@
           <div class="callout">
             <h3>你能获得什么</h3>
             <ul>
-              <li>清晰的“文件级”同步边界</li>
-              <li>可追溯的冲突记录与回滚策略</li>
-              <li>官方服务与 WebDAV 的自由选择</li>
+              <li>双向同步：上传/下载/删除按文件边界执行</li>
+              <li>任务型同步：先生成任务，再执行与回溯</li>
+              <li>存储管理：用量/文件列表/导出</li>
+              <li>设备管理：查看与撤销登录设备</li>
             </ul>
           </div>
         </div>

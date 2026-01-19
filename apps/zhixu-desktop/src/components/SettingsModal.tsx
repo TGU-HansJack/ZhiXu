@@ -13,7 +13,7 @@ type SettingsSection = {
 };
 
 const SECTIONS: SettingsSection[] = [
-  { id: "pro", label: "知序 PRO", description: "订阅与高级功能管理。" },
+  { id: "pro", label: "账号", description: "账号信息与存储配额（统一 5GB）。" },
   { id: "sync", label: "同步", description: "同步与设备间数据一致性设置。" },
   { id: "editor", label: "编辑器", description: "编辑体验与默认行为设置。" },
   { id: "ui", label: "用户界面", description: "主题、布局与显示相关设置。" },
@@ -21,6 +21,19 @@ const SECTIONS: SettingsSection[] = [
   { id: "about", label: "关于", description: "版本信息与相关链接。" },
   { id: "logs", label: "日志", description: "查看与导出运行日志。" },
 ];
+
+function formatBytes(bytes: number): string {
+  const n = Number(bytes) || 0;
+  if (n <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let v = n;
+  let u = 0;
+  while (v >= 1024 && u < units.length - 1) {
+    v /= 1024;
+    u += 1;
+  }
+  return `${v.toFixed(v < 10 && u > 0 ? 2 : 1)} ${units[u]}`;
+}
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (next: boolean) => void }) {
   return (
@@ -205,7 +218,7 @@ export function SettingsModal({
             <div className="settingsCard">
               <SettingsRow
                 title="账号"
-                description={officialAuth?.token ? `已登录：${officialAuth.me?.username || "—"}` : "登录后可使用官方同步与订阅能力。"}
+                description={officialAuth?.token ? `已登录：${officialAuth.me?.username || "—"}` : "登录后可使用官方同步、存储与设备管理能力。"}
                 control={
                   officialAuth?.token ? (
                     <button type="button" className="settingsBtn" data-no-drag="true" onClick={() => void doLogout()} disabled={loggingOut}>
@@ -219,12 +232,13 @@ export function SettingsModal({
                 }
               />
               <SettingsRow
-                title="订阅"
-                description={officialAuth?.token ? (officialAuth.me?.plan?.name ? officialAuth.me.plan.name : "未订阅") : "—"}
-                control={
-                  <button type="button" className="settingsBtn" data-no-drag="true">
-                    查看
-                  </button>
+                title="存储"
+                description={
+                  officialAuth?.token
+                    ? officialAuth.me?.storage?.limitBytes
+                      ? `已用 ${formatBytes(officialAuth.me.storage.usedBytes)} / ${formatBytes(officialAuth.me.storage.limitBytes)}`
+                      : "—"
+                    : "—"
                 }
               />
             </div>
@@ -259,7 +273,9 @@ export function SettingsModal({
                       {officialAuth?.token ? (
                         <span>
                           已登录：{officialAuth.me?.username || "—"}
-                          {officialAuth.me?.plan?.code ? <span className="syncPlan">（{officialAuth.me.plan.code}）</span> : null}
+                          {officialAuth.me?.storage?.limitBytes ? (
+                            <span className="syncPlan">（{formatBytes(officialAuth.me.storage.usedBytes)} / {formatBytes(officialAuth.me.storage.limitBytes)}）</span>
+                          ) : null}
                         </span>
                       ) : (
                         <span className="syncMuted">未登录</span>

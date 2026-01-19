@@ -197,6 +197,8 @@
     <string name="cloud_sync_dialog_subtitle_failed_items_fmt">失败 %1$d</string>
 
     <string name="cloud_sync_dialog_no_record">暂无记录</string>
+    <string name="cloud_sync_dialog_webdav_status_title">WebDAV 服务状态</string>
+    <string name="cloud_sync_dialog_official_status_title">官方服务器同步</string>
     <string name="cloud_sync_dialog_this_sync_title">本次同步</string>
     <string name="cloud_sync_dialog_item_uploaded_fmt">上传：%1$d</string>
     <string name="cloud_sync_dialog_item_downloaded_fmt">下载：%1$d</string>
@@ -244,6 +246,7 @@
     <string name="account_fetch_profile_failed">获取资料失败</string>
     <string name="account_register_failed">注册失败</string>
     <string name="account_avatar">头像</string>
+    <string name="account_avatar_remove">移除头像</string>
     <string name="account_nickname">昵称</string>
     <string name="account_change_password">修改密码</string>
     <string name="account_current_password">当前密码</string>
@@ -253,6 +256,10 @@
     <string name="account_password_changed">密码已修改</string>
     <string name="account_password_change_failed">修改密码失败</string>
     <string name="account_avatar_pick_failed">选择图片失败</string>
+    <string name="account_avatar_crop_title">裁剪头像</string>
+    <string name="account_avatar_crop_cancelled_title">已取消裁剪</string>
+    <string name="account_avatar_crop_cancelled_desc">是否直接使用原图作为头像？</string>
+    <string name="account_avatar_use_original">使用原图</string>
     <string name="account_avatar_permission_denied">未获得相册权限</string>
     <string name="account_email_code">邮箱验证码</string>
     <string name="account_send_code">发送验证码</string>
@@ -272,8 +279,24 @@
     <string name="device_list_failed">获取设备列表失败</string>
     <string name="device_logout_failed">退出登录失败</string>
 
+    <string name="account_sync_logs_title">同步记录</string>
+    <string name="account_sync_logs_empty">暂无同步记录</string>
+    <string name="account_sync_logs_failed">获取同步记录失败</string>
+    <string name="account_sync_logs_action_changes_snapshot">变更列表（快照）</string>
+    <string name="account_sync_logs_action_changes_delta">变更列表（增量）</string>
+
     <string name="action_confirm">确定</string>
-    <string name="account_storage_title">存储方案</string>
+    <string name="account_storage_title">存储</string>
+    <string name="account_storage_used">已用空间</string>
+    <string name="account_storage_used_subtitle_fmt">%1$s / %2$s</string>
+    <string name="account_storage_file_count">文件数</string>
+    <string name="account_storage_last_updated">上次更新</string>
+    <string name="account_storage_export">导出</string>
+    <string name="account_storage_export_desc">导出服务器端 Vault 为 ZIP（包含 zhixu-export.json 清单）</string>
+    <string name="account_storage_export_failed">导出失败</string>
+    <string name="account_storage_export_share">分享导出文件</string>
+    <string name="account_storage_failed">获取存储信息失败</string>
+    <string name="account_storage_empty">暂无数据</string>
     <string name="account_storage_select">选择</string>
     <string name="account_storage_select_plan">选择方案</string>
     <string name="account_storage_selected">已选择：%1$s</string>

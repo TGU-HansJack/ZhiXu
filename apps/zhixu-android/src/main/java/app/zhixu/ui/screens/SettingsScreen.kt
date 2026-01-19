@@ -152,7 +152,7 @@ fun SettingsScreen(
 
     val accountPrefs = remember(context) { AccountPreferences(context.applicationContext) }
     val accountState by accountPrefs.state.collectAsState(
-        initial = AccountState(token = "", username = "", userId = 0L, email = "", avatarUri = ""),
+        initial = AccountState(token = "", username = "", userId = 0L, email = "", avatarUri = "", avatarUpdatedAtMs = 0L),
     )
 
     val proPrefs = remember(context) { ProPreferences(context.applicationContext) }
@@ -1241,9 +1241,6 @@ private fun SyncSettingsScreen(
 
     var webDavAutoSyncStatus by remember { mutableStateOf<String?>(null) }
 
-    var officialStatus by remember { mutableStateOf<String?>(null) }
-    var officialSyncing by remember { mutableStateOf(false) }
-
     androidx.compose.runtime.LaunchedEffect(
         saved.enabled,
         saved.baseUrl,
@@ -1873,100 +1870,49 @@ private fun SyncSettingsScreen(
                 PageLazyColumn(officialServerListState) {
                 item { SettingsSectionTitle(text = stringResource(R.string.official_sync_title)) }
                 item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = MaterialTheme.shapes.extraLarge,
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                        Text(
-                            text = stringResource(R.string.vault_settings_official_desc_fmt, OfficialSync.BASE_URL),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        val msg =
-                            if (!accountState.isLoggedIn) stringResource(R.string.official_sync_not_logged_in)
-                            else stringResource(R.string.official_sync_logged_in_as_fmt, accountState.username.ifBlank { "-" })
-                        Text(
-                            text = msg,
-                            color =
-                                if (accountState.isLoggedIn) MaterialTheme.colorScheme.onSurfaceVariant
-                                else MaterialTheme.colorScheme.error,
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        ListItem(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        val next = !includeIndexSqlite
-                                        includeIndexSqlite = next
-                                        scope.launch { prefs.setIncludeIndexSqlite(next) }
-                                    },
-                            headlineContent = { Text(stringResource(R.string.webdav_include_index_sqlite)) },
-                            trailingContent = {
-                                ZhixuSwitch(
-                                    checked = includeIndexSqlite,
-                                    onCheckedChange = { checked ->
-                                        includeIndexSqlite = checked
-                                        scope.launch { prefs.setIncludeIndexSqlite(checked) }
-                                    },
-                                )
-                            },
-                        )
-
-                        val syncHint = officialStatus
-                        if (!syncHint.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(syncHint, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !officialSyncing && accountState.isLoggedIn && vaultRootUri != null,
-                            shape = RoundedCornerShape(8.dp),
-                            onClick = {
-                                val root = vaultRootUri ?: return@Button
-                                val token = accountState.token
-                                scope.launch {
-                                    officialSyncing = true
-                                    officialStatus = context.getString(R.string.official_sync_syncing)
-                                    val engine = OfficialVaultSyncEngine(context, repository)
-                                    runCatching {
-                                        engine.syncVault(
-                                            rootUri = root,
-                                            baseUrl = OfficialSync.BASE_URL,
-                                            token = token,
-                                            includeIndexSqlite = includeIndexSqlite,
-                                        )
-                                    }.fold(
-                                        onSuccess = { summary ->
-                                            officialStatus =
-                                                context.getString(
-                                                    R.string.official_sync_ok,
-                                                    summary.uploaded,
-                                                    summary.downloaded,
-                                                    summary.deletedRemote,
-                                                    summary.deletedLocal,
-                                                    summary.conflicts,
-                                                    summary.failed,
-                                                )
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = MaterialTheme.shapes.extraLarge,
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            ListItem(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            val next = !includeIndexSqlite
+                                            includeIndexSqlite = next
+                                            scope.launch { prefs.setIncludeIndexSqlite(next) }
                                         },
-                                        onFailure = { e ->
-                                            officialStatus =
-                                                context.getString(
-                                                    R.string.official_sync_failed,
-                                                    e.message ?: e.javaClass.simpleName,
-                                                )
+                                headlineContent = { Text(stringResource(R.string.webdav_include_index_sqlite)) },
+                                trailingContent = {
+                                    ZhixuSwitch(
+                                        checked = includeIndexSqlite,
+                                        onCheckedChange = { checked ->
+                                            includeIndexSqlite = checked
+                                            scope.launch { prefs.setIncludeIndexSqlite(checked) }
                                         },
                                     )
-                                    officialSyncing = false
-                                }
-                            },
-                        ) { Text(stringResource(R.string.official_sync_now)) }
+                                },
+                            )
+                            HorizontalDivider(color = dividerColor)
+                            SyncServerSyncPanel(
+                                vaultRootUri = vaultRootUri,
+                                repository = repository,
+                                baseUrl = OfficialSync.BASE_URL,
+                                token = accountState.token,
+                                includeIndexSqlite = includeIndexSqlite,
+                                syncReady = accountState.isLoggedIn && vaultRootUri != null,
+                                syncNotReadyHint =
+                                    if (!accountState.isLoggedIn) {
+                                        stringResource(R.string.official_sync_not_logged_in)
+                                    } else {
+                                        null
+                                    },
+                            )
+                        }
                     }
-                }
                 }
             }
 
@@ -1991,6 +1937,20 @@ private fun SyncSettingsScreen(
                             modifier = Modifier.fillMaxWidth().padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
+                            ListItem(
+                                modifier = Modifier.fillMaxWidth(),
+                                headlineContent = { Text(stringResource(R.string.webdav_enable)) },
+                                trailingContent = {
+                                    ZhixuSwitch(
+                                        checked = enabled,
+                                        onCheckedChange = { checked ->
+                                            enabled = checked
+                                            scope.launch { prefs.saveWebDavConfig(currentConfig()) }
+                                        },
+                                    )
+                                },
+                            )
+                            HorizontalDivider(color = dividerColor)
                             ZhixuTextField(
                                 value = webDavPairName,
                                 onValueChange = { webDavPairName = it },

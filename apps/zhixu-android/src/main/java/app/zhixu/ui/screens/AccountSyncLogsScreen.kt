@@ -1,29 +1,21 @@
 package app.zhixu.ui.screens
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Computer
-import androidx.compose.material.icons.outlined.PhoneAndroid
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -54,11 +46,16 @@ import app.zhixu.ui.Ionicons
 import app.zhixu.ui.ZhixuTopBarIconSize
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTopAppBar
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import kotlin.math.ln
+import kotlin.math.pow
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DeviceManagementScreen(
+fun AccountSyncLogsScreen(
     contentPadding: PaddingValues,
     accountPrefs: AccountPreferences,
     onBack: () -> Unit,
@@ -70,9 +67,8 @@ fun DeviceManagementScreen(
     )
 
     var loading by remember { mutableStateOf(false) }
-    var sessions by remember { mutableStateOf<List<SyncServerClient.AccountSession>>(emptyList()) }
+    var logs by remember { mutableStateOf<List<SyncServerClient.AccountSyncLog>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
-    var confirmLogoutSessionId by remember { mutableStateOf<String?>(null) }
 
     val serverUnreachableText = stringResource(R.string.error_server_unreachable)
 
@@ -86,16 +82,16 @@ fun DeviceManagementScreen(
 
     suspend fun refresh() {
         if (!state.isLoggedIn) {
-            sessions = emptyList()
+            logs = emptyList()
             error = context.getString(R.string.account_login_required)
             return
         }
         loading = true
         error = null
         try {
-            val res = SyncServerClient.listSessions(OfficialSync.BASE_URL, token = state.token)
-            sessions = res.value ?: emptyList()
-            if (!res.ok) error = res.toUiMessage(context.getString(R.string.device_list_failed))
+            val res = SyncServerClient.listSyncLogs(OfficialSync.BASE_URL, token = state.token)
+            logs = res.value ?: emptyList()
+            if (!res.ok) error = res.toUiMessage(context.getString(R.string.account_sync_logs_failed))
         } finally {
             loading = false
         }
@@ -103,40 +99,33 @@ fun DeviceManagementScreen(
 
     LaunchedEffect(state.token) { refresh() }
 
-    fun normalizeIp(raw: String): String {
-        val ip = raw.trim()
-        return if (ip.startsWith("::ffff:", ignoreCase = true)) ip.drop("::ffff:".length) else ip
+    fun formatBytes(bytes: Long): String {
+        val b = bytes.coerceAtLeast(0L).toDouble()
+        if (b < 1024.0) return "${bytes.coerceAtLeast(0L)} B"
+        val unit = 1024.0
+        val exp = (ln(b) / ln(unit)).toInt().coerceIn(1, 6)
+        val pre = "KMGTPE"[exp - 1]
+        val value = b / unit.pow(exp.toDouble())
+        return String.format("%.1f %sB", value, pre)
     }
 
-    val sessionToLogout = confirmLogoutSessionId
-    if (sessionToLogout != null) {
-        AlertDialog(
-            onDismissRequest = { confirmLogoutSessionId = null },
-            title = { Text(stringResource(R.string.device_logout_confirm_title)) },
-            text = { Text(stringResource(R.string.device_logout_confirm_desc)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmLogoutSessionId = null
-                        scope.launch {
-                            if (!state.isLoggedIn) return@launch
-                            val res = SyncServerClient.revokeSession(OfficialSync.BASE_URL, token = state.token, sessionId = sessionToLogout)
-                            if (res.ok) {
-                                Toast.makeText(context, context.getString(R.string.device_logged_out), Toast.LENGTH_SHORT).show()
-                                refresh()
-                            } else {
-                                Toast.makeText(context, res.toUiMessage(context.getString(R.string.device_logout_failed)), Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    },
-                ) { Text(stringResource(R.string.device_logout)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmLogoutSessionId = null }) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            },
-        )
+    fun formatEpochMs(ms: Long): String {
+        if (ms <= 0L) return "-"
+        return runCatching {
+            Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+        }.getOrElse { ms.toString() }
+    }
+
+    @Composable
+    fun actionLabel(action: String): String {
+        return when (action.trim().lowercase()) {
+            "file_put" -> stringResource(R.string.sync_log_op_upload)
+            "file_get" -> stringResource(R.string.sync_log_op_download)
+            "file_delete" -> stringResource(R.string.sync_log_op_delete_remote)
+            "changes_snapshot" -> stringResource(R.string.account_sync_logs_action_changes_snapshot)
+            "changes_delta" -> stringResource(R.string.account_sync_logs_action_changes_delta)
+            else -> action.ifBlank { "-" }
+        }
     }
 
     Scaffold(
@@ -146,10 +135,10 @@ fun DeviceManagementScreen(
             Column {
                 ZhixuTopAppBar(
                     containerColor = MaterialTheme.colorScheme.surface,
-                    title = { Text(stringResource(R.string.device_management_title), style = MaterialTheme.typography.titleMedium) },
+                    title = { Text(stringResource(R.string.account_sync_logs_title), style = MaterialTheme.typography.titleMedium) },
                     navigationIcon = {
                         ZhixuIconButton(onClick = onBack) {
-                            Icon(
+                            androidx.compose.material3.Icon(
                                 painter = painterResource(Ionicons.ArrowBack),
                                 contentDescription = stringResource(R.string.action_back),
                                 modifier = Modifier.size(ZhixuTopBarIconSize),
@@ -166,7 +155,7 @@ fun DeviceManagementScreen(
             }
         },
     ) { innerPadding ->
-        if (loading && sessions.isEmpty()) {
+        if (loading && logs.isEmpty()) {
             Box(
                 modifier =
                     Modifier
@@ -201,65 +190,52 @@ fun DeviceManagementScreen(
                     )
                 }
             }
-            if (sessions.isEmpty() && error.isNullOrBlank()) {
+
+            if (logs.isEmpty() && error.isNullOrBlank()) {
                 item {
                     Text(
-                        text = stringResource(R.string.device_list_empty),
+                        text = stringResource(R.string.account_sync_logs_empty),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(16.dp),
                     )
                 }
             }
 
-            items(sessions.size) { idx ->
-                val s = sessions[idx]
-                val isMobile = s.client.contains("android", ignoreCase = true) || s.client.contains("mobile", ignoreCase = true)
-                val subtitleParts =
+            items(logs.size) { idx ->
+                val l = logs[idx]
+                val headline =
                     listOfNotNull(
-                        s.client.ifBlank { null },
-                        s.lastSeenText.ifBlank { null },
-                        normalizeIp(s.ip).ifBlank { null },
-                        s.location.ifBlank { null },
-                    )
-                val subtitle = subtitleParts.joinToString("，")
+                        actionLabel(l.action).takeIf { it.isNotBlank() },
+                        l.path.trim().ifBlank { null },
+                    ).joinToString(" · ")
+
+                val meta =
+                    buildList {
+                        val dn = l.deviceName.trim().ifBlank { null }
+                        val ip = l.ip.trim().ifBlank { null }
+                        val client = l.client.trim().ifBlank { null }
+                        val size = l.sizeBytes.takeIf { it > 0L }?.let { formatBytes(it) }
+                        if (dn != null) add(dn)
+                        if (ip != null) add(ip)
+                        if (client != null) add(client)
+                        if (size != null) add(size)
+                    }.joinToString(" · ")
 
                 ListItem(
                     modifier = Modifier.fillMaxWidth(),
-                    leadingContent = {
-                        Icon(
-                            imageVector = if (isMobile) Icons.Outlined.PhoneAndroid else Icons.Outlined.Computer,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    },
-                    headlineContent = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = s.name.ifBlank { "-" },
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (s.isCurrent) {
-                                Text(
-                                    text = stringResource(R.string.device_current_tag),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    modifier = Modifier.padding(start = 8.dp),
-                                )
-                            }
-                        }
-                    },
+                    headlineContent = { Text(text = headline.ifBlank { "-" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     supportingContent = {
-                        if (subtitle.isNotBlank()) Text(subtitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (meta.isNotBlank()) {
+                            Text(text = meta, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
                     },
                     trailingContent = {
-                        if (!s.isCurrent) {
-                            TextButton(onClick = { confirmLogoutSessionId = s.sessionId }) {
-                                Text(stringResource(R.string.device_logout))
-                            }
-                        }
+                        Text(
+                            text = formatEpochMs(l.createdAtMs),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     },
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))

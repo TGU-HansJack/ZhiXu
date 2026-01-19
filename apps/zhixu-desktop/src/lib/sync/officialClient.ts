@@ -3,18 +3,25 @@ import { httpRequest } from "../vaultApi";
 const textDecoder = new TextDecoder();
 const textEncoder = new TextEncoder();
 
-export type SyncServerPlan = {
-  code: string;
-  name: string;
-  storageBytes: number;
-  priceCnyYear: number;
+export type SyncServerAvatarInfo = {
+  mime: string;
+  updatedAtMs: number;
+  hasAvatar: boolean;
+};
+
+export type SyncServerStorageInfo = {
+  usedBytes: number;
+  limitBytes: number;
 };
 
 export type SyncServerMe = {
   userId: number;
   username: string;
   email: string;
-  plan: SyncServerPlan | null;
+  emailVerifiedAtMs: number;
+  emailVerified: boolean;
+  avatar: SyncServerAvatarInfo;
+  storage: SyncServerStorageInfo;
 };
 
 export type VaultChangeEntry = {
@@ -158,7 +165,11 @@ export async function login(
   password: string,
 ): Promise<SyncServerResult<{ token: string; sessionId?: string; refreshToken?: string }>> {
   const url = joinUrl(baseUrl, "/api/auth/login");
-  return requestJson<{ token: string; sessionId?: string; refreshToken?: string }>({ method: "POST", url, body: { username, password } });
+  return requestJson<{ token: string; sessionId?: string; refreshToken?: string }>({
+    method: "POST",
+    url,
+    body: { username, password, deviceName: "Zhixu Desktop" },
+  });
 }
 
 export async function logout(baseUrl: string, token: string): Promise<SyncServerResult<{ ok: boolean }>> {
@@ -171,16 +182,20 @@ export async function me(baseUrl: string, token: string): Promise<SyncServerResu
   const res = await requestJson<any>({ method: "GET", url, token });
   if (!res.ok || !res.value) return res as SyncServerResult<SyncServerMe>;
   const v = res.value as any;
-  const planObj = v?.plan;
-  const plan: SyncServerPlan | null =
-    planObj && typeof planObj === "object"
-      ? {
-          code: String(planObj.code || ""),
-          name: String(planObj.name || ""),
-          storageBytes: Number(planObj.storageBytes) || 0,
-          priceCnyYear: Number(planObj.priceCnyYear) || 0,
-        }
-      : null;
+
+  const avatarObj = v?.avatar;
+  const avatar: SyncServerAvatarInfo = {
+    mime: String(avatarObj?.mime || ""),
+    updatedAtMs: Number(avatarObj?.updatedAtMs) || 0,
+    hasAvatar: Boolean(avatarObj?.hasAvatar),
+  };
+
+  const storageObj = v?.storage;
+  const storage: SyncServerStorageInfo = {
+    usedBytes: Number(storageObj?.usedBytes) || 0,
+    limitBytes: Number(storageObj?.limitBytes) || 0,
+  };
+
   return {
     ok: true,
     status: res.status,
@@ -188,7 +203,10 @@ export async function me(baseUrl: string, token: string): Promise<SyncServerResu
       userId: Number(v?.userId) || 0,
       username: String(v?.username || ""),
       email: String(v?.email || ""),
-      plan,
+      emailVerifiedAtMs: Number(v?.emailVerifiedAtMs) || 0,
+      emailVerified: Boolean(v?.emailVerified),
+      avatar,
+      storage,
     },
     raw: res.raw,
   };
@@ -335,4 +353,3 @@ export async function deleteVaultFileV2(baseUrl: string, token: string, path: st
     raw,
   };
 }
-

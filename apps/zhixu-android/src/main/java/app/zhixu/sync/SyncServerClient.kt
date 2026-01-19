@@ -19,14 +19,44 @@ data class SyncServerMe(
     val userId: Long,
     val username: String,
     val email: String = "",
-    val plan: SyncServerPlan? = null,
+    val avatar: SyncServerAvatarInfo? = null,
+    val storage: SyncServerStorageInfo? = null,
 )
 
-data class SyncServerPlan(
-    val code: String,
-    val name: String,
-    val storageBytes: Long,
-    val priceCnyYear: Int,
+data class SyncServerAvatarInfo(
+    val mime: String,
+    val updatedAtMs: Long,
+    val hasAvatar: Boolean,
+)
+
+data class SyncServerStorageInfo(
+    val usedBytes: Long,
+    val limitBytes: Long,
+)
+
+data class SyncServerAvatarDownload(
+    val bytes: ByteArray,
+    val mime: String,
+    val updatedAtMs: Long,
+)
+
+data class SyncServerAvatarUploadResult(
+    val mime: String,
+    val updatedAtMs: Long,
+)
+
+data class SyncServerStorageStats(
+    val usedBytes: Long,
+    val limitBytes: Long,
+    val remainingBytes: Long,
+    val fileCount: Long,
+    val deletedCount: Long,
+    val lastUpdatedAtMs: Long,
+)
+
+data class SyncServerStorageExport(
+    val filename: String,
+    val bytes: ByteArray,
 )
 
 data class VaultManifestEntry(
@@ -181,6 +211,7 @@ object SyncServerClient {
         baseUrl: String,
         username: String,
         password: String,
+        deviceName: String = "",
     ): SyncServerResult<String> = withContext(Dispatchers.IO) {
         safeResult {
             val url = normalizeJoin(baseUrl, "/api/auth/login")
@@ -190,7 +221,15 @@ object SyncServerClient {
                     .put("password", password)
                     .toString()
                     .toRequestBody("application/json; charset=utf-8".toMediaType())
-            val req = Request.Builder().url(url).post(body).header("User-Agent", "Zhixu-Android").build()
+            val req =
+                Request.Builder()
+                    .url(url)
+                    .post(body)
+                    .header("User-Agent", "Zhixu-Android")
+                    .also { b ->
+                        val dn = deviceName.trim()
+                        if (dn.isNotBlank()) b.header("X-Zhixu-Device-Name", dn.take(128))
+                    }.build()
             client.newCall(req).execute().use { resp ->
                 val text = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
@@ -221,17 +260,188 @@ object SyncServerClient {
                 val userId = obj.optLong("userId", 0L)
                 val username = obj.optString("username").orEmpty()
                 val email = obj.optString("email").orEmpty()
-                val planObj = obj.optJSONObject("plan")
-                val plan =
-                    planObj?.let {
-                        SyncServerPlan(
-                            code = it.optString("code").orEmpty(),
-                            name = it.optString("name").orEmpty(),
-                            storageBytes = it.optLong("storageBytes", 0L).coerceAtLeast(0L),
-                            priceCnyYear = it.optInt("priceCnyYear", 0).coerceAtLeast(0),
+
+                val avatarObj = obj.optJSONObject("avatar")
+                val avatar =
+                    avatarObj?.let {
+                        SyncServerAvatarInfo(
+                            mime = it.optString("mime").orEmpty(),
+                            updatedAtMs = it.optLong("updatedAtMs", 0L).coerceAtLeast(0L),
+                            hasAvatar = it.optBoolean("hasAvatar", false),
                         )
                     }
-                SyncServerResult(ok = true, value = SyncServerMe(userId = userId, username = username, email = email, plan = plan), statusCode = resp.code)
+
+                val storageObj = obj.optJSONObject("storage")
+                val storage =
+                    storageObj?.let {
+                        SyncServerStorageInfo(
+                            usedBytes = it.optLong("usedBytes", 0L).coerceAtLeast(0L),
+                            limitBytes = it.optLong("limitBytes", 0L).coerceAtLeast(0L),
+                        )
+                    }
+
+                SyncServerResult(
+                    ok = true,
+                    value = SyncServerMe(userId = userId, username = username, email = email, avatar = avatar, storage = storage),
+                    statusCode = resp.code,
+                )
+            }
+        }
+    }
+
+    suspend fun downloadAvatar(
+        baseUrl: String,
+        token: String,
+    ): SyncServerResult<SyncServerAvatarDownload> = withContext(Dispatchers.IO) {
+        safeResult {
+            val url = normalizeJoin(baseUrl, "/api/account/avatar")
+            val req =
+                Request.Builder()
+                    .url(url)
+                    .get()
+                    .header("Authorization", "Bearer $token")
+                    .header("User-Agent", "Zhixu-Android")
+                    .build()
+            client.newCall(req).execute().use { resp ->
+                val bytes = resp.body?.bytes() ?: ByteArray(0)
+                if (!resp.isSuccessful) {
+                    val text = runCatching { bytes.toString(Charsets.UTF_8) }.getOrDefault("")
+                    return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
+                }
+                val mime = resp.header("Content-Type").orEmpty()
+                val updatedAtMs = resp.header("X-Zhixu-Avatar-Updated-At-Ms")?.toLongOrNull() ?: 0L
+                SyncServerResult(
+                    ok = true,
+                    value = SyncServerAvatarDownload(bytes = bytes, mime = mime, updatedAtMs = updatedAtMs),
+                    statusCode = resp.code,
+                )
+            }
+        }
+    }
+
+    suspend fun uploadAvatar(
+        baseUrl: String,
+        token: String,
+        mime: String,
+        bytes: ByteArray,
+    ): SyncServerResult<SyncServerAvatarUploadResult> = withContext(Dispatchers.IO) {
+        safeResult {
+            val url = normalizeJoin(baseUrl, "/api/account/avatar")
+            val safeMime = mime.trim().ifBlank { "application/octet-stream" }
+            val body = bytes.toRequestBody("application/octet-stream".toMediaType())
+            val req =
+                Request.Builder()
+                    .url(url)
+                    .put(body)
+                    .header("Authorization", "Bearer $token")
+                    .header("User-Agent", "Zhixu-Android")
+                    .header("X-Zhixu-Avatar-Mime", safeMime.take(128))
+                    .build()
+            client.newCall(req).execute().use { resp ->
+                val text = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
+                val obj = runCatching { JSONObject(text) }.getOrNull() ?: return@use SyncServerResult(false, errorMessage = "Invalid response", statusCode = resp.code)
+                val out =
+                    SyncServerAvatarUploadResult(
+                        mime = obj.optString("mime").orEmpty().ifBlank { mime },
+                        updatedAtMs = obj.optLong("updatedAtMs", 0L).coerceAtLeast(0L),
+                    )
+                SyncServerResult(ok = true, value = out, statusCode = resp.code)
+            }
+        }
+    }
+
+    suspend fun deleteAvatar(
+        baseUrl: String,
+        token: String,
+    ): SyncServerResult<Unit> = withContext(Dispatchers.IO) {
+        safeResult {
+            val url = normalizeJoin(baseUrl, "/api/account/avatar")
+            val req =
+                Request.Builder()
+                    .url(url)
+                    .delete()
+                    .header("Authorization", "Bearer $token")
+                    .header("User-Agent", "Zhixu-Android")
+                    .build()
+            client.newCall(req).execute().use { resp ->
+                val text = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
+                SyncServerResult(ok = true, value = Unit, statusCode = resp.code)
+            }
+        }
+    }
+
+    suspend fun storageStats(
+        baseUrl: String,
+        token: String,
+    ): SyncServerResult<SyncServerStorageStats> = withContext(Dispatchers.IO) {
+        safeResult {
+            val url = normalizeJoin(baseUrl, "/api/storage/stats")
+            val req =
+                Request.Builder()
+                    .url(url)
+                    .get()
+                    .header("Authorization", "Bearer $token")
+                    .header("User-Agent", "Zhixu-Android")
+                    .build()
+            client.newCall(req).execute().use { resp ->
+                val text = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
+                val obj = runCatching { JSONObject(text) }.getOrNull() ?: return@use SyncServerResult(false, errorMessage = "Invalid response", statusCode = resp.code)
+                SyncServerResult(
+                    ok = true,
+                    value =
+                        SyncServerStorageStats(
+                            usedBytes = obj.optLong("usedBytes", 0L).coerceAtLeast(0L),
+                            limitBytes = obj.optLong("limitBytes", 0L).coerceAtLeast(0L),
+                            remainingBytes = obj.optLong("remainingBytes", 0L).coerceAtLeast(0L),
+                            fileCount = obj.optLong("fileCount", 0L).coerceAtLeast(0L),
+                            deletedCount = obj.optLong("deletedCount", 0L).coerceAtLeast(0L),
+                            lastUpdatedAtMs = obj.optLong("lastUpdatedAtMs", 0L).coerceAtLeast(0L),
+                        ),
+                    statusCode = resp.code,
+                )
+            }
+        }
+    }
+
+    suspend fun exportStorageZip(
+        baseUrl: String,
+        token: String,
+    ): SyncServerResult<SyncServerStorageExport> = withContext(Dispatchers.IO) {
+        safeResult {
+            val url = normalizeJoin(baseUrl, "/api/storage/export")
+            val req =
+                Request.Builder()
+                    .url(url)
+                    .get()
+                    .header("Authorization", "Bearer $token")
+                    .header("User-Agent", "Zhixu-Android")
+                    .build()
+            client.newCall(req).execute().use { resp ->
+                val bytes = resp.body?.bytes() ?: ByteArray(0)
+                if (!resp.isSuccessful) {
+                    val text = runCatching { bytes.toString(Charsets.UTF_8) }.getOrDefault("")
+                    return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
+                }
+
+                val cd = resp.header("Content-Disposition").orEmpty()
+                val filename =
+                    cd.split(';')
+                        .map { it.trim() }
+                        .firstOrNull { it.startsWith("filename=", ignoreCase = true) }
+                        ?.substringAfter('=')
+                        ?.trim()
+                        ?.trim('"')
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "zhixu-vault.zip"
+
+                SyncServerResult(
+                    ok = true,
+                    value = SyncServerStorageExport(filename = filename, bytes = bytes),
+                    statusCode = resp.code,
+                )
             }
         }
     }
@@ -275,6 +485,18 @@ object SyncServerClient {
         val isCurrent: Boolean,
     )
 
+    data class AccountSyncLog(
+        val id: Long,
+        val createdAtMs: Long,
+        val action: String,
+        val path: String,
+        val ip: String,
+        val client: String,
+        val sessionId: String,
+        val deviceName: String,
+        val sizeBytes: Long,
+    )
+
     suspend fun listSessions(
         baseUrl: String,
         token: String,
@@ -313,6 +535,48 @@ object SyncServerClient {
         }
     }
 
+    suspend fun listSyncLogs(
+        baseUrl: String,
+        token: String,
+        limit: Int = 100,
+    ): SyncServerResult<List<AccountSyncLog>> = withContext(Dispatchers.IO) {
+        safeResult {
+            val safeLimit = limit.coerceIn(1, 500)
+            val url = normalizeJoin(baseUrl, "/api/account/sync/logs?limit=$safeLimit")
+            val req =
+                Request.Builder()
+                    .url(url)
+                    .get()
+                    .header("Authorization", "Bearer $token")
+                    .header("User-Agent", "Zhixu-Android")
+                    .build()
+            client.newCall(req).execute().use { resp ->
+                val text = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
+                val arr = runCatching { JSONObject(text).optJSONArray("logs") ?: JSONArray() }.getOrNull() ?: JSONArray()
+                val out = ArrayList<AccountSyncLog>(arr.length())
+                for (i in 0 until arr.length()) {
+                    val item = arr.optJSONObject(i) ?: continue
+                    val id = item.optLong("id", 0L)
+                    if (id <= 0L) continue
+                    out +=
+                        AccountSyncLog(
+                            id = id,
+                            createdAtMs = item.optLong("createdAtMs", 0L),
+                            action = item.optString("action").orEmpty(),
+                            path = item.optString("path").orEmpty(),
+                            ip = item.optString("ip").orEmpty(),
+                            client = item.optString("client").orEmpty(),
+                            sessionId = item.optString("sessionId").orEmpty(),
+                            deviceName = item.optString("deviceName").orEmpty(),
+                            sizeBytes = item.optLong("sizeBytes", 0L),
+                        )
+                }
+                SyncServerResult(ok = true, value = out, statusCode = resp.code)
+            }
+        }
+    }
+
     suspend fun revokeSession(
         baseUrl: String,
         token: String,
@@ -336,76 +600,6 @@ object SyncServerClient {
                 val text = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
                 SyncServerResult(ok = true, value = Unit, statusCode = resp.code)
-            }
-        }
-    }
-
-    suspend fun listPlans(
-        baseUrl: String,
-    ): SyncServerResult<List<SyncServerPlan>> = withContext(Dispatchers.IO) {
-        safeResult {
-            val url = normalizeJoin(baseUrl, "/api/plans")
-            val req =
-                Request.Builder()
-                    .url(url)
-                    .get()
-                    .header("User-Agent", "Zhixu-Android")
-                    .build()
-            client.newCall(req).execute().use { resp ->
-                val text = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
-                val arr = runCatching { JSONObject(text).optJSONArray("plans") ?: JSONArray() }.getOrNull() ?: JSONArray()
-                val out = ArrayList<SyncServerPlan>(arr.length())
-                for (i in 0 until arr.length()) {
-                    val item = arr.optJSONObject(i) ?: continue
-                    val code = item.optString("code").orEmpty()
-                    if (code.isBlank()) continue
-                    out +=
-                        SyncServerPlan(
-                            code = code,
-                            name = item.optString("name").orEmpty(),
-                            storageBytes = item.optLong("storageBytes", 0L).coerceAtLeast(0L),
-                            priceCnyYear = item.optInt("priceCnyYear", 0).coerceAtLeast(0),
-                        )
-                }
-                SyncServerResult(ok = true, value = out, statusCode = resp.code)
-            }
-        }
-    }
-
-    suspend fun setSubscriptionPlan(
-        baseUrl: String,
-        token: String,
-        planCode: String,
-    ): SyncServerResult<SyncServerPlan> = withContext(Dispatchers.IO) {
-        safeResult {
-            val url = normalizeJoin(baseUrl, "/api/account/subscription")
-            val body =
-                JSONObject()
-                    .put("planCode", planCode)
-                    .toString()
-                    .toRequestBody("application/json; charset=utf-8".toMediaType())
-            val req =
-                Request.Builder()
-                    .url(url)
-                    .post(body)
-                    .header("Authorization", "Bearer $token")
-                    .header("User-Agent", "Zhixu-Android")
-                    .build()
-            client.newCall(req).execute().use { resp ->
-                val text = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) return@use SyncServerResult(false, errorMessage = text.ifBlank { "HTTP ${resp.code}" }, statusCode = resp.code)
-                val obj = runCatching { JSONObject(text) }.getOrNull() ?: return@use SyncServerResult(false, errorMessage = "Invalid response", statusCode = resp.code)
-                val planObj = obj.optJSONObject("plan") ?: JSONObject()
-                val code = planObj.optString("code").orEmpty().ifBlank { planCode }
-                val plan =
-                    SyncServerPlan(
-                        code = code,
-                        name = planObj.optString("name").orEmpty(),
-                        storageBytes = planObj.optLong("storageBytes", 0L).coerceAtLeast(0L),
-                        priceCnyYear = planObj.optInt("priceCnyYear", 0).coerceAtLeast(0),
-                    )
-                SyncServerResult(true, value = plan, statusCode = resp.code)
             }
         }
     }

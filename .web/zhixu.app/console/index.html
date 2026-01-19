@@ -135,13 +135,15 @@
                 <div class="consoleKV__row"><div class="consoleKV__k">用户名</div><div id="meUsername" class="consoleKV__v">-</div></div>
                 <div class="consoleKV__row"><div class="consoleKV__k">邮箱</div><div id="meEmail" class="consoleKV__v">-</div></div>
                 <div class="consoleKV__row"><div class="consoleKV__k">邮箱状态</div><div id="meEmailStatus" class="consoleKV__v">-</div></div>
-                <div class="consoleKV__row"><div class="consoleKV__k">套餐</div><div id="mePlan" class="consoleKV__v">-</div></div>
+                <div class="consoleKV__row"><div class="consoleKV__k">存储配额</div><div id="meStorageQuota" class="consoleKV__v">-</div></div>
               </div>
             </div>
             <div class="consoleCard">
               <h2 class="consoleH2">存储概览</h2>
               <div class="consoleKV">
                 <div class="consoleKV__row"><div class="consoleKV__k">已用</div><div id="storageUsed" class="consoleKV__v">-</div></div>
+                <div class="consoleKV__row"><div class="consoleKV__k">上限</div><div id="storageLimit" class="consoleKV__v">-</div></div>
+                <div class="consoleKV__row"><div class="consoleKV__k">剩余</div><div id="storageRemaining" class="consoleKV__v">-</div></div>
                 <div class="consoleKV__row"><div class="consoleKV__k">文件数</div><div id="storageFileCount" class="consoleKV__v">-</div></div>
                 <div class="consoleKV__row"><div class="consoleKV__k">上次更新</div><div id="storageLastUpdated" class="consoleKV__v">-</div></div>
               </div>
@@ -162,7 +164,7 @@
                   <div id="avatarFallback" class="consoleAvatarFallback" aria-hidden="true">Z</div>
                 </div>
                 <div class="consoleAvatarActions">
-                  <input id="avatarFile" class="consoleInput" type="file" accept="image/*" />
+                  <input id="avatarFile" class="consoleInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
                   <div class="consoleActions">
                     <button id="uploadAvatarBtn" class="button primary" type="button">上传</button>
                     <button id="deleteAvatarBtn" class="button" type="button">移除</button>

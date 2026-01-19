@@ -30,6 +30,7 @@ module.exports = {
   nodeEnv: process.env.NODE_ENV || "development",
   jsonBodyLimit: process.env.JSON_BODY_LIMIT || "2mb",
   rawBodyLimitBytes: parseIntEnv("RAW_BODY_LIMIT_BYTES", 50 * 1024 * 1024),
+  storageLimitBytes: parseIntEnv("STORAGE_LIMIT_BYTES", 5 * 1024 * 1024 * 1024),
   corsOrigin: process.env.CORS_ORIGIN || "*",
   storageRoot: path.resolve(process.env.STORAGE_ROOT || path.join(__dirname, "..", "storage")),
   mysql: {

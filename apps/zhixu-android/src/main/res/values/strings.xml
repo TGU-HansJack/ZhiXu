@@ -218,6 +218,8 @@
     <string name="cloud_sync_dialog_subtitle_failed_items_fmt">Failed: %1$d</string>
 
     <string name="cloud_sync_dialog_no_record">No record</string>
+    <string name="cloud_sync_dialog_webdav_status_title">WebDAV service status</string>
+    <string name="cloud_sync_dialog_official_status_title">Official server sync</string>
     <string name="cloud_sync_dialog_this_sync_title">This sync</string>
     <string name="cloud_sync_dialog_item_uploaded_fmt">Uploaded: %1$d</string>
     <string name="cloud_sync_dialog_item_downloaded_fmt">Downloaded: %1$d</string>
@@ -265,6 +267,7 @@
     <string name="account_fetch_profile_failed">Fetch profile failed</string>
     <string name="account_register_failed">Register failed</string>
     <string name="account_avatar">Avatar</string>
+    <string name="account_avatar_remove">Remove avatar</string>
     <string name="account_nickname">Nickname</string>
     <string name="account_change_password">Change password</string>
     <string name="account_current_password">Current password</string>
@@ -274,6 +277,10 @@
     <string name="account_password_changed">Password changed</string>
     <string name="account_password_change_failed">Change password failed</string>
     <string name="account_avatar_pick_failed">Failed to pick image</string>
+    <string name="account_avatar_crop_title">Crop avatar</string>
+    <string name="account_avatar_crop_cancelled_title">Cropping canceled</string>
+    <string name="account_avatar_crop_cancelled_desc">Use the original image as avatar?</string>
+    <string name="account_avatar_use_original">Use original</string>
     <string name="account_avatar_permission_denied">Permission denied</string>
     <string name="account_email_code">Email verification code</string>
     <string name="account_send_code">Send</string>
@@ -293,8 +300,24 @@
     <string name="device_list_failed">Load devices failed</string>
     <string name="device_logout_failed">Logout failed</string>
 
+    <string name="account_sync_logs_title">Sync records</string>
+    <string name="account_sync_logs_empty">No sync records</string>
+    <string name="account_sync_logs_failed">Load sync records failed</string>
+    <string name="account_sync_logs_action_changes_snapshot">Changes (snapshot)</string>
+    <string name="account_sync_logs_action_changes_delta">Changes (delta)</string>
+
     <string name="action_confirm">Confirm</string>
-    <string name="account_storage_title">Storage plan</string>
+    <string name="account_storage_title">Storage</string>
+    <string name="account_storage_used">Storage used</string>
+    <string name="account_storage_used_subtitle_fmt">%1$s / %2$s</string>
+    <string name="account_storage_file_count">Files</string>
+    <string name="account_storage_last_updated">Last updated</string>
+    <string name="account_storage_export">Export</string>
+    <string name="account_storage_export_desc">Export server Vault as a ZIP (includes zhixu-export.json manifest).</string>
+    <string name="account_storage_export_failed">Export failed</string>
+    <string name="account_storage_export_share">Share export</string>
+    <string name="account_storage_failed">Load storage failed</string>
+    <string name="account_storage_empty">No data</string>
     <string name="account_storage_select">Select</string>
     <string name="account_storage_select_plan">Choose plan</string>
     <string name="account_storage_selected">Selected: %1$s</string>
