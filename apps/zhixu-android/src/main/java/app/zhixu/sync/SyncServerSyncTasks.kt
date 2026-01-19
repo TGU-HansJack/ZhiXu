@@ -394,7 +394,8 @@ class SyncServerSyncTaskManager(
                     val key = "${op.kind.name}|${op.path}"
                     val res = resultsByKey[key]
                     when {
-                        res != null && res.ok -> op.copy(state = SyncServerSyncTaskOpState.DONE, error = null)
+                        res != null && res.state == SyncServerSyncTaskOpState.DONE -> op.copy(state = SyncServerSyncTaskOpState.DONE, error = null)
+                        res != null && res.state == SyncServerSyncTaskOpState.SKIPPED -> op.copy(state = SyncServerSyncTaskOpState.SKIPPED, error = res.error)
                         res != null -> op.copy(state = SyncServerSyncTaskOpState.FAILED, error = res.error)
                         !errorText.isNullOrBlank() -> op.copy(state = SyncServerSyncTaskOpState.FAILED, error = errorText)
                         else -> op

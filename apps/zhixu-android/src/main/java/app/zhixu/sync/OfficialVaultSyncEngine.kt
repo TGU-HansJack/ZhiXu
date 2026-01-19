@@ -6,6 +6,7 @@ import androidx.documentfile.provider.DocumentFile
 import app.zhixu.data.VaultRepository
 import app.zhixu.data.vaultRootToDocumentFile
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -37,7 +38,7 @@ data class SyncServerSyncPlan(
 
 data class SyncServerSyncObservedOpResult(
     val op: SyncServerPlannedOp,
-    val ok: Boolean,
+    val state: SyncServerSyncTaskOpState,
     val error: String?,
 )
 
@@ -184,6 +185,8 @@ class OfficialVaultSyncEngine(
                 failed++
                 continue
             }
+            // Server rejects empty body; also protects against transient truncate windows.
+            if (bytes.isEmpty()) continue
             val sha = sha256Hex(bytes)
             if (st != null && !st.deleted && st.sha256.isNotBlank() && st.sha256 == sha) continue
 
@@ -323,7 +326,7 @@ class OfficialVaultSyncEngine(
             var failed = 0
 
             for (op in normalizedExpected) {
-                var ok = false
+                var opState = SyncServerSyncTaskOpState.FAILED
                 var err: String? = null
                 try {
                     when (op.kind) {
@@ -332,9 +335,13 @@ class OfficialVaultSyncEngine(
                             if (local == null) {
                                 err = "Missing local file"
                             } else {
-                                val bytes = repository.readBytes(local.file.uri)
+                                val bytes = readBytesForUpload(local.file.uri, maxAttempts = 4)
                                 if (bytes == null) {
                                     err = "Failed to read local file"
+                                } else if (bytes.isEmpty()) {
+                                    // Server rejects empty body; most commonly observed during new-file creation or truncate+rewrite windows.
+                                    opState = SyncServerSyncTaskOpState.SKIPPED
+                                    err = "Empty local file; skipped upload"
                                 } else {
                                     val baseRev = state.files[op.path]?.baseRev ?: 0L
                                     val put =
@@ -342,21 +349,22 @@ class OfficialVaultSyncEngine(
                                             baseUrl = baseUrl,
                                             token = token,
                                             path = op.path,
-                                            mtimeMs = local.lastModifiedEpochMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                                            mtimeMs = repository.getDocumentLastModified(local.file.uri).takeIf { it > 0L } ?: System.currentTimeMillis(),
                                             bytes = bytes,
                                             baseRev = baseRev,
                                         )
                                     if (put.ok && put.value != null) {
                                         uploaded++
+                                        val localMtime = repository.getDocumentLastModified(local.file.uri).takeIf { it > 0L } ?: local.lastModifiedEpochMs
                                         state =
                                             state.withUploaded(
                                                 op.path,
                                                 rev = put.value.rev,
                                                 sha256 = put.value.sha256,
                                                 size = bytes.size.toLong(),
-                                                localMtimeMs = local.lastModifiedEpochMs,
+                                                localMtimeMs = localMtime,
                                             )
-                                        ok = true
+                                        opState = SyncServerSyncTaskOpState.DONE
                                     } else if (put.statusCode == 409) {
                                         conflicts++
                                         logger.conflict(op.path, "rev_conflict")
@@ -370,21 +378,22 @@ class OfficialVaultSyncEngine(
                                                     baseUrl = baseUrl,
                                                     token = token,
                                                     path = op.path,
-                                                    mtimeMs = local.lastModifiedEpochMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                                                    mtimeMs = repository.getDocumentLastModified(local.file.uri).takeIf { it > 0L } ?: System.currentTimeMillis(),
                                                     bytes = bytes,
                                                     baseRev = remote.rev,
                                                 )
                                             if (retry.ok && retry.value != null) {
                                                 uploaded++
+                                                val localMtime = repository.getDocumentLastModified(local.file.uri).takeIf { it > 0L } ?: local.lastModifiedEpochMs
                                                 state =
                                                     state.withUploaded(
                                                         op.path,
                                                         rev = retry.value.rev,
                                                         sha256 = retry.value.sha256,
                                                         size = bytes.size.toLong(),
-                                                        localMtimeMs = local.lastModifiedEpochMs,
+                                                        localMtimeMs = localMtime,
                                                     )
-                                                ok = true
+                                                opState = SyncServerSyncTaskOpState.DONE
                                             } else {
                                                 err = retry.errorMessage ?: "Upload conflict"
                                             }
@@ -426,7 +435,7 @@ class OfficialVaultSyncEngine(
                                             size = remote.bytes.size.toLong(),
                                             lastModifiedEpochMs = localMtime,
                                         )
-                                    ok = true
+                                    opState = SyncServerSyncTaskOpState.DONE
                                 }
                             }
                         }
@@ -437,11 +446,11 @@ class OfficialVaultSyncEngine(
                             if (del.ok && del.value != null) {
                                 deletedRemote++
                                 state = state.withDeleted(op.path, rev = del.value.rev)
-                                ok = true
+                                opState = SyncServerSyncTaskOpState.DONE
                             } else if (del.statusCode == 404) {
                                 deletedRemote++
                                 state = state.withDeleted(op.path, rev = remoteMeta[op.path]?.rev ?: baseRev)
-                                ok = true
+                                opState = SyncServerSyncTaskOpState.DONE
                             } else if (del.statusCode == 409) {
                                 conflicts++
                                 logger.conflict(op.path, "delete_rev_conflict")
@@ -450,7 +459,7 @@ class OfficialVaultSyncEngine(
                                     meta != null && meta.deleted -> {
                                         deletedRemote++
                                         state = state.withDeleted(op.path, rev = meta.rev)
-                                        ok = true
+                                        opState = SyncServerSyncTaskOpState.DONE
                                     }
 
                                     meta != null -> {
@@ -459,13 +468,13 @@ class OfficialVaultSyncEngine(
                                             retry.ok && retry.value != null -> {
                                                 deletedRemote++
                                                 state = state.withDeleted(op.path, rev = retry.value.rev)
-                                                ok = true
+                                                opState = SyncServerSyncTaskOpState.DONE
                                             }
 
                                             retry.statusCode == 404 -> {
                                                 deletedRemote++
                                                 state = state.withDeleted(op.path, rev = meta.rev)
-                                                ok = true
+                                                opState = SyncServerSyncTaskOpState.DONE
                                             }
 
                                             else -> {
@@ -494,7 +503,7 @@ class OfficialVaultSyncEngine(
                                 val remoteRev = remoteMeta[op.path]?.rev ?: state.files[op.path]?.baseRev ?: 0L
                                 deletedLocal++
                                 state = state.withDeleted(op.path, rev = remoteRev)
-                                ok = true
+                                opState = SyncServerSyncTaskOpState.DONE
                             }
                         }
 
@@ -504,9 +513,13 @@ class OfficialVaultSyncEngine(
                             if (local == null) {
                                 err = "Missing local file"
                             } else {
-                                val localBytes = repository.readBytes(local.file.uri)
+                                val localBytes = readBytesForUpload(local.file.uri, maxAttempts = 4)
                                 if (localBytes == null) {
                                     err = "Failed to read local file"
+                                } else if (localBytes.isEmpty()) {
+                                    // If local is empty, we cannot resolve via "local wins" upload; defer to next sync.
+                                    opState = SyncServerSyncTaskOpState.SKIPPED
+                                    err = "Empty local file; skipped conflict resolution"
                                 } else {
                                     val remoteRes = SyncServerClient.downloadVaultFileV2(baseUrl, token, op.path)
                                     val remote = remoteRes.value
@@ -529,21 +542,22 @@ class OfficialVaultSyncEngine(
                                             baseUrl = baseUrl,
                                             token = token,
                                             path = op.path,
-                                            mtimeMs = local.lastModifiedEpochMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                                            mtimeMs = repository.getDocumentLastModified(local.file.uri).takeIf { it > 0L } ?: System.currentTimeMillis(),
                                             bytes = localBytes,
                                             baseRev = remoteRev,
                                         )
                                     if (put.ok && put.value != null) {
                                         uploaded++
+                                        val localMtime = repository.getDocumentLastModified(local.file.uri).takeIf { it > 0L } ?: local.lastModifiedEpochMs
                                         state =
                                             state.withUploaded(
                                                 op.path,
                                                 rev = put.value.rev,
                                                 sha256 = put.value.sha256,
                                                 size = localBytes.size.toLong(),
-                                                localMtimeMs = local.lastModifiedEpochMs,
+                                                localMtimeMs = localMtime,
                                             )
-                                        ok = true
+                                        opState = SyncServerSyncTaskOpState.DONE
                                     } else {
                                         err = put.errorMessage ?: "Conflict resolution failed"
                                     }
@@ -555,10 +569,10 @@ class OfficialVaultSyncEngine(
                     err = e.message ?: e.javaClass.simpleName
                 }
 
-                if (!ok) {
+                if (opState == SyncServerSyncTaskOpState.FAILED) {
                     failed++
                 }
-                observer?.invoke(SyncServerSyncObservedOpResult(op = op, ok = ok, error = err))
+                observer?.invoke(SyncServerSyncObservedOpResult(op = op, state = opState, error = err))
             }
 
             if (!includeIndexSqlite) {
@@ -837,19 +851,25 @@ class OfficialVaultSyncEngine(
                 val st = state.files[local.path]
                 if (st != null && !st.deleted && isProbablySame(local, st)) continue
 
-                val bytes = repository.readBytes(local.file.uri)
+                val bytes = readBytesForUpload(local.file.uri, maxAttempts = 4)
                 if (bytes == null) {
                     failed++
                     continue
                 }
+                // Server rejects empty body; also avoids uploading during truncate+rewrite windows.
+                if (bytes.isEmpty()) continue
                 val sha = sha256Hex(bytes)
                 if (st != null && !st.deleted && st.sha256.isNotBlank() && st.sha256 == sha) continue
 
                 val baseRev = st?.baseRev ?: 0L
-                val put = SyncServerClient.uploadVaultFileV2(baseUrl, token, local.path, local.lastModifiedEpochMs, bytes, baseRev = baseRev)
+                val mtimeMs =
+                    repository.getDocumentLastModified(local.file.uri).takeIf { it > 0L }
+                        ?: local.lastModifiedEpochMs.takeIf { it > 0L }
+                        ?: System.currentTimeMillis()
+                val put = SyncServerClient.uploadVaultFileV2(baseUrl, token, local.path, mtimeMs, bytes, baseRev = baseRev)
                 if (put.ok && put.value != null) {
                     uploaded++
-                    state = state.withUploaded(local.path, rev = put.value.rev, sha256 = put.value.sha256, size = bytes.size.toLong(), localMtimeMs = local.lastModifiedEpochMs)
+                    state = state.withUploaded(local.path, rev = put.value.rev, sha256 = put.value.sha256, size = bytes.size.toLong(), localMtimeMs = mtimeMs)
                 } else if (put.statusCode == 409) {
                     conflicts++
                     logger.conflict(local.path, "rev_conflict")
@@ -1106,6 +1126,22 @@ class OfficialVaultSyncEngine(
         walk(root, "")
 
         return out
+    }
+
+    private suspend fun readBytesForUpload(
+        uri: Uri,
+        maxAttempts: Int = 3,
+    ): ByteArray? {
+        val attempts = maxAttempts.coerceAtLeast(1)
+        var backoffMs = 60L
+        repeat(attempts) { attempt ->
+            val bytes = repository.readBytes(uri) ?: return null
+            if (bytes.isNotEmpty() || attempt == attempts - 1) return bytes
+            // Common during truncate+rewrite saves: file is momentarily 0 bytes.
+            delay(backoffMs)
+            backoffMs = (backoffMs * 2).coerceAtMost(250L)
+        }
+        return null
     }
 
     private suspend fun sameContent(local: OfficialLocalEntry, remote: OfficialRemoteEntry): Boolean {

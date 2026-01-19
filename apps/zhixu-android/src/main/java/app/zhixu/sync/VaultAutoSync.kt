@@ -7,6 +7,7 @@ import app.zhixu.data.SyncPreferences
 import app.zhixu.data.VaultRepository
 import app.zhixu.data.vaultRootToDocumentFile
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -140,7 +141,13 @@ object VaultAutoSync {
         val lease = SyncServerSyncRuntime.begin()
         try {
             val fileUri = repository.resolveVaultFileUri(vaultRootUri, relativePath) ?: return
-            val bytes = withContext(Dispatchers.IO) { repository.readBytes(fileUri) } ?: return
+            var bytes = withContext(Dispatchers.IO) { repository.readBytes(fileUri) } ?: return
+            // Server rejects empty body; also covers transient truncate windows right after save/rename.
+            if (bytes.isEmpty()) {
+                delay(80)
+                bytes = withContext(Dispatchers.IO) { repository.readBytes(fileUri) } ?: return
+                if (bytes.isEmpty()) return
+            }
             val mtimeMs = repository.getDocumentLastModified(fileUri).takeIf { it > 0 } ?: now
             withContext(Dispatchers.IO) {
                 val store = OfficialVaultSyncStateStore(context, repository)
@@ -180,6 +187,7 @@ object VaultAutoSync {
         localBytes: ByteArray,
         localMtimeMs: Long,
     ) {
+        if (localBytes.isEmpty()) return
         repository.ensureVaultStructure(rootUri)
         val root = vaultRootToDocumentFile(context, rootUri) ?: return
 
