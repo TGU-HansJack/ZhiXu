@@ -32,6 +32,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.zhixu.ui.Ionicons
 
@@ -45,6 +46,7 @@ fun ZhixuTextField(
     value: String,
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    height: Dp = ZhixuTextFieldDefaults.height,
     enabled: Boolean = true,
     readOnly: Boolean = false,
     singleLine: Boolean = true,
@@ -101,7 +103,7 @@ fun ZhixuTextField(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(ZhixuTextFieldDefaults.height)
+                    .height(height)
                     .border(width = 1.dp, color = borderColor, shape = shape)
                     .clip(shape)
                     .padding(horizontal = 12.dp),

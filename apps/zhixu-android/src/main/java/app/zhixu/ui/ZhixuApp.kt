@@ -49,8 +49,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -73,26 +71,32 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.core.os.LocaleListCompat
 import coil.compose.AsyncImage
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -111,6 +115,7 @@ import app.zhixu.R
 import app.zhixu.data.AccountPreferences
 import app.zhixu.data.AccountState
 import app.zhixu.data.DocumentIndex
+import app.zhixu.data.SearchResult
 import app.zhixu.data.SyncPreferences
 import app.zhixu.data.ThirdPartyServiceConfig
 import app.zhixu.data.UiPreferences
@@ -144,6 +149,8 @@ import app.zhixu.sync.SyncServerStorageStats
 import app.zhixu.ui.components.CreateDrawSheetContent
 import app.zhixu.ui.components.CreateMenuSheetContent
 import app.zhixu.ui.components.CreateQuickNewSheetContent
+import app.zhixu.ui.components.HomeSubBar
+import app.zhixu.ui.components.VaultSearchDialog
 import app.zhixu.ui.components.ZhixuCompactDragHandle
 import app.zhixu.ui.components.ZhixuIconButton
 import app.zhixu.ui.components.ZhixuTopAppBar
@@ -159,6 +166,7 @@ import app.zhixu.ui.screens.DeviceManagementScreen
 import app.zhixu.ui.screens.DocumentListScreen
 import app.zhixu.ui.screens.DrawScreen
 import app.zhixu.ui.screens.EditorScreen
+import app.zhixu.ui.screens.HomeFeatureHubScreen
 import app.zhixu.ui.screens.ImagePreviewScreen
 import app.zhixu.ui.screens.LongImageScreen
 import app.zhixu.ui.screens.NewDocScreen
@@ -186,7 +194,9 @@ import app.zhixu.ui.screens.VaultGateScreen
 import app.zhixu.ui.screens.VaultSettingsScreen
 import app.zhixu.ui.screens.WorkshopScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -1239,9 +1249,39 @@ fun ZhixuApp(
     var dirStructureMutationToken by remember { mutableLongStateOf(0L) }
     var dirStructureMutation by remember { mutableStateOf<DocListMutation?>(null) }
 
+    var globalSearchOpen by remember { mutableStateOf(false) }
+    var globalSearchQuery by remember { mutableStateOf("") }
+    var globalSearchResults by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
+    var globalSearchJob by remember { mutableStateOf<Job?>(null) }
+    val globalSearchHighlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+
     var selectedDocUris by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedTasks by remember { mutableStateOf<Set<TaskKey>>(emptySet()) }
     var selectedSpaceEntryUris by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    fun clearGlobalSearch() {
+        globalSearchQuery = ""
+        globalSearchResults = emptyList()
+        globalSearchJob?.cancel()
+        globalSearchJob = null
+    }
+
+    fun updateGlobalSearchQuery(newQuery: String) {
+        globalSearchQuery = newQuery
+        globalSearchJob?.cancel()
+        globalSearchJob =
+            scope.launch {
+                delay(200)
+                if (globalSearchQuery.isBlank()) {
+                    globalSearchResults = emptyList()
+                    return@launch
+                }
+                globalSearchResults =
+                    withContext(Dispatchers.IO) {
+                        repository.search(rootUri = null, query = globalSearchQuery).take(50)
+                    }
+            }
+    }
 
     fun <T> toggleSelection(current: Set<T>, item: T): Set<T> = if (item in current) current - item else current + item
 
@@ -1261,6 +1301,79 @@ fun ZhixuApp(
     val docsSelectionMode = currentRoute == "home" && selectedDocUris.isNotEmpty()
     val pinnedDocUriSet = remember(pinnedDocUris) { pinnedDocUris.toHashSet() }
     val docsSelectionAllPinned = docsSelectionMode && selectedDocUris.all { it in pinnedDocUriSet }
+
+    val homePagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 0, pageCount = { 2 })
+    val settledHomePage by remember { derivedStateOf { homePagerState.settledPage } }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val homeBarHeightPx = remember(density) { with(density) { ZhixuTopBarContentHeight.toPx() } }
+    var homeTopBarOffsetPx by remember { mutableFloatStateOf(0f) }
+    var homeSubBarOffsetPx by remember { mutableFloatStateOf(0f) }
+    val homeCollapsingEnabledState = rememberUpdatedState(currentRoute == "home" && !docsSelectionMode)
+
+    val homeBarsNestedScrollConnection =
+        remember(homeBarHeightPx) {
+            object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+                private fun consume(deltaY: Float): Float {
+                    if (!homeCollapsingEnabledState.value) return 0f
+                    if (deltaY == 0f) return 0f
+
+                    var consumed = 0f
+                    if (deltaY < 0f) {
+                        // Scroll up: collapse sub-bar first, then top bar.
+                        val prevSub = homeSubBarOffsetPx
+                        val nextSub = (prevSub + deltaY).coerceIn(-homeBarHeightPx, 0f)
+                        val consumedSub = nextSub - prevSub
+                        homeSubBarOffsetPx = nextSub
+                        consumed += consumedSub
+
+                        val remaining = deltaY - consumedSub
+                        if (remaining != 0f) {
+                            val prevTop = homeTopBarOffsetPx
+                            val nextTop = (prevTop + remaining).coerceIn(-homeBarHeightPx, 0f)
+                            val consumedTop = nextTop - prevTop
+                            homeTopBarOffsetPx = nextTop
+                            consumed += consumedTop
+                        }
+                    } else {
+                        // Pull down: expand top bar first, then sub-bar.
+                        val prevTop = homeTopBarOffsetPx
+                        val nextTop = (prevTop + deltaY).coerceIn(-homeBarHeightPx, 0f)
+                        val consumedTop = nextTop - prevTop
+                        homeTopBarOffsetPx = nextTop
+                        consumed += consumedTop
+
+                        val remaining = deltaY - consumedTop
+                        if (remaining != 0f) {
+                            val prevSub = homeSubBarOffsetPx
+                            val nextSub = (prevSub + remaining).coerceIn(-homeBarHeightPx, 0f)
+                            val consumedSub = nextSub - prevSub
+                            homeSubBarOffsetPx = nextSub
+                            consumed += consumedSub
+                        }
+                    }
+                    return consumed
+                }
+
+                override fun onPreScroll(
+                    available: androidx.compose.ui.geometry.Offset,
+                    source: androidx.compose.ui.input.nestedscroll.NestedScrollSource,
+                ): androidx.compose.ui.geometry.Offset = androidx.compose.ui.geometry.Offset(x = 0f, y = consume(available.y))
+
+                override fun onPostScroll(
+                    consumed: androidx.compose.ui.geometry.Offset,
+                    available: androidx.compose.ui.geometry.Offset,
+                    source: androidx.compose.ui.input.nestedscroll.NestedScrollSource,
+                ): androidx.compose.ui.geometry.Offset = androidx.compose.ui.geometry.Offset(x = 0f, y = consume(available.y))
+            }
+        }
+
+    LaunchedEffect(currentRoute, docsSelectionMode) {
+        // Keep Home app bars visible when leaving Home or entering selection mode.
+        if (currentRoute != "home" || docsSelectionMode) {
+            homeTopBarOffsetPx = 0f
+            homeSubBarOffsetPx = 0f
+        }
+    }
 
     val todoPagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 0, pageCount = { 3 })
     val settledTodoPage by remember { derivedStateOf { todoPagerState.settledPage } }
@@ -1391,7 +1504,6 @@ fun ZhixuApp(
     val drawerWidth = configuration.screenWidthDp.dp * (2f / 3f)
     val showMainUi = currentRoute in setOf("home", "tasks", "pomodoro", "space")
     var docListUseGrid by rememberSaveable(vaultRootUriString) { mutableStateOf(false) }
-    var sectionMenuExpanded by remember { mutableStateOf(false) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -1621,8 +1733,35 @@ fun ZhixuApp(
                 containerColor = MaterialTheme.colorScheme.background,
                 topBar = {
                     if (!showMainUi) return@Scaffold
-                    Column {
+                    val isHomeCollapsible = currentRoute == "home" && !docsSelectionMode
+                    val topBarColumnModifier =
+                        if (isHomeCollapsible) {
+                            val statusBarPx = WindowInsets.statusBars.getTop(density).toFloat()
+                            val dividerPx = with(density) { 1.dp.toPx() }
+                            val barsPx =
+                                (2f * homeBarHeightPx + homeTopBarOffsetPx + homeSubBarOffsetPx).coerceIn(0f, 2f * homeBarHeightPx)
+                            val heightDp = with(density) { (statusBarPx + barsPx + dividerPx).toDp() }
+                            Modifier
+                                .fillMaxWidth()
+                                .height(heightDp)
+                                .clipToBounds()
+                                .background(MaterialTheme.colorScheme.surface)
+                        } else {
+                            Modifier
+                        }
+
+                    Column(modifier = topBarColumnModifier) {
+                        if (isHomeCollapsible) {
+                            Spacer(modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars))
+                        }
                         ZhixuTopAppBar(
+                            modifier =
+                                if (isHomeCollapsible) {
+                                    Modifier.offset { IntOffset(x = 0, y = homeTopBarOffsetPx.roundToInt()) }.zIndex(1f)
+                                } else {
+                                    Modifier
+                                },
+                            windowInsets = if (isHomeCollapsible) WindowInsets(0, 0, 0, 0) else WindowInsets.statusBars,
                             containerColor = if (docsSelectionMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
                             title = {
                                 if (docsSelectionMode) {
@@ -1633,68 +1772,21 @@ fun ZhixuApp(
                                         color = MaterialTheme.colorScheme.onPrimary,
                                     )
                                 } else {
-                                    val sectionTitleRes =
-                                        when (currentRoute) {
-                                            "tasks" -> R.string.home_section_todo
-                                            "pomodoro" -> R.string.home_section_pomodoro
-                                            "space" -> R.string.home_section_space
-                                            else -> R.string.home_section_docs_list
-                                        }
-
-                                    Box {
-                                        Row(
-                                            modifier =
-                                                Modifier
-                                                    .clickable { sectionMenuExpanded = true }
-                                                    .padding(horizontal = 6.dp, vertical = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Text(
-                                                text = stringResource(sectionTitleRes),
-                                                style = MaterialTheme.typography.titleMedium,
-                                                maxLines = 1,
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Icon(
-                                                painter = painterResource(Ionicons.ChevronDown),
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(18.dp),
-                                            )
-                                        }
-                                        DropdownMenu(
-                                            expanded = sectionMenuExpanded,
-                                            onDismissRequest = { sectionMenuExpanded = false },
-                                        ) {
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.home_section_docs_list)) },
-                                                onClick = {
-                                                    sectionMenuExpanded = false
-                                                    navigateDocs()
-                                                },
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.home_section_todo)) },
-                                                onClick = {
-                                                    sectionMenuExpanded = false
-                                                    navigateTasks()
-                                                },
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.home_section_pomodoro)) },
-                                                onClick = {
-                                                    sectionMenuExpanded = false
-                                                    navigatePomodoro()
-                                                },
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.home_section_space)) },
-                                                onClick = {
-                                                    sectionMenuExpanded = false
-                                                    navigateSpace()
-                                                },
-                                            )
-                                        }
+                                    val showOnlySearch =
+                                        currentRoute == "tasks" || currentRoute == "pomodoro" || currentRoute == "space"
+                                    if (!showOnlySearch) {
+                                        val sectionTitleRes =
+                                            when (currentRoute) {
+                                                "tasks" -> R.string.home_section_todo
+                                                "pomodoro" -> R.string.home_section_pomodoro
+                                                "space" -> R.string.home_section_space
+                                                else -> R.string.home_section_docs_list
+                                            }
+                                        Text(
+                                            text = stringResource(sectionTitleRes),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            maxLines = 1,
+                                        )
                                     }
                                 }
                             },
@@ -1709,37 +1801,41 @@ fun ZhixuApp(
                                         )
                                     }
                                 } else {
-                                    ZhixuIconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                        if (currentRoute == "home") {
-                                            val uri = accountState.avatarUri
-                                            Box(
-                                                modifier =
-                                                    Modifier
-                                                        .size(36.dp)
-                                                        .clip(CircleShape)
-                                                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                                                contentAlignment = Alignment.Center,
-                                            ) {
-                                                if (uri.isNotBlank()) {
-                                                    AsyncImage(
-                                                        model = uri,
-                                                        contentDescription = null,
-                                                        modifier = Modifier.fillMaxSize(),
-                                                    )
-                                                } else {
-                                                    Text(
-                                                        text = accountState.username.firstOrNull()?.uppercase() ?: "Z",
-                                                        style = MaterialTheme.typography.labelLarge,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    )
+                                    val showOnlySearch =
+                                        currentRoute == "tasks" || currentRoute == "pomodoro" || currentRoute == "space"
+                                    if (!showOnlySearch) {
+                                        ZhixuIconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                            if (currentRoute == "home") {
+                                                val uri = accountState.avatarUri
+                                                Box(
+                                                    modifier =
+                                                        Modifier
+                                                            .size(36.dp)
+                                                            .clip(CircleShape)
+                                                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                                                    contentAlignment = Alignment.Center,
+                                                ) {
+                                                    if (uri.isNotBlank()) {
+                                                        AsyncImage(
+                                                            model = uri,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.fillMaxSize(),
+                                                        )
+                                                    } else {
+                                                        Text(
+                                                            text = accountState.username.firstOrNull()?.uppercase() ?: "Z",
+                                                            style = MaterialTheme.typography.labelLarge,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        )
+                                                    }
                                                 }
+                                            } else {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.ic_lucide_panel_left_open),
+                                                    contentDescription = stringResource(R.string.action_open_drawer),
+                                                    modifier = Modifier.size(ZhixuTopBarIconSize),
+                                                )
                                             }
-                                        } else {
-                                            Icon(
-                                                painter = painterResource(R.drawable.ic_lucide_panel_left_open),
-                                                contentDescription = stringResource(R.string.action_open_drawer),
-                                                modifier = Modifier.size(ZhixuTopBarIconSize),
-                                            )
                                         }
                                     }
                                 }
@@ -1899,7 +1995,7 @@ fun ZhixuApp(
                                                 modifier = Modifier.size(ZhixuTopBarIconSize),
                                             )
                                         }
-                                        ZhixuIconButton(onClick = { docSearchRequestToken += 1L }) {
+                                        ZhixuIconButton(onClick = { globalSearchOpen = true }) {
                                             Icon(
                                                 painter = painterResource(R.drawable.ic_lucide_search),
                                                 contentDescription = stringResource(R.string.action_search),
@@ -1908,9 +2004,38 @@ fun ZhixuApp(
                                         }
                                     }
                                 }
+                                if (currentRoute == "tasks" || currentRoute == "pomodoro" || currentRoute == "space") {
+                                    ZhixuIconButton(onClick = { globalSearchOpen = true }) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_lucide_search),
+                                            contentDescription = stringResource(R.string.action_search),
+                                            modifier = Modifier.size(ZhixuTopBarIconSize),
+                                        )
+                                    }
+                                }
                             },
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        if (currentRoute == "home" && !docsSelectionMode) {
+                            HomeSubBar(
+                                modifier =
+                                    Modifier
+                                        .offset { IntOffset(x = 0, y = (homeTopBarOffsetPx + homeSubBarOffsetPx).roundToInt()) }
+                                        .zIndex(0f),
+                                pagerState = homePagerState,
+                                height = ZhixuTopBarContentHeight,
+                                recentLabel = "最近访问页面",
+                                featureLabel = "功能区列表",
+                            )
+                        }
+                        HorizontalDivider(
+                            modifier =
+                                if (isHomeCollapsible) {
+                                    Modifier.offset { IntOffset(x = 0, y = (homeTopBarOffsetPx + homeSubBarOffsetPx).roundToInt()) }
+                                } else {
+                                    Modifier
+                                },
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                        )
                     }
                 },
                 floatingActionButton = {
@@ -2225,30 +2350,51 @@ fun ZhixuApp(
                     )
                 }
                 composable("home") {
-                    DocumentListScreen(
-                        contentPadding = padding,
-                        vaultRootUri = vaultRootUri,
-                        repository = repository,
-                        documentIndex = documentIndex,
-                        indexUpdater = indexUpdater,
-                        isActive = currentRoute == "home",
-                        searchRequestToken = docSearchRequestToken,
-                        sortFilterRequestToken = docSortFilterRequestToken,
-                        useGridLayout = docListUseGrid,
-                        pinnedDocUris = pinnedDocUris,
-                        onOpenDoc = ::openDoc,
-                        onNewDoc = { navController.navigate("newDoc") },
-                        onChangeVault = {
-                            scope.launch { prefs.setVaultRootUri(null) }
-                            navController.navigate("vault") {
-                                popUpTo("home") { inclusive = true }
-                            }
-                        },
-                        onDocListMutated = ::onDocListMutated,
-                        selectedDocUris = selectedDocUris,
-                        onToggleDocSelection = { uri -> selectedDocUris = toggleSelection(selectedDocUris, uri) },
-                        onClearDocSelection = { selectedDocUris = emptySet() },
-                    )
+                    HorizontalPager(
+                        state = homePagerState,
+                        modifier =
+                            if (docsSelectionMode) {
+                                Modifier.fillMaxSize()
+                            } else {
+                                Modifier.fillMaxSize().nestedScroll(homeBarsNestedScrollConnection)
+                            },
+                    ) { page ->
+                        when (page) {
+                            0 ->
+                                DocumentListScreen(
+                                    contentPadding = padding,
+                                    vaultRootUri = vaultRootUri,
+                                    repository = repository,
+                                    documentIndex = documentIndex,
+                                    indexUpdater = indexUpdater,
+                                    isActive = currentRoute == "home" && settledHomePage == 0,
+                                    searchRequestToken = docSearchRequestToken,
+                                    sortFilterRequestToken = docSortFilterRequestToken,
+                                    useGridLayout = docListUseGrid,
+                                    pinnedDocUris = pinnedDocUris,
+                                    onOpenDoc = ::openDoc,
+                                    onNewDoc = { navController.navigate("newDoc") },
+                                    onChangeVault = {
+                                        scope.launch { prefs.setVaultRootUri(null) }
+                                        navController.navigate("vault") {
+                                            popUpTo("home") { inclusive = true }
+                                        }
+                                    },
+                                    onDocListMutated = ::onDocListMutated,
+                                    selectedDocUris = selectedDocUris,
+                                    onToggleDocSelection = { uri -> selectedDocUris = toggleSelection(selectedDocUris, uri) },
+                                    onClearDocSelection = { selectedDocUris = emptySet() },
+                                )
+
+                            else ->
+                                HomeFeatureHubScreen(
+                                    contentPadding = padding,
+                                    onOpenSpace = ::navigateSpace,
+                                    onOpenTasks = ::navigateTasks,
+                                    onOpenPomodoro = ::navigatePomodoro,
+                                )
+                        }
+                    }
                 }
                 composable("tasks") {
                     TodoPager(
@@ -2713,6 +2859,24 @@ fun ZhixuApp(
             }
         }
 
+    }
+
+    if (globalSearchOpen) {
+        VaultSearchDialog(
+            query = globalSearchQuery,
+            onQueryChange = ::updateGlobalSearchQuery,
+            results = globalSearchResults,
+            highlightBg = globalSearchHighlightBg,
+            onDismiss = {
+                globalSearchOpen = false
+                clearGlobalSearch()
+            },
+            onOpenResult = { uriStr, lineIndex ->
+                globalSearchOpen = false
+                openDoc(uriStr, globalSearchQuery, lineIndex)
+                clearGlobalSearch()
+            },
+        )
     }
 }
 

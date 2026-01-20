@@ -12,11 +12,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -51,6 +54,7 @@ import app.zhixu.R
 import app.zhixu.data.DocSearchResult
 import app.zhixu.data.SearchResult
 import app.zhixu.data.TaskSearchResult
+import app.zhixu.ui.ZhixuTopBarContentHeight
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -101,8 +105,14 @@ fun VaultSearchDialog(
                 shadowElevation = 0.dp,
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
+                    val topBarHeight = ZhixuTopBarContentHeight
+                    val fieldHeight = ZhixuTopBarContentHeight - 16.dp // 8dp top/bottom padding
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(topBarHeight)
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         ZhixuTextField(
@@ -112,8 +122,14 @@ fun VaultSearchDialog(
                             placeholder = { Text(stringResource(R.string.action_search)) },
                             leadingIcon = { Icon(painter = painterResource(app.zhixu.ui.Ionicons.Search), contentDescription = null) },
                             modifier = Modifier.weight(1f).focusRequester(focusRequester),
+                            height = fieldHeight,
                         )
-                        TextButton(onClick = onDismiss) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        TextButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.height(fieldHeight),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        ) {
                             Text(stringResource(R.string.action_cancel))
                         }
                     }
@@ -238,4 +254,3 @@ private fun highlightQuery(text: String, query: String, highlightBg: Color): Ann
         if (pos < text.length) append(text.substring(pos))
     }
 }
-
