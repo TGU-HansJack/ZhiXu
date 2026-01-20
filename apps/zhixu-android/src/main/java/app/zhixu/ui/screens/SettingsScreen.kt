@@ -109,6 +109,8 @@ import app.zhixu.ui.components.ZhixuTextField
 import app.zhixu.ui.components.ZhixuSwitch
 import app.zhixu.sync.OfficialSync
 import app.zhixu.sync.OfficialVaultSyncEngine
+import app.zhixu.sync.SyncServerSyncRuntime
+import app.zhixu.sync.VaultAutoSync
 import app.zhixu.sync.WebDavAutoSyncStateStore
 import app.zhixu.sync.WebDavSyncEngine
 import app.zhixu.sync.WebDavSyncPlan
@@ -1342,6 +1344,7 @@ private fun SyncSettingsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val accountPrefsForDialogs = remember(context) { AccountPreferences(context.applicationContext) }
     val prefs = remember(context) { SyncPreferences(context.applicationContext) }
     val vaultSyncPrefs = remember(context) { VaultSyncPreferences(context.applicationContext) }
     val vaultStorageLocation by vaultSyncPrefs.config.map { it.location }.collectAsState(initial = VaultStorageLocation.LOCAL)
@@ -1363,6 +1366,8 @@ private fun SyncSettingsScreen(
     val webDavAutoSyncEnabled by prefs.webDavAutoSyncEnabled.collectAsState(initial = false)
     val webDavRemoteRootConfirmed by prefs.webDavRemoteRootConfirmed.collectAsState(initial = false)
     val officialSyncEnabled by prefs.officialSyncEnabled.collectAsState(initial = false)
+    val syncServerRunningCount by SyncServerSyncRuntime.runningCount.collectAsState(initial = 0)
+    val syncServerSyncing = syncServerRunningCount > 0
 
     var page by rememberSaveable { mutableStateOf(SyncSettingsPage.Main) }
 
@@ -1396,6 +1401,14 @@ private fun SyncSettingsScreen(
 
     var lastWebDavSummaryLoading by remember { mutableStateOf(false) }
     var lastWebDavSummary by remember { mutableStateOf<String?>(null) }
+
+    var lastSyncServerSummaryLoading by remember { mutableStateOf(false) }
+    var lastSyncServerSummary by remember { mutableStateOf<String?>(null) }
+    var lastSyncServerSummaryEndedAtMs by remember { mutableStateOf(0L) }
+
+    var showSyncServerCloudLogs by remember { mutableStateOf(false) }
+    var showSyncServerStorage by remember { mutableStateOf(false) }
+    var showSyncServerAdvanced by remember { mutableStateOf(false) }
 
     // Legacy (removed entry points) - kept only so existing dialog code compiles; not reachable from Sync Panel.
     var webDavStatus by remember { mutableStateOf<String?>(null) }
@@ -1495,6 +1508,56 @@ private fun SyncSettingsScreen(
                 "$msg · $time"
             }
         lastWebDavSummaryLoading = false
+    }
+
+    suspend fun reloadSyncServerLastSummary() {
+        val root = vaultRootUri ?: run {
+            lastSyncServerSummary = null
+            lastSyncServerSummaryEndedAtMs = 0L
+            return
+        }
+        lastSyncServerSummaryLoading = true
+        try {
+            val (text, endedAt) =
+                withContext(Dispatchers.IO) {
+                    val uri = repository.resolveVaultFileUri(root, ".zhixu/sync/server_last_summary.json") ?: return@withContext (null to 0L)
+                    val raw = runCatching { repository.readText(uri) }.getOrNull().orEmpty().trim()
+                    if (raw.isBlank()) return@withContext (null to 0L)
+                    val obj = runCatching { JSONObject(raw) }.getOrNull() ?: return@withContext (raw to 0L)
+
+                    val recordBaseUrl = obj.optString("baseUrl").orEmpty().trim()
+                    if (recordBaseUrl.isNotBlank() && !recordBaseUrl.equals(OfficialSync.BASE_URL, ignoreCase = true)) {
+                        // Ignore records from other sync-server targets (e.g., third-party service).
+                        return@withContext (null to 0L)
+                    }
+
+                    val ok = obj.optBoolean("ok", false)
+                    val endedAt = obj.optLong("endedAt", 0L)
+                    if (!ok) {
+                        val error = obj.optString("error").ifBlank { "-" }
+                        return@withContext (context.getString(R.string.official_sync_failed, error) to endedAt)
+                    }
+
+                    val uploaded = obj.optInt("uploaded", 0)
+                    val downloaded = obj.optInt("downloaded", 0)
+                    val deletedRemote = obj.optInt("deletedRemote", 0)
+                    val deletedLocal = obj.optInt("deletedLocal", 0)
+                    val conflicts = obj.optInt("conflicts", 0)
+                    val failed = obj.optInt("failed", 0)
+                    (context.getString(R.string.official_sync_ok, uploaded, downloaded, deletedRemote, deletedLocal, conflicts, failed) to endedAt)
+                }
+            lastSyncServerSummary = text
+            lastSyncServerSummaryEndedAtMs = endedAt
+        } finally {
+            lastSyncServerSummaryLoading = false
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(page, vaultRootUri, syncServerRunningCount) {
+        if (page != SyncSettingsPage.OfficialServer) return@LaunchedEffect
+        if (vaultRootUri == null) return@LaunchedEffect
+        if (syncServerRunningCount > 0) return@LaunchedEffect
+        runCatching { reloadSyncServerLastSummary() }
     }
 
     suspend fun reloadWebDavAutoSyncStatus(config: WebDavConfig, automation: WebDavAutomationSettings) {
@@ -1725,6 +1788,26 @@ private fun SyncSettingsScreen(
             settings = webDavAutomation,
             onDismiss = { showWebDavAutomationDialog = false },
         )
+    }
+
+    if (showSyncServerCloudLogs) {
+        FullScreenDialog(onDismiss = { showSyncServerCloudLogs = false }) {
+            AccountSyncLogsScreen(
+                contentPadding = PaddingValues(0.dp),
+                accountPrefs = accountPrefsForDialogs,
+                onBack = { showSyncServerCloudLogs = false },
+            )
+        }
+    }
+
+    if (showSyncServerStorage) {
+        FullScreenDialog(onDismiss = { showSyncServerStorage = false }) {
+            AccountStorageScreen(
+                contentPadding = PaddingValues(0.dp),
+                accountPrefs = accountPrefsForDialogs,
+                onBack = { showSyncServerStorage = false },
+            )
+        }
     }
 
     if (showWebDavPreview && webDavPreviewPlan != null) {
@@ -2089,20 +2172,105 @@ private fun SyncSettingsScreen(
                                 },
                             )
                             HorizontalDivider(color = dividerColor)
-                            SyncServerSyncPanel(
-                                vaultRootUri = vaultRootUri,
-                                repository = repository,
-                                baseUrl = OfficialSync.BASE_URL,
-                                token = accountState.token,
-                                includeIndexSqlite = includeIndexSqlite,
-                                syncReady = officialSyncEnabledEffective && accountState.isLoggedIn && vaultRootUri != null,
-                                syncNotReadyHint =
-                                    when {
-                                        !officialSyncEnabledEffective -> stringResource(R.string.cloud_sync_dialog_official_hint_disabled)
-                                        !accountState.isLoggedIn -> stringResource(R.string.official_sync_not_logged_in)
-                                        else -> null
-                                    },
+
+                            val syncReady = officialSyncEnabledEffective && accountState.isLoggedIn && vaultRootUri != null
+                            val syncNotReadyHint =
+                                when {
+                                    !officialSyncEnabledEffective -> stringResource(R.string.cloud_sync_dialog_official_hint_disabled)
+                                    !accountState.isLoggedIn -> stringResource(R.string.official_sync_not_logged_in)
+                                    else -> null
+                                }
+
+                            val statusText =
+                                when {
+                                    syncServerSyncing -> stringResource(R.string.cloud_sync_state_syncing)
+                                    lastSyncServerSummaryLoading -> stringResource(R.string.common_loading)
+                                    !lastSyncServerSummary.isNullOrBlank() -> lastSyncServerSummary!!
+                                    !syncNotReadyHint.isNullOrBlank() -> syncNotReadyHint
+                                    else -> stringResource(R.string.cloud_sync_dialog_no_record)
+                                }
+                            val statusTime = formatEpochMs(lastSyncServerSummaryEndedAtMs)
+
+                            ListItem(
+                                modifier = Modifier.fillMaxWidth(),
+                                leadingContent = {
+                                    Icon(
+                                        painter = painterResource(Ionicons.Cloud),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                },
+                                headlineContent = { Text(stringResource(R.string.webdav_sync_panel_last_status_title)) },
+                                supportingContent = {
+                                    Text(
+                                        text = statusText.ifBlank { "-" },
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                                trailingContent = {
+                                    Text(
+                                        text = statusTime,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
                             )
+
+                            HorizontalDivider(color = dividerColor)
+
+                            Button(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                                enabled = syncReady && !syncServerSyncing,
+                                onClick = {
+                                    val root = vaultRootUri ?: return@Button
+                                    scope.launch {
+                                        runCatching {
+                                            withContext(Dispatchers.IO) {
+                                                VaultAutoSync.maybeSyncVault(
+                                                    context = context,
+                                                    repository = repository,
+                                                    vaultRootUri = root,
+                                                    force = true,
+                                                )
+                                            }
+                                        }
+                                        runCatching { reloadSyncServerLastSummary() }
+                                    }
+                                },
+                            ) { Text(stringResource(R.string.cloud_sync_dialog_sync_now)) }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                TextButton(onClick = { showSyncServerCloudLogs = true }) {
+                                    Text(stringResource(R.string.account_sync_logs_title))
+                                }
+                                TextButton(onClick = { showSyncServerStorage = true }) {
+                                    Text(stringResource(R.string.account_storage_title))
+                                }
+                                TextButton(onClick = { showSyncServerAdvanced = !showSyncServerAdvanced }) {
+                                    Text(if (showSyncServerAdvanced) "Hide advanced" else "Advanced")
+                                }
+                            }
+
+                            if (showSyncServerAdvanced) {
+                                HorizontalDivider(color = dividerColor)
+                                SyncServerSyncPanel(
+                                    vaultRootUri = vaultRootUri,
+                                    repository = repository,
+                                    baseUrl = OfficialSync.BASE_URL,
+                                    token = accountState.token,
+                                    includeIndexSqlite = includeIndexSqlite,
+                                    syncReady = syncReady,
+                                    syncNotReadyHint = syncNotReadyHint,
+                                )
+                            }
                         }
                     }
                 }

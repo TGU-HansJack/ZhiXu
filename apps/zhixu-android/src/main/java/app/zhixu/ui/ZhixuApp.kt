@@ -1,7 +1,14 @@
 ﻿package app.zhixu.ui
 
+import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkRequest
 import android.net.Uri
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -60,6 +67,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -80,6 +88,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -96,6 +105,8 @@ import androidx.navigation.navArgument
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import app.zhixu.R
 import app.zhixu.data.AccountPreferences
 import app.zhixu.data.AccountState
@@ -129,7 +140,6 @@ import app.zhixu.sync.WebDavSyncTaskTrigger
 import app.zhixu.sync.OfficialSync
 import app.zhixu.sync.SyncServerClient
 import app.zhixu.sync.SyncServerSyncRuntime
-import app.zhixu.sync.SyncServerSyncTaskManager
 import app.zhixu.sync.SyncServerStorageStats
 import app.zhixu.ui.components.CreateDrawSheetContent
 import app.zhixu.ui.components.CreateMenuSheetContent
@@ -735,17 +745,70 @@ fun ZhixuApp(
         }
     }
 
-    LaunchedEffect(
-        vaultRootUriString,
-        vaultSyncConfig.location,
-        accountState.token,
-        officialSyncEnabled,
-        vaultSyncConfig.thirdParty.url,
-        vaultSyncConfig.thirdParty.username,
-        vaultSyncConfig.thirdParty.password,
-    ) {
-        if (vaultSyncConfig.location == VaultStorageLocation.LOCAL && !officialSyncEnabled) return@LaunchedEffect
-        val root = vaultRootUri ?: return@LaunchedEffect
+    // Minimal "auto pull" for sync-server (official server) sync:
+    // - Trigger a two-way sync when the app returns to foreground
+    // - Trigger a two-way sync when network connectivity comes back
+    //
+    // This uses existing `serverCursor`/state in `OfficialVaultSyncEngine.syncVault()` (no protocol changes).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var syncServerForegroundPulse by remember { mutableLongStateOf(0L) }
+    var syncServerNetworkPulse by remember { mutableLongStateOf(0L) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event != Lifecycle.Event.ON_START) return@LifecycleEventObserver
+                syncServerForegroundPulse += 1L
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    DisposableEffect(appContext) {
+        val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        if (cm == null) return@DisposableEffect onDispose { }
+
+        val handler = Handler(Looper.getMainLooper())
+        val callback =
+            object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    // Network callbacks are not guaranteed to be on main; hop before mutating Compose state.
+                    handler.post { syncServerNetworkPulse += 1L }
+                }
+            }
+
+        val registered =
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    cm.registerDefaultNetworkCallback(callback)
+                } else {
+                    cm.registerNetworkCallback(NetworkRequest.Builder().build(), callback)
+                }
+            }.isSuccess
+
+        onDispose {
+            if (registered) runCatching { cm.unregisterNetworkCallback(callback) }
+        }
+    }
+
+    suspend fun maybeAutoPullSyncServer() {
+        // `SyncServerSyncRuntime` is used by both per-file sync (auto upload/delete) and full sync.
+        // Avoid starting a full sync if any sync-server operation is already running.
+        if (syncServerSyncing) return
+
+        // Keep current semantics: in LOCAL mode the user must explicitly enable official sync.
+        if (vaultSyncConfig.location == VaultStorageLocation.LOCAL && !officialSyncEnabled) return
+        // Minimal scope for now: only official server mode(s).
+        if (vaultSyncConfig.location != VaultStorageLocation.LOCAL &&
+            vaultSyncConfig.location != VaultStorageLocation.OFFICIAL_SERVER
+        ) {
+            return
+        }
+
+        // Official server auth currently depends on the account token.
+        if (accountState.token.isBlank()) return
+
+        val root = vaultRootUri ?: return
         try {
             runCatching {
                 VaultAutoSync.maybeSyncVault(
@@ -756,8 +819,31 @@ fun ZhixuApp(
                 )
             }
         } finally {
+            // Always refresh UI status snapshot after any attempt.
             reloadSyncServerUiStatus()
         }
+    }
+
+    LaunchedEffect(syncServerForegroundPulse) {
+        if (syncServerForegroundPulse == 0L) return@LaunchedEffect
+        maybeAutoPullSyncServer()
+    }
+
+    LaunchedEffect(syncServerNetworkPulse) {
+        if (syncServerNetworkPulse == 0L) return@LaunchedEffect
+        maybeAutoPullSyncServer()
+    }
+
+    LaunchedEffect(
+        vaultRootUriString,
+        vaultSyncConfig.location,
+        accountState.token,
+        officialSyncEnabled,
+        vaultSyncConfig.thirdParty.url,
+        vaultSyncConfig.thirdParty.username,
+        vaultSyncConfig.thirdParty.password,
+    ) {
+        maybeAutoPullSyncServer()
     }
 
     LaunchedEffect(
@@ -908,9 +994,17 @@ fun ZhixuApp(
                             (webDavBaseUrl.startsWith("http://") || webDavBaseUrl.startsWith("https://")) &&
                             !webDavSyncing
 
+                    val officialEnabledForManual =
+                        when (vaultSyncConfig.location) {
+                            VaultStorageLocation.LOCAL -> officialSyncEnabled
+                            VaultStorageLocation.OFFICIAL_SERVER -> true
+                            else -> false
+                        }
+
                     val officialReady =
                         root != null &&
                             accountState.token.isNotBlank() &&
+                            officialEnabledForManual &&
                             !syncServerSyncing &&
                             !manualSyncServerWorking
 
@@ -1032,33 +1126,18 @@ fun ZhixuApp(
                                     enabled = officialReady,
                                     onClick = {
                                         val r = root ?: return@TextButton
-                                        manualSyncServerWorking = true
                                         dialogScope.launch {
+                                            manualSyncServerWorking = true
                                             try {
-                                                if (vaultSyncConfig.location == VaultStorageLocation.LOCAL && !officialSyncEnabled) {
-                                                    runCatching { syncPrefs.setOfficialSyncEnabled(true) }
-                                                }
-                                                try {
+                                                runCatching {
                                                     withContext(Dispatchers.IO) {
-                                                        val manager = SyncServerSyncTaskManager(context, repository)
-                                                        manager.generateTask(
-                                                            rootUri = r,
-                                                            baseUrl = OfficialSync.BASE_URL,
-                                                            token = accountState.token,
-                                                            includeIndexSqlite = webDavConfig.includeIndexSqlite,
-                                                            trigger = app.zhixu.sync.SyncServerSyncTaskTrigger.MANUAL,
+                                                        VaultAutoSync.maybeSyncVault(
+                                                            context = context,
+                                                            repository = repository,
+                                                            vaultRootUri = r,
+                                                            force = true,
                                                         )
-                                                        val currentTask = manager.load(r).current
-                                                        if (currentTask != null) {
-                                                            manager.executeCurrentTask(
-                                                                rootUri = r,
-                                                                baseUrl = OfficialSync.BASE_URL,
-                                                                token = accountState.token,
-                                                                includeIndexSqlite = webDavConfig.includeIndexSqlite,
-                                                            )
-                                                        }
                                                     }
-                                                } catch (_: Throwable) {
                                                 }
                                             } finally {
                                                 manualSyncServerWorking = false
