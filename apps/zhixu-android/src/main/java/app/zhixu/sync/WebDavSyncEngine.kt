@@ -3,6 +3,7 @@
 import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
+import app.zhixu.data.VaultFileChangeSource
 import app.zhixu.data.VaultRepository
 import app.zhixu.data.WebDavClient
 import app.zhixu.data.WebDavConfig
@@ -352,6 +353,10 @@ class WebDavSyncEngine(
             var conflicts = 0
             var failed = 0
 
+            // Track successful local filesystem mutations so we can hand them off to the index updater.
+            val localUpsertPaths = LinkedHashSet<String>()
+            val localDeletePaths = LinkedHashSet<String>()
+
             val remoteAllByPath = remoteFiles.filter { !it.isDir }.associateBy { it.path }
             val useUnresolvedConflicts = normalizedExpected == null
             val unresolvedConflicts = if (useUnresolvedConflicts) readUnresolvedConflicts(rootUri) else mutableMapOf()
@@ -445,6 +450,7 @@ class WebDavSyncEngine(
                 if (dryRun) return true to null
                 return try {
                     val ok = downloadFile(root, remoteRootUrl, path, config)
+                    if (ok) localUpsertPaths.add(normalizeOpPath(path))
                     ok to null
                 } catch (e: Throwable) {
                     logger.fileFailed("download", path, e)
@@ -478,7 +484,9 @@ class WebDavSyncEngine(
             suspend fun performDeleteLocal(path: String): Pair<Boolean, String?> {
                 if (dryRun) return true to null
                 return try {
-                    deleteLocalPath(path) to null
+                    val ok = deleteLocalPath(path)
+                    if (ok) localDeletePaths.add(normalizeOpPath(path))
+                    ok to null
                 } catch (e: Throwable) {
                     logger.fileFailed("delete_local", path, e)
                     false to (e.message ?: e.javaClass.simpleName)
@@ -1033,10 +1041,15 @@ class WebDavSyncEngine(
             }
 
             if (!dryRun) {
-                val localMutated = downloaded > 0 || deletedLocal > 0
-                if (localMutated) {
+                // Sync only reports local filesystem mutations; indexing is coordinated by VaultIndexUpdater.
+                if (localUpsertPaths.isNotEmpty() || localDeletePaths.isNotEmpty()) {
                     repository.invalidateDocListCache(rootUri)
-                    runCatching { repository.rebuildIndex(rootUri, forceScan = true) }
+                    repository.reportFileChanges(
+                        rootUri = rootUri,
+                        upsertPaths = localUpsertPaths,
+                        deletePaths = localDeletePaths,
+                        source = VaultFileChangeSource.WEBDAV_SYNC,
+                    )
                 }
             }
 

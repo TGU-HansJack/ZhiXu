@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.LinkedHashSet
 
 class VaultIndexUpdater(
     context: Context,
@@ -30,6 +31,7 @@ class VaultIndexUpdater(
     @Volatile private var vaultRootUri: Uri? = null
     @Volatile private var docsDirUri: Uri? = null
     @Volatile private var pendingObserverChange: Boolean = false
+    @Volatile private var pendingSyncChanges: Boolean = false
     @Volatile private var lastIndexSignalUptimeMs: Long = 0L
 
     private var observer: ContentObserver? = null
@@ -38,14 +40,43 @@ class VaultIndexUpdater(
     private var refreshJob: Job? = null
     private var scheduleJob: Job? = null
     private var coldStartJob: Job? = null
+    private var syncProcessJob: Job? = null
 
     private val _isUpdating = MutableStateFlow(false)
     val isUpdating: StateFlow<Boolean> = _isUpdating.asStateFlow()
+
+    private data class PendingSyncChange(
+        val rootUri: Uri,
+        val upserts: LinkedHashSet<String> = LinkedHashSet(),
+        val deletes: LinkedHashSet<String> = LinkedHashSet(),
+    )
+
+    private val pendingSyncLock = Any()
+    private val pendingSyncByRoot = LinkedHashMap<String, PendingSyncChange>()
 
     init {
         scope.launch {
             repository.indexChanges.collect {
                 lastIndexSignalUptimeMs = SystemClock.uptimeMillis()
+            }
+        }
+
+        // Sync engines should only report "local filesystem changed" events; indexing is coordinated here.
+        scope.launch {
+            repository.fileChanges.collect { batch ->
+                val currentRoot = vaultRootUri ?: return@collect
+                if (batch.rootUri.toString() != currentRoot.toString()) return@collect
+
+                synchronized(pendingSyncLock) {
+                    val key = batch.rootUri.toString()
+                    val pending =
+                        pendingSyncByRoot.getOrPut(key) {
+                            PendingSyncChange(rootUri = batch.rootUri)
+                        }
+                    pending.upserts.addAll(batch.upsertPaths)
+                    pending.deletes.addAll(batch.deletePaths)
+                }
+                scheduleProcessSyncChanges(debounceMs = 350)
             }
         }
     }
@@ -56,6 +87,10 @@ class VaultIndexUpdater(
         if (!prev && canRun && pendingObserverChange) {
             pendingObserverChange = false
             scheduleRefresh(force = false, debounceMs = 600)
+        }
+        if (!prev && canRun && pendingSyncChanges) {
+            pendingSyncChanges = false
+            scheduleProcessSyncChanges(debounceMs = 250)
         }
     }
 
@@ -104,6 +139,10 @@ class VaultIndexUpdater(
         pollJob = null
         registerJob?.cancel()
         registerJob = null
+        syncProcessJob?.cancel()
+        syncProcessJob = null
+        synchronized(pendingSyncLock) { pendingSyncByRoot.clear() }
+        pendingSyncChanges = false
 
         val resolver = appContext.contentResolver
         val existing = observer
@@ -112,6 +151,108 @@ class VaultIndexUpdater(
             scope.launch(Dispatchers.IO) { runCatching { resolver.unregisterContentObserver(existing) } }
         }
         docsDirUri = null
+    }
+
+    private fun scheduleProcessSyncChanges(debounceMs: Long) {
+        syncProcessJob?.cancel()
+        syncProcessJob =
+            scope.launch {
+                if (debounceMs > 0) delay(debounceMs)
+                processPendingSyncChanges()
+            }
+    }
+
+    private fun allAncestorDirs(path: String): Set<String> {
+        val cleaned = path.trim().trimStart('/').replace('\\', '/')
+        val out = LinkedHashSet<String>()
+        out.add("") // Always refresh root so newly-created intermediate directories can appear.
+        var idx = cleaned.indexOf('/')
+        while (idx >= 0) {
+            out.add(cleaned.substring(0, idx + 1))
+            idx = cleaned.indexOf('/', idx + 1)
+        }
+        return out
+    }
+
+    private suspend fun processPendingSyncChanges() {
+        if (!canRunHeavyWork) {
+            pendingSyncChanges = true
+            return
+        }
+
+        // Avoid running incremental sync indexing concurrently with a full rebuild.
+        if (refreshJob?.isActive == true) {
+            pendingSyncChanges = true
+            scheduleProcessSyncChanges(debounceMs = 800)
+            return
+        }
+
+        val pending: List<PendingSyncChange> =
+            synchronized(pendingSyncLock) {
+                if (pendingSyncByRoot.isEmpty()) return
+                val out = pendingSyncByRoot.values.toList()
+                pendingSyncByRoot.clear()
+                out
+            }
+
+        // If we have explicit sync change events, prefer handling them incrementally and avoid
+        // triggering an extra full rebuild that may have been scheduled by filesystem observers.
+        scheduleJob?.cancel()
+        scheduleJob = null
+        pendingObserverChange = false
+
+        val startMs = SystemClock.uptimeMillis()
+        try {
+            _isUpdating.value = true
+            var needsFallbackRebuildAny = false
+            withContext(Dispatchers.IO) {
+                for (entry in pending) {
+                    val root = entry.rootUri
+
+                    // Ensure any later rebuild uses a fresh filesystem listing.
+                    repository.invalidateDocListCache(root)
+
+                    // Incremental index maintenance: delete first, then upsert.
+                    for (path in entry.deletes) {
+                        repository.deleteIndexedVaultFileByRelativePath(rootUri = root, relativePath = path)
+                    }
+
+                    var needsFallbackRebuild = false
+                    for (path in entry.upserts) {
+                        val ok = repository.indexVaultFileByRelativePath(rootUri = root, relativePath = path)
+                        if (!ok) {
+                            // If we couldn't resolve/index an expected doc path, fall back to a full rebuild as a safety net.
+                            val cleaned = path.trim().trimStart('/').replace('\\', '/')
+                            val lower = cleaned.lowercase()
+                            val isInternal = lower == ".zhixu" || lower.startsWith(".zhixu/")
+                            val isIndexable = lower.endsWith(".md") || (lower.endsWith(".zhixu") && lower.length > ".zhixu".length)
+                            if (!isInternal && isIndexable) needsFallbackRebuild = true
+                        }
+                    }
+
+                    // Keep the directory tree cache roughly in-sync (best-effort, directory-local refresh only).
+                    val dirsToRefresh = LinkedHashSet<String>()
+                    for (path in entry.upserts) dirsToRefresh.addAll(allAncestorDirs(path))
+                    for (path in entry.deletes) dirsToRefresh.addAll(allAncestorDirs(path))
+                    for (dir in dirsToRefresh) {
+                        repository.refreshDirIndexForDirectory(
+                            rootUri = root,
+                            parentRelativePath = dir.takeIf { it.isNotBlank() },
+                        )
+                    }
+
+                    if (needsFallbackRebuild) needsFallbackRebuildAny = true
+                }
+            }
+            if (needsFallbackRebuildAny) {
+                // Best-effort safety net: if we couldn't resolve/index some expected paths, do a full rebuild.
+                scheduleRefresh(force = false, debounceMs = 0)
+            }
+        } finally {
+            _isUpdating.value = false
+            val elapsed = SystemClock.uptimeMillis() - startMs
+            if (elapsed < 250) delay(250 - elapsed)
+        }
     }
 
     private fun registerObserver(dirUri: Uri) {

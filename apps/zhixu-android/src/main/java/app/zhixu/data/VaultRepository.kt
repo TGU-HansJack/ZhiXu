@@ -74,12 +74,58 @@ class VaultRepository(
     private val indexChangesInternal = MutableSharedFlow<Long>(replay = 1, extraBufferCapacity = 8)
     val indexChanges: SharedFlow<Long> = indexChangesInternal.asSharedFlow()
 
+    private val fileChangesInternal = MutableSharedFlow<VaultFileChangeBatch>(replay = 0, extraBufferCapacity = 8)
+    val fileChanges: SharedFlow<VaultFileChangeBatch> = fileChangesInternal.asSharedFlow()
+
     fun isIndexBuildInProgress(): Boolean = indexBuildInProgress
     fun isDirIndexBuildInProgress(): Boolean = dirIndexBuildInProgress
 
     private fun signalIndexChanged() {
         indexChangeVersion += 1L
         indexChangesInternal.tryEmit(indexChangeVersion)
+    }
+
+    fun reportFileChanges(batch: VaultFileChangeBatch) {
+        // Best-effort: drop on overflow rather than blocking sync.
+        fileChangesInternal.tryEmit(batch)
+    }
+
+    fun reportFileChanges(
+        rootUri: Uri,
+        upsertPaths: Collection<String>,
+        deletePaths: Collection<String>,
+        source: VaultFileChangeSource,
+    ) {
+        fun norm(raw: String): String =
+            raw
+                .trim()
+                .trimStart('/')
+                .replace('\\', '/')
+
+        val upserts =
+            upsertPaths
+                .asSequence()
+                .map(::norm)
+                .filter { it.isNotBlank() }
+                .distinct()
+                .toList()
+        val deletes =
+            deletePaths
+                .asSequence()
+                .map(::norm)
+                .filter { it.isNotBlank() }
+                .distinct()
+                .toList()
+
+        if (upserts.isEmpty() && deletes.isEmpty()) return
+        reportFileChanges(
+            VaultFileChangeBatch(
+                rootUri = rootUri,
+                upsertPaths = upserts,
+                deletePaths = deletes,
+                source = source,
+            ),
+        )
     }
 
     private data class DocListCacheEntry(
@@ -458,6 +504,105 @@ class VaultRepository(
             current = next
         }
         current.uri
+    }
+
+    private fun isVaultInternalPath(relativePath: String): Boolean {
+        val p = relativePath.trimStart('/').replace('\\', '/')
+        if (p.equals(appConfigDirName, ignoreCase = true)) return true
+        if (p.startsWith("$appConfigDirName/", ignoreCase = true)) return true
+        return false
+    }
+
+    /**
+     * Incrementally index a single vault file by relative path.
+     *
+     * This is intended for sync-driven updates so we don't need to trigger a full rebuild.
+     */
+    suspend fun indexVaultFileByRelativePath(
+        rootUri: Uri,
+        relativePath: String,
+    ): Boolean {
+        val rel = relativePath.trim().trimStart('/').replace('\\', '/')
+        if (rel.isBlank()) return false
+        if (isVaultInternalPath(rel)) return false
+
+        val lower = rel.lowercase()
+        val isMarkdown = lower.endsWith(".md")
+        val isDrawing = lower.endsWith(".zhixu") && lower.length > ".zhixu".length
+        if (!isMarkdown && !isDrawing) return false
+
+        val uri = resolveVaultFileUri(rootUri, rel) ?: return false
+
+        if (isDrawing) {
+            indexDrawingUri(rootUri = rootUri, drawingUri = uri)
+            return true
+        }
+
+        indexDocUri(uri)
+
+        // Best-effort: update the dir-index entry when it exists so the tree can reflect new files quickly.
+        runCatching {
+            val doc =
+                if (uri.scheme.equals("file", ignoreCase = true)) {
+                    uri.path?.let { DocumentFile.fromFile(File(it)) }
+                } else {
+                    DocumentFile.fromSingleUri(context, uri)
+                }
+            if (doc != null) upsertDirIndexEntryForFileIfPresent(rootUri, doc)
+        }
+
+        return true
+    }
+
+    private fun buildSyntheticDocUriForRelativePath(
+        rootUri: Uri,
+        relativePath: String,
+    ): Uri? {
+        val rel = relativePath.trim().trimStart('/').replace('\\', '/')
+        if (rel.isBlank()) return null
+
+        if (rootUri.scheme.equals("file", ignoreCase = true)) {
+            val rootPath = rootUri.path ?: return null
+            return Uri.fromFile(File(rootPath, rel))
+        }
+
+        if (!rootUri.scheme.equals(ContentResolver.SCHEME_CONTENT, ignoreCase = true)) return null
+        val authority = rootUri.authority ?: return null
+
+        val rootId =
+            runCatching {
+                if (DocumentsContract.isTreeUri(rootUri)) {
+                    DocumentsContract.getTreeDocumentId(rootUri)
+                } else {
+                    DocumentsContract.getDocumentId(rootUri)
+                }
+            }.getOrNull()?.trimEnd('/') ?: return null
+
+        val docId = "$rootId/$rel".trimEnd('/')
+        return runCatching {
+            if (DocumentsContract.isTreeUri(rootUri)) {
+                DocumentsContract.buildDocumentUriUsingTree(rootUri, docId)
+            } else {
+                DocumentsContract.buildDocumentUri(authority, docId)
+            }
+        }.getOrNull()
+    }
+
+    /**
+     * Remove an indexed vault file by relative path (even if the local file is already deleted).
+     */
+    suspend fun deleteIndexedVaultFileByRelativePath(
+        rootUri: Uri,
+        relativePath: String,
+    ): Boolean = withContext(Dispatchers.IO) {
+        val rel = relativePath.trim().trimStart('/').replace('\\', '/')
+        if (rel.isBlank()) return@withContext false
+        if (isVaultInternalPath(rel)) return@withContext false
+
+        val docUri = buildSyntheticDocUriForRelativePath(rootUri, rel) ?: return@withContext false
+        runCatching { indexRepository.deleteDocument(docUri) }
+        signalIndexChanged()
+        true
     }
 
     suspend fun ensureVaultDirectory(rootUri: Uri, relativePath: String): Uri = withContext(Dispatchers.IO) {

@@ -3,6 +3,7 @@
 import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
+import app.zhixu.data.VaultFileChangeSource
 import app.zhixu.data.VaultRepository
 import app.zhixu.data.vaultRootToDocumentFile
 import kotlinx.coroutines.Dispatchers
@@ -300,6 +301,10 @@ class OfficialVaultSyncEngine(
             val store = OfficialVaultSyncStateStore(context, repository)
             var state = store.load(rootUri)
 
+            // Track successful local filesystem mutations so we can hand them off to the index updater.
+            val localUpsertPaths = LinkedHashSet<String>()
+            val localDeletePaths = LinkedHashSet<String>()
+
             val onlyPaths = normalizedExpected.map { it.path }.toSet()
             val localByPath =
                 listLocalFiles(root, includeIndexSqlite = includeIndexSqlite)
@@ -420,6 +425,7 @@ class OfficialVaultSyncEngine(
                                     repository.writeBytes(dest.uri, remote.bytes)
                                     val localMtime = repository.getDocumentLastModified(dest.uri)
                                     downloaded++
+                                    localUpsertPaths.add(op.path)
                                     state =
                                         state.withUploaded(
                                             op.path,
@@ -502,6 +508,7 @@ class OfficialVaultSyncEngine(
 
                                 val remoteRev = remoteMeta[op.path]?.rev ?: state.files[op.path]?.baseRev ?: 0L
                                 deletedLocal++
+                                localDeletePaths.add(op.path)
                                 state = state.withDeleted(op.path, rev = remoteRev)
                                 opState = SyncServerSyncTaskOpState.DONE
                             }
@@ -575,8 +582,15 @@ class OfficialVaultSyncEngine(
                 observer?.invoke(SyncServerSyncObservedOpResult(op = op, state = opState, error = err))
             }
 
-            if (!includeIndexSqlite) {
-                runCatching { repository.rebuildIndex(rootUri) }
+            // Sync only reports local filesystem mutations; indexing is coordinated by VaultIndexUpdater.
+            if (localUpsertPaths.isNotEmpty() || localDeletePaths.isNotEmpty()) {
+                repository.invalidateDocListCache(rootUri)
+                repository.reportFileChanges(
+                    rootUri = rootUri,
+                    upsertPaths = localUpsertPaths,
+                    deletePaths = localDeletePaths,
+                    source = VaultFileChangeSource.OFFICIAL_SYNC,
+                )
             }
             runCatching { store.save(rootUri, state) }
 
@@ -661,6 +675,10 @@ class OfficialVaultSyncEngine(
             val store = OfficialVaultSyncStateStore(context, repository)
             var state = store.load(rootUri)
 
+            // Track successful local filesystem mutations so we can hand them off to the index updater.
+            val localUpsertPaths = LinkedHashSet<String>()
+            val localDeletePaths = LinkedHashSet<String>()
+
             fun isProbablySame(local: OfficialLocalEntry, st: OfficialVaultSyncFileState): Boolean {
                 val mtimeClose = local.lastModifiedEpochMs > 0 && st.localMtimeMs > 0 && abs(local.lastModifiedEpochMs - st.localMtimeMs) < 2_000
                 return local.size == st.size && mtimeClose
@@ -706,6 +724,7 @@ class OfficialVaultSyncEngine(
                         val ok = local?.file?.delete() ?: true
                         if (ok) {
                             state = state.withDeleted(normalized, remoteRev)
+                            localDeletePaths.add(normalized)
                             return true
                         }
                         return false
@@ -725,6 +744,7 @@ class OfficialVaultSyncEngine(
                             size = bytes.size.toLong(),
                             localMtimeMs = localMtime,
                         )
+                    localUpsertPaths.add(normalized)
                     return true
                 }
 
@@ -750,6 +770,7 @@ class OfficialVaultSyncEngine(
                             size = remote.bytes.size.toLong(),
                             localMtimeMs = localMtime,
                         )
+                    localUpsertPaths.add(normalized)
                     return true
                 }
 
@@ -942,8 +963,15 @@ class OfficialVaultSyncEngine(
                 }
             }
 
-            if (!includeIndexSqlite) {
-                runCatching { repository.rebuildIndex(rootUri) }
+            // Sync only reports local filesystem mutations; indexing is coordinated by VaultIndexUpdater.
+            if (localUpsertPaths.isNotEmpty() || localDeletePaths.isNotEmpty()) {
+                repository.invalidateDocListCache(rootUri)
+                repository.reportFileChanges(
+                    rootUri = rootUri,
+                    upsertPaths = localUpsertPaths,
+                    deletePaths = localDeletePaths,
+                    source = VaultFileChangeSource.OFFICIAL_SYNC,
+                )
             }
 
             runCatching { store.save(rootUri, state) }
