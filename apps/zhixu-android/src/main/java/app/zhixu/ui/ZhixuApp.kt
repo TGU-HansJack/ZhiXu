@@ -365,6 +365,9 @@ fun ZhixuApp(
     var webDavUiStatus by remember { mutableStateOf<WebDavUiStatusSnapshot?>(null) }
     var webDavAutoSyncStatus by remember { mutableStateOf<WebDavAutoSyncStatusSnapshot?>(null) }
     var syncServerUiStatus by remember { mutableStateOf<SyncServerUiStatusSnapshot?>(null) }
+    var syncServerLatestLogLoading by remember { mutableStateOf(false) }
+    var syncServerLatestLogText by remember { mutableStateOf<String?>(null) }
+    var syncServerLatestLogAtMs by remember { mutableStateOf(0L) }
     var officialStorageStats by remember { mutableStateOf<SyncServerStorageStats?>(null) }
     var officialStorageStatsLoading by remember { mutableStateOf(false) }
     var officialStorageStatsError by remember { mutableStateOf<String?>(null) }
@@ -578,6 +581,47 @@ fun ZhixuApp(
         syncServerUiStatus = SyncServerUiStatusSnapshot(level = level, text = text, endedAtMs = endedAt, summary = summary)
     }
 
+    suspend fun reloadSyncServerLatestLogForDialog() {
+        // Account sync logs are only supported on the official server endpoint.
+        if (vaultSyncConfig.location == VaultStorageLocation.THIRD_PARTY_SERVICE) {
+            syncServerLatestLogLoading = false
+            syncServerLatestLogText = null
+            syncServerLatestLogAtMs = 0L
+            return
+        }
+
+        val token = accountState.token.trim()
+        if (token.isBlank()) {
+            syncServerLatestLogLoading = false
+            syncServerLatestLogText = null
+            syncServerLatestLogAtMs = 0L
+            return
+        }
+
+        syncServerLatestLogLoading = true
+        try {
+            val res = SyncServerClient.listSyncLogs(OfficialSync.BASE_URL, token = token, limit = 1)
+            val log = res.value?.firstOrNull()
+            if (log != null) {
+                syncServerLatestLogText = SyncLogUi.formatLatestStatus(context, log)
+                syncServerLatestLogAtMs = log.createdAtMs
+                return
+            }
+            syncServerLatestLogText =
+                when {
+                    res.statusCode == 0 || res.errorMessage == "NETWORK_UNREACHABLE" -> context.getString(R.string.error_server_unreachable)
+                    !res.errorMessage.isNullOrBlank() -> res.errorMessage
+                    else -> null
+                }
+            syncServerLatestLogAtMs = 0L
+        } catch (e: Throwable) {
+            syncServerLatestLogText = e.message ?: e.javaClass.simpleName
+            syncServerLatestLogAtMs = 0L
+        } finally {
+            syncServerLatestLogLoading = false
+        }
+    }
+
     suspend fun reloadOfficialStorageStatsForDialog() {
         val enabled =
             vaultSyncConfig.location == VaultStorageLocation.OFFICIAL_SERVER ||
@@ -699,6 +743,10 @@ fun ZhixuApp(
             val syncing = count > 0
             if (wasSyncing && !syncing) {
                 reloadSyncServerUiStatus()
+                // Avoid hitting the network unless the user is actively viewing the sync dialog.
+                if (showCloudSyncStatusDialog) {
+                    reloadSyncServerLatestLogForDialog()
+                }
             }
             wasSyncing = syncing
         }
@@ -724,6 +772,7 @@ fun ZhixuApp(
         reloadWebDavUiStatus()
         reloadWebDavAutoSyncStatusForDialog()
         reloadSyncServerUiStatus()
+        reloadSyncServerLatestLogForDialog()
         reloadOfficialStorageStatsForDialog()
     }
 
@@ -1023,9 +1072,12 @@ fun ZhixuApp(
                             root == null -> stringResource(R.string.cloud_sync_status_not_configured)
                             syncServerSyncing -> stringResource(R.string.cloud_sync_state_syncing)
                             accountState.token.isBlank() -> stringResource(R.string.account_not_logged_in_short)
-                            vaultSyncConfig.location == VaultStorageLocation.LOCAL && !officialSyncEnabled && syncServerUiStatus?.text.isNullOrBlank() ->
+                            vaultSyncConfig.location == VaultStorageLocation.THIRD_PARTY_SERVICE ->
+                                syncServerUiStatus?.text?.ifBlank { null } ?: stringResource(R.string.cloud_sync_dialog_no_record)
+                            syncServerLatestLogLoading -> stringResource(R.string.common_loading)
+                            !syncServerLatestLogText.isNullOrBlank() -> syncServerLatestLogText!!
+                            vaultSyncConfig.location == VaultStorageLocation.LOCAL && !officialSyncEnabled ->
                                 stringResource(R.string.cloud_sync_dialog_official_hint_disabled)
-                            !syncServerUiStatus?.text.isNullOrBlank() -> syncServerUiStatus?.text.orEmpty()
                             else -> stringResource(R.string.cloud_sync_dialog_no_record)
                         }
 
