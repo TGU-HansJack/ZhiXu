@@ -488,6 +488,10 @@ private fun SpaceSettingsScreen(
 
     var vaultSizeBytes by remember { mutableStateOf<Long?>(null) }
     var vaultSizeLoading by remember { mutableStateOf(false) }
+    var rebuildIndexLoading by remember { mutableStateOf(false) }
+    var rebuildDirIndexLoading by remember { mutableStateOf(false) }
+    var showRebuildIndexDialog by remember { mutableStateOf(false) }
+    var showRebuildDirIndexDialog by remember { mutableStateOf(false) }
 
     suspend fun refreshVaultSize(root: Uri) {
         vaultSizeLoading = true
@@ -686,7 +690,166 @@ private fun SpaceSettingsScreen(
                     )
                 }
             }
+
+            item { Spacer(modifier = Modifier.height(14.dp)) }
+
+            item {
+                SettingsSectionTitle(text = stringResource(R.string.vault_maintenance_title))
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        ListItem(
+                            modifier = Modifier.fillMaxWidth(),
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(Ionicons.RefreshOutline),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            headlineContent = { Text(stringResource(R.string.vault_rebuild_search_index_title)) },
+                            supportingContent = {
+                                Text(
+                                    text = stringResource(R.string.vault_rebuild_search_index_subtitle),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                            trailingContent = {
+                                val running = rebuildIndexLoading || repository.isIndexBuildInProgress()
+                                TextButton(
+                                    enabled = vaultRootUri != null && !running,
+                                    onClick = { showRebuildIndexDialog = true },
+                                ) {
+                                    if (running) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    } else {
+                                        Text(stringResource(R.string.action_rebuild))
+                                    }
+                                }
+                            },
+                        )
+
+                        HorizontalDivider(color = dividerColor)
+
+                        ListItem(
+                            modifier = Modifier.fillMaxWidth(),
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(Ionicons.RefreshOutline),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            headlineContent = { Text(stringResource(R.string.vault_rebuild_dir_index_title)) },
+                            supportingContent = {
+                                Text(
+                                    text = stringResource(R.string.vault_rebuild_dir_index_subtitle),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                            trailingContent = {
+                                val running = rebuildDirIndexLoading || repository.isDirIndexBuildInProgress()
+                                TextButton(
+                                    enabled = vaultRootUri != null && !running,
+                                    onClick = { showRebuildDirIndexDialog = true },
+                                ) {
+                                    if (running) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    } else {
+                                        Text(stringResource(R.string.action_rebuild))
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+            }
         }
+    }
+
+    if (showRebuildIndexDialog) {
+        AlertDialog(
+            onDismissRequest = { showRebuildIndexDialog = false },
+            title = { Text(stringResource(R.string.vault_rebuild_search_index_title)) },
+            text = { Text(stringResource(R.string.vault_rebuild_search_index_confirm_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRebuildIndexDialog = false
+                        val root = vaultRootUri ?: return@TextButton
+                        scope.launch {
+                            rebuildIndexLoading = true
+                            val ok =
+                                withContext(Dispatchers.IO) {
+                                    runCatching {
+                                        repository.invalidateDocListCache(root)
+                                        repository.rebuildIndex(rootUri = root, forceScan = true)
+                                        true
+                                    }.getOrDefault(false)
+                                }
+                            rebuildIndexLoading = false
+                            Toast
+                                .makeText(
+                                    context,
+                                    if (ok) context.getString(R.string.vault_rebuild_done) else context.getString(R.string.common_failed),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                        }
+                    },
+                ) { Text(stringResource(R.string.action_rebuild)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRebuildIndexDialog = false }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+
+    if (showRebuildDirIndexDialog) {
+        AlertDialog(
+            onDismissRequest = { showRebuildDirIndexDialog = false },
+            title = { Text(stringResource(R.string.vault_rebuild_dir_index_title)) },
+            text = { Text(stringResource(R.string.vault_rebuild_dir_index_confirm_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRebuildDirIndexDialog = false
+                        val root = vaultRootUri ?: return@TextButton
+                        scope.launch {
+                            rebuildDirIndexLoading = true
+                            val ok =
+                                withContext(Dispatchers.IO) {
+                                    runCatching {
+                                        repository.ensureDirIndexBuilt(root, force = true)
+                                        true
+                                    }.getOrDefault(false)
+                                }
+                            rebuildDirIndexLoading = false
+                            Toast
+                                .makeText(
+                                    context,
+                                    if (ok) context.getString(R.string.vault_rebuild_done) else context.getString(R.string.common_failed),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                        }
+                    },
+                ) { Text(stringResource(R.string.action_rebuild)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRebuildDirIndexDialog = false }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
     }
 }
 

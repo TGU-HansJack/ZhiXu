@@ -36,6 +36,14 @@
     <string name="vault_settings_actual_path_fmt">Actual path: %1$s</string>
     <string name="vault_settings_local_size_fmt">Used storage: %1$s</string>
     <string name="vault_settings_calculating">Calculating…</string>
+    <string name="vault_maintenance_title">Maintenance</string>
+    <string name="vault_rebuild_search_index_title">Rebuild search index</string>
+    <string name="vault_rebuild_search_index_subtitle">Rescan vault files to rebuild search &amp; tasks index.</string>
+    <string name="vault_rebuild_search_index_confirm_message">This rescans vault files and may take a while on large vaults.</string>
+    <string name="vault_rebuild_dir_index_title">Rebuild file tree cache</string>
+    <string name="vault_rebuild_dir_index_subtitle">Rebuild Space folder tree cache (for faster expanding).</string>
+    <string name="vault_rebuild_dir_index_confirm_message">This rescans folders for Space view and may take a while on large vaults.</string>
+    <string name="vault_rebuild_done">Rebuild completed</string>
     <string name="vault_settings_official_title">Official server</string>
     <string name="vault_settings_official_desc_fmt">No configuration required. Server: %1$s</string>
     <string name="vault_settings_third_party_title">Third-party service</string>
@@ -54,6 +62,7 @@
     <string name="docs_title">Docs</string>
     <string name="docs_empty">No documents</string>
     <string name="action_refresh">Refresh</string>
+    <string name="action_rebuild">Rebuild</string>
     <string name="action_settings">Settings</string>
     <string name="action_new_doc">New</string>
     <string name="action_search">Search</string>
@@ -533,6 +542,7 @@
     <!-- Pull-to-refresh -->
     <string name="pull_refresh_refreshing">Refreshing...</string>
     <string name="pull_refresh_updated">Updated</string>
+    <string name="index_refresh_refreshing">Indexing...</string>
 
     <!-- Common -->
     <string name="common_loading">Loading...</string>

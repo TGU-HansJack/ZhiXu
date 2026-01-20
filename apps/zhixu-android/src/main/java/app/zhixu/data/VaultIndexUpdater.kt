@@ -123,10 +123,14 @@ class VaultIndexUpdater(
                 override fun onChange(selfChange: Boolean) {
                     val root = vaultRootUri ?: return
                     val now = SystemClock.uptimeMillis()
+
+                    // Always invalidate the cached doc listing on any observed filesystem change.
+                    // Even if we decide to skip scheduling a rebuild (e.g., self-triggered updates),
+                    // we still want subsequent rebuilds to re-scan the directory and avoid stale paths.
+                    repository.invalidateDocListCache(root)
+
                     val recentIndexSignal = now - lastIndexSignalUptimeMs
                     if (recentIndexSignal in 0..1_500L) return
-
-                    repository.invalidateDocListCache(root)
                     if (!canRunHeavyWork) {
                         pendingObserverChange = true
                         return

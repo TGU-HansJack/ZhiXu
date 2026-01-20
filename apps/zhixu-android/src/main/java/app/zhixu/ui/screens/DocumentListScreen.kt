@@ -123,8 +123,6 @@ import io.noties.markwon.Markwon
 import io.noties.markwon.core.MarkwonTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -189,6 +187,7 @@ fun DocumentListScreen(
     var searchJob by remember { mutableStateOf<Job?>(null) }
     var lastRefreshBannerAtMs by remember(vaultRootUri) { mutableStateOf(0L) }
     var manualRefreshToken by remember(vaultRootUri) { mutableLongStateOf(0L) }
+    var isPullRefreshing by remember(vaultRootUri) { mutableStateOf(false) }
     var showSearchSheet by remember { mutableStateOf(false) }
     var showSortFilterSheet by remember { mutableStateOf(false) }
     var pendingOpenSearch by remember { mutableStateOf(false) }
@@ -362,11 +361,21 @@ fun DocumentListScreen(
         if (!isActive) return@LaunchedEffect
         if (manualRefreshToken <= 0L) return@LaunchedEffect
         if (vaultRootUri == null) return@LaunchedEffect
-        indexUpdater.requestRefresh()
-        // Wait for a full updating cycle so we don't show "Updated" immediately when already idle.
-        indexUpdater.isUpdating.filter { it }.first()
-        indexUpdater.isUpdating.filter { !it }.first()
-        lastRefreshBannerAtMs = SystemClock.uptimeMillis()
+        if (isPullRefreshing) return@LaunchedEffect
+
+        val startMs = SystemClock.uptimeMillis()
+        isPullRefreshing = true
+        try {
+            // Pull-to-refresh: clear UI caches + re-query the local index (fast), without forcing a full re-index.
+            previewCache.clear()
+            drawingPreviewCache.clear()
+            reloadFromIndex()
+            lastRefreshBannerAtMs = SystemClock.uptimeMillis()
+        } finally {
+            val elapsed = SystemClock.uptimeMillis() - startMs
+            if (elapsed < 250) delay(250 - elapsed)
+            isPullRefreshing = false
+        }
     }
 
     fun clearSearch() {
@@ -420,10 +429,10 @@ fun DocumentListScreen(
                 val listBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
                 val pullState = rememberPullToRefreshState()
             PullToRefreshBox(
-                isRefreshing = isActive && isIndexUpdating,
+                isRefreshing = isActive && isPullRefreshing,
                 onRefresh = {
                     if (!isActive) return@PullToRefreshBox
-                    if (isIndexUpdating) return@PullToRefreshBox
+                    if (isPullRefreshing) return@PullToRefreshBox
                     manualRefreshToken += 1L
                 },
                 state = pullState,
@@ -693,8 +702,14 @@ fun DocumentListScreen(
                         }
 
                         RefreshStatusBanner(
-                            isRefreshing = isIndexUpdating,
+                            isRefreshing = isActive && (isPullRefreshing || isIndexUpdating),
                             lastRefreshedAtMs = lastRefreshBannerAtMs,
+                            refreshingTextRes =
+                                if (isPullRefreshing) {
+                                    R.string.pull_refresh_refreshing
+                                } else {
+                                    R.string.index_refresh_refreshing
+                                },
                             modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
                         )
                     }

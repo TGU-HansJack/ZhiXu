@@ -59,9 +59,13 @@ fun CalendarTasksScreen(
 
     var tasks by remember(vaultRootUri) { mutableStateOf<List<UiTask>>(emptyList()) }
     var indexReady by remember(vaultRootUri) { mutableStateOf<Boolean?>(null) }
+    var lastRefreshAtMs by remember(vaultRootUri) { mutableStateOf(0L) }
 
-    suspend fun refresh() {
+    suspend fun refresh(force: Boolean = false) {
         val root = vaultRootUri ?: return
+        val now = android.os.SystemClock.uptimeMillis()
+        if (!force && now - lastRefreshAtMs in 0..500) return
+        lastRefreshAtMs = now
         val (ready, dayTasks) =
             withContext(Dispatchers.IO) {
                 val r = runCatching { repository.hasAnyIndexedDocs() }.getOrDefault(false)
@@ -79,6 +83,14 @@ fun CalendarTasksScreen(
         if (!isActive) return@LaunchedEffect
         if (vaultRootUri == null) return@LaunchedEffect
         refresh()
+    }
+
+    LaunchedEffect(isActive, vaultRootUri, selectedDate) {
+        if (!isActive) return@LaunchedEffect
+        if (vaultRootUri == null) return@LaunchedEffect
+        repository.indexChanges.collect {
+            refresh(force = false)
+        }
     }
 
     LazyColumn(

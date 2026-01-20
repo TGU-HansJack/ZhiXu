@@ -134,9 +134,6 @@ import app.zhixu.sync.VaultAutoSync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -260,11 +257,6 @@ fun TasksScreen(
         if (!isActive) return@LaunchedEffect
         if (manualRefreshToken <= 0L) return@LaunchedEffect
         if (vaultRootUri == null) return@LaunchedEffect
-        if (isIndexUpdating) return@LaunchedEffect
-        indexUpdater.requestRefresh()
-        // Wait for a full updating cycle so we don't show "Updated" immediately when already idle.
-        indexUpdater.isUpdating.filter { it }.first()
-        indexUpdater.isUpdating.filter { !it }.first()
         refresh(force = true, showUpdatedBanner = true)
     }
 
@@ -298,11 +290,11 @@ fun TasksScreen(
         ) {
             val pullState = rememberPullToRefreshState()
             PullToRefreshBox(
-                isRefreshing = isActive && (isIndexUpdating || isPullRefreshing),
+                isRefreshing = isActive && isPullRefreshing,
                 onRefresh = {
                     if (!isActive) return@PullToRefreshBox
                     if (vaultRootUri == null) return@PullToRefreshBox
-                    if (isIndexUpdating || isPullRefreshing) return@PullToRefreshBox
+                    if (isPullRefreshing) return@PullToRefreshBox
                     manualRefreshToken += 1L
                 },
                 state = pullState,
@@ -466,6 +458,12 @@ fun TasksScreen(
                     RefreshStatusBanner(
                         isRefreshing = isActive && (isIndexUpdating || isPullRefreshing),
                         lastRefreshedAtMs = lastRefreshBannerAtMs,
+                        refreshingTextRes =
+                            if (isPullRefreshing) {
+                                R.string.pull_refresh_refreshing
+                            } else {
+                                R.string.index_refresh_refreshing
+                            },
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
                     )
                 }

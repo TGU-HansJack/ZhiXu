@@ -34,6 +34,14 @@
     <string name="vault_settings_actual_path_fmt">实际路径：%1$s</string>
     <string name="vault_settings_local_size_fmt">占用存储：%1$s</string>
     <string name="vault_settings_calculating">计算中…</string>
+    <string name="vault_maintenance_title">维护</string>
+    <string name="vault_rebuild_search_index_title">重建搜索索引</string>
+    <string name="vault_rebuild_search_index_subtitle">重新扫描空间文件，重建搜索与任务索引。</string>
+    <string name="vault_rebuild_search_index_confirm_message">将重新扫描空间文件；如果文档较多，可能需要一些时间。</string>
+    <string name="vault_rebuild_dir_index_title">重建文件树缓存</string>
+    <string name="vault_rebuild_dir_index_subtitle">重建“空间”文件树缓存（用于更快展开）。</string>
+    <string name="vault_rebuild_dir_index_confirm_message">将重新扫描文件夹；如果文件较多，可能需要一些时间。</string>
+    <string name="vault_rebuild_done">重建完成</string>
     <string name="vault_settings_official_title">官方服务器</string>
     <string name="vault_settings_official_desc_fmt">无需配置（选中即启用）。服务器：%1$s</string>
     <string name="vault_settings_third_party_title">第三方服务</string>
@@ -53,6 +61,7 @@
     <string name="docs_title">文档</string>
     <string name="docs_empty">暂无文档</string>
     <string name="action_refresh">刷新</string>
+    <string name="action_rebuild">重建</string>
     <string name="action_settings">设置</string>
     <string name="action_new_doc">新建</string>
     <string name="action_search">搜索</string>
@@ -511,6 +520,7 @@
     <!-- Pull-to-refresh -->
     <string name="pull_refresh_refreshing">刷新中…</string>
     <string name="pull_refresh_updated">已刷新</string>
+    <string name="index_refresh_refreshing">索引整理中…</string>
 
     <!-- Common -->
     <string name="common_loading">加载中…</string>

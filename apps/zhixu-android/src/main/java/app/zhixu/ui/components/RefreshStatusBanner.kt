@@ -1,5 +1,6 @@
-﻿package app.zhixu.ui.components
+package app.zhixu.ui.components
 
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -34,6 +35,8 @@ fun RefreshStatusBanner(
     isRefreshing: Boolean,
     lastRefreshedAtMs: Long,
     modifier: Modifier = Modifier,
+    @StringRes refreshingTextRes: Int = R.string.pull_refresh_refreshing,
+    @StringRes updatedTextRes: Int = R.string.pull_refresh_updated,
 ) {
     var showJustRefreshed by remember { mutableStateOf(false) }
 
@@ -61,17 +64,18 @@ fun RefreshStatusBanner(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (isRefreshing) {
-                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                    Text(text = stringResource(R.string.pull_refresh_refreshing), style = MaterialTheme.typography.bodySmall)
-                } else {
+                // Prefer showing "Updated" briefly after a user refresh even if background work is still running.
+                if (showJustRefreshed) {
                     Icon(
                         painter = painterResource(Ionicons.CheckmarkCircle),
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.primary,
                     )
-                    Text(text = stringResource(R.string.pull_refresh_updated), style = MaterialTheme.typography.bodySmall)
+                    Text(text = stringResource(updatedTextRes), style = MaterialTheme.typography.bodySmall)
+                } else {
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                    Text(text = stringResource(refreshingTextRes), style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
