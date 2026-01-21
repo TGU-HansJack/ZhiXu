@@ -23,6 +23,8 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -88,11 +90,15 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -196,6 +202,7 @@ import app.zhixu.ui.screens.WorkshopScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -1305,6 +1312,7 @@ fun ZhixuApp(
     val homePagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 0, pageCount = { 2 })
     val settledHomePage by remember { derivedStateOf { homePagerState.settledPage } }
     val density = androidx.compose.ui.platform.LocalDensity.current
+    val viewConfig = LocalViewConfiguration.current
     val homeBarHeightPx = remember(density) { with(density) { ZhixuTopBarContentHeight.toPx() } }
     var homeTopBarOffsetPx by remember { mutableFloatStateOf(0f) }
     var homeSubBarOffsetPx by remember { mutableFloatStateOf(0f) }
@@ -1734,6 +1742,7 @@ fun ZhixuApp(
                 topBar = {
                     if (!showMainUi) return@Scaffold
                     val isHomeCollapsible = currentRoute == "home" && !docsSelectionMode
+                    val openDrawerContentDescription = stringResource(R.string.action_open_drawer)
                     val topBarColumnModifier =
                         if (isHomeCollapsible) {
                             val statusBarPx = WindowInsets.statusBars.getTop(density).toFloat()
@@ -1801,39 +1810,30 @@ fun ZhixuApp(
                                         )
                                     }
                                 } else {
-                                    val showOnlySearch =
-                                        currentRoute == "tasks" || currentRoute == "pomodoro" || currentRoute == "space"
-                                    if (!showOnlySearch) {
-                                        ZhixuIconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                            if (currentRoute == "home") {
-                                                val uri = accountState.avatarUri
-                                                Box(
-                                                    modifier =
-                                                        Modifier
-                                                            .size(36.dp)
-                                                            .clip(CircleShape)
-                                                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                                                    contentAlignment = Alignment.Center,
-                                                ) {
-                                                    if (uri.isNotBlank()) {
-                                                        AsyncImage(
-                                                            model = uri,
-                                                            contentDescription = null,
-                                                            modifier = Modifier.fillMaxSize(),
-                                                        )
-                                                    } else {
-                                                        Text(
-                                                            text = accountState.username.firstOrNull()?.uppercase() ?: "Z",
-                                                            style = MaterialTheme.typography.labelLarge,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        )
-                                                    }
-                                                }
+                                    ZhixuIconButton(
+                                        onClick = { scope.launch { drawerState.open() } },
+                                        modifier = Modifier.semantics { contentDescription = openDrawerContentDescription },
+                                    ) {
+                                        val uri = accountState.avatarUri
+                                        Box(
+                                            modifier =
+                                                Modifier
+                                                    .size(36.dp)
+                                                    .clip(CircleShape)
+                                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            if (uri.isNotBlank()) {
+                                                AsyncImage(
+                                                    model = uri,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                )
                                             } else {
-                                                Icon(
-                                                    painter = painterResource(R.drawable.ic_lucide_panel_left_open),
-                                                    contentDescription = stringResource(R.string.action_open_drawer),
-                                                    modifier = Modifier.size(ZhixuTopBarIconSize),
+                                                Text(
+                                                    text = accountState.username.firstOrNull()?.uppercase() ?: "Z",
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 )
                                             }
                                         }
@@ -2361,30 +2361,74 @@ fun ZhixuApp(
                     ) { page ->
                         when (page) {
                             0 ->
-                                DocumentListScreen(
-                                    contentPadding = padding,
-                                    vaultRootUri = vaultRootUri,
-                                    repository = repository,
-                                    documentIndex = documentIndex,
-                                    indexUpdater = indexUpdater,
-                                    isActive = currentRoute == "home" && settledHomePage == 0,
-                                    searchRequestToken = docSearchRequestToken,
-                                    sortFilterRequestToken = docSortFilterRequestToken,
-                                    useGridLayout = docListUseGrid,
-                                    pinnedDocUris = pinnedDocUris,
-                                    onOpenDoc = ::openDoc,
-                                    onNewDoc = { navController.navigate("newDoc") },
-                                    onChangeVault = {
-                                        scope.launch { prefs.setVaultRootUri(null) }
-                                        navController.navigate("vault") {
-                                            popUpTo("home") { inclusive = true }
-                                        }
-                                    },
-                                    onDocListMutated = ::onDocListMutated,
-                                    selectedDocUris = selectedDocUris,
-                                    onToggleDocSelection = { uri -> selectedDocUris = toggleSelection(selectedDocUris, uri) },
-                                    onClearDocSelection = { selectedDocUris = emptySet() },
-                                )
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxSize()
+                                            .pointerInput(docsSelectionMode, settledHomePage) {
+                                                if (docsSelectionMode || settledHomePage != 0) return@pointerInput
+
+                                                val edgeWidthPx = with(density) { 24.dp.toPx() }
+                                                val thresholdPx = with(density) { 72.dp.toPx() }
+                                                val slop = viewConfig.touchSlop
+
+                                                awaitEachGesture {
+                                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                                    val startX = down.position.x
+                                                    val startY = down.position.y
+
+                                                    // Only allow edge-swipe to open the left drawer on the "recent" page.
+                                                    if (startX > edgeWidthPx) return@awaitEachGesture
+
+                                                    while (true) {
+                                                        val event = awaitPointerEvent()
+                                                        val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+                                                        if (!change.pressed) break
+
+                                                        val dx = change.position.x - startX
+                                                        val dy = change.position.y - startY
+
+                                                        // Give up if the gesture is clearly vertical or swiping left (pager).
+                                                        if (abs(dy) > slop && abs(dy) > abs(dx)) break
+                                                        if (dx < -slop) break
+
+                                                        if (dx > thresholdPx) {
+                                                            change.consume()
+                                                            scope.launch { drawerState.open() }
+                                                            break
+                                                        }
+
+                                                        // Once it looks like an edge swipe, keep consuming so pager doesn't steal it.
+                                                        if (dx > slop) change.consume()
+                                                    }
+                                                }
+                                            },
+                                ) {
+                                    DocumentListScreen(
+                                        contentPadding = padding,
+                                        vaultRootUri = vaultRootUri,
+                                        repository = repository,
+                                        documentIndex = documentIndex,
+                                        indexUpdater = indexUpdater,
+                                        isActive = currentRoute == "home" && settledHomePage == 0,
+                                        searchRequestToken = docSearchRequestToken,
+                                        sortFilterRequestToken = docSortFilterRequestToken,
+                                        useGridLayout = docListUseGrid,
+                                        pinnedDocUris = pinnedDocUris,
+                                        onOpenDoc = ::openDoc,
+                                        onNewDoc = { navController.navigate("newDoc") },
+                                        onChangeVault = {
+                                            scope.launch { prefs.setVaultRootUri(null) }
+                                            navController.navigate("vault") {
+                                                popUpTo("home") { inclusive = true }
+                                            }
+                                        },
+                                        onDocListMutated = ::onDocListMutated,
+                                        selectedDocUris = selectedDocUris,
+                                        onToggleDocSelection = { uri -> selectedDocUris = toggleSelection(selectedDocUris, uri) },
+                                        onClearDocSelection = { selectedDocUris = emptySet() },
+                                    )
+                                }
 
                             else ->
                                 HomeFeatureHubScreen(

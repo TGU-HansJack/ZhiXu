@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -21,6 +22,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.pager.PagerState
@@ -34,8 +36,8 @@ fun HomeSubBar(
     recentLabel: String,
     featureLabel: String,
 ) {
-    // 8dp vertical padding so the control height matches the search bar sizing (56 - 8 - 8 = 40).
-    val controlHeight = height - 16.dp
+    val verticalPadding = 12.dp
+    val controlHeight = height - verticalPadding * 2
     val scope = rememberCoroutineScope()
     val shape = RoundedCornerShape(999.dp)
 
@@ -46,13 +48,13 @@ fun HomeSubBar(
         shadowElevation = 0.dp,
     ) {
         Box(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
-            contentAlignment = Alignment.Center,
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = verticalPadding),
+            contentAlignment = Alignment.CenterStart,
         ) {
             BoxWithConstraints(
                 modifier =
                     Modifier
-                        .fillMaxWidth()
+                        .widthIn(max = 280.dp)
                         .height(controlHeight)
                         .clip(shape)
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)),
@@ -112,6 +114,7 @@ private fun HomeSubBarSegment(
             color = textColor,
             style = MaterialTheme.typography.labelLarge,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
