@@ -479,27 +479,25 @@ fun DocumentListScreen(
                                     val previewMarkdown = if (isDrawing) null else previewCache[previewKey]
                                     val previewPages = if (isDrawing) drawingPreviewCache[previewKey] else null
 
-                                    if (showDocPreview) {
-                                        if (!isDrawing) {
-                                            LaunchedEffect(previewKey) {
-                                                if (previewCache.containsKey(previewKey)) return@LaunchedEffect
-                                                previewCache[previewKey] = ""
-                                                val raw = repository.readTextPreview(doc.uri, maxChars = 2500)
-                                                previewCache[previewKey] = extractDocPreviewMarkdown(raw, maxChars = 150)
-                                            }
-                                        } else {
-                                            LaunchedEffect(previewKey) {
-                                                if (drawingPreviewCache.containsKey(previewKey)) return@LaunchedEffect
-                                                drawingPreviewCache[previewKey] = emptyList()
-                                                val pages =
-                                                    withContext(Dispatchers.IO) {
-                                                        val bytes = repository.readBytes(doc.uri) ?: return@withContext emptyList<ZhixuDrawPage>()
-                                                        runCatching { ZhixuDrawFormat.decode(bytes).pages.take(4) }.getOrDefault(emptyList())
-                                                    }
-                                                drawingPreviewCache[previewKey] = pages
+                                        if (showDocPreview) {
+                                            if (!isDrawing) {
+                                                LaunchedEffect(previewKey) {
+                                                    if (previewCache.containsKey(previewKey)) return@LaunchedEffect
+                                                    val raw = repository.readTextPreview(doc.uri, maxChars = 2500)
+                                                    previewCache[previewKey] = extractDocPreviewMarkdown(raw, maxChars = 150)
+                                                }
+                                            } else {
+                                                LaunchedEffect(previewKey) {
+                                                    if (drawingPreviewCache.containsKey(previewKey)) return@LaunchedEffect
+                                                    val pages =
+                                                        withContext(Dispatchers.IO) {
+                                                            val bytes = repository.readBytes(doc.uri) ?: return@withContext emptyList<ZhixuDrawPage>()
+                                                            runCatching { ZhixuDrawFormat.decode(bytes).pages.take(4) }.getOrDefault(emptyList())
+                                                        }
+                                                    drawingPreviewCache[previewKey] = pages
+                                                }
                                             }
                                         }
-                                    }
 
                                     val previewContent: (@Composable () -> Unit)? =
                                         if (!showDocPreview) {
@@ -611,14 +609,12 @@ fun DocumentListScreen(
                                     if (!isDrawing) {
                                         LaunchedEffect(previewKey) {
                                             if (previewCache.containsKey(previewKey)) return@LaunchedEffect
-                                            previewCache[previewKey] = ""
                                             val raw = repository.readTextPreview(doc.uri, maxChars = 2500)
                                             previewCache[previewKey] = extractDocPreviewMarkdown(raw, maxChars = 150)
                                         }
                                     } else {
                                         LaunchedEffect(previewKey) {
                                             if (drawingPreviewCache.containsKey(previewKey)) return@LaunchedEffect
-                                            drawingPreviewCache[previewKey] = emptyList()
                                             val pages =
                                                 withContext(Dispatchers.IO) {
                                                     val bytes = repository.readBytes(doc.uri) ?: return@withContext emptyList<ZhixuDrawPage>()
