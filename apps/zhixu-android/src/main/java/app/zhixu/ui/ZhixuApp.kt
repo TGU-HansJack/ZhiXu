@@ -1315,7 +1315,7 @@ fun ZhixuApp(
     val viewConfig = LocalViewConfiguration.current
     val homeBarHeightPx = remember(density) { with(density) { ZhixuTopBarContentHeight.toPx() } }
     val homeBarDividerHeightPx = remember(density) { with(density) { 1.dp.toPx() } }
-    // Negative = moved up (hidden). Range is [-(topBar + subBar + divider), 0].
+    // Negative = moved up (hidden). Range is [-(topBar + subBar + dividers), 0].
     // Collapse order: sub-bar first, then top bar (expand in reverse).
     var homeBarsOffsetPx by remember { mutableFloatStateOf(0f) }
     val homeCollapsingEnabledState = rememberUpdatedState(currentRoute == "home" && !docsSelectionMode)
@@ -1327,7 +1327,7 @@ fun ZhixuApp(
                     if (!homeCollapsingEnabledState.value) return 0f
                     if (deltaY == 0f) return 0f
 
-                    val minOffset = -(homeBarHeightPx * 2f + homeBarDividerHeightPx)
+                    val minOffset = -(homeBarHeightPx * 2f + homeBarDividerHeightPx * 2f)
                     val prev = homeBarsOffsetPx
                     val next = (prev + deltaY).coerceIn(minOffset, 0f)
                     val consumed = next - prev
@@ -1992,6 +1992,19 @@ fun ZhixuApp(
                                 }
                             },
                         )
+                        if (currentRoute == "home" && !docsSelectionMode) {
+                            HorizontalDivider(
+                                modifier =
+                                    if (isHomeCollapsible) {
+                                        Modifier
+                                            .zIndex(1f)
+                                            .offset { IntOffset(x = 0, y = homeTopBarOffsetInt) }
+                                    } else {
+                                        Modifier
+                                    },
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                            )
+                        }
                         if (currentRoute == "home" && !docsSelectionMode) {
                             HomeSubBar(
                                 modifier =
