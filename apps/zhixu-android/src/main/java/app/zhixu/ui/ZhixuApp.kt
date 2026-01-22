@@ -102,6 +102,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.core.os.LocaleListCompat
 import coil.compose.AsyncImage
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -1313,18 +1314,20 @@ fun ZhixuApp(
     val density = androidx.compose.ui.platform.LocalDensity.current
     val viewConfig = LocalViewConfiguration.current
     val homeBarHeightPx = remember(density) { with(density) { ZhixuTopBarContentHeight.toPx() } }
-    // Negative = moved up (hidden). Range is [-2 * barHeight, 0] for top bar + sub-bar.
+    val homeBarDividerHeightPx = remember(density) { with(density) { 1.dp.toPx() } }
+    // Negative = moved up (hidden). Range is [-(topBar + subBar + divider), 0].
+    // Collapse order: sub-bar first, then top bar (expand in reverse).
     var homeBarsOffsetPx by remember { mutableFloatStateOf(0f) }
     val homeCollapsingEnabledState = rememberUpdatedState(currentRoute == "home" && !docsSelectionMode)
 
     val homeBarsNestedScrollConnection =
-        remember(homeBarHeightPx) {
+        remember(homeBarHeightPx, homeBarDividerHeightPx) {
             object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
                 private fun consume(deltaY: Float): Float {
                     if (!homeCollapsingEnabledState.value) return 0f
                     if (deltaY == 0f) return 0f
 
-                    val minOffset = -2f * homeBarHeightPx
+                    val minOffset = -(homeBarHeightPx * 2f + homeBarDividerHeightPx)
                     val prev = homeBarsOffsetPx
                     val next = (prev + deltaY).coerceIn(minOffset, 0f)
                     val consumed = next - prev
@@ -1713,12 +1716,12 @@ fun ZhixuApp(
                     val isHomeCollapsible = currentRoute == "home" && !docsSelectionMode
                     val openDrawerContentDescription = stringResource(R.string.action_open_drawer)
                     val homeBarsOffsetInt = homeBarsOffsetPx.roundToInt()
+                    val homeSubBarCollapseHeightPx = homeBarHeightPx + homeBarDividerHeightPx
+                    val homeTopBarOffsetInt = (homeBarsOffsetPx + homeSubBarCollapseHeightPx).coerceAtMost(0f).roundToInt()
                     val topBarColumnModifier =
                         if (isHomeCollapsible) {
                             Modifier
                                 .fillMaxWidth()
-                                .offset { IntOffset(x = 0, y = homeBarsOffsetInt) }
-                                .background(MaterialTheme.colorScheme.surface)
                                 .clipToBounds()
                         } else {
                             Modifier
@@ -1726,10 +1729,24 @@ fun ZhixuApp(
 
                     Column(modifier = topBarColumnModifier) {
                         if (isHomeCollapsible) {
-                            Spacer(modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars))
+                            Spacer(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.surface)
+                                        .windowInsetsPadding(WindowInsets.statusBars)
+                                        .zIndex(2f),
+                            )
                         }
                         ZhixuTopAppBar(
-                            modifier = Modifier,
+                            modifier =
+                                if (isHomeCollapsible) {
+                                    Modifier
+                                        .zIndex(1f)
+                                        .offset { IntOffset(x = 0, y = homeTopBarOffsetInt) }
+                                } else {
+                                    Modifier
+                                },
                             windowInsets = if (isHomeCollapsible) WindowInsets(0, 0, 0, 0) else WindowInsets.statusBars,
                             containerColor = if (docsSelectionMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
                             title = {
@@ -1977,14 +1994,31 @@ fun ZhixuApp(
                         )
                         if (currentRoute == "home" && !docsSelectionMode) {
                             HomeSubBar(
-                                modifier = Modifier,
+                                modifier =
+                                    if (isHomeCollapsible) {
+                                        Modifier
+                                            .zIndex(0f)
+                                            .offset { IntOffset(x = 0, y = homeBarsOffsetInt) }
+                                    } else {
+                                        Modifier
+                                    },
                                 pagerState = homePagerState,
                                 height = ZhixuTopBarContentHeight,
                                 recentLabel = "最近访问页面",
                                 featureLabel = "功能区列表",
                             )
                         }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        HorizontalDivider(
+                            modifier =
+                                if (isHomeCollapsible) {
+                                    Modifier
+                                        .zIndex(0f)
+                                        .offset { IntOffset(x = 0, y = homeBarsOffsetInt) }
+                                } else {
+                                    Modifier
+                                },
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                        )
                     }
                 },
                 floatingActionButton = {
