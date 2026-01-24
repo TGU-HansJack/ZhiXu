@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.ArrayDeque
 import java.util.LinkedHashSet
 
 class VaultIndexUpdater(
@@ -49,6 +50,7 @@ class VaultIndexUpdater(
         val rootUri: Uri,
         val upserts: LinkedHashSet<String> = LinkedHashSet(),
         val deletes: LinkedHashSet<String> = LinkedHashSet(),
+        val scanDirs: LinkedHashSet<String> = LinkedHashSet(),
     )
 
     private val pendingSyncLock = Any()
@@ -86,7 +88,20 @@ class VaultIndexUpdater(
         canRunHeavyWork = canRun
         if (!prev && canRun && pendingObserverChange) {
             pendingObserverChange = false
-            scheduleRefresh(force = false, debounceMs = 600)
+            // We couldn't map the observer event to a single file; do a bounded directory-local scan instead of
+            // forcing a full vault rebuild (which can be very slow on SAF providers).
+            val root = vaultRootUri
+            if (root != null) {
+                synchronized(pendingSyncLock) {
+                    val key = root.toString()
+                    val pending =
+                        pendingSyncByRoot.getOrPut(key) {
+                            PendingSyncChange(rootUri = root)
+                        }
+                    pending.scanDirs.add("")
+                }
+                scheduleProcessSyncChanges(debounceMs = 0)
+            }
         }
         if (!prev && canRun && pendingSyncChanges) {
             pendingSyncChanges = false
@@ -143,6 +158,7 @@ class VaultIndexUpdater(
         syncProcessJob = null
         synchronized(pendingSyncLock) { pendingSyncByRoot.clear() }
         pendingSyncChanges = false
+        pendingObserverChange = false
 
         val resolver = appContext.contentResolver
         val existing = observer
@@ -212,13 +228,97 @@ class VaultIndexUpdater(
                     // Ensure any later rebuild uses a fresh filesystem listing.
                     repository.invalidateDocListCache(root)
 
+                    // If we were notified that a directory changed (but not which file), perform a directory-local diff
+                    // against the existing dir-index so we can translate it into file-level upserts/deletes.
+                    val expandedUpserts = LinkedHashSet<String>()
+                    val expandedDeletes = LinkedHashSet<String>()
+                    val expandedScanDirs = LinkedHashSet<String>()
+
+                    expandedUpserts.addAll(entry.upserts)
+                    expandedDeletes.addAll(entry.deletes)
+
+                    val scanQueue: ArrayDeque<String> = ArrayDeque()
+                    scanQueue.addAll(entry.scanDirs)
+                    val scanned = HashSet<String>()
+                    val maxDirScans = 12
+                    while (scanQueue.isNotEmpty() && scanned.size < maxDirScans) {
+                        val raw = scanQueue.removeFirst()
+                        val cleaned =
+                            raw
+                                .trim()
+                                .replace('\\', '/')
+                                .trimStart('/')
+                                .let { p -> if (p.isBlank()) "" else p.trimEnd('/') + "/" }
+                        if (!scanned.add(cleaned)) continue
+                        expandedScanDirs.add(cleaned)
+
+                        val parentRelativePath = cleaned.takeIf { it.isNotBlank() }
+                        val live =
+                            runCatching {
+                                repository.listVaultChildrenEntries(
+                                    rootUri = root,
+                                    parentRelativePath = parentRelativePath,
+                                    includeNonMarkdownFiles = true,
+                                    includeHidden = false,
+                                )
+                            }.getOrElse { emptyList() }
+                        val indexed =
+                            runCatching {
+                                repository.listVaultChildrenEntriesIndexed(
+                                    rootUri = root,
+                                    parentRelativePath = parentRelativePath,
+                                )
+                            }.getOrElse { emptyList() }
+
+                        val indexedByRel = indexed.associateBy { it.relativePath }
+                        val liveByRel = live.associateBy { it.relativePath }
+
+                        for (child in live) {
+                            if (child.isDirectory) {
+                                val prev = indexedByRel[child.relativePath]
+                                val isNew = prev == null
+                                val isModified = child.lastModified > 0L && prev != null && prev.lastModified != child.lastModified
+                                if ((isNew || isModified) && scanned.size < maxDirScans) {
+                                    // Best-effort deepening: if a directory looks changed, scan it too (bounded).
+                                    scanQueue.add(child.relativePath)
+                                }
+                                continue
+                            }
+
+                            val rel = child.relativePath.trim().trimStart('/').replace('\\', '/')
+                            val lower = rel.lowercase()
+                            val isIndexable =
+                                lower.endsWith(".md") ||
+                                    (lower.endsWith(".zhixu") && lower.length > ".zhixu".length)
+                            if (!isIndexable) continue
+
+                            val prev = indexedByRel[child.relativePath]
+                            val isNew = prev == null
+                            val isModified = child.lastModified > 0L && prev != null && prev.lastModified != child.lastModified
+                            if (isNew || isModified) expandedUpserts.add(rel)
+                        }
+
+                        for (prev in indexed) {
+                            if (prev.isDirectory) continue
+                            if (liveByRel.containsKey(prev.relativePath)) continue
+                            val rel = prev.relativePath.trim().trimStart('/').replace('\\', '/')
+                            val lower = rel.lowercase()
+                            val isIndexable =
+                                lower.endsWith(".md") ||
+                                    (lower.endsWith(".zhixu") && lower.length > ".zhixu".length)
+                            if (isIndexable) expandedDeletes.add(rel)
+                        }
+                    }
+
                     // Incremental index maintenance: delete first, then upsert.
-                    for (path in entry.deletes) {
+                    for (path in expandedDeletes) {
                         repository.deleteIndexedVaultFileByRelativePath(rootUri = root, relativePath = path)
                     }
 
                     var needsFallbackRebuild = false
-                    for (path in entry.upserts) {
+                    val implicitDeletes = LinkedHashSet<String>()
+                    for (path in expandedUpserts) {
+                        if (path in expandedDeletes) continue
                         val ok = repository.indexVaultFileByRelativePath(rootUri = root, relativePath = path)
                         if (!ok) {
                             // If we couldn't resolve/index an expected doc path, fall back to a full rebuild as a safety net.
@@ -226,14 +326,26 @@ class VaultIndexUpdater(
                             val lower = cleaned.lowercase()
                             val isInternal = lower == ".zhixu" || lower.startsWith(".zhixu/")
                             val isIndexable = lower.endsWith(".md") || (lower.endsWith(".zhixu") && lower.length > ".zhixu".length)
-                            if (!isInternal && isIndexable) needsFallbackRebuild = true
+                            if (!isInternal && isIndexable) {
+                                // Treat "upsert but missing" as an implicit delete to keep the list/search accurate
+                                // without forcing a full vault scan.
+                                val exists = repository.resolveVaultFileUri(rootUri = root, relativePath = cleaned) != null
+                                if (!exists) {
+                                    repository.deleteIndexedVaultFileByRelativePath(rootUri = root, relativePath = cleaned)
+                                    implicitDeletes.add(cleaned)
+                                } else {
+                                    needsFallbackRebuild = true
+                                }
+                            }
                         }
                     }
 
                     // Keep the directory tree cache roughly in-sync (best-effort, directory-local refresh only).
                     val dirsToRefresh = LinkedHashSet<String>()
-                    for (path in entry.upserts) dirsToRefresh.addAll(allAncestorDirs(path))
-                    for (path in entry.deletes) dirsToRefresh.addAll(allAncestorDirs(path))
+                    for (path in expandedUpserts) dirsToRefresh.addAll(allAncestorDirs(path))
+                    for (path in expandedDeletes) dirsToRefresh.addAll(allAncestorDirs(path))
+                    for (path in implicitDeletes) dirsToRefresh.addAll(allAncestorDirs(path))
+                    for (dir in expandedScanDirs) dirsToRefresh.addAll(allAncestorDirs(dir))
                     for (dir in dirsToRefresh) {
                         repository.refreshDirIndexForDirectory(
                             rootUri = root,
@@ -262,6 +374,10 @@ class VaultIndexUpdater(
         val obs =
             object : ContentObserver(Handler(Looper.getMainLooper())) {
                 override fun onChange(selfChange: Boolean) {
+                    onChange(selfChange, null)
+                }
+
+                override fun onChange(selfChange: Boolean, uri: Uri?) {
                     val root = vaultRootUri ?: return
                     val now = SystemClock.uptimeMillis()
 
@@ -272,15 +388,69 @@ class VaultIndexUpdater(
 
                     val recentIndexSignal = now - lastIndexSignalUptimeMs
                     if (recentIndexSignal in 0..1_500L) return
+
+                    // Try to translate the observed Uri into a relative path so we can update incrementally.
+                    val rel =
+                        uri?.let { changed ->
+                            repository.computeRelativePath(rootUri = root, docUri = changed)
+                        }
+                    if (rel != null) {
+                        val cleaned = rel.trim().trimStart('/').replace('\\', '/').trim()
+                        if (cleaned.isNotBlank()) {
+                            synchronized(pendingSyncLock) {
+                                val key = root.toString()
+                                val pending =
+                                    pendingSyncByRoot.getOrPut(key) {
+                                        PendingSyncChange(rootUri = root)
+                                    }
+                                val lower = cleaned.lowercase()
+                                val isIndexable =
+                                    lower.endsWith(".md") ||
+                                        (lower.endsWith(".zhixu") && lower.length > ".zhixu".length)
+                                if (isIndexable) {
+                                    pending.upserts.add(cleaned)
+                                } else {
+                                    pending.scanDirs.add(cleaned.trimEnd('/') + "/")
+                                }
+                            }
+                            scheduleProcessSyncChanges(debounceMs = 450)
+                            return
+                        }
+                    }
+
+                    // Some providers only notify the parent directory's "children" Uri; treat that as a dir scan.
+                    val docId = uri?.let { runCatching { DocumentsContract.getDocumentId(it) }.getOrNull() }
+                    val rootId =
+                        runCatching {
+                            if (DocumentsContract.isTreeUri(root)) DocumentsContract.getTreeDocumentId(root) else DocumentsContract.getDocumentId(root)
+                        }.getOrNull()
+                    if (docId != null && rootId != null && docId.trimEnd('/') == rootId.trimEnd('/')) {
+                        synchronized(pendingSyncLock) {
+                            val key = root.toString()
+                            val pending =
+                                pendingSyncByRoot.getOrPut(key) {
+                                    PendingSyncChange(rootUri = root)
+                                }
+                            pending.scanDirs.add("")
+                        }
+                        scheduleProcessSyncChanges(debounceMs = 450)
+                        return
+                    }
+
+                    // Fall back to a bounded directory-local scan from the vault root.
+                    synchronized(pendingSyncLock) {
+                        val key = root.toString()
+                        val pending =
+                            pendingSyncByRoot.getOrPut(key) {
+                                PendingSyncChange(rootUri = root)
+                            }
+                        pending.scanDirs.add("")
+                    }
                     if (!canRunHeavyWork) {
                         pendingObserverChange = true
                         return
                     }
-                    scheduleRefresh(force = false, debounceMs = 600)
-                }
-
-                override fun onChange(selfChange: Boolean, uri: Uri?) {
-                    onChange(selfChange)
+                    scheduleProcessSyncChanges(debounceMs = 600)
                 }
             }
         observer = obs
@@ -307,7 +477,15 @@ class VaultIndexUpdater(
                     if (modified > 0L && modified != lastDirModified) {
                         lastDirModified = modified
                         repository.invalidateDocListCache(root)
-                        scheduleRefresh(force = false, debounceMs = 200)
+                        synchronized(pendingSyncLock) {
+                            val key = root.toString()
+                            val pending =
+                                pendingSyncByRoot.getOrPut(key) {
+                                    PendingSyncChange(rootUri = root)
+                                }
+                            pending.scanDirs.add("")
+                        }
+                        scheduleProcessSyncChanges(debounceMs = 250)
                         continue
                     }
 
