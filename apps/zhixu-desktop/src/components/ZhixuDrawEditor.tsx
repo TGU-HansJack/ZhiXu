@@ -34,6 +34,7 @@ import {
 import { elementsEqual } from "../draw/equal";
 import { basename, dirname, join } from "../lib/path";
 import { stripExtension } from "../lib/fileType";
+import { loadDrawSettings, subscribeDrawSettings } from "../lib/drawSettings";
 import { createFile, saveFileDialog, writeBytesAbs, writeDrawDocument, writeDrawDocumentAbs } from "../lib/vaultApi";
 import { Popover } from "./Popover";
 import { Tooltip } from "./Tooltip";
@@ -74,6 +75,22 @@ type Props = {
   onOpenFile: (path: string) => void;
   onUpdate: (patch: { doc?: DrawDocument; dirty?: boolean; viewMode?: DrawViewMode }) => void;
 };
+
+type LongPressEraserState = {
+  pointerId: number;
+  timeoutId: number;
+  armed: boolean;
+  triggered: boolean;
+  startViewPos: DrawPoint;
+  lastViewPos: DrawPoint;
+  lastPagePos: DrawPoint;
+  lastExtras: Pick<ToolPointerEvent, "pointerType" | "pressure" | "tiltX" | "tiltY" | "twist">;
+  previousToolId: DrawToolId;
+};
+
+const LONG_PRESS_ERASER_HOLD_MS = 450;
+const LONG_PRESS_ERASER_MOVE_TOLERANCE_PX = 4;
+const LONG_PRESS_ERASER_MIN_PRESSURE = 0.25;
 
 function clampToPage(editor: DrawEditorModel, pagePoint: DrawPoint): DrawPoint {
   const page = editor.currentPageOrNull();
@@ -157,11 +174,25 @@ function drawStrokePoints(
       ctx.beginPath();
       ctx.arc(p[0], p[1], baseWidth / 2, 0, Math.PI * 2);
       ctx.fill();
+    } else if (points.length === 2) {
+      ctx.lineWidth = baseWidth;
+      ctx.beginPath();
+      ctx.moveTo(points[0]![0], points[0]![1]);
+      ctx.lineTo(points[1]![0], points[1]![1]);
+      ctx.stroke();
     } else {
       ctx.lineWidth = baseWidth;
       ctx.beginPath();
       ctx.moveTo(points[0]![0], points[0]![1]);
-      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i]![0], points[i]![1]);
+      for (let i = 1; i < points.length - 1; i++) {
+        const p = points[i]!;
+        const next = points[i + 1]!;
+        const midX = (p[0] + next[0]) / 2;
+        const midY = (p[1] + next[1]) / 2;
+        ctx.quadraticCurveTo(p[0], p[1], midX, midY);
+      }
+      const last = points[points.length - 1]!;
+      ctx.lineTo(last[0], last[1]);
       ctx.stroke();
     }
     ctx.restore();
@@ -233,35 +264,43 @@ function drawStrokePoints(
   const pointStyle = (p: DrawStrokePoint) => {
     const w = p.length >= 4 && Number.isFinite(p[2]) ? Math.max(0.2, p[2]!) : baseWidth;
     const a = p.length >= 4 && Number.isFinite(p[3]) ? clamp01(p[3]!) : baseAlpha;
-    return { w, a };
+    return { x: p[0], y: p[1], r: w / 2, alpha: a };
+  };
+
+  const stamp = (x: number, y: number, r: number, alpha: number) => {
+    ctx.globalAlpha = clamp01(alpha);
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(0.03, r), 0, Math.PI * 2);
+    ctx.fill();
   };
 
   if (points.length === 1) {
-    const p = points[0]!;
-    const s = pointStyle(p);
-    ctx.globalAlpha = s.a;
-    ctx.beginPath();
-    ctx.arc(p[0], p[1], s.w / 2, 0, Math.PI * 2);
-    ctx.fill();
+    const p0 = pointStyle(points[0]!);
+    stamp(p0.x, p0.y, p0.r, p0.alpha);
     ctx.restore();
     return;
   }
 
-  let prev = points[0]!;
-  let prevStyle = pointStyle(prev);
+  let prev = pointStyle(points[0]!);
+  stamp(prev.x, prev.y, prev.r, prev.alpha);
+
   for (let i = 1; i < points.length; i++) {
-    const next = points[i]!;
-    const nextStyle = pointStyle(next);
-    const w = (prevStyle.w + nextStyle.w) / 2;
-    const a = (prevStyle.a + nextStyle.a) / 2;
-    ctx.globalAlpha = a;
-    ctx.lineWidth = w;
-    ctx.beginPath();
-    ctx.moveTo(prev[0], prev[1]);
-    ctx.lineTo(next[0], next[1]);
-    ctx.stroke();
+    const next = pointStyle(points[i]!);
+    const dx = next.x - prev.x;
+    const dy = next.y - prev.y;
+    const dist = Math.hypot(dx, dy);
+    const step = Math.max(0.75, Math.min(prev.r, next.r) * 0.65);
+    const n = Math.max(1, Math.ceil(dist / step));
+    for (let j = 1; j <= n; j++) {
+      const t = j / n;
+      stamp(
+        prev.x + dx * t,
+        prev.y + dy * t,
+        prev.r + (next.r - prev.r) * t,
+        prev.alpha + (next.alpha - prev.alpha) * t,
+      );
+    }
     prev = next;
-    prevStyle = nextStyle;
   }
 
   ctx.restore();
@@ -438,6 +477,9 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
   const didInitViewportRef = useRef(false);
   const rafRef = useRef<number | null>(null);
   const pointersRef = useRef<Map<number, DrawPoint>>(new Map());
+  const spacePressedRef = useRef(false);
+  const drawSettingsRef = useRef(loadDrawSettings());
+  const longPressEraserRef = useRef<LongPressEraserState | null>(null);
   const syncCanvasToDom = useCallback((): boolean => {
     const canvas = canvasRef.current;
     const editor = editorRef.current;
@@ -500,6 +542,57 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
   const [morePopoverOpen, setMorePopoverOpen] = useState(false);
   const [morePopoverAnchor, setMorePopoverAnchor] = useState<HTMLElement | null>(null);
   const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      if (!target) return false;
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable;
+    };
+
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.code !== "Space") return;
+      if (isEditableTarget(ev.target)) return;
+      spacePressedRef.current = true;
+    };
+
+    const onKeyUp = (ev: KeyboardEvent) => {
+      if (ev.code !== "Space") return;
+      spacePressedRef.current = false;
+    };
+
+    const onBlur = () => {
+      spacePressedRef.current = false;
+    };
+
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
+
+  useEffect(() => {
+    drawSettingsRef.current = loadDrawSettings();
+    return subscribeDrawSettings((settings) => {
+      drawSettingsRef.current = settings;
+      if (settings.longPressEraserEnabled) return;
+      const state = longPressEraserRef.current;
+      if (state) {
+        window.clearTimeout(state.timeoutId);
+        if (state.triggered) {
+          const editor = editorRef.current;
+          if (editor) editor.toolId = state.previousToolId;
+          forceUiTick((n) => n + 1);
+        }
+      }
+      longPressEraserRef.current = null;
+    });
+  }, []);
 
   const tools = useMemo(() => {
     const pen = new PenToolMachine();
@@ -739,6 +832,71 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
     [tools],
   );
 
+  const clearLongPressEraserState = useCallback((pointerId: number) => {
+    const state = longPressEraserRef.current;
+    if (!state || state.pointerId !== pointerId) return;
+    window.clearTimeout(state.timeoutId);
+    if (state.triggered) {
+      const editor = editorRef.current;
+      if (editor) editor.toolId = state.previousToolId;
+      forceUiTick((n) => n + 1);
+    }
+    longPressEraserRef.current = null;
+  }, []);
+
+  const tryTriggerLongPressEraser = useCallback(
+    (pointerId: number) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+
+      const state = longPressEraserRef.current;
+      if (!state || state.pointerId !== pointerId) return;
+      if (!state.armed || state.triggered) return;
+      if (!drawSettingsRef.current.longPressEraserEnabled) {
+        clearLongPressEraserState(pointerId);
+        return;
+      }
+
+      const dx = state.lastViewPos[0] - state.startViewPos[0];
+      const dy = state.lastViewPos[1] - state.startViewPos[1];
+      const tol2 = LONG_PRESS_ERASER_MOVE_TOLERANCE_PX * LONG_PRESS_ERASER_MOVE_TOLERANCE_PX;
+      if (dx * dx + dy * dy > tol2) {
+        clearLongPressEraserState(pointerId);
+        return;
+      }
+
+      if (state.lastExtras.pressure < LONG_PRESS_ERASER_MIN_PRESSURE) return;
+
+      const input = inputRef.current;
+      if (input.activePointerId !== pointerId) {
+        clearLongPressEraserState(pointerId);
+        return;
+      }
+      if (!input.activeTool || input.activeTool.id === "pan" || input.activeTool.id === "eraser") return;
+
+      state.triggered = true;
+      window.clearTimeout(state.timeoutId);
+
+      editor.toolId = "eraser";
+      input.activeTool.onCancel(editor);
+      input.activeTool = toolMachineFor("eraser");
+      input.modifiesDocument = true;
+
+      const toolEvent: ToolPointerEvent = {
+        viewPosition: state.lastViewPos,
+        viewDelta: [0, 0],
+        pagePosition: state.lastPagePos,
+        pageDelta: [0, 0],
+        ...state.lastExtras,
+      };
+      input.activeTool.onDown(editor, toolEvent);
+
+      requestCanvasRender();
+      forceUiTick((n) => n + 1);
+    },
+    [clearLongPressEraserState, requestCanvasRender, toolMachineFor],
+  );
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!(window as any).__TAURI__) return;
@@ -924,7 +1082,18 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
       const canvas = canvasRef.current;
       const editor = editorRef.current;
       if (!canvas || !editor) return;
-      if (ev.button !== 0 && !isPenEraser(ev.nativeEvent)) return;
+      const native = ev.nativeEvent as PointerEvent;
+      const extras = toolPointerExtras(native);
+      const isTouch = extras.pointerType === "touch";
+      const isMouse = extras.pointerType === "mouse";
+      const isForcedPan = editor.viewMode === "reading" || isTouch || (isMouse && (ev.button === 1 || ev.button === 2 || spacePressedRef.current));
+      if (!isForcedPan && ev.button !== 0 && !isPenEraser(native)) return;
+
+      const existingLongPress = longPressEraserRef.current;
+      if (existingLongPress && existingLongPress.pointerId !== ev.pointerId && !existingLongPress.triggered) {
+        window.clearTimeout(existingLongPress.timeoutId);
+        longPressEraserRef.current = null;
+      }
 
       try {
         canvas.setPointerCapture(ev.pointerId);
@@ -936,6 +1105,8 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
       const input = inputRef.current;
       const pressedPoints = [...pointersRef.current.values()];
       if (pressedPoints.length >= 2) {
+        const longPress = longPressEraserRef.current;
+        if (longPress) clearLongPressEraserState(longPress.pointerId);
         if (!input.isTransform) {
           input.isTransform = true;
           input.activeTool?.onCancel(editor);
@@ -954,8 +1125,8 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
       }
 
       const pickedTool: DrawToolMachine = (() => {
-        if (editor.viewMode === "reading") return toolMachineFor("pan");
-        if (isPenEraser(ev.nativeEvent)) return toolMachineFor("eraser");
+        if (isForcedPan) return toolMachineFor("pan");
+        if (isPenEraser(native)) return toolMachineFor("eraser");
         return toolMachineFor(editor.toolId);
       })();
 
@@ -964,18 +1135,47 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
       input.activePointerId = ev.pointerId;
       input.lastViewPos = viewPos;
       input.lastPagePos = clampToPage(editor, editor.viewport.viewToPage(viewPos));
-      const native = ev.nativeEvent as PointerEvent;
       const toolEvent: ToolPointerEvent = {
         viewPosition: viewPos,
         viewDelta: [0, 0],
         pagePosition: input.lastPagePos,
         pageDelta: [0, 0],
-        ...toolPointerExtras(native),
+        ...extras,
       };
       pickedTool.onDown(editor, toolEvent);
+
+      if (
+        drawSettingsRef.current.longPressEraserEnabled &&
+        editor.viewMode === "writing" &&
+        extras.pointerType === "pen" &&
+        !isPenEraser(native) &&
+        pickedTool.id !== "pan" &&
+        pickedTool.id !== "eraser"
+      ) {
+        const pointerId = ev.pointerId;
+        const state: LongPressEraserState = {
+          pointerId,
+          timeoutId: 0,
+          armed: false,
+          triggered: false,
+          startViewPos: viewPos,
+          lastViewPos: viewPos,
+          lastPagePos: input.lastPagePos,
+          lastExtras: extras,
+          previousToolId: editor.toolId,
+        };
+        state.timeoutId = window.setTimeout(() => {
+          const current = longPressEraserRef.current;
+          if (!current || current.pointerId !== pointerId || current.triggered) return;
+          current.armed = true;
+          tryTriggerLongPressEraser(pointerId);
+        }, LONG_PRESS_ERASER_HOLD_MS);
+        longPressEraserRef.current = state;
+      }
+
       requestCanvasRender();
     },
-    [requestCanvasRender, toolMachineFor],
+    [clearLongPressEraserState, requestCanvasRender, toolMachineFor, tryTriggerLongPressEraser],
   );
 
   const handlePointerMove = useCallback(
@@ -994,6 +1194,9 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
       const pressedPoints = [...pointersRef.current.values()];
 
       if (input.isTransform && pressedPoints.length >= 2) {
+        const longPress = longPressEraserRef.current;
+        if (longPress) clearLongPressEraserState(longPress.pointerId);
+
         const currCentroid = centroidOf(pressedPoints);
         const currSpan = spanOf(pressedPoints[0]!, pressedPoints[1]!);
         const zoomChange = input.prevSpan > 0 ? currSpan / input.prevSpan : 1;
@@ -1036,13 +1239,29 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
         const pagePos = clampToPage(editor, editor.viewport.viewToPage(sampleViewPos));
         const pageDelta: DrawPoint = [pagePos[0] - input.lastPagePos[0], pagePos[1] - input.lastPagePos[1]];
 
-        input.activeTool.onMove(editor, { viewPosition: sampleViewPos, viewDelta, pagePosition: pagePos, pageDelta, ...toolPointerExtras(sample) });
+        const sampleExtras = toolPointerExtras(sample);
+        const longPress = longPressEraserRef.current;
+        if (longPress && longPress.pointerId === ev.pointerId && !longPress.triggered) {
+          longPress.lastViewPos = sampleViewPos;
+          longPress.lastPagePos = pagePos;
+          longPress.lastExtras = sampleExtras;
+          const dx = sampleViewPos[0] - longPress.startViewPos[0];
+          const dy = sampleViewPos[1] - longPress.startViewPos[1];
+          const tol2 = LONG_PRESS_ERASER_MOVE_TOLERANCE_PX * LONG_PRESS_ERASER_MOVE_TOLERANCE_PX;
+          if (dx * dx + dy * dy > tol2) {
+            clearLongPressEraserState(ev.pointerId);
+          } else if (longPress.armed) {
+            tryTriggerLongPressEraser(ev.pointerId);
+          }
+        }
+
+        input.activeTool.onMove(editor, { viewPosition: sampleViewPos, viewDelta, pagePosition: pagePos, pageDelta, ...sampleExtras });
         input.lastViewPos = sampleViewPos;
         input.lastPagePos = pagePos;
       }
       requestCanvasRender();
     },
-    [requestCanvasRender],
+    [clearLongPressEraserState, requestCanvasRender, tryTriggerLongPressEraser],
   );
 
   const endPointer = useCallback(
@@ -1056,6 +1275,8 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
       } catch (_) {}
 
       const input = inputRef.current;
+      const longPress = longPressEraserRef.current;
+      if (longPress && longPress.pointerId === ev.pointerId) clearLongPressEraserState(ev.pointerId);
 
       if (input.isTransform) {
         if (pointersRef.current.size < 2) {
@@ -1063,7 +1284,6 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
           input.activeTool = null;
           input.activePointerId = null;
           input.modifiesDocument = false;
-          snapViewport(editor, 24);
           pointersRef.current.clear();
           requestCanvasRender();
         }
@@ -1087,7 +1307,6 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
       } else {
         tool.onUp(editor, toolEvent);
         if (input.modifiesDocument) commitEdit();
-        if (tool.id === "pan") snapViewport(editor, 24);
       }
 
       input.activeTool = null;
@@ -1095,7 +1314,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
       input.modifiesDocument = false;
       requestCanvasRender();
     },
-    [commitEdit, requestCanvasRender],
+    [clearLongPressEraserState, commitEdit, requestCanvasRender],
   );
 
   const handleWheel = useCallback(
@@ -1119,7 +1338,6 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
         editor.viewport.translation[0] - ev.deltaX,
         editor.viewport.translation[1] - ev.deltaY,
       ];
-      snapViewport(editor, 24);
       requestCanvasRender();
     },
     [requestCanvasRender],
@@ -1911,31 +2129,6 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
             />
           ) : null}
 
-          <div className="drawPopoverDivider" />
-
-          <div className="drawPopoverRow" data-no-drag="true">
-            <DrawToolbarButton label="上一页" placement="top" disabled={editor.currentPageIndex <= 0} onClick={goPrevPage}>
-              <IconChevronBack size={18} />
-            </DrawToolbarButton>
-            <span className="drawPageIndicator">
-              {editor.doc.pages.length ? `${editor.currentPageIndex + 1} / ${editor.doc.pages.length}` : "0 / 0"}
-            </span>
-            <DrawToolbarButton
-              label="下一页"
-              placement="top"
-              disabled={editor.currentPageIndex >= editor.doc.pages.length - 1}
-              onClick={goNextPage}
-            >
-              <IconChevronForward size={18} />
-            </DrawToolbarButton>
-            <DrawToolbarButton label="添加页" placement="top" onClick={addPage}>
-              <IconAddCircle size={18} />
-            </DrawToolbarButton>
-            <span className="drawPopoverSpacer" />
-            <button type="button" className="drawToolBtn" onClick={() => void saveAs()} data-no-drag="true">
-              另存为
-            </button>
-          </div>
         </div>
       </Popover>
 
@@ -2080,6 +2273,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
         <canvas
           ref={canvasRef}
           className="drawCanvas"
+          onContextMenu={(ev) => ev.preventDefault()}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={(ev) => endPointer(ev, "up")}
