@@ -188,11 +188,7 @@ class PluginRepository(
                 )
             for (url in endpoints) {
                 val text = httpGetText(url) ?: continue
-                val ids =
-                    runCatching {
-                        val arr = JSONArray(text)
-                        (0 until arr.length()).mapNotNull { idx -> arr.optString(idx).trim().takeIf { it.isNotBlank() } }
-                    }.getOrNull()
+                val ids = parseOfficialPluginIds(text)
                 if (!ids.isNullOrEmpty()) return@withContext Result.success(ids.distinct())
             }
             Result.failure(IllegalStateException("Official plugin index not available"))
@@ -458,6 +454,31 @@ class PluginRepository(
                 place = obj.optString("place").takeIf { it.isNotBlank() },
                 ringIndex = obj.optInt("ringIndex").takeIf { obj.has("ringIndex") },
             )
+        }
+        return out
+    }
+
+    private fun parseOfficialPluginIds(text: String): List<String>? {
+        val raw = text.trimStart().removePrefix("\uFEFF").trim()
+        if (raw.isBlank()) return null
+
+        val fromArray =
+            runCatching {
+                val arr = JSONArray(raw)
+                (0 until arr.length()).mapNotNull { idx -> arr.optString(idx).trim().takeIf { it.isNotBlank() } }
+            }.getOrNull()
+        if (!fromArray.isNullOrEmpty()) return fromArray
+
+        val obj = runCatching { JSONObject(raw) }.getOrNull() ?: return null
+        val arr = obj.optJSONArray("plugins") ?: obj.optJSONArray("ids") ?: obj.optJSONArray("list") ?: return null
+        if (arr.length() == 0) return emptyList()
+
+        val out = ArrayList<String>(arr.length())
+        for (i in 0 until arr.length()) {
+            when (val v = arr.opt(i)) {
+                is String -> v.trim().takeIf { it.isNotBlank() }?.let(out::add)
+                is JSONObject -> v.optString("id").trim().takeIf { it.isNotBlank() }?.let(out::add)
+            }
         }
         return out
     }
