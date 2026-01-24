@@ -21,6 +21,13 @@
       "version": "2.0.0",
       "description": "通过 XML-RPC（MetaWeblog API）将当前笔记发布到 Typecho 博客。",
       "platforms": ["android"]
+    },
+    {
+      "id": "todo-zhixu-mobile",
+      "name": "待办列表",
+      "version": "1.0.0",
+      "description": "扫描 Vault 内 Markdown 待办并在「可扩展列表」中展示（Android）。",
+      "platforms": ["android"]
     }
   ]
 }

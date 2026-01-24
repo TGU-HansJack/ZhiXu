@@ -33,13 +33,13 @@ fun HomeSubBar(
     pagerState: PagerState,
     modifier: Modifier = Modifier,
     height: Dp,
-    recentLabel: String,
-    featureLabel: String,
+    labels: List<String>,
 ) {
     val verticalPadding = 12.dp
     val controlHeight = height - verticalPadding * 2
     val scope = rememberCoroutineScope()
     val shape = RoundedCornerShape(999.dp)
+    val segments = labels.ifEmpty { listOf("") }
 
     Surface(
         modifier = modifier.fillMaxWidth().height(height),
@@ -59,8 +59,10 @@ fun HomeSubBar(
                         .clip(shape)
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)),
             ) {
-                val segmentWidth = maxWidth / 2
-                val progress = (pagerState.currentPage + pagerState.currentPageOffsetFraction).coerceIn(0f, 1f)
+                val segmentWidth = maxWidth / segments.size
+                val progress =
+                    (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+                        .coerceIn(0f, (segments.size - 1).toFloat().coerceAtLeast(0f))
                 val indicatorOffset = segmentWidth * progress
 
                 Box(
@@ -74,18 +76,14 @@ fun HomeSubBar(
                 )
 
                 Row(modifier = Modifier.fillMaxSize()) {
-                    HomeSubBarSegment(
-                        label = recentLabel,
-                        selected = pagerState.currentPage == 0,
-                        onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
-                        modifier = Modifier.weight(1f),
-                    )
-                    HomeSubBarSegment(
-                        label = featureLabel,
-                        selected = pagerState.currentPage == 1,
-                        onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
-                        modifier = Modifier.weight(1f),
-                    )
+                    segments.forEachIndexed { idx, label ->
+                        HomeSubBarSegment(
+                            label = label,
+                            selected = pagerState.currentPage == idx,
+                            onClick = { scope.launch { pagerState.animateScrollToPage(idx) } },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
         }

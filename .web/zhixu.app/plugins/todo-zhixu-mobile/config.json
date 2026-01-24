@@ -1,0 +1,7 @@
+{
+  "ignorePrefixes": [".zhixu/"],
+  "enableCache": true,
+  "maxFiles": 8000,
+  "maxTasks": 300
+}
+

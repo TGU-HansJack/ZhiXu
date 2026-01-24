@@ -172,7 +172,7 @@ import app.zhixu.ui.screens.DeviceManagementScreen
 import app.zhixu.ui.screens.DocumentListScreen
 import app.zhixu.ui.screens.DrawScreen
 import app.zhixu.ui.screens.EditorScreen
-import app.zhixu.ui.screens.HomeFeatureHubScreen
+import app.zhixu.ui.screens.HomeExtensionsScreen
 import app.zhixu.ui.screens.ImagePreviewScreen
 import app.zhixu.ui.screens.LongImageScreen
 import app.zhixu.ui.screens.NewDocScreen
@@ -308,6 +308,7 @@ fun ZhixuApp(
     val prefs = remember(appContext) { VaultPreferences(appContext) }
     val vaultSyncPrefs = remember(appContext) { VaultSyncPreferences(appContext) }
     val repository = remember(appContext) { VaultRepository(appContext) }
+    val pluginRepo = remember(appContext) { app.zhixu.plugins.PluginRepository(appContext) }
     val aiPrefs = remember(appContext) { AiPreferences(appContext) }
     val logPrefs = remember(appContext) { LogPreferences(appContext) }
     val appLogs = remember(appContext) { AppLogRepository(appContext) }
@@ -1309,7 +1310,7 @@ fun ZhixuApp(
     val pinnedDocUriSet = remember(pinnedDocUris) { pinnedDocUris.toHashSet() }
     val docsSelectionAllPinned = docsSelectionMode && selectedDocUris.all { it in pinnedDocUriSet }
 
-    val homePagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 0, pageCount = { 2 })
+    val homePagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 0, pageCount = { 3 })
     val settledHomePage by remember { derivedStateOf { homePagerState.settledPage } }
     val density = androidx.compose.ui.platform.LocalDensity.current
     val viewConfig = LocalViewConfiguration.current
@@ -1759,7 +1760,7 @@ fun ZhixuApp(
                                     )
                                 } else {
                                     val showOnlySearch =
-                                        currentRoute == "tasks" || currentRoute == "pomodoro" || currentRoute == "space"
+                                        currentRoute == "home" || currentRoute == "tasks" || currentRoute == "pomodoro" || currentRoute == "space"
                                     if (!showOnlySearch) {
                                         val sectionTitleRes =
                                             when (currentRoute) {
@@ -1952,25 +1953,27 @@ fun ZhixuApp(
                                                 modifier = Modifier.size(ZhixuTopBarIconSize),
                                             )
                                         }
-                                        ZhixuIconButton(onClick = { docSortFilterRequestToken += 1L }) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.ic_lucide_settings_2),
-                                                contentDescription = stringResource(R.string.action_sort_filter),
-                                                modifier = Modifier.size(ZhixuTopBarIconSize),
-                                            )
-                                        }
-                                        ZhixuIconButton(onClick = { docListUseGrid = !docListUseGrid }) {
-                                            val viewIcon =
-                                                if (docListUseGrid) {
-                                                    R.drawable.ic_lucide_stretch_horizontal
-                                                } else {
-                                                    R.drawable.ic_lucide_layout_dashboard
-                                                }
-                                            Icon(
-                                                painter = painterResource(viewIcon),
-                                                contentDescription = stringResource(R.string.action_toggle_view),
-                                                modifier = Modifier.size(ZhixuTopBarIconSize),
-                                            )
+                                        if (settledHomePage == 0) {
+                                            ZhixuIconButton(onClick = { docSortFilterRequestToken += 1L }) {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.ic_lucide_settings_2),
+                                                    contentDescription = stringResource(R.string.action_sort_filter),
+                                                    modifier = Modifier.size(ZhixuTopBarIconSize),
+                                                )
+                                            }
+                                            ZhixuIconButton(onClick = { docListUseGrid = !docListUseGrid }) {
+                                                val viewIcon =
+                                                    if (docListUseGrid) {
+                                                        R.drawable.ic_lucide_stretch_horizontal
+                                                    } else {
+                                                        R.drawable.ic_lucide_layout_dashboard
+                                                    }
+                                                Icon(
+                                                    painter = painterResource(viewIcon),
+                                                    contentDescription = stringResource(R.string.action_toggle_view),
+                                                    modifier = Modifier.size(ZhixuTopBarIconSize),
+                                                )
+                                            }
                                         }
                                         ZhixuIconButton(onClick = { globalSearchOpen = true }) {
                                             Icon(
@@ -2017,8 +2020,7 @@ fun ZhixuApp(
                                     },
                                 pagerState = homePagerState,
                                 height = ZhixuTopBarContentHeight,
-                                recentLabel = "最近访问页面",
-                                featureLabel = "功能区列表",
+                                labels = listOf("最近访问页面", "空间列表", "可扩展列表"),
                             )
                         }
                         HorizontalDivider(
@@ -2445,13 +2447,39 @@ fun ZhixuApp(
                                     )
                                 }
 
-                            else ->
-                                HomeFeatureHubScreen(
+                            1 ->
+                                SpaceScreen(
                                     contentPadding = homeContentPadding,
-                                    onOpenSpace = ::navigateSpace,
-                                    onOpenTasks = ::navigateTasks,
-                                    onOpenPomodoro = ::navigatePomodoro,
+                                    vaultRootUri = vaultRootUri,
+                                    repository = repository,
+                                    isActive = currentRoute == "home" && settledHomePage == 1,
+                                    searchRequestToken = 0L,
+                                    uploadRequestToken = 0L,
+                                    newFolderRequestToken = 0L,
+                                    allDirsExpanded = false,
+                                    refreshToken = dirStructureMutationToken,
+                                    mutation = dirStructureMutation,
+                                    onDocListMutated = ::onDocListMutated,
+                                    onOpenDoc = { uriStr, lineIndex -> openDoc(uriStr, null, lineIndex) },
+                                    onChangeVault = {
+                                        scope.launch { prefs.setVaultRootUri(null) }
+                                        navController.navigate("vault") {
+                                            popUpTo("home") { inclusive = true }
+                                        }
+                                    },
+                                    selectedEntryUris = selectedSpaceEntryUris,
+                                    onToggleEntrySelection = { uri -> selectedSpaceEntryUris = toggleSelection(selectedSpaceEntryUris, uri) },
+                                    onClearEntrySelection = { selectedSpaceEntryUris = emptySet() },
                                 )
+                            2 ->
+                                HomeExtensionsScreen(
+                                    contentPadding = homeContentPadding,
+                                    vaultRootUri = vaultRootUri,
+                                    pluginRepo = pluginRepo,
+                                    onOpenDoc = { uriStr, lineIndex -> openDoc(uriStr, null, lineIndex) },
+                                    onOpenWorkshop = { navController.navigate("workshop") },
+                                )
+                            else -> Unit
                         }
                     }
                 }
