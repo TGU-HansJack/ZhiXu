@@ -227,10 +227,12 @@ input {
 
 .appShell.sidebarResizeActive .sidebar.mainSidebar {
   border-right-color: var(--accent);
+  box-shadow: inset -1px 0 0 var(--accent);
 }
 
 .appShell.sidebarResizeActive .menubarLeft {
   border-right-color: var(--accent);
+  box-shadow: inset -1px 0 0 var(--accent);
 }
 
 .topbar {
@@ -265,7 +267,7 @@ input {
   gap: 6px;
   z-index: 1;
   padding: 0 10px;
-  border-right: 2px solid var(--border);
+  border-right: 1px solid var(--border);
   grid-column: 1;
 }
 
@@ -647,7 +649,7 @@ input {
   z-index: 2;
   grid-column: 2;
   background: var(--panel);
-  border-right: 2px solid var(--border);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   min-width: 220px;
