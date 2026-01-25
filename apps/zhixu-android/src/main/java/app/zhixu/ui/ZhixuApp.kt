@@ -23,9 +23,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
@@ -45,7 +42,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -90,11 +86,9 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -152,6 +146,7 @@ import app.zhixu.sync.OfficialSync
 import app.zhixu.sync.SyncServerClient
 import app.zhixu.sync.SyncServerSyncRuntime
 import app.zhixu.sync.SyncServerStorageStats
+import app.zhixu.plugins.InstalledPlugin
 import app.zhixu.ui.components.CreateDrawSheetContent
 import app.zhixu.ui.components.CreateMenuSheetContent
 import app.zhixu.ui.components.CreateQuickNewSheetContent
@@ -172,7 +167,7 @@ import app.zhixu.ui.screens.DeviceManagementScreen
 import app.zhixu.ui.screens.DocumentListScreen
 import app.zhixu.ui.screens.DrawScreen
 import app.zhixu.ui.screens.EditorScreen
-import app.zhixu.ui.screens.HomeExtensionsScreen
+import app.zhixu.ui.screens.HomeExtensionActionScreen
 import app.zhixu.ui.screens.ImagePreviewScreen
 import app.zhixu.ui.screens.LongImageScreen
 import app.zhixu.ui.screens.NewDocScreen
@@ -202,7 +197,6 @@ import app.zhixu.ui.screens.WorkshopScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -279,6 +273,19 @@ private data class WebDavAutoSyncStatusSnapshot(
     val lastAttemptedAtMs: Long,
     val lastError: String?,
     val message: String,
+)
+
+private const val PLACE_HOME_SUB_BAR = "homeExtensions"
+private const val HOME_SUB_TAB_DOCS = "docs"
+private const val HOME_SUB_TAB_SPACE = "space"
+
+private fun homePluginSubTabKey(pluginId: String, actionId: String): String = "plugin:$pluginId:$actionId"
+
+private data class HomeSubBarItem(
+    val key: String,
+    val label: String,
+    val pluginId: String? = null,
+    val actionId: String? = null,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1310,10 +1317,7 @@ fun ZhixuApp(
     val pinnedDocUriSet = remember(pinnedDocUris) { pinnedDocUris.toHashSet() }
     val docsSelectionAllPinned = docsSelectionMode && selectedDocUris.all { it in pinnedDocUriSet }
 
-    val homePagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 0, pageCount = { 3 })
-    val settledHomePage by remember { derivedStateOf { homePagerState.settledPage } }
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val viewConfig = LocalViewConfiguration.current
     val homeBarHeightPx = remember(density) { with(density) { ZhixuTopBarContentHeight.toPx() } }
     val homeBarDividerHeightPx = remember(density) { with(density) { 1.dp.toPx() } }
     // Negative = moved up (hidden). Range is [-(topBar + subBar + dividers), 0].
@@ -1348,6 +1352,85 @@ fun ZhixuApp(
                 ): androidx.compose.ui.geometry.Offset = androidx.compose.ui.geometry.Offset(x = 0f, y = consume(available.y))
             }
         }
+
+    var homeSubBarSelectedKey by rememberSaveable(vaultRootUriString) { mutableStateOf(HOME_SUB_TAB_DOCS) }
+    var homePluginTabsLoading by remember { mutableStateOf(false) }
+    var homePluginTabsError by remember { mutableStateOf<String?>(null) }
+    var homePluginTabs by remember(vaultRootUriString) { mutableStateOf<List<HomeSubBarItem>>(emptyList()) }
+
+    fun buildHomePluginTabs(installed: List<InstalledPlugin>): List<HomeSubBarItem> {
+        val out = ArrayList<HomeSubBarItem>()
+        for (p in installed) {
+            if (!p.enabled) continue
+            for (a in p.manifest.actions) {
+                if (!a.place.equals(PLACE_HOME_SUB_BAR, ignoreCase = true)) continue
+                val label = a.label.trim().ifBlank { p.manifest.name ?: p.manifest.id }
+                out +=
+                    HomeSubBarItem(
+                        key = homePluginSubTabKey(pluginId = p.manifest.id, actionId = a.id),
+                        label = label,
+                        pluginId = p.manifest.id,
+                        actionId = a.id,
+                    )
+            }
+        }
+        return out
+    }
+
+    fun refreshHomePluginTabs() {
+        val root = vaultRootUri ?: return
+        homePluginTabsLoading = true
+        homePluginTabsError = null
+        scope.launch {
+            val result =
+                withContext(Dispatchers.IO) {
+                    runCatching { pluginRepo.listInstalled(root) }
+                }
+            homePluginTabsLoading = false
+            result.onFailure {
+                homePluginTabsError = it.message?.takeIf { msg -> msg.isNotBlank() } ?: it.javaClass.simpleName
+                homePluginTabs = emptyList()
+            }
+            result.onSuccess { installed ->
+                homePluginTabs = buildHomePluginTabs(installed)
+            }
+        }
+    }
+
+    val homeSubBarItems =
+        remember(homePluginTabs) {
+            buildList {
+                add(HomeSubBarItem(key = HOME_SUB_TAB_DOCS, label = "最近访问页面"))
+                add(HomeSubBarItem(key = HOME_SUB_TAB_SPACE, label = "空间列表"))
+                addAll(homePluginTabs)
+            }
+        }
+
+    val selectedHomeSubBarIndex =
+        remember(homeSubBarItems, homeSubBarSelectedKey) {
+            homeSubBarItems.indexOfFirst { it.key == homeSubBarSelectedKey }.let { if (it >= 0) it else 0 }
+        }
+
+    LaunchedEffect(docsSelectionMode) {
+        if (docsSelectionMode) homeSubBarSelectedKey = HOME_SUB_TAB_DOCS
+    }
+
+    LaunchedEffect(homeSubBarItems) {
+        if (homeSubBarItems.any { it.key == homeSubBarSelectedKey }) return@LaunchedEffect
+        homeSubBarSelectedKey = homeSubBarItems.firstOrNull()?.key ?: HOME_SUB_TAB_DOCS
+    }
+
+    LaunchedEffect(vaultRootUriString) {
+        homePluginTabs = emptyList()
+        homePluginTabsError = null
+        homePluginTabsLoading = false
+        if (vaultRootUri != null) refreshHomePluginTabs()
+    }
+
+    LaunchedEffect(currentRoute) {
+        if (currentRoute != "home") return@LaunchedEffect
+        if (vaultRootUri != null) refreshHomePluginTabs()
+    }
 
     LaunchedEffect(currentRoute, docsSelectionMode) {
         // Keep Home app bars visible when leaving Home or entering selection mode.
@@ -1953,27 +2036,25 @@ fun ZhixuApp(
                                                 modifier = Modifier.size(ZhixuTopBarIconSize),
                                             )
                                         }
-                                        if (settledHomePage == 0) {
-                                            ZhixuIconButton(onClick = { docSortFilterRequestToken += 1L }) {
-                                                Icon(
-                                                    painter = painterResource(R.drawable.ic_lucide_settings_2),
-                                                    contentDescription = stringResource(R.string.action_sort_filter),
-                                                    modifier = Modifier.size(ZhixuTopBarIconSize),
-                                                )
-                                            }
-                                            ZhixuIconButton(onClick = { docListUseGrid = !docListUseGrid }) {
-                                                val viewIcon =
-                                                    if (docListUseGrid) {
-                                                        R.drawable.ic_lucide_stretch_horizontal
-                                                    } else {
-                                                        R.drawable.ic_lucide_layout_dashboard
-                                                    }
-                                                Icon(
-                                                    painter = painterResource(viewIcon),
-                                                    contentDescription = stringResource(R.string.action_toggle_view),
-                                                    modifier = Modifier.size(ZhixuTopBarIconSize),
-                                                )
-                                            }
+                                        ZhixuIconButton(onClick = { docSortFilterRequestToken += 1L }) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_lucide_settings_2),
+                                                contentDescription = stringResource(R.string.action_sort_filter),
+                                                modifier = Modifier.size(ZhixuTopBarIconSize),
+                                            )
+                                        }
+                                        ZhixuIconButton(onClick = { docListUseGrid = !docListUseGrid }) {
+                                            val viewIcon =
+                                                if (docListUseGrid) {
+                                                    R.drawable.ic_lucide_stretch_horizontal
+                                                } else {
+                                                    R.drawable.ic_lucide_layout_dashboard
+                                                }
+                                            Icon(
+                                                painter = painterResource(viewIcon),
+                                                contentDescription = stringResource(R.string.action_toggle_view),
+                                                modifier = Modifier.size(ZhixuTopBarIconSize),
+                                            )
                                         }
                                         ZhixuIconButton(onClick = { globalSearchOpen = true }) {
                                             Icon(
@@ -2018,9 +2099,10 @@ fun ZhixuApp(
                                     } else {
                                         Modifier
                                     },
-                                pagerState = homePagerState,
+                                selectedIndex = selectedHomeSubBarIndex,
+                                onSelect = { idx -> homeSubBarSelectedKey = homeSubBarItems[idx].key },
                                 height = ZhixuTopBarContentHeight,
-                                labels = listOf("最近访问页面", "空间列表", "可扩展列表"),
+                                labels = homeSubBarItems.map { it.label },
                             )
                         }
                         HorizontalDivider(
@@ -2367,92 +2449,54 @@ fun ZhixuApp(
                                     padding.calculateBottomPadding()
                             }
                         }
-                    HorizontalPager(
-                        state = homePagerState,
-                        modifier =
-                            if (docsSelectionMode) {
-                                Modifier.fillMaxSize()
-                            } else {
-                                Modifier.fillMaxSize().nestedScroll(homeBarsNestedScrollConnection)
-                            },
-                    ) { page ->
-                        when (page) {
-                            0 ->
-                                Box(
-                                    modifier =
-                                        Modifier
-                                            .fillMaxSize()
-                                            .pointerInput(docsSelectionMode, settledHomePage) {
-                                                if (docsSelectionMode || settledHomePage != 0) return@pointerInput
+                    val homeRootModifier =
+                        if (docsSelectionMode) {
+                            Modifier.fillMaxSize()
+                        } else {
+                            Modifier.fillMaxSize().nestedScroll(homeBarsNestedScrollConnection)
+                        }
+                    val selectedHomeItem =
+                        if (docsSelectionMode) {
+                            homeSubBarItems.firstOrNull { it.key == HOME_SUB_TAB_DOCS }
+                        } else {
+                            homeSubBarItems.getOrNull(selectedHomeSubBarIndex)
+                        } ?: HomeSubBarItem(key = HOME_SUB_TAB_DOCS, label = "最近访问页面")
 
-                                                val edgeWidthPx = with(density) { 24.dp.toPx() }
-                                                val thresholdPx = with(density) { 72.dp.toPx() }
-                                                val slop = viewConfig.touchSlop
+                    Box(modifier = homeRootModifier) {
+                        when {
+                            selectedHomeItem.key == HOME_SUB_TAB_DOCS -> {
+                                DocumentListScreen(
+                                    contentPadding = homeContentPadding,
+                                    vaultRootUri = vaultRootUri,
+                                    repository = repository,
+                                    documentIndex = documentIndex,
+                                    indexUpdater = indexUpdater,
+                                    isActive = currentRoute == "home" && selectedHomeItem.key == HOME_SUB_TAB_DOCS,
+                                    searchRequestToken = docSearchRequestToken,
+                                    sortFilterRequestToken = docSortFilterRequestToken,
+                                    useGridLayout = docListUseGrid,
+                                    pinnedDocUris = pinnedDocUris,
+                                    onOpenDoc = ::openDoc,
+                                    onNewDoc = { navController.navigate("newDoc") },
+                                    onChangeVault = {
+                                        scope.launch { prefs.setVaultRootUri(null) }
+                                        navController.navigate("vault") {
+                                            popUpTo("home") { inclusive = true }
+                                        }
+                                    },
+                                    onDocListMutated = ::onDocListMutated,
+                                    selectedDocUris = selectedDocUris,
+                                    onToggleDocSelection = { uri -> selectedDocUris = toggleSelection(selectedDocUris, uri) },
+                                    onClearDocSelection = { selectedDocUris = emptySet() },
+                                )
+                            }
 
-                                                awaitEachGesture {
-                                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                                    val startX = down.position.x
-                                                    val startY = down.position.y
-
-                                                    // Only allow edge-swipe to open the left drawer on the "recent" page.
-                                                    if (startX > edgeWidthPx) return@awaitEachGesture
-
-                                                    while (true) {
-                                                        val event = awaitPointerEvent()
-                                                        val change = event.changes.firstOrNull { it.id == down.id } ?: continue
-                                                        if (!change.pressed) break
-
-                                                        val dx = change.position.x - startX
-                                                        val dy = change.position.y - startY
-
-                                                        // Give up if the gesture is clearly vertical or swiping left (pager).
-                                                        if (abs(dy) > slop && abs(dy) > abs(dx)) break
-                                                        if (dx < -slop) break
-
-                                                        if (dx > thresholdPx) {
-                                                            change.consume()
-                                                            scope.launch { drawerState.open() }
-                                                            break
-                                                        }
-
-                                                        // Once it looks like an edge swipe, keep consuming so pager doesn't steal it.
-                                                        if (dx > slop) change.consume()
-                                                    }
-                                                }
-                                            },
-                                ) {
-                                    DocumentListScreen(
-                                        contentPadding = homeContentPadding,
-                                        vaultRootUri = vaultRootUri,
-                                        repository = repository,
-                                        documentIndex = documentIndex,
-                                        indexUpdater = indexUpdater,
-                                        isActive = currentRoute == "home" && settledHomePage == 0,
-                                        searchRequestToken = docSearchRequestToken,
-                                        sortFilterRequestToken = docSortFilterRequestToken,
-                                        useGridLayout = docListUseGrid,
-                                        pinnedDocUris = pinnedDocUris,
-                                        onOpenDoc = ::openDoc,
-                                        onNewDoc = { navController.navigate("newDoc") },
-                                        onChangeVault = {
-                                            scope.launch { prefs.setVaultRootUri(null) }
-                                            navController.navigate("vault") {
-                                                popUpTo("home") { inclusive = true }
-                                            }
-                                        },
-                                        onDocListMutated = ::onDocListMutated,
-                                        selectedDocUris = selectedDocUris,
-                                        onToggleDocSelection = { uri -> selectedDocUris = toggleSelection(selectedDocUris, uri) },
-                                        onClearDocSelection = { selectedDocUris = emptySet() },
-                                    )
-                                }
-
-                            1 ->
+                            selectedHomeItem.key == HOME_SUB_TAB_SPACE -> {
                                 SpaceScreen(
                                     contentPadding = homeContentPadding,
                                     vaultRootUri = vaultRootUri,
                                     repository = repository,
-                                    isActive = currentRoute == "home" && settledHomePage == 1,
+                                    isActive = currentRoute == "home" && selectedHomeItem.key == HOME_SUB_TAB_SPACE,
                                     searchRequestToken = 0L,
                                     uploadRequestToken = 0L,
                                     newFolderRequestToken = 0L,
@@ -2471,15 +2515,18 @@ fun ZhixuApp(
                                     onToggleEntrySelection = { uri -> selectedSpaceEntryUris = toggleSelection(selectedSpaceEntryUris, uri) },
                                     onClearEntrySelection = { selectedSpaceEntryUris = emptySet() },
                                 )
-                            2 ->
-                                HomeExtensionsScreen(
+                            }
+
+                            selectedHomeItem.pluginId != null && selectedHomeItem.actionId != null -> {
+                                HomeExtensionActionScreen(
                                     contentPadding = homeContentPadding,
                                     vaultRootUri = vaultRootUri,
                                     pluginRepo = pluginRepo,
+                                    pluginId = selectedHomeItem.pluginId,
+                                    actionId = selectedHomeItem.actionId,
                                     onOpenDoc = { uriStr, lineIndex -> openDoc(uriStr, null, lineIndex) },
-                                    onOpenWorkshop = { navController.navigate("workshop") },
                                 )
-                            else -> Unit
+                            }
                         }
                     }
                 }
