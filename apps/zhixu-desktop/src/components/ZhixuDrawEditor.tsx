@@ -19,6 +19,7 @@ import { documentContentEqual } from "../draw/contentEqual";
 import { elementBounds } from "../draw/bounds";
 import { argbToRgba } from "../draw/color";
 import { rectFromPoints } from "../draw/geometry";
+import { OneEuroFilter1D, OneEuroFilter2D } from "../draw/inputFilter";
 import { centerPage, fitPageToWidth, MIN_SCALE, MAX_SCALE, snapViewport, zoomAroundViewPoint } from "../draw/viewportHelpers";
 import { DrawEditorModel } from "../draw/editorModel";
 import {
@@ -45,6 +46,7 @@ import {
   IconChevronBack,
   IconChevronForward,
   IconCheckmark,
+  IconClose,
   IconLucideEraser,
   IconLucideHand,
   IconLucideHighlighter,
@@ -64,6 +66,24 @@ type UndoHistory = {
   undoStack: DrawElement[][];
   redoStack: DrawElement[][];
 };
+
+type StrokeSmoothingState = {
+  pointerId: number;
+  toolId: "pen" | "highlighter";
+  positionFilter: OneEuroFilter2D;
+  pressureFilter: OneEuroFilter1D | null;
+  prevSentPagePos: DrawPoint | null;
+  lastSentPagePos: DrawPoint;
+  lastSentPressure: number;
+  lastSentTimeMs: number;
+  prevRawViewPos: DrawPoint | null;
+  lastRawViewPos: DrawPoint;
+  lastRawTimeMs: number;
+};
+
+const STROKE_POSITION_FILTER = { minCutoff: 1.35, beta: 0.02, dCutoff: 1.0 } as const;
+const STROKE_PRESSURE_FILTER = { minCutoff: 5.0, beta: 0.0, dCutoff: 1.0 } as const;
+const STROKE_INTENT_MIN_RAW_WEIGHT = 0.06;
 
 type Props = {
   path: string;
@@ -87,6 +107,7 @@ type LongPressEraserState = {
   startViewPos: DrawPoint;
   lastViewPos: DrawPoint;
   lastPagePos: DrawPoint;
+  lastTimeMs: number;
   lastExtras: Pick<ToolPointerEvent, "pointerType" | "pressure" | "tiltX" | "tiltY" | "twist">;
   previousToolId: DrawToolId;
 };
@@ -119,6 +140,62 @@ function spanOf(a: DrawPoint, b: DrawPoint): number {
   const dx = a[0] - b[0];
   const dy = a[1] - b[1];
   return Math.max(0, Math.hypot(dx, dy));
+}
+
+function turnStrength(prev: DrawPoint | null, mid: DrawPoint, next: DrawPoint): number {
+  if (!prev) return 0;
+  const v1x = mid[0] - prev[0];
+  const v1y = mid[1] - prev[1];
+  const v2x = next[0] - mid[0];
+  const v2y = next[1] - mid[1];
+  const len1 = Math.hypot(v1x, v1y);
+  const len2 = Math.hypot(v2x, v2y);
+  if (len1 < 0.35 || len2 < 0.35) return 0;
+  return Math.abs(v1x * v2y - v1y * v2x) / (len1 * len2);
+}
+
+function shouldEmitStrokeSample(
+  state: StrokeSmoothingState,
+  nextPagePos: DrawPoint,
+  nextPressure: number,
+  timeMs: number,
+  brushWidthPage: number,
+  scale: number,
+  rawTurn: number,
+) {
+  const last = state.lastSentPagePos;
+  const dx = nextPagePos[0] - last[0];
+  const dy = nextPagePos[1] - last[1];
+  const dist2 = dx * dx + dy * dy;
+  const dt = timeMs - state.lastSentTimeMs;
+  const dp = Math.abs(nextPressure - state.lastSentPressure);
+
+  const s = Math.max(0.0001, scale);
+  const widthView = Math.max(0.2, brushWidthPage) * s;
+  const minViewDist = Math.min(6, Math.max(0.55, widthView * 0.12));
+  const minDist = minViewDist / s;
+  const minDist2 = minDist * minDist;
+
+  if (dist2 >= minDist2) return true;
+  if (dt >= 40) return true;
+  if (dp >= 0.035) return true;
+
+  if (rawTurn >= 0.18) {
+    if (dist2 >= minDist2 * 0.09) return true;
+    if (dt >= 18) return true;
+  }
+
+  const prev = state.prevSentPagePos;
+  if (!prev) return false;
+  const v1x = last[0] - prev[0];
+  const v1y = last[1] - prev[1];
+  const v2x = nextPagePos[0] - last[0];
+  const v2y = nextPagePos[1] - last[1];
+  const len1 = Math.hypot(v1x, v1y);
+  const len2 = Math.hypot(v2x, v2y);
+  if (len1 < 0.0001 || len2 < 0.0001) return false;
+  const turn = Math.abs(v1x * v2y - v1y * v2x) / (len1 * len2);
+  return turn >= 0.12;
 }
 
 function isPenEraser(ev: PointerEvent): boolean {
@@ -236,28 +313,84 @@ function drawStrokePoints(
       return;
     }
 
-    let prev = pointStyle(points[0]!);
-    stamp(prev.x, prev.y, prev.rx, prev.ry, prev.rot, prev.alpha);
+    const quad = (a: number, b: number, c: number, t: number) => {
+      const u = 1 - t;
+      return u * u * a + 2 * u * t * b + t * t * c;
+    };
 
-    for (let i = 1; i < points.length; i++) {
-      const next = pointStyle(points[i]!);
-      const dx = next.x - prev.x;
-      const dy = next.y - prev.y;
-      const dist = Math.hypot(dx, dy);
-      const step = Math.max(0.5, Math.min(prev.rx, prev.ry, next.rx, next.ry) * 0.6);
-      const n = Math.max(1, Math.ceil(dist / step));
+    const unwrapAngleNear = (base: number, target: number) => {
+      let t = target;
+      let d = t - base;
+      while (d > Math.PI) {
+        t -= Math.PI * 2;
+        d = t - base;
+      }
+      while (d < -Math.PI) {
+        t += Math.PI * 2;
+        d = t - base;
+      }
+      return t;
+    };
+
+    const sampleQuadratic = (
+      a: ReturnType<typeof pointStyle>,
+      b: ReturnType<typeof pointStyle>,
+      c: ReturnType<typeof pointStyle>,
+    ) => {
+      const approxLen = Math.hypot(b.x - a.x, b.y - a.y) + Math.hypot(c.x - b.x, c.y - b.y);
+      const minSize = Math.min(a.rx, a.ry, b.rx, b.ry, c.rx, c.ry);
+      const step = Math.max(0.35, minSize * 0.45);
+      const n = Math.max(1, Math.ceil(approxLen / step));
+
+      const bRot = unwrapAngleNear(a.rot, b.rot);
+      const cRot = unwrapAngleNear(bRot, c.rot);
       for (let j = 1; j <= n; j++) {
         const t = j / n;
         stamp(
-          prev.x + dx * t,
-          prev.y + dy * t,
-          prev.rx + (next.rx - prev.rx) * t,
-          prev.ry + (next.ry - prev.ry) * t,
-          prev.rot + (next.rot - prev.rot) * t,
-          prev.alpha + (next.alpha - prev.alpha) * t,
+          quad(a.x, b.x, c.x, t),
+          quad(a.y, b.y, c.y, t),
+          quad(a.rx, b.rx, c.rx, t),
+          quad(a.ry, b.ry, c.ry, t),
+          quad(a.rot, bRot, cRot, t),
+          quad(a.alpha, b.alpha, c.alpha, t),
         );
       }
-      prev = next;
+    };
+
+    const styled = points.map(pointStyle);
+    const smoothed = styled.map((p, i) => {
+      if (i === 0 || i === styled.length - 1) return p;
+      const prev = styled[i - 1]!;
+      const next = styled[i + 1]!;
+      return {
+        ...p,
+        x: (prev.x + p.x * 2 + next.x) / 4,
+        y: (prev.y + p.y * 2 + next.y) / 4,
+        rx: (prev.rx + p.rx * 2 + next.rx) / 4,
+        ry: (prev.ry + p.ry * 2 + next.ry) / 4,
+        rot: p.rot,
+        alpha: (prev.alpha + p.alpha * 2 + next.alpha) / 4,
+      };
+    });
+
+    let prev = smoothed[0]!;
+    stamp(prev.x, prev.y, prev.rx, prev.ry, prev.rot, prev.alpha);
+
+    for (let i = 1; i < smoothed.length; i++) {
+      const curr = smoothed[i]!;
+      const next = smoothed[i + 1] ?? curr;
+      const mid = i < smoothed.length - 1
+        ? {
+            x: (curr.x + next.x) / 2,
+            y: (curr.y + next.y) / 2,
+            rx: (curr.rx + next.rx) / 2,
+            ry: (curr.ry + next.ry) / 2,
+            rot: curr.rot,
+            alpha: (curr.alpha + next.alpha) / 2,
+          }
+        : curr;
+      sampleQuadratic(prev, curr, mid);
+      prev = mid;
     }
 
     ctx.restore();
@@ -287,23 +420,53 @@ function drawStrokePoints(
   let prev = pointStyle(points[0]!);
   stamp(prev.x, prev.y, prev.r, prev.alpha);
 
-  for (let i = 1; i < points.length; i++) {
-    const next = pointStyle(points[i]!);
-    const dx = next.x - prev.x;
-    const dy = next.y - prev.y;
-    const dist = Math.hypot(dx, dy);
-    const step = Math.max(0.75, Math.min(prev.r, next.r) * 0.65);
-    const n = Math.max(1, Math.ceil(dist / step));
+  const quad = (a: number, b: number, c: number, t: number) => {
+    const u = 1 - t;
+    return u * u * a + 2 * u * t * b + t * t * c;
+  };
+
+  const sampleQuadratic = (
+    a: ReturnType<typeof pointStyle>,
+    b: ReturnType<typeof pointStyle>,
+    c: ReturnType<typeof pointStyle>,
+  ) => {
+    const approxLen = Math.hypot(b.x - a.x, b.y - a.y) + Math.hypot(c.x - b.x, c.y - b.y);
+    const step = Math.max(0.35, Math.min(a.r, b.r, c.r) * 0.5);
+    const n = Math.max(1, Math.ceil(approxLen / step));
     for (let j = 1; j <= n; j++) {
       const t = j / n;
-      stamp(
-        prev.x + dx * t,
-        prev.y + dy * t,
-        prev.r + (next.r - prev.r) * t,
-        prev.alpha + (next.alpha - prev.alpha) * t,
-      );
+      stamp(quad(a.x, b.x, c.x, t), quad(a.y, b.y, c.y, t), quad(a.r, b.r, c.r, t), quad(a.alpha, b.alpha, c.alpha, t));
     }
-    prev = next;
+  };
+
+  const styled = points.map(pointStyle);
+  const smoothed = styled.map((p, i) => {
+    if (i === 0 || i === styled.length - 1) return p;
+    const prev = styled[i - 1]!;
+    const next = styled[i + 1]!;
+    return {
+      ...p,
+      x: (prev.x + p.x * 2 + next.x) / 4,
+      y: (prev.y + p.y * 2 + next.y) / 4,
+      r: (prev.r + p.r * 2 + next.r) / 4,
+      alpha: (prev.alpha + p.alpha * 2 + next.alpha) / 4,
+    };
+  });
+
+  prev = smoothed[0]!;
+  for (let i = 1; i < smoothed.length; i++) {
+    const curr = smoothed[i]!;
+    const next = smoothed[i + 1] ?? curr;
+    const mid = i < smoothed.length - 1
+      ? {
+          x: (curr.x + next.x) / 2,
+          y: (curr.y + next.y) / 2,
+          r: (curr.r + next.r) / 2,
+          alpha: (curr.alpha + next.alpha) / 2,
+        }
+      : curr;
+    sampleQuadratic(prev, curr, mid);
+    prev = mid;
   }
 
   ctx.restore();
@@ -534,6 +697,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPage
     activePointerId: number | null;
     lastViewPos: DrawPoint;
     lastPagePos: DrawPoint;
+    strokeSmoothing: StrokeSmoothingState | null;
     isTransform: boolean;
     prevCentroid: DrawPoint;
     prevSpan: number;
@@ -543,6 +707,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPage
     activePointerId: null,
     lastViewPos: [0, 0],
     lastPagePos: [0, 0],
+    strokeSmoothing: null,
     isTransform: false,
     prevCentroid: [0, 0],
     prevSpan: 0,
@@ -574,6 +739,15 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPage
     return () => {
       if (zoomHudHideTimeoutRef.current != null) window.clearTimeout(zoomHudHideTimeoutRef.current);
     };
+  }, []);
+
+  const startDraggingIfAllowed = useCallback((ev: React.MouseEvent) => {
+    if (ev.button !== 0) return;
+    const target = ev.target as HTMLElement | null;
+    if (target?.closest('[data-no-drag="true"]')) return;
+    if (typeof window === "undefined") return;
+    if (!(window as any).__TAURI__) return;
+    void getCurrentWindow().startDragging();
   }, []);
 
   const persistHistoryNow = useCallback(() => {
@@ -954,15 +1128,20 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPage
       window.clearTimeout(state.timeoutId);
 
       editor.toolId = "eraser";
+      input.strokeSmoothing = null;
       input.activeTool.onCancel(editor);
       input.activeTool = toolMachineFor("eraser");
       input.modifiesDocument = true;
 
+      const rawPagePos = editor.viewport.viewToPage(state.lastViewPos);
       const toolEvent: ToolPointerEvent = {
+        rawViewPosition: state.lastViewPos,
+        rawPagePosition: rawPagePos,
         viewPosition: state.lastViewPos,
         viewDelta: [0, 0],
         pagePosition: state.lastPagePos,
         pageDelta: [0, 0],
+        timeMs: state.lastTimeMs,
         ...state.lastExtras,
       };
       input.activeTool.onDown(editor, toolEvent);
@@ -1217,6 +1396,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPage
         if (longPress) clearLongPressEraserState(longPress.pointerId);
         if (!input.isTransform) {
           input.isTransform = true;
+          input.strokeSmoothing = null;
           input.activeTool?.onCancel(editor);
           input.activeTool = null;
           input.activePointerId = null;
@@ -1241,14 +1421,54 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPage
       input.activeTool = pickedTool;
       input.modifiesDocument = ["pen", "highlighter", "shape", "eraser"].includes(pickedTool.id);
       input.activePointerId = ev.pointerId;
-      input.lastViewPos = viewPos;
-      input.lastPagePos = clampToPage(editor, editor.viewport.viewToPage(viewPos));
+      const rawPagePos = editor.viewport.viewToPage(viewPos);
+      let pagePos = clampToPage(editor, rawPagePos);
+      let viewPosForTool = viewPos;
+      let pressure = extras.pressure;
+
+      if (pickedTool.id === "pen" || pickedTool.id === "highlighter") {
+        const positionFilter = new OneEuroFilter2D(STROKE_POSITION_FILTER);
+        const tSec = native.timeStamp / 1000;
+        positionFilter.reset(viewPos, tSec);
+
+        const pressureFilter =
+          pickedTool.id === "pen" && extras.pointerType === "pen" && editor.penStyle === "fountainPen" && editor.pressureEnabled
+            ? new OneEuroFilter1D(STROKE_PRESSURE_FILTER)
+            : null;
+        if (pressureFilter) {
+          pressureFilter.reset(pressure, tSec);
+          pressure = clamp01(pressureFilter.filter(pressure, tSec));
+        }
+
+        input.strokeSmoothing = {
+          pointerId: ev.pointerId,
+          toolId: pickedTool.id as "pen" | "highlighter",
+          positionFilter,
+          pressureFilter,
+          prevSentPagePos: null,
+          lastSentPagePos: pagePos,
+          lastSentPressure: pressure,
+          lastSentTimeMs: native.timeStamp,
+          prevRawViewPos: null,
+          lastRawViewPos: viewPos,
+          lastRawTimeMs: native.timeStamp,
+        };
+      } else {
+        input.strokeSmoothing = null;
+      }
+
+      input.lastViewPos = viewPosForTool;
+      input.lastPagePos = pagePos;
       const toolEvent: ToolPointerEvent = {
-        viewPosition: viewPos,
+        rawViewPosition: viewPos,
+        rawPagePosition: rawPagePos,
+        viewPosition: viewPosForTool,
         viewDelta: [0, 0],
-        pagePosition: input.lastPagePos,
+        pagePosition: pagePos,
         pageDelta: [0, 0],
+        timeMs: native.timeStamp,
         ...extras,
+        pressure,
       };
       pickedTool.onDown(editor, toolEvent);
 
@@ -1269,6 +1489,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPage
           startViewPos: viewPos,
           lastViewPos: viewPos,
           lastPagePos: input.lastPagePos,
+          lastTimeMs: native.timeStamp,
           lastExtras: extras,
           previousToolId: editor.toolId,
         };
@@ -1335,6 +1556,11 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPage
       if (input.activePointerId !== ev.pointerId) return;
       if (!input.activeTool) return;
 
+      const smoothing = input.strokeSmoothing;
+      if (smoothing && (smoothing.pointerId !== ev.pointerId || input.activeTool.id !== smoothing.toolId)) {
+        input.strokeSmoothing = null;
+      }
+
       const native = ev.nativeEvent as PointerEvent;
       const samples: PointerEvent[] =
         typeof native.getCoalescedEvents === "function" && native.getCoalescedEvents().length
@@ -1345,15 +1571,15 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPage
         const sampleViewPos: DrawPoint = [sample.clientX - rect.left, sample.clientY - rect.top];
         pointersRef.current.set(ev.pointerId, sampleViewPos);
 
-        const viewDelta: DrawPoint = [sampleViewPos[0] - input.lastViewPos[0], sampleViewPos[1] - input.lastViewPos[1]];
-        const pagePos = clampToPage(editor, editor.viewport.viewToPage(sampleViewPos));
-        const pageDelta: DrawPoint = [pagePos[0] - input.lastPagePos[0], pagePos[1] - input.lastPagePos[1]];
+        const rawPagePos = editor.viewport.viewToPage(sampleViewPos);
+        const rawPagePosClamped = clampToPage(editor, rawPagePos);
 
         const sampleExtras = toolPointerExtras(sample);
         const longPress = longPressEraserRef.current;
         if (longPress && longPress.pointerId === ev.pointerId && !longPress.triggered) {
           longPress.lastViewPos = sampleViewPos;
-          longPress.lastPagePos = pagePos;
+          longPress.lastPagePos = rawPagePosClamped;
+          longPress.lastTimeMs = sample.timeStamp;
           longPress.lastExtras = sampleExtras;
           const dx = sampleViewPos[0] - longPress.startViewPos[0];
           const dy = sampleViewPos[1] - longPress.startViewPos[1];
@@ -1361,12 +1587,69 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPage
           if (dx * dx + dy * dy > tol2) {
             clearLongPressEraserState(ev.pointerId);
           } else if (longPress.armed) {
-            tryTriggerLongPressEraser(ev.pointerId);
+             tryTriggerLongPressEraser(ev.pointerId);
+           }
+         }
+
+        let pagePos = rawPagePosClamped;
+        let viewPosForTool = sampleViewPos;
+        let pressure = sampleExtras.pressure;
+
+        const activeSmoothing = input.strokeSmoothing;
+        if (activeSmoothing && (activeSmoothing.toolId === "pen" || activeSmoothing.toolId === "highlighter")) {
+          const tSec = sample.timeStamp / 1000;
+
+          const rawTurn = turnStrength(activeSmoothing.prevRawViewPos, activeSmoothing.lastRawViewPos, sampleViewPos);
+          activeSmoothing.prevRawViewPos = activeSmoothing.lastRawViewPos;
+          activeSmoothing.lastRawViewPos = sampleViewPos;
+          activeSmoothing.lastRawTimeMs = sample.timeStamp;
+
+          const stableViewPos = activeSmoothing.positionFilter.filter(sampleViewPos, tSec);
+          if (activeSmoothing.pressureFilter) {
+            pressure = clamp01(activeSmoothing.pressureFilter.filter(pressure, tSec));
           }
+
+          const brushWidthPage = activeSmoothing.toolId === "highlighter" ? editor.highlighterWidth : editor.currentPenWidth;
+          const widthView = Math.max(0.2, brushWidthPage) * Math.max(0.0001, editor.viewport.scale);
+          const lag = Math.hypot(sampleViewPos[0] - stableViewPos[0], sampleViewPos[1] - stableViewPos[1]);
+          const turnWeight = clamp01((rawTurn - 0.08) / 0.28);
+          const lagStart = Math.min(6, Math.max(1.2, widthView * 0.12));
+          const lagRange = Math.max(4, lagStart * 3);
+          const lagWeight = clamp01((lag - lagStart) / lagRange);
+          const weight = Math.min(1, Math.max(STROKE_INTENT_MIN_RAW_WEIGHT, turnWeight, lagWeight));
+          const intentViewPos: DrawPoint = [
+            stableViewPos[0] + (sampleViewPos[0] - stableViewPos[0]) * weight,
+            stableViewPos[1] + (sampleViewPos[1] - stableViewPos[1]) * weight,
+          ];
+
+          if (rawTurn >= 0.35) activeSmoothing.positionFilter.reset(sampleViewPos, tSec);
+
+          viewPosForTool = intentViewPos;
+          pagePos = clampToPage(editor, editor.viewport.viewToPage(intentViewPos));
+
+          const shouldEmit = shouldEmitStrokeSample(activeSmoothing, pagePos, pressure, sample.timeStamp, brushWidthPage, editor.viewport.scale, rawTurn);
+          if (!shouldEmit) continue;
+
+          activeSmoothing.prevSentPagePos = activeSmoothing.lastSentPagePos;
+          activeSmoothing.lastSentPagePos = pagePos;
+          activeSmoothing.lastSentPressure = pressure;
+          activeSmoothing.lastSentTimeMs = sample.timeStamp;
         }
 
-        input.activeTool.onMove(editor, { viewPosition: sampleViewPos, viewDelta, pagePosition: pagePos, pageDelta, ...sampleExtras });
-        input.lastViewPos = sampleViewPos;
+        const viewDelta: DrawPoint = [viewPosForTool[0] - input.lastViewPos[0], viewPosForTool[1] - input.lastViewPos[1]];
+        const pageDelta: DrawPoint = [pagePos[0] - input.lastPagePos[0], pagePos[1] - input.lastPagePos[1]];
+        input.activeTool.onMove(editor, {
+          rawViewPosition: sampleViewPos,
+          rawPagePosition: rawPagePos,
+          viewPosition: viewPosForTool,
+          viewDelta,
+          pagePosition: pagePos,
+          pageDelta,
+          timeMs: sample.timeStamp,
+          ...sampleExtras,
+          pressure,
+        });
+        input.lastViewPos = viewPosForTool;
         input.lastPagePos = pagePos;
       }
       requestCanvasRender();
@@ -1395,6 +1678,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPage
           input.activeTool = null;
           input.activePointerId = null;
           input.modifiesDocument = false;
+          input.strokeSmoothing = null;
           pointersRef.current.clear();
           requestCanvasRender();
         }
@@ -1406,12 +1690,66 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPage
       if (!tool) return;
 
       const rect = canvas.getBoundingClientRect();
-      const viewPos: DrawPoint = [ev.clientX - rect.left, ev.clientY - rect.top];
-      const viewDelta: DrawPoint = [viewPos[0] - input.lastViewPos[0], viewPos[1] - input.lastViewPos[1]];
-      const pagePos = clampToPage(editor, editor.viewport.viewToPage(viewPos));
-      const pageDelta: DrawPoint = [pagePos[0] - input.lastPagePos[0], pagePos[1] - input.lastPagePos[1]];
       const native = ev.nativeEvent as PointerEvent;
-      const toolEvent: ToolPointerEvent = { viewPosition: viewPos, viewDelta, pagePosition: pagePos, pageDelta, ...toolPointerExtras(native) };
+      const rawViewPos: DrawPoint = [ev.clientX - rect.left, ev.clientY - rect.top];
+      const rawPagePos = editor.viewport.viewToPage(rawViewPos);
+      const rawPagePosClamped = clampToPage(editor, rawPagePos);
+      const extras = toolPointerExtras(native);
+
+      const smoothing = input.strokeSmoothing;
+      if (smoothing && (smoothing.pointerId !== ev.pointerId || tool.id !== smoothing.toolId)) {
+        input.strokeSmoothing = null;
+      }
+
+      let pagePos = rawPagePosClamped;
+      let viewPosForTool = rawViewPos;
+      let pressure = extras.pressure;
+      const activeSmoothing = input.strokeSmoothing;
+      if (activeSmoothing && (activeSmoothing.toolId === "pen" || activeSmoothing.toolId === "highlighter")) {
+        const tSec = native.timeStamp / 1000;
+        const rawTurn = turnStrength(activeSmoothing.prevRawViewPos, activeSmoothing.lastRawViewPos, rawViewPos);
+        activeSmoothing.prevRawViewPos = activeSmoothing.lastRawViewPos;
+        activeSmoothing.lastRawViewPos = rawViewPos;
+        activeSmoothing.lastRawTimeMs = native.timeStamp;
+
+        const stableViewPos = activeSmoothing.positionFilter.filter(rawViewPos, tSec);
+
+        if (activeSmoothing.pressureFilter) {
+          pressure = clamp01(activeSmoothing.pressureFilter.filter(pressure, tSec));
+        }
+
+        const brushWidthPage = activeSmoothing.toolId === "highlighter" ? editor.highlighterWidth : editor.currentPenWidth;
+        const widthView = Math.max(0.2, brushWidthPage) * Math.max(0.0001, editor.viewport.scale);
+        const lag = Math.hypot(rawViewPos[0] - stableViewPos[0], rawViewPos[1] - stableViewPos[1]);
+        const turnWeight = clamp01((rawTurn - 0.08) / 0.28);
+        const lagStart = Math.min(6, Math.max(1.2, widthView * 0.12));
+        const lagRange = Math.max(4, lagStart * 3);
+        const lagWeight = clamp01((lag - lagStart) / lagRange);
+        const weight = Math.min(1, Math.max(STROKE_INTENT_MIN_RAW_WEIGHT, turnWeight, lagWeight));
+        const intentViewPos: DrawPoint = [
+          stableViewPos[0] + (rawViewPos[0] - stableViewPos[0]) * weight,
+          stableViewPos[1] + (rawViewPos[1] - stableViewPos[1]) * weight,
+        ];
+
+        if (rawTurn >= 0.35) activeSmoothing.positionFilter.reset(rawViewPos, tSec);
+
+        viewPosForTool = intentViewPos;
+        pagePos = clampToPage(editor, editor.viewport.viewToPage(intentViewPos));
+      }
+
+      const viewDelta: DrawPoint = [viewPosForTool[0] - input.lastViewPos[0], viewPosForTool[1] - input.lastViewPos[1]];
+      const pageDelta: DrawPoint = [pagePos[0] - input.lastPagePos[0], pagePos[1] - input.lastPagePos[1]];
+      const toolEvent: ToolPointerEvent = {
+        rawViewPosition: rawViewPos,
+        rawPagePosition: rawPagePos,
+        viewPosition: viewPosForTool,
+        viewDelta,
+        pagePosition: pagePos,
+        pageDelta,
+        timeMs: native.timeStamp,
+        ...extras,
+        pressure,
+      };
 
       if (kind === "cancel") {
         tool.onCancel(editor);
@@ -1423,6 +1761,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPage
       input.activeTool = null;
       input.activePointerId = null;
       input.modifiesDocument = false;
+      input.strokeSmoothing = null;
       requestCanvasRender();
     },
     [clearLongPressEraserState, commitEdit, requestCanvasRender],
@@ -1767,6 +2106,24 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPage
 
   return (
     <div className={`drawEditor${fullPageView ? " fullPageView" : ""}`}>
+      {fullPageView ? (
+        <div className="drawWindowBar" onMouseDown={startDraggingIfAllowed}>
+          <div className="drawWindowBarHandle" aria-hidden="true" />
+          <button
+            type="button"
+            className="drawWindowBarClose"
+            data-no-drag="true"
+            aria-label="关闭窗口"
+            onClick={() => {
+              if (typeof window === "undefined") return;
+              if (!(window as any).__TAURI__) return;
+              void getCurrentWindow().close();
+            }}
+          >
+            <IconClose size={16} />
+          </button>
+        </div>
+      ) : null}
       <div className="drawToolbar noDrag" data-no-drag="true">
         <div className="drawToolbarGroup">
           <DrawToolbarButton label="返回" onClick={onBack}>
@@ -1972,268 +2329,272 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPage
                 }}
               />
 
-              <div className="drawPopoverDivider" />
+              {editor.penStyle === "fountainPen" ? (
+                <>
+                  <div className="drawPopoverDivider" />
 
-              <div className="drawPopoverSectionTitle">压感</div>
-              <button
-                type="button"
-                className="drawPopoverItem"
-                onClick={() => {
-                  editor.pressureEnabled = !editor.pressureEnabled;
-                  saveInkSettings({
-                    pressureEnabled: editor.pressureEnabled,
-                    pressureMapping: editor.pressureMapping,
-                    pressureCurve: editor.pressureCurve,
-                    pressureCurveGamma: editor.pressureCurveGamma,
-                    tiltEnabled: editor.tiltEnabled,
-                    tiltMapping: editor.tiltMapping,
-                  });
-                  forceUiTick((n) => n + 1);
-                }}
-                data-no-drag="true"
-              >
-                <span>启用压感</span>
-                {editor.pressureEnabled ? <IconCheckmark size={18} /> : null}
-              </button>
+                  <div className="drawPopoverSectionTitle">压感</div>
+                  <button
+                    type="button"
+                    className="drawPopoverItem"
+                    onClick={() => {
+                      editor.pressureEnabled = !editor.pressureEnabled;
+                      saveInkSettings({
+                        pressureEnabled: editor.pressureEnabled,
+                        pressureMapping: editor.pressureMapping,
+                        pressureCurve: editor.pressureCurve,
+                        pressureCurveGamma: editor.pressureCurveGamma,
+                        tiltEnabled: editor.tiltEnabled,
+                        tiltMapping: editor.tiltMapping,
+                      });
+                      forceUiTick((n) => n + 1);
+                    }}
+                    data-no-drag="true"
+                  >
+                    <span>启用压感</span>
+                    {editor.pressureEnabled ? <IconCheckmark size={18} /> : null}
+                  </button>
 
-              <div className="drawPopoverSubTitle">压感映射</div>
-              <div className="drawModeChips" data-no-drag="true">
-                <button
-                  type="button"
-                  className={`drawModeChip${editor.pressureMapping === "width" ? " active" : ""}`}
-                  onClick={() => {
-                    editor.pressureMapping = "width";
-                    saveInkSettings({
-                      pressureEnabled: editor.pressureEnabled,
-                      pressureMapping: editor.pressureMapping,
-                      pressureCurve: editor.pressureCurve,
-                      pressureCurveGamma: editor.pressureCurveGamma,
-                      tiltEnabled: editor.tiltEnabled,
-                      tiltMapping: editor.tiltMapping,
-                    });
-                    forceUiTick((n) => n + 1);
-                  }}
-                >
-                  压力 → 笔宽
-                </button>
-                <button
-                  type="button"
-                  className={`drawModeChip${editor.pressureMapping === "opacity" ? " active" : ""}`}
-                  onClick={() => {
-                    editor.pressureMapping = "opacity";
-                    saveInkSettings({
-                      pressureEnabled: editor.pressureEnabled,
-                      pressureMapping: editor.pressureMapping,
-                      pressureCurve: editor.pressureCurve,
-                      pressureCurveGamma: editor.pressureCurveGamma,
-                      tiltEnabled: editor.tiltEnabled,
-                      tiltMapping: editor.tiltMapping,
-                    });
-                    forceUiTick((n) => n + 1);
-                  }}
-                >
-                  压力 → 不透明度
-                </button>
-                <button
-                  type="button"
-                  className={`drawModeChip${editor.pressureMapping === "both" ? " active" : ""}`}
-                  onClick={() => {
-                    editor.pressureMapping = "both";
-                    saveInkSettings({
-                      pressureEnabled: editor.pressureEnabled,
-                      pressureMapping: editor.pressureMapping,
-                      pressureCurve: editor.pressureCurve,
-                      pressureCurveGamma: editor.pressureCurveGamma,
-                      tiltEnabled: editor.tiltEnabled,
-                      tiltMapping: editor.tiltMapping,
-                    });
-                    forceUiTick((n) => n + 1);
-                  }}
-                >
-                  压力 → 笔宽 + 不透明度
-                </button>
-              </div>
+                  <div className="drawPopoverSubTitle">压感映射</div>
+                  <div className="drawModeChips" data-no-drag="true">
+                    <button
+                      type="button"
+                      className={`drawModeChip${editor.pressureMapping === "width" ? " active" : ""}`}
+                      onClick={() => {
+                        editor.pressureMapping = "width";
+                        saveInkSettings({
+                          pressureEnabled: editor.pressureEnabled,
+                          pressureMapping: editor.pressureMapping,
+                          pressureCurve: editor.pressureCurve,
+                          pressureCurveGamma: editor.pressureCurveGamma,
+                          tiltEnabled: editor.tiltEnabled,
+                          tiltMapping: editor.tiltMapping,
+                        });
+                        forceUiTick((n) => n + 1);
+                      }}
+                    >
+                      压力 → 笔宽
+                    </button>
+                    <button
+                      type="button"
+                      className={`drawModeChip${editor.pressureMapping === "opacity" ? " active" : ""}`}
+                      onClick={() => {
+                        editor.pressureMapping = "opacity";
+                        saveInkSettings({
+                          pressureEnabled: editor.pressureEnabled,
+                          pressureMapping: editor.pressureMapping,
+                          pressureCurve: editor.pressureCurve,
+                          pressureCurveGamma: editor.pressureCurveGamma,
+                          tiltEnabled: editor.tiltEnabled,
+                          tiltMapping: editor.tiltMapping,
+                        });
+                        forceUiTick((n) => n + 1);
+                      }}
+                    >
+                      压力 → 不透明度
+                    </button>
+                    <button
+                      type="button"
+                      className={`drawModeChip${editor.pressureMapping === "both" ? " active" : ""}`}
+                      onClick={() => {
+                        editor.pressureMapping = "both";
+                        saveInkSettings({
+                          pressureEnabled: editor.pressureEnabled,
+                          pressureMapping: editor.pressureMapping,
+                          pressureCurve: editor.pressureCurve,
+                          pressureCurveGamma: editor.pressureCurveGamma,
+                          tiltEnabled: editor.tiltEnabled,
+                          tiltMapping: editor.tiltMapping,
+                        });
+                        forceUiTick((n) => n + 1);
+                      }}
+                    >
+                      压力 → 笔宽 + 不透明度
+                    </button>
+                  </div>
 
-              <div className="drawPopoverSubTitle">压感曲线</div>
-              <div className="drawModeChips" data-no-drag="true">
-                <button
-                  type="button"
-                  className={`drawModeChip${editor.pressureCurve === "linear" ? " active" : ""}`}
-                  onClick={() => {
-                    editor.pressureCurve = "linear";
-                    saveInkSettings({
-                      pressureEnabled: editor.pressureEnabled,
-                      pressureMapping: editor.pressureMapping,
-                      pressureCurve: editor.pressureCurve,
-                      pressureCurveGamma: editor.pressureCurveGamma,
-                      tiltEnabled: editor.tiltEnabled,
-                      tiltMapping: editor.tiltMapping,
-                    });
-                    forceUiTick((n) => n + 1);
-                  }}
-                >
-                  线性
-                </button>
-                <button
-                  type="button"
-                  className={`drawModeChip${editor.pressureCurve === "soft" ? " active" : ""}`}
-                  onClick={() => {
-                    editor.pressureCurve = "soft";
-                    saveInkSettings({
-                      pressureEnabled: editor.pressureEnabled,
-                      pressureMapping: editor.pressureMapping,
-                      pressureCurve: editor.pressureCurve,
-                      pressureCurveGamma: editor.pressureCurveGamma,
-                      tiltEnabled: editor.tiltEnabled,
-                      tiltMapping: editor.tiltMapping,
-                    });
-                    forceUiTick((n) => n + 1);
-                  }}
-                >
-                  软
-                </button>
-                <button
-                  type="button"
-                  className={`drawModeChip${editor.pressureCurve === "hard" ? " active" : ""}`}
-                  onClick={() => {
-                    editor.pressureCurve = "hard";
-                    saveInkSettings({
-                      pressureEnabled: editor.pressureEnabled,
-                      pressureMapping: editor.pressureMapping,
-                      pressureCurve: editor.pressureCurve,
-                      pressureCurveGamma: editor.pressureCurveGamma,
-                      tiltEnabled: editor.tiltEnabled,
-                      tiltMapping: editor.tiltMapping,
-                    });
-                    forceUiTick((n) => n + 1);
-                  }}
-                >
-                  硬
-                </button>
-                <button
-                  type="button"
-                  className={`drawModeChip${editor.pressureCurve === "custom" ? " active" : ""}`}
-                  onClick={() => {
-                    editor.pressureCurve = "custom";
-                    saveInkSettings({
-                      pressureEnabled: editor.pressureEnabled,
-                      pressureMapping: editor.pressureMapping,
-                      pressureCurve: editor.pressureCurve,
-                      pressureCurveGamma: editor.pressureCurveGamma,
-                      tiltEnabled: editor.tiltEnabled,
-                      tiltMapping: editor.tiltMapping,
-                    });
-                    forceUiTick((n) => n + 1);
-                  }}
-                >
-                  自定义
-                </button>
-              </div>
+                  <div className="drawPopoverSubTitle">压感曲线</div>
+                  <div className="drawModeChips" data-no-drag="true">
+                    <button
+                      type="button"
+                      className={`drawModeChip${editor.pressureCurve === "linear" ? " active" : ""}`}
+                      onClick={() => {
+                        editor.pressureCurve = "linear";
+                        saveInkSettings({
+                          pressureEnabled: editor.pressureEnabled,
+                          pressureMapping: editor.pressureMapping,
+                          pressureCurve: editor.pressureCurve,
+                          pressureCurveGamma: editor.pressureCurveGamma,
+                          tiltEnabled: editor.tiltEnabled,
+                          tiltMapping: editor.tiltMapping,
+                        });
+                        forceUiTick((n) => n + 1);
+                      }}
+                    >
+                      线性
+                    </button>
+                    <button
+                      type="button"
+                      className={`drawModeChip${editor.pressureCurve === "soft" ? " active" : ""}`}
+                      onClick={() => {
+                        editor.pressureCurve = "soft";
+                        saveInkSettings({
+                          pressureEnabled: editor.pressureEnabled,
+                          pressureMapping: editor.pressureMapping,
+                          pressureCurve: editor.pressureCurve,
+                          pressureCurveGamma: editor.pressureCurveGamma,
+                          tiltEnabled: editor.tiltEnabled,
+                          tiltMapping: editor.tiltMapping,
+                        });
+                        forceUiTick((n) => n + 1);
+                      }}
+                    >
+                      软
+                    </button>
+                    <button
+                      type="button"
+                      className={`drawModeChip${editor.pressureCurve === "hard" ? " active" : ""}`}
+                      onClick={() => {
+                        editor.pressureCurve = "hard";
+                        saveInkSettings({
+                          pressureEnabled: editor.pressureEnabled,
+                          pressureMapping: editor.pressureMapping,
+                          pressureCurve: editor.pressureCurve,
+                          pressureCurveGamma: editor.pressureCurveGamma,
+                          tiltEnabled: editor.tiltEnabled,
+                          tiltMapping: editor.tiltMapping,
+                        });
+                        forceUiTick((n) => n + 1);
+                      }}
+                    >
+                      硬
+                    </button>
+                    <button
+                      type="button"
+                      className={`drawModeChip${editor.pressureCurve === "custom" ? " active" : ""}`}
+                      onClick={() => {
+                        editor.pressureCurve = "custom";
+                        saveInkSettings({
+                          pressureEnabled: editor.pressureEnabled,
+                          pressureMapping: editor.pressureMapping,
+                          pressureCurve: editor.pressureCurve,
+                          pressureCurveGamma: editor.pressureCurveGamma,
+                          tiltEnabled: editor.tiltEnabled,
+                          tiltMapping: editor.tiltMapping,
+                        });
+                        forceUiTick((n) => n + 1);
+                      }}
+                    >
+                      自定义
+                    </button>
+                  </div>
 
-              {editor.pressureCurve === "custom" ? (
-                <DrawLabeledSlider
-                  label="曲线指数"
-                  value={editor.pressureCurveGamma}
-                  min={0.2}
-                  max={3}
-                  step={0.05}
-                  formatValue={(v) => v.toFixed(2)}
-                  onChange={(v) => {
-                    editor.pressureCurveGamma = v;
-                    saveInkSettings({
-                      pressureEnabled: editor.pressureEnabled,
-                      pressureMapping: editor.pressureMapping,
-                      pressureCurve: editor.pressureCurve,
-                      pressureCurveGamma: editor.pressureCurveGamma,
-                      tiltEnabled: editor.tiltEnabled,
-                      tiltMapping: editor.tiltMapping,
-                    });
-                    forceUiTick((n) => n + 1);
-                  }}
-                />
+                  {editor.pressureCurve === "custom" ? (
+                    <DrawLabeledSlider
+                      label="曲线指数"
+                      value={editor.pressureCurveGamma}
+                      min={0.2}
+                      max={3}
+                      step={0.05}
+                      formatValue={(v) => v.toFixed(2)}
+                      onChange={(v) => {
+                        editor.pressureCurveGamma = v;
+                        saveInkSettings({
+                          pressureEnabled: editor.pressureEnabled,
+                          pressureMapping: editor.pressureMapping,
+                          pressureCurve: editor.pressureCurve,
+                          pressureCurveGamma: editor.pressureCurveGamma,
+                          tiltEnabled: editor.tiltEnabled,
+                          tiltMapping: editor.tiltMapping,
+                        });
+                        forceUiTick((n) => n + 1);
+                      }}
+                    />
+                  ) : null}
+
+                  <div className="drawPopoverDivider" />
+
+                  <div className="drawPopoverSectionTitle">倾斜（Tilt）</div>
+                  <button
+                    type="button"
+                    className="drawPopoverItem"
+                    onClick={() => {
+                      editor.tiltEnabled = !editor.tiltEnabled;
+                      saveInkSettings({
+                        pressureEnabled: editor.pressureEnabled,
+                        pressureMapping: editor.pressureMapping,
+                        pressureCurve: editor.pressureCurve,
+                        pressureCurveGamma: editor.pressureCurveGamma,
+                        tiltEnabled: editor.tiltEnabled,
+                        tiltMapping: editor.tiltMapping,
+                      });
+                      forceUiTick((n) => n + 1);
+                    }}
+                    data-no-drag="true"
+                  >
+                    <span>启用倾斜</span>
+                    {editor.tiltEnabled ? <IconCheckmark size={18} /> : null}
+                  </button>
+
+                  <div className="drawPopoverSubTitle">倾斜映射</div>
+                  <div className="drawModeChips" data-no-drag="true">
+                    <button
+                      type="button"
+                      className={`drawModeChip${editor.tiltMapping === "width" ? " active" : ""}`}
+                      onClick={() => {
+                        editor.tiltMapping = "width";
+                        saveInkSettings({
+                          pressureEnabled: editor.pressureEnabled,
+                          pressureMapping: editor.pressureMapping,
+                          pressureCurve: editor.pressureCurve,
+                          pressureCurveGamma: editor.pressureCurveGamma,
+                          tiltEnabled: editor.tiltEnabled,
+                          tiltMapping: editor.tiltMapping,
+                        });
+                        forceUiTick((n) => n + 1);
+                      }}
+                    >
+                      倾斜 → 笔宽
+                    </button>
+                    <button
+                      type="button"
+                      className={`drawModeChip${editor.tiltMapping === "angle" ? " active" : ""}`}
+                      onClick={() => {
+                        editor.tiltMapping = "angle";
+                        saveInkSettings({
+                          pressureEnabled: editor.pressureEnabled,
+                          pressureMapping: editor.pressureMapping,
+                          pressureCurve: editor.pressureCurve,
+                          pressureCurveGamma: editor.pressureCurveGamma,
+                          tiltEnabled: editor.tiltEnabled,
+                          tiltMapping: editor.tiltMapping,
+                        });
+                        forceUiTick((n) => n + 1);
+                      }}
+                    >
+                      倾斜 → 笔刷角度
+                    </button>
+                    <button
+                      type="button"
+                      className={`drawModeChip${editor.tiltMapping === "shading" ? " active" : ""}`}
+                      onClick={() => {
+                        editor.tiltMapping = "shading";
+                        saveInkSettings({
+                          pressureEnabled: editor.pressureEnabled,
+                          pressureMapping: editor.pressureMapping,
+                          pressureCurve: editor.pressureCurve,
+                          pressureCurveGamma: editor.pressureCurveGamma,
+                          tiltEnabled: editor.tiltEnabled,
+                          tiltMapping: editor.tiltMapping,
+                        });
+                        forceUiTick((n) => n + 1);
+                      }}
+                    >
+                      倾斜 → 阴影 / 扁平刷
+                    </button>
+                  </div>
+                </>
               ) : null}
-
-              <div className="drawPopoverDivider" />
-
-              <div className="drawPopoverSectionTitle">倾斜（Tilt）</div>
-              <button
-                type="button"
-                className="drawPopoverItem"
-                onClick={() => {
-                  editor.tiltEnabled = !editor.tiltEnabled;
-                  saveInkSettings({
-                    pressureEnabled: editor.pressureEnabled,
-                    pressureMapping: editor.pressureMapping,
-                    pressureCurve: editor.pressureCurve,
-                    pressureCurveGamma: editor.pressureCurveGamma,
-                    tiltEnabled: editor.tiltEnabled,
-                    tiltMapping: editor.tiltMapping,
-                  });
-                  forceUiTick((n) => n + 1);
-                }}
-                data-no-drag="true"
-              >
-                <span>启用倾斜</span>
-                {editor.tiltEnabled ? <IconCheckmark size={18} /> : null}
-              </button>
-
-              <div className="drawPopoverSubTitle">倾斜映射</div>
-              <div className="drawModeChips" data-no-drag="true">
-                <button
-                  type="button"
-                  className={`drawModeChip${editor.tiltMapping === "width" ? " active" : ""}`}
-                  onClick={() => {
-                    editor.tiltMapping = "width";
-                    saveInkSettings({
-                      pressureEnabled: editor.pressureEnabled,
-                      pressureMapping: editor.pressureMapping,
-                      pressureCurve: editor.pressureCurve,
-                      pressureCurveGamma: editor.pressureCurveGamma,
-                      tiltEnabled: editor.tiltEnabled,
-                      tiltMapping: editor.tiltMapping,
-                    });
-                    forceUiTick((n) => n + 1);
-                  }}
-                >
-                  倾斜 → 笔宽
-                </button>
-                <button
-                  type="button"
-                  className={`drawModeChip${editor.tiltMapping === "angle" ? " active" : ""}`}
-                  onClick={() => {
-                    editor.tiltMapping = "angle";
-                    saveInkSettings({
-                      pressureEnabled: editor.pressureEnabled,
-                      pressureMapping: editor.pressureMapping,
-                      pressureCurve: editor.pressureCurve,
-                      pressureCurveGamma: editor.pressureCurveGamma,
-                      tiltEnabled: editor.tiltEnabled,
-                      tiltMapping: editor.tiltMapping,
-                    });
-                    forceUiTick((n) => n + 1);
-                  }}
-                >
-                  倾斜 → 笔刷角度
-                </button>
-                <button
-                  type="button"
-                  className={`drawModeChip${editor.tiltMapping === "shading" ? " active" : ""}`}
-                  onClick={() => {
-                    editor.tiltMapping = "shading";
-                    saveInkSettings({
-                      pressureEnabled: editor.pressureEnabled,
-                      pressureMapping: editor.pressureMapping,
-                      pressureCurve: editor.pressureCurve,
-                      pressureCurveGamma: editor.pressureCurveGamma,
-                      tiltEnabled: editor.tiltEnabled,
-                      tiltMapping: editor.tiltMapping,
-                    });
-                    forceUiTick((n) => n + 1);
-                  }}
-                >
-                  倾斜 → 阴影 / 扁平刷
-                </button>
-              </div>
             </>
           ) : editor.toolId === "shape" ? (
             <DrawLabeledSlider

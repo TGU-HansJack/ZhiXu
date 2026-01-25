@@ -1064,7 +1064,7 @@ input {
   padding: 0 6px;
 }
 
-.tab:not(:first-child) .tabInner::before {
+.tabs > .tab + .tab .tabInner::before {
   content: "";
   position: absolute;
   left: 0;
@@ -1348,8 +1348,68 @@ input {
   position: relative;
 }
 
+.drawWindowBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 8px;
+  background: rgba(245, 245, 245, 0.88);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  z-index: 6;
+  cursor: grab;
+  user-select: none;
+}
+
+.drawWindowBar:active {
+  cursor: grabbing;
+}
+
+.drawWindowBarHandle {
+  width: 54px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.18);
+  opacity: 0.55;
+}
+
+.drawWindowBarClose {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+}
+
+.drawWindowBarClose:hover {
+  background: rgba(255, 255, 255, 0.92);
+  color: rgba(0, 0, 0, 0.78);
+}
+
+.drawWindowBarClose:active {
+  transform: translateY(-50%) scale(0.98);
+}
+
 .drawToolbar {
-  flex: 0 0 auto;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1357,12 +1417,14 @@ input {
   border-bottom: 1px solid var(--border);
   background: var(--panel-2);
   backdrop-filter: blur(14px);
+  z-index: 5;
 }
 
 .drawEditor.fullPageView .drawToolbar {
   position: absolute;
-  top: 10px;
+  top: 40px;
   left: 50%;
+  right: auto;
   transform: translateX(-50%);
   margin: 0;
   border: 1px solid var(--border);
@@ -1401,6 +1463,10 @@ input {
   color: rgba(0, 0, 0, 0.72);
   pointer-events: none;
   z-index: 4;
+}
+
+.drawEditor.fullPageView .drawZoomHud {
+  top: 96px;
 }
 
 .drawToolBtn {
@@ -1621,8 +1687,7 @@ input {
 }
 
 .drawEditor.fullPageView .drawCanvasWrap {
-  padding-top: 64px;
-  box-sizing: border-box;
+  padding-top: 0;
 }
 
 .drawCanvas {

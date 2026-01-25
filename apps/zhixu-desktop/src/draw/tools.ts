@@ -4,10 +4,13 @@ import { distanceSquared, lerp, pointInPolygon } from "./geometry";
 import { newElementId } from "./id";
 
 export type ToolPointerEvent = {
+  rawViewPosition: DrawPoint;
+  rawPagePosition: DrawPoint;
   viewPosition: DrawPoint;
   viewDelta: DrawPoint;
   pagePosition: DrawPoint;
   pageDelta: DrawPoint;
+  timeMs: number;
   pointerType: string;
   pressure: number;
   tiltX: number;
@@ -27,19 +30,101 @@ export class PenToolMachine implements DrawToolMachine {
   id = "pen";
   private activeStrokeId: string | null = null;
   private pendingStrokeIds: string[] = [];
+  private lastMoveTimeMs = 0;
+
+  private trySnapStrokeToHorizontalLine(editor: DrawEditorModel, strokeId: string, upEvent: ToolPointerEvent) {
+    const page = editor.currentPageOrNull();
+    if (!page) return;
+    const holdMs = upEvent.timeMs - this.lastMoveTimeMs;
+    if (!Number.isFinite(holdMs) || holdMs < 220) return;
+
+    const index = page.elements.findIndex((el) => el.type === "stroke" && el.id === strokeId);
+    if (index < 0) return;
+    const el = page.elements[index]!;
+    if (el.type !== "stroke" || el.tool !== "pen") return;
+    if (el.points.length < 2) return;
+    if (!el.points.every((p) => p.length < 4)) return;
+
+    const pts = el.points;
+    const first = pts[0]!;
+    const last = pts[pts.length - 1]!;
+    const dx = last[0] - first[0];
+    const dy = last[1] - first[1];
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    if (absDx < 48) return;
+    if (absDy > Math.max(6, absDx * 0.12)) return;
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let sumY = 0;
+    let dir = 0;
+    let dirChanges = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i]!;
+      const x = p[0];
+      const y = p[1];
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      sumY += y;
+      if (i > 0) {
+        const prevX = pts[i - 1]![0];
+        const d = x - prevX;
+        const s = d === 0 ? 0 : d > 0 ? 1 : -1;
+        if (s !== 0) {
+          if (dir !== 0 && s !== dir) dirChanges += 1;
+          dir = s;
+        }
+      }
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return;
+    if (maxX - minX < 48) return;
+    if (dirChanges > 2) return;
+
+    const yLine = sumY / pts.length;
+    page.elements[index] = {
+      type: "shape",
+      id: el.id,
+      shape: "line",
+      colorArgb: el.colorArgb,
+      width: el.width,
+      alpha: el.alpha,
+      start: [minX, yLine],
+      end: [maxX, yLine],
+    };
+  }
 
   onDown(editor: DrawEditorModel, e: ToolPointerEvent) {
     this.pendingStrokeIds = [];
     this.activeStrokeId = null;
+    this.lastMoveTimeMs = e.timeMs;
     this.handlePointer(editor, e);
   }
 
   onMove(editor: DrawEditorModel, e: ToolPointerEvent) {
+    const move = Math.hypot(e.pageDelta[0], e.pageDelta[1]);
+    if (Number.isFinite(move) && move > 0.45) this.lastMoveTimeMs = e.timeMs;
     this.handlePointer(editor, e);
   }
 
-  onUp(editor: DrawEditorModel, _e: ToolPointerEvent) {
+  onUp(editor: DrawEditorModel, e: ToolPointerEvent) {
     editor.previewStroke = null;
+    if (this.activeStrokeId) {
+      const page = editor.currentPageOrNull();
+      if (page) {
+        const stroke = findLastStrokeById(page.elements, this.activeStrokeId);
+        if (stroke && stroke.tool === "pen") {
+          const isPen = e.pointerType === "pen";
+          const point = computePenStrokePoint(editor, clampToPage(page.width, page.height, e.pagePosition), e, isPen);
+          const last = stroke.points[stroke.points.length - 1];
+          const dx = last ? last[0] - point[0] : Infinity;
+          const dy = last ? last[1] - point[1] : Infinity;
+          if (!last || dx * dx + dy * dy > 0.0001) stroke.points.push(point);
+        }
+      }
+    }
+    if (this.activeStrokeId) this.trySnapStrokeToHorizontalLine(editor, this.activeStrokeId, e);
     this.markPendingStrokesComplete(editor);
     this.pendingStrokeIds = [];
     this.activeStrokeId = null;
@@ -55,7 +140,7 @@ export class PenToolMachine implements DrawToolMachine {
   private handlePointer(editor: DrawEditorModel, e: ToolPointerEvent) {
     const page = editor.currentPageOrNull();
     if (!page) return;
-    const rawPagePos = editor.viewport.viewToPage(e.viewPosition);
+    const rawPagePos = e.rawPagePosition;
     const isPen = e.pointerType === "pen";
 
     if (isInPage(page.width, page.height, rawPagePos)) {
@@ -63,7 +148,7 @@ export class PenToolMachine implements DrawToolMachine {
       const strokeId = this.activeStrokeId;
       if (!strokeId) {
         const newStrokeId = newElementId();
-        const firstPoint = computePenStrokePoint(editor, clampToPage(page.width, page.height, rawPagePos), e, isPen);
+        const firstPoint = computePenStrokePoint(editor, clampToPage(page.width, page.height, e.pagePosition), e, isPen);
         if (firstPoint.length > 2) editor.doc.meta.formatVersion = Math.max(2, editor.doc.meta.formatVersion || 1);
         page.elements.push({
           type: "stroke",
@@ -81,7 +166,7 @@ export class PenToolMachine implements DrawToolMachine {
 
       const stroke = findLastStrokeById(page.elements, strokeId);
       if (!stroke) return;
-      stroke.points.push(computePenStrokePoint(editor, clampToPage(page.width, page.height, rawPagePos), e, isPen));
+      stroke.points.push(computePenStrokePoint(editor, clampToPage(page.width, page.height, e.pagePosition), e, isPen));
       return;
     }
 
@@ -121,8 +206,21 @@ export class HighlighterToolMachine implements DrawToolMachine {
     this.handlePointer(editor, e);
   }
 
-  onUp(editor: DrawEditorModel, _e: ToolPointerEvent) {
+  onUp(editor: DrawEditorModel, e: ToolPointerEvent) {
     editor.previewStroke = null;
+    if (this.activeStrokeId) {
+      const page = editor.currentPageOrNull();
+      if (page) {
+        const stroke = findLastStrokeById(page.elements, this.activeStrokeId);
+        if (stroke && stroke.tool === "highlighter") {
+          const next = clampToPage(page.width, page.height, e.pagePosition);
+          const last = stroke.points[stroke.points.length - 1];
+          const dx = last ? last[0] - next[0] : Infinity;
+          const dy = last ? last[1] - next[1] : Infinity;
+          if (!last || dx * dx + dy * dy > 0.0001) stroke.points.push(next);
+        }
+      }
+    }
     this.pendingStrokeIds = [];
     this.activeStrokeId = null;
   }
@@ -137,7 +235,7 @@ export class HighlighterToolMachine implements DrawToolMachine {
   private handlePointer(editor: DrawEditorModel, e: ToolPointerEvent) {
     const page = editor.currentPageOrNull();
     if (!page) return;
-    const rawPagePos = editor.viewport.viewToPage(e.viewPosition);
+    const rawPagePos = e.rawPagePosition;
 
     if (isInPage(page.width, page.height, rawPagePos)) {
       editor.previewStroke = null;
@@ -151,7 +249,7 @@ export class HighlighterToolMachine implements DrawToolMachine {
           colorArgb: editor.highlighterColorArgb,
           width: editor.highlighterWidth,
           alpha: editor.highlighterAlpha,
-          points: [clampToPage(page.width, page.height, rawPagePos)],
+          points: [clampToPage(page.width, page.height, e.pagePosition)],
         });
         this.pendingStrokeIds.push(newStrokeId);
         this.activeStrokeId = newStrokeId;
@@ -160,7 +258,7 @@ export class HighlighterToolMachine implements DrawToolMachine {
 
       const stroke = findLastStrokeById(page.elements, strokeId);
       if (!stroke) return;
-      stroke.points.push(clampToPage(page.width, page.height, rawPagePos));
+      stroke.points.push(clampToPage(page.width, page.height, e.pagePosition));
       return;
     }
 
@@ -452,8 +550,9 @@ function computePenStrokePoint(editor: DrawEditorModel, posInPage: DrawPoint, e:
   const baseWidth = Math.max(0.2, editor.currentPenWidth);
   const baseAlpha = 1;
 
-  const applyPressure = isPen && editor.pressureEnabled;
-  const applyTilt = isPen && editor.tiltEnabled;
+  const isBallpoint = editor.penStyle === "ballpointPen";
+  const applyPressure = isPen && editor.pressureEnabled && !isBallpoint;
+  const applyTilt = isPen && editor.tiltEnabled && !isBallpoint;
 
   const strength = applyPressure ? pressureStrength(editor, e.pressure) : 1;
   const mapping = editor.pressureMapping;
@@ -497,5 +596,6 @@ function computePenStrokePoint(editor: DrawEditorModel, posInPage: DrawPoint, e:
 function computePenPreviewPoint(editor: DrawEditorModel, rawPos: DrawPoint, e: ToolPointerEvent, isPen: boolean): DrawStrokePoint {
   const strokePoint = computePenStrokePoint(editor, [rawPos[0], rawPos[1]], e, isPen);
   if (strokePoint.length > 2) return strokePoint;
+  if (editor.penStyle === "ballpointPen") return [rawPos[0], rawPos[1]];
   return [rawPos[0], rawPos[1], Math.max(0.2, editor.currentPenWidth), 1];
 }
