@@ -3,7 +3,6 @@ import type { OfficialAuthState } from "./AuthModal";
 import { logout } from "../lib/sync/officialClient";
 import { syncOfficialVault, type OfficialVaultSyncSummary } from "../lib/sync/officialSyncEngine";
 import type { EditorDisplaySettings } from "../lib/editorDisplaySettings";
-import { loadDrawSettings, saveDrawSettings, subscribeDrawSettings } from "../lib/drawSettings";
 
 export type SettingsSectionId = "pro" | "sync" | "editor" | "ui" | "ai" | "about" | "logs";
 
@@ -127,7 +126,6 @@ export function SettingsModal({
 
   const [aiEnabled, setAiEnabled] = useState(false);
   const [compactMode, setCompactMode] = useState(false);
-  const [drawSettings, setDrawSettings] = useState(() => loadDrawSettings());
   const [syncing, setSyncing] = useState(false);
   const [syncSummary, setSyncSummary] = useState<OfficialVaultSyncSummary | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -137,8 +135,6 @@ export function SettingsModal({
   useEffect(() => {
     setActive(initialSection);
   }, [initialSection]);
-
-  useEffect(() => subscribeDrawSettings(setDrawSettings), []);
 
   const activeSection = useMemo(() => SECTIONS.find((s) => s.id === active) ?? SECTIONS[0], [active]);
 
@@ -385,23 +381,6 @@ export function SettingsModal({
                     <Toggle
                       checked={editorDisplaySettings.showLineNumbers}
                       onChange={(next) => updateEditorDisplaySettings({ showLineNumbers: next })}
-                    />
-                  }
-                />
-              </div>
-
-              <div className="settingsCard">
-                <SettingsRow
-                  title="长按橡皮擦"
-                  description="书写时，手写笔长按不移动并稍微加压，临时切换为橡皮擦；松开后自动恢复。"
-                  control={
-                    <Toggle
-                      checked={drawSettings.longPressEraserEnabled}
-                      onChange={(next) => {
-                        const updated = { ...drawSettings, longPressEraserEnabled: next };
-                        setDrawSettings(updated);
-                        saveDrawSettings(updated);
-                      }}
                     />
                   }
                 />

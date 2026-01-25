@@ -34,7 +34,7 @@ import {
 import { elementsEqual } from "../draw/equal";
 import { basename, dirname, join } from "../lib/path";
 import { stripExtension } from "../lib/fileType";
-import { loadDrawSettings, subscribeDrawSettings } from "../lib/drawSettings";
+import { loadDrawSettings, saveDrawSettings, subscribeDrawSettings } from "../lib/drawSettings";
 import { createFile, saveFileDialog, writeBytesAbs, writeDrawDocument, writeDrawDocumentAbs } from "../lib/vaultApi";
 import { Popover } from "./Popover";
 import { Tooltip } from "./Tooltip";
@@ -2203,6 +2203,24 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
           >
             <span>阅读模式</span>
             {viewMode === "reading" ? <IconCheckmark size={18} /> : null}
+          </button>
+
+          <button
+            type="button"
+            className="drawPopoverItem"
+            onClick={() => {
+              const updated = {
+                ...drawSettingsRef.current,
+                longPressEraserEnabled: !drawSettingsRef.current.longPressEraserEnabled,
+              };
+              drawSettingsRef.current = updated;
+              saveDrawSettings(updated);
+              forceUiTick((n) => n + 1);
+            }}
+            data-no-drag="true"
+          >
+            <span>长按橡皮擦</span>
+            {drawSettingsRef.current.longPressEraserEnabled ? <IconCheckmark size={18} /> : null}
           </button>
 
           <div className="drawPopoverDivider" />
