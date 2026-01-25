@@ -34,6 +34,7 @@ import {
 import { elementsEqual } from "../draw/equal";
 import { basename, dirname, join } from "../lib/path";
 import { stripExtension } from "../lib/fileType";
+import { loadDrawHistory, saveDrawHistory } from "../lib/drawHistory";
 import { loadDrawSettings, saveDrawSettings, subscribeDrawSettings } from "../lib/drawSettings";
 import { createFile, saveFileDialog, writeBytesAbs, writeDrawDocument, writeDrawDocumentAbs } from "../lib/vaultApi";
 import { Popover } from "./Popover";
@@ -48,6 +49,7 @@ import {
   IconLucideHand,
   IconLucideHighlighter,
   IconLucideLasso,
+  IconLucideMaximize2,
   IconLucidePenTool,
   IconLucidePencil,
   IconLucidePyramid,
@@ -69,11 +71,12 @@ type Props = {
   savedDoc: DrawDocument | null;
   dirty: boolean;
   viewMode: DrawViewMode;
+  fullPageView: boolean;
   onBack: () => void;
   onSave: () => void;
   onDeleteFile: () => void;
   onOpenFile: (path: string) => void;
-  onUpdate: (patch: { doc?: DrawDocument; dirty?: boolean; viewMode?: DrawViewMode }) => void;
+  onUpdate: (patch: { doc?: DrawDocument; dirty?: boolean; viewMode?: DrawViewMode; fullPageView?: boolean }) => void;
 };
 
 type LongPressEraserState = {
@@ -461,7 +464,7 @@ function DrawLabeledSlider({
   );
 }
 
-export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, onSave, onDeleteFile, onOpenFile, onUpdate }: Props) {
+export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, fullPageView, onBack, onSave, onDeleteFile, onOpenFile, onUpdate }: Props) {
   const canvasWrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasMetricsRef = useRef<{ cssWidth: number; cssHeight: number; scaleX: number; scaleY: number }>({
@@ -475,9 +478,12 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
   const editorRef = useRef<DrawEditorModel | null>(null);
   const historiesRef = useRef<Record<string, UndoHistory>>({});
   const didInitViewportRef = useRef(false);
+  const initialViewportRef = useRef<{ scale: number; translation: DrawPoint } | null>(null);
   const rafRef = useRef<number | null>(null);
   const pointersRef = useRef<Map<number, DrawPoint>>(new Map());
   const spacePressedRef = useRef(false);
+  const lastWritingToolIdRef = useRef<DrawToolId>("pen");
+  const persistHistoryTimeoutRef = useRef<number | null>(null);
   const drawSettingsRef = useRef(loadDrawSettings());
   const longPressEraserRef = useRef<LongPressEraserState | null>(null);
   const syncCanvasToDom = useCallback((): boolean => {
@@ -507,7 +513,15 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
     editor.viewport.viewportSize = { width: w, height: h };
     if (!didInitViewportRef.current) {
       didInitViewportRef.current = true;
-      fitPageToWidth(editor, 24);
+      const initial = initialViewportRef.current;
+      initialViewportRef.current = null;
+      if (initial) {
+        editor.viewport.scale = initial.scale;
+        editor.viewport.translation = initial.translation;
+        snapViewport(editor, 24);
+      } else {
+        fitPageToWidth(editor, 24);
+      }
     } else if (resized) {
       snapViewport(editor, 24);
     }
@@ -542,6 +556,68 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
   const [morePopoverOpen, setMorePopoverOpen] = useState(false);
   const [morePopoverAnchor, setMorePopoverAnchor] = useState<HTMLElement | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [zoomHudPercent, setZoomHudPercent] = useState<number | null>(null);
+  const zoomHudHideTimeoutRef = useRef<number | null>(null);
+
+  const showZoomHud = useCallback((scale: number) => {
+    if (typeof window === "undefined") return;
+    const pct = Math.round(scale * 100);
+    setZoomHudPercent(pct);
+    if (zoomHudHideTimeoutRef.current != null) window.clearTimeout(zoomHudHideTimeoutRef.current);
+    zoomHudHideTimeoutRef.current = window.setTimeout(() => {
+      zoomHudHideTimeoutRef.current = null;
+      setZoomHudPercent(null);
+    }, 3000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (zoomHudHideTimeoutRef.current != null) window.clearTimeout(zoomHudHideTimeoutRef.current);
+    };
+  }, []);
+
+  const persistHistoryNow = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    saveDrawHistory(path, {
+      toolId: lastWritingToolIdRef.current,
+      penStyle: editor.penStyle,
+      fountainPenColorArgb: editor.fountainPenColorArgb,
+      fountainPenWidth: editor.fountainPenWidth,
+      ballpointPenColorArgb: editor.ballpointPenColorArgb,
+      ballpointPenWidth: editor.ballpointPenWidth,
+      highlighterColorArgb: editor.highlighterColorArgb,
+      highlighterWidth: editor.highlighterWidth,
+      highlighterAlpha: editor.highlighterAlpha,
+      shapeMode: editor.shapeMode,
+      shapeColorArgb: editor.shapeColorArgb,
+      shapeWidth: editor.shapeWidth,
+      eraserRadius: editor.eraserRadius,
+      pageIndex: editor.currentPageIndex,
+      viewport: {
+        scale: editor.viewport.scale,
+        translation: editor.viewport.translation,
+      },
+    });
+  }, [path]);
+
+  const schedulePersistHistory = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (persistHistoryTimeoutRef.current != null) window.clearTimeout(persistHistoryTimeoutRef.current);
+    persistHistoryTimeoutRef.current = window.setTimeout(() => {
+      persistHistoryTimeoutRef.current = null;
+      persistHistoryNow();
+    }, 250);
+  }, [persistHistoryNow]);
+
+  useEffect(() => {
+    return () => {
+      if (persistHistoryTimeoutRef.current != null) window.clearTimeout(persistHistoryTimeoutRef.current);
+      persistHistoryTimeoutRef.current = null;
+      persistHistoryNow();
+    };
+  }, [persistHistoryNow]);
 
   useEffect(() => {
     const isEditableTarget = (target: EventTarget | null): boolean => {
@@ -939,11 +1015,13 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
       const editor = editorRef.current;
       if (!editor) return;
       editor.toolId = next;
+      if (editor.viewMode === "writing") lastWritingToolIdRef.current = next;
       editor.clearOverlaysAndSelection();
       requestCanvasRender();
       forceUiTick((n) => n + 1);
+      schedulePersistHistory();
     },
-    [requestCanvasRender],
+    [requestCanvasRender, schedulePersistHistory],
   );
 
   const handleToolDockClick = useCallback(
@@ -1031,22 +1109,52 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
       if (ink.tiltMapping) editor.tiltMapping = ink.tiltMapping;
     }
 
+    initialViewportRef.current = null;
+    const history = loadDrawHistory(path);
+    if (history) {
+      if (history.penStyle) editor.penStyle = history.penStyle;
+      if (typeof history.fountainPenColorArgb === "number") editor.fountainPenColorArgb = history.fountainPenColorArgb;
+      if (typeof history.fountainPenWidth === "number") editor.fountainPenWidth = history.fountainPenWidth;
+      if (typeof history.ballpointPenColorArgb === "number") editor.ballpointPenColorArgb = history.ballpointPenColorArgb;
+      if (typeof history.ballpointPenWidth === "number") editor.ballpointPenWidth = history.ballpointPenWidth;
+      if (typeof history.highlighterColorArgb === "number") editor.highlighterColorArgb = history.highlighterColorArgb;
+      if (typeof history.highlighterWidth === "number") editor.highlighterWidth = history.highlighterWidth;
+      if (typeof history.highlighterAlpha === "number") editor.highlighterAlpha = history.highlighterAlpha;
+      if (history.shapeMode) editor.shapeMode = history.shapeMode;
+      if (typeof history.shapeColorArgb === "number") editor.shapeColorArgb = history.shapeColorArgb;
+      if (typeof history.shapeWidth === "number") editor.shapeWidth = history.shapeWidth;
+      if (typeof history.eraserRadius === "number") editor.eraserRadius = history.eraserRadius;
+      if (typeof history.pageIndex === "number") {
+        editor.currentPageIndex = Math.min(editor.doc.pages.length - 1, Math.max(0, Math.floor(history.pageIndex)));
+      }
+      if (history.viewport?.scale != null && history.viewport.translation) {
+        initialViewportRef.current = { scale: history.viewport.scale, translation: history.viewport.translation };
+      }
+      if (history.toolId) editor.toolId = history.toolId;
+    }
+    lastWritingToolIdRef.current = history?.toolId ?? editor.toolId;
+
     editorRef.current = editor;
     historiesRef.current = {};
     didInitViewportRef.current = false;
     refreshUndoRedoAvailability();
     requestCanvasRender();
     forceUiTick((n) => n + 1);
-  }, [doc, refreshUndoRedoAvailability, requestCanvasRender, viewMode]);
+  }, [doc, path, refreshUndoRedoAvailability, requestCanvasRender, viewMode]);
 
   // Keep viewMode in sync when changed externally.
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
     if (editor.viewMode === viewMode) return;
+    const prevMode = editor.viewMode;
     editor.viewMode = viewMode;
     if (viewMode === "reading") {
+      if (prevMode === "writing") lastWritingToolIdRef.current = editor.toolId;
       editor.toolId = "pan";
+      editor.clearOverlaysAndSelection();
+    } else if (prevMode === "reading") {
+      editor.toolId = lastWritingToolIdRef.current;
       editor.clearOverlaysAndSelection();
     }
     requestCanvasRender();
@@ -1214,6 +1322,8 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
           currCentroid[0] - pageUnderPrev[0] * newScale,
           currCentroid[1] - pageUnderPrev[1] * newScale,
         ];
+        showZoomHud(newScale);
+        schedulePersistHistory();
 
         input.prevCentroid = currCentroid;
         input.prevSpan = currSpan;
@@ -1260,8 +1370,9 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
         input.lastPagePos = pagePos;
       }
       requestCanvasRender();
+      if (input.activeTool.id === "pan") schedulePersistHistory();
     },
-    [clearLongPressEraserState, requestCanvasRender, tryTriggerLongPressEraser],
+    [clearLongPressEraserState, requestCanvasRender, schedulePersistHistory, showZoomHud, tryTriggerLongPressEraser],
   );
 
   const endPointer = useCallback(
@@ -1325,12 +1436,17 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
 
       ev.preventDefault();
 
-      if (ev.ctrlKey || ev.metaKey || ev.altKey) {
+      if (ev.ctrlKey || ev.metaKey) {
         const rect = canvas.getBoundingClientRect();
-        const viewPos: DrawPoint = [ev.clientX - rect.left, ev.clientY - rect.top];
+        const viewPos: DrawPoint = [
+          Math.min(rect.width, Math.max(0, ev.clientX - rect.left)),
+          Math.min(rect.height, Math.max(0, ev.clientY - rect.top)),
+        ];
         const factor = Math.exp(-ev.deltaY * 0.001);
         zoomAroundViewPoint(editor, viewPos, editor.viewport.scale * factor, 24);
+        showZoomHud(editor.viewport.scale);
         requestCanvasRender();
+        schedulePersistHistory();
         return;
       }
 
@@ -1339,17 +1455,38 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
         editor.viewport.translation[1] - ev.deltaY,
       ];
       requestCanvasRender();
+      schedulePersistHistory();
     },
-    [requestCanvasRender],
+    [requestCanvasRender, schedulePersistHistory, showZoomHud],
   );
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const canvasWrap = canvasWrapRef.current;
+    if (!canvasWrap) return;
 
-    canvas.addEventListener("wheel", handleWheel, { passive: false });
+    canvasWrap.addEventListener("wheel", handleWheel, { passive: false });
     return () => {
-      canvas.removeEventListener("wheel", handleWheel);
+      canvasWrap.removeEventListener("wheel", handleWheel);
+    };
+  }, [handleWheel]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onWheelCapture = (ev: WheelEvent) => {
+      if (!ev.ctrlKey && !ev.metaKey) return;
+      const canvasWrap = canvasWrapRef.current;
+      if (!canvasWrap) return;
+      const target = ev.target;
+      if (!(target instanceof Node)) return;
+      if (!canvasWrap.contains(target)) return;
+      handleWheel(ev);
+      ev.stopPropagation();
+    };
+
+    window.addEventListener("wheel", onWheelCapture, { passive: false, capture: true });
+    return () => {
+      window.removeEventListener("wheel", onWheelCapture, true);
     };
   }, [handleWheel]);
 
@@ -1390,7 +1527,8 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
     refreshUndoRedoAvailability();
     requestCanvasRender();
     forceUiTick((n) => n + 1);
-  }, [refreshUndoRedoAvailability, requestCanvasRender]);
+    schedulePersistHistory();
+  }, [refreshUndoRedoAvailability, requestCanvasRender, schedulePersistHistory]);
 
   const goNextPage = useCallback(() => {
     const editor = editorRef.current;
@@ -1400,7 +1538,8 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
     refreshUndoRedoAvailability();
     requestCanvasRender();
     forceUiTick((n) => n + 1);
-  }, [refreshUndoRedoAvailability, requestCanvasRender]);
+    schedulePersistHistory();
+  }, [refreshUndoRedoAvailability, requestCanvasRender, schedulePersistHistory]);
 
   const addPage = useCallback(() => {
     const editor = editorRef.current;
@@ -1413,7 +1552,8 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
     publishDoc();
     requestCanvasRender();
     forceUiTick((n) => n + 1);
-  }, [publishDoc, refreshUndoRedoAvailability, requestCanvasRender]);
+    schedulePersistHistory();
+  }, [publishDoc, refreshUndoRedoAvailability, requestCanvasRender, schedulePersistHistory]);
 
   const insertPageAfterCurrent = useCallback(() => {
     const editor = editorRef.current;
@@ -1426,7 +1566,8 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
     publishDoc();
     requestCanvasRender();
     forceUiTick((n) => n + 1);
-  }, [publishDoc, refreshUndoRedoAvailability, requestCanvasRender]);
+    schedulePersistHistory();
+  }, [publishDoc, refreshUndoRedoAvailability, requestCanvasRender, schedulePersistHistory]);
 
   const rotateCurrentPage90 = useCallback(() => {
     const editor = editorRef.current;
@@ -1441,7 +1582,8 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
     publishDoc();
     requestCanvasRender();
     forceUiTick((n) => n + 1);
-  }, [publishDoc, refreshUndoRedoAvailability, requestCanvasRender]);
+    schedulePersistHistory();
+  }, [publishDoc, refreshUndoRedoAvailability, requestCanvasRender, schedulePersistHistory]);
 
   const updateCurrentPageBackground = useCallback(
     (argb: number) => {
@@ -1624,7 +1766,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
   const shapeColor = argbToRgba(editor.shapeColorArgb, 1);
 
   return (
-    <div className="drawEditor">
+    <div className={`drawEditor${fullPageView ? " fullPageView" : ""}`}>
       <div className="drawToolbar noDrag" data-no-drag="true">
         <div className="drawToolbarGroup">
           <DrawToolbarButton label="返回" onClick={onBack}>
@@ -1687,8 +1829,20 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
           >
             <IconMoreHorizontal size={18} />
           </DrawToolbarButton>
+          <DrawToolbarButton
+            label={fullPageView ? "普通视图" : "整页视图"}
+            onClick={() => {
+              setToolPopoverOpen(false);
+              setMorePopoverOpen(false);
+              onUpdate({ fullPageView: !fullPageView });
+            }}
+          >
+            <IconLucideMaximize2 size={18} />
+          </DrawToolbarButton>
         </div>
       </div>
+
+      {zoomHudPercent != null ? <div className="drawZoomHud">{zoomHudPercent}%</div> : null}
 
       <Popover open={toolPopoverOpen && canEdit} anchorEl={toolPopoverAnchor} placement="bottom-start" onClose={() => setToolPopoverOpen(false)}>
         <div className="drawPopover">
@@ -1701,6 +1855,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
                   editor.penStyle = "fountainPen";
                   requestCanvasRender();
                   forceUiTick((n) => n + 1);
+                  schedulePersistHistory();
                 }}
                 data-no-drag="true"
               >
@@ -1716,6 +1871,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
                   editor.penStyle = "ballpointPen";
                   requestCanvasRender();
                   forceUiTick((n) => n + 1);
+                  schedulePersistHistory();
                 }}
                 data-no-drag="true"
               >
@@ -1747,6 +1903,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
                 onClick={() => {
                   editor.shapeMode = "line";
                   forceUiTick((n) => n + 1);
+                  schedulePersistHistory();
                 }}
                 data-no-drag="true"
               >
@@ -1758,6 +1915,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
                 onClick={() => {
                   editor.shapeMode = "rectangle";
                   forceUiTick((n) => n + 1);
+                  schedulePersistHistory();
                 }}
                 data-no-drag="true"
               >
@@ -1769,6 +1927,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
                 onClick={() => {
                   editor.shapeMode = "ellipse";
                   forceUiTick((n) => n + 1);
+                  schedulePersistHistory();
                 }}
                 data-no-drag="true"
               >
@@ -1792,6 +1951,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
                 else if (editor.toolId === "shape") editor.shapeColorArgb = argb;
                 requestCanvasRender();
                 forceUiTick((n) => n + 1);
+                schedulePersistHistory();
               }}
             />
           ) : null}
@@ -1808,6 +1968,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
                 onChange={(v) => {
                   editor.currentPenWidth = v;
                   forceUiTick((n) => n + 1);
+                  schedulePersistHistory();
                 }}
               />
 
@@ -2085,6 +2246,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
               onChange={(v) => {
                 editor.shapeWidth = v;
                 forceUiTick((n) => n + 1);
+                schedulePersistHistory();
               }}
             />
           ) : editor.toolId === "highlighter" ? (
@@ -2099,6 +2261,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
                 onChange={(v) => {
                   editor.highlighterWidth = v;
                   forceUiTick((n) => n + 1);
+                  schedulePersistHistory();
                 }}
               />
               <DrawLabeledSlider
@@ -2111,6 +2274,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
                 onChange={(v) => {
                   editor.highlighterAlpha = v;
                   forceUiTick((n) => n + 1);
+                  schedulePersistHistory();
                 }}
               />
             </>
@@ -2125,6 +2289,7 @@ export function ZhixuDrawEditor({ path, doc, savedDoc, dirty, viewMode, onBack, 
               onChange={(v) => {
                 editor.eraserRadius = v;
                 forceUiTick((n) => n + 1);
+                schedulePersistHistory();
               }}
             />
           ) : null}

@@ -40,6 +40,7 @@ import {
 } from "./components/icons";
 import { basename, dirname, join } from "./lib/path";
 import { getFileTypeLabel, isTextFile, isZhixuDrawFile, stripExtension } from "./lib/fileType";
+import { moveDrawHistory } from "./lib/drawHistory";
 import type { InstalledPlugin, PluginIndexItem } from "./lib/plugins/types";
 import { runInstalledPluginAction } from "./lib/plugins/runtime";
 import { fetchOfficialIndex, listInstalledPlugins } from "./lib/plugins/workshop";
@@ -138,6 +139,7 @@ type DrawingTab = {
   savedDoc: DrawDocument | null;
   dirty: boolean;
   viewMode: DrawViewMode;
+  fullPageView: boolean;
   selection: CodeMirrorSelection;
 };
 
@@ -1772,6 +1774,7 @@ export function App() {
                 savedDoc: null,
                 dirty: false,
                 viewMode: "writing",
+                fullPageView: false,
                 selection: { anchor: 0, head: 0 },
               }
             : {
@@ -2041,11 +2044,13 @@ export function App() {
       const nextName = stripExtension(nextFileName);
       const nextText = isTextFile(nextFileName);
       const nextDraw = isZhixuDrawFile(nextFileName);
+      const oldDraw = isZhixuDrawFile(basename(oldPath));
       const nextBinaryLabel = getFileTypeLabel(nextFileName) ?? "文件";
       const nextBinaryPlaceholder = `该文件类型暂不支持在应用内打开：${nextBinaryLabel}\n\n路径：${next}`;
 
       try {
         await renameEntry(oldPath, next);
+        if (oldDraw && nextDraw) moveDrawHistory(oldPath, next);
         setTabs((prev) =>
           prev.map((t) => {
             if (t.path !== oldPath) return t;
@@ -2059,6 +2064,7 @@ export function App() {
                 savedDoc: t.kind === "drawing" ? t.savedDoc : null,
                 dirty: t.kind === "drawing" ? t.dirty : false,
                 viewMode: t.kind === "drawing" ? t.viewMode : "writing",
+                fullPageView: t.kind === "drawing" ? t.fullPageView : false,
                 selection: { anchor: 0, head: 0 },
               };
             }
@@ -2128,11 +2134,13 @@ export function App() {
     const nextName = stripExtension(nextFileName);
     const nextText = isTextFile(nextFileName);
     const nextDraw = isZhixuDrawFile(nextFileName);
+    const oldDraw = isZhixuDrawFile(basename(activeTab.path));
     const nextBinaryLabel = getFileTypeLabel(nextFileName) ?? "文件";
     const nextBinaryPlaceholder = `该文件类型暂不支持在应用内打开：${nextBinaryLabel}\n\n路径：${next}`;
 
     try {
       await renameEntry(activeTab.path, next);
+      if (oldDraw && nextDraw) moveDrawHistory(activeTab.path, next);
       setTabs((prev) =>
         prev.map((t) => {
           if (t.path !== activeTab.path) return t;
@@ -2146,6 +2154,7 @@ export function App() {
               savedDoc: t.kind === "drawing" ? t.savedDoc : null,
               dirty: t.kind === "drawing" ? t.dirty : false,
               viewMode: t.kind === "drawing" ? t.viewMode : "writing",
+              fullPageView: t.kind === "drawing" ? t.fullPageView : false,
               selection: { anchor: 0, head: 0 },
             };
           }
@@ -3040,6 +3049,8 @@ export function App() {
     <div
       ref={appShellRef}
       className={`appShell${isDetached ? " detached" : ""}${sidebarOpen ? "" : " sidebarClosed"}${
+        activeTab?.kind === "drawing" && activeTab.fullPageView ? " drawFullPage" : ""
+      }${
         sidebarResizeActive ? " sidebarResizeActive" : ""
       }`}
       style={{ ["--mainSidebarWidth" as any]: `${isDetached || !sidebarOpen ? 0 : mainSidebarWidth}px` } as React.CSSProperties}
@@ -3884,6 +3895,7 @@ export function App() {
                   savedDoc={activeTab.savedDoc}
                   dirty={activeTab.dirty}
                   viewMode={activeTab.viewMode}
+                  fullPageView={activeTab.fullPageView}
                   onBack={() => closeTab(activeTab.path)}
                   onSave={() => void saveActive()}
                   onDeleteFile={() => void deleteActive()}
