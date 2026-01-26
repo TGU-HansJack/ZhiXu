@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,6 +18,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,12 +86,31 @@ private fun HomeSubBarSegment(
     val unselectedText = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF6B7280)
     val selectedBg = if (isDark) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFE5E7EB)
     val selectedText = if (isDark) MaterialTheme.colorScheme.onSurface else Color(0xFF111827)
+    val pressedBg = if (isDark) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFF3F4F6)
+    val pressedSelectedBg = if (isDark) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFD1D5DB)
     val stroke = if (isDark) MaterialTheme.colorScheme.outlineVariant else Color(0xFFE5E7EB)
-    val bg = if (selected) selectedBg else unselectedBg
     val fg = if (selected) selectedText else unselectedText
 
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val bg =
+        when {
+            selected && pressed -> pressedSelectedBg
+            selected -> selectedBg
+            pressed -> pressedBg
+            else -> unselectedBg
+        }
+
     Surface(
-        modifier = modifier.height(height).clip(shape),
+        modifier =
+            modifier
+                .height(height)
+                .clip(shape)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick,
+                ),
         color = bg,
         contentColor = fg,
         shape = shape,
@@ -99,8 +122,7 @@ private fun HomeSubBarSegment(
             modifier =
                 Modifier
                     .fillMaxHeight()
-                    .padding(horizontal = 12.dp)
-                    .clickable(onClick = onClick),
+                    .padding(horizontal = 12.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(

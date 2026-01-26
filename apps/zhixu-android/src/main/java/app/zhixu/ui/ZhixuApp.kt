@@ -95,6 +95,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.core.os.LocaleListCompat
@@ -1320,10 +1321,62 @@ fun ZhixuApp(
     val density = androidx.compose.ui.platform.LocalDensity.current
     val homeBarHeightPx = remember(density) { with(density) { ZhixuTopBarContentHeight.toPx() } }
     val homeBarDividerHeightPx = remember(density) { with(density) { 1.dp.toPx() } }
+    val homeSubBarCollapseHeightPx = homeBarHeightPx + homeBarDividerHeightPx
+    val homeBarsMinOffsetPx = -(homeBarHeightPx * 2f + homeBarDividerHeightPx * 2f)
     // Negative = moved up (hidden). Range is [-(topBar + subBar + dividers), 0].
     // Collapse order: sub-bar first, then top bar (expand in reverse).
     var homeBarsOffsetPx by remember { mutableFloatStateOf(0f) }
     val homeCollapsingEnabledState = rememberUpdatedState(currentRoute == "home" && !docsSelectionMode)
+    var homeBarsSettleJob by remember { mutableStateOf<Job?>(null) }
+
+    fun cancelHomeBarsSettle() {
+        homeBarsSettleJob?.cancel()
+        homeBarsSettleJob = null
+    }
+
+    fun settleHomeBars(velocityY: Float) {
+        if (!homeCollapsingEnabledState.value) return
+        cancelHomeBarsSettle()
+
+        val current = homeBarsOffsetPx.coerceIn(homeBarsMinOffsetPx, 0f)
+        val flingThreshold = 2400f
+        val collapseToSubBar = -homeSubBarCollapseHeightPx
+
+        val target =
+            when {
+                velocityY < -flingThreshold -> {
+                    if (current <= collapseToSubBar) homeBarsMinOffsetPx else collapseToSubBar
+                }
+                velocityY > flingThreshold -> {
+                    if (current >= collapseToSubBar) 0f else collapseToSubBar
+                }
+                current > collapseToSubBar -> {
+                    val mid = collapseToSubBar / 2f
+                    if (current <= mid) collapseToSubBar else 0f
+                }
+                else -> {
+                    val mid = (homeBarsMinOffsetPx + collapseToSubBar) / 2f
+                    if (current <= mid) homeBarsMinOffsetPx else collapseToSubBar
+                }
+            }
+
+        if (kotlin.math.abs(target - current) < 0.5f) {
+            homeBarsOffsetPx = target
+            return
+        }
+
+        homeBarsSettleJob =
+            scope.launch {
+                androidx.compose.animation.core.animate(
+                    initialValue = current,
+                    targetValue = target,
+                    animationSpec = tween(durationMillis = 180, easing = LinearOutSlowInEasing),
+                ) { value, _ ->
+                    homeBarsOffsetPx = value
+                }
+                homeBarsOffsetPx = target
+            }
+    }
 
     val homeBarsNestedScrollConnection =
         remember(homeBarHeightPx, homeBarDividerHeightPx) {
@@ -1332,9 +1385,9 @@ fun ZhixuApp(
                     if (!homeCollapsingEnabledState.value) return 0f
                     if (deltaY == 0f) return 0f
 
-                    val minOffset = -(homeBarHeightPx * 2f + homeBarDividerHeightPx * 2f)
+                    cancelHomeBarsSettle()
                     val prev = homeBarsOffsetPx
-                    val next = (prev + deltaY).coerceIn(minOffset, 0f)
+                    val next = (prev + deltaY).coerceIn(homeBarsMinOffsetPx, 0f)
                     val consumed = next - prev
                     homeBarsOffsetPx = next
                     return consumed
@@ -1350,6 +1403,16 @@ fun ZhixuApp(
                     available: androidx.compose.ui.geometry.Offset,
                     source: androidx.compose.ui.input.nestedscroll.NestedScrollSource,
                 ): androidx.compose.ui.geometry.Offset = androidx.compose.ui.geometry.Offset(x = 0f, y = consume(available.y))
+
+                override suspend fun onPreFling(available: Velocity): Velocity {
+                    if (kotlin.math.abs(available.y) < 200f) settleHomeBars(velocityY = 0f)
+                    return Velocity.Zero
+                }
+
+                override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                    settleHomeBars(velocityY = consumed.y + available.y)
+                    return Velocity.Zero
+                }
             }
         }
 
@@ -1435,6 +1498,7 @@ fun ZhixuApp(
     LaunchedEffect(currentRoute, docsSelectionMode) {
         // Keep Home app bars visible when leaving Home or entering selection mode.
         if (currentRoute != "home" || docsSelectionMode) {
+            cancelHomeBarsSettle()
             homeBarsOffsetPx = 0f
         }
     }
