@@ -127,7 +127,7 @@ import app.zhixu.ui.components.ZhixuDialogDefaults
 import app.zhixu.ui.components.RefreshStatusBanner
 import app.zhixu.ui.components.calendar.CalendarGrid
 import app.zhixu.data.UiTask
-import app.zhixu.data.VaultIndexRepository
+import app.zhixu.data.VaultTasksRepository
 import app.zhixu.data.VaultIndexUpdater
 import app.zhixu.data.VaultRepository
 import app.zhixu.sync.VaultAutoSync
@@ -203,7 +203,7 @@ fun TasksScreen(
                     if (!isReady) {
                         Triple(false, emptyList(), emptyList())
                     } else {
-                        val t = repository.getAllTasks(status = VaultIndexRepository.TaskStatusFilter.Undone)
+                        val t = repository.getAllTasks(status = VaultTasksRepository.TaskStatusFilter.Undone)
                         val c = repository.getRecentCompletedTasks(limit = 50)
                         Triple(true, t, c)
                     }

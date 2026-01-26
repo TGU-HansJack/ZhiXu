@@ -205,7 +205,10 @@ fun VaultDrawer(
         if (loadingDirs[key] == true) return
         loadingDirs[key] = true
         try {
-            repository.ensureDirIndexBuilt(vaultRootUri, force = false)
+            // Pull-to-refresh should never trigger a full directory-tree scan.
+            if (!refresh) {
+                repository.ensureDirIndexBuilt(vaultRootUri, force = false)
+            }
             if (refresh) {
                 runCatching {
                     repository.refreshDirIndexForDirectory(

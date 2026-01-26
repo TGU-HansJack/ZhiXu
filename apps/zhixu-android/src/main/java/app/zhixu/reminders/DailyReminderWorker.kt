@@ -17,8 +17,9 @@ import app.zhixu.MainActivity
 import app.zhixu.R
 import app.zhixu.data.DailyReminderSettings
 import app.zhixu.data.NotificationPreferences
-import app.zhixu.data.VaultIndexRepository
-import app.zhixu.data.VaultIndexRepository.TaskStatusFilter
+import app.zhixu.data.TasksPreferences
+import app.zhixu.data.VaultRepository
+import app.zhixu.data.VaultTasksRepository
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -32,7 +33,8 @@ class DailyReminderWorker(
     appContext: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
-    private val index = VaultIndexRepository(appContext)
+    private val repository = VaultRepository(appContext)
+    private val tasksPreferences = TasksPreferences(appContext.applicationContext)
 
     override suspend fun doWork(): Result {
         val prefs = NotificationPreferences(applicationContext)
@@ -47,20 +49,22 @@ class DailyReminderWorker(
             return Result.success()
         }
 
-        val zone = ZoneId.systemDefault()
-        val today = now.toLocalDate()
-        val startOfDayMs = today.atStartOfDay(zone).toInstant().toEpochMilli()
-        val endOfDayMs = today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+        val tasksPluginEnabled = runCatching { tasksPreferences.enabled.first() }.getOrDefault(false)
+        if (!tasksPluginEnabled) {
+            scheduleNext(applicationContext, current)
+            return Result.success()
+        }
 
+        val today = now.toLocalDate()
         val tasks =
             runCatching {
-                index.getAllTasks(
+                repository.getTasksDueOn(
+                    day = today,
                     limit = 500,
-                    status = TaskStatusFilter.Undone,
+                    status = VaultTasksRepository.TaskStatusFilter.Undone,
                     tag = null,
                 )
             }.getOrDefault(emptyList())
-                .filter { it.dueEpochMillis != null && it.dueEpochMillis in startOfDayMs..endOfDayMs }
 
         val count = tasks.size
         val title = applicationContext.getString(R.string.daily_reminder_notification_title)

@@ -12,29 +12,35 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import app.zhixu.MainActivity
 import app.zhixu.R
-import app.zhixu.data.VaultIndexRepository
+import app.zhixu.data.TasksPreferences
+import app.zhixu.data.VaultTasksRepository
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.flow.first
 
 class TaskReminderWorker(
     appContext: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
-    private val index = VaultIndexRepository(appContext)
+    private val tasks = VaultTasksRepository(appContext)
+    private val tasksPreferences = TasksPreferences(appContext.applicationContext)
     private val dueFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm")
 
     override suspend fun doWork(): Result {
         runCatching { ensureChannel() }.getOrElse { return Result.success() }
 
+        val tasksPluginEnabled = runCatching { tasksPreferences.enabled.first() }.getOrDefault(false)
+        if (!tasksPluginEnabled) return Result.success()
+
         val now = System.currentTimeMillis()
-        val tasks = runCatching { index.getDueTasksForReminder(nowEpochMillis = now) }.getOrElse { return Result.success() }
-        for (task in tasks) {
+        val dueTasks = runCatching { tasks.getDueTasksForReminder(nowEpochMillis = now) }.getOrElse { return Result.success() }
+        for (task in dueTasks) {
             val due = task.dueEpochMillis
             val trigger = task.remindEpochMillis ?: due ?: continue
             val key = task.taskId ?: "${task.docUri}#${task.lineIndex}"
             if (!task.remindPersistent) {
-                if (runCatching { index.wasReminderNotified(key, trigger) }.getOrDefault(false)) continue
+                if (runCatching { tasks.wasReminderNotified(key, trigger) }.getOrDefault(false)) continue
             }
 
             val dueText = due?.let { dueFormatter.format(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault())) }
@@ -70,7 +76,7 @@ class TaskReminderWorker(
 
             runCatching { NotificationManagerCompat.from(applicationContext).notify(key.hashCode(), notification) }
             if (!task.remindPersistent) {
-                runCatching { index.markReminderNotified(key, trigger) }
+                runCatching { tasks.markReminderNotified(key, trigger) }
             }
         }
 

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.ArrayDeque
@@ -131,8 +132,17 @@ class VaultIndexUpdater(
                 // Avoid blocking docs UI on cold start: build in background after first UI settles.
                 delay(800)
                 while (!canRunHeavyWork) delay(300)
-                val has = withContext(Dispatchers.IO) { repository.hasAnyIndexedDocs() }
-                if (!has) scheduleRefresh(force = true, debounceMs = 0)
+                val hasDocs = withContext(Dispatchers.IO) { repository.hasAnyIndexedDocs() }
+                if (!hasDocs) {
+                    scheduleRefresh(force = true, debounceMs = 0)
+                    return@launch
+                }
+
+                val tasksEnabled = runCatching { repository.tasksPluginEnabledFlow().first() }.getOrDefault(true)
+                if (!tasksEnabled) return@launch
+
+                val hasTasks = withContext(Dispatchers.IO) { repository.hasAnyIndexedTasks() }
+                if (!hasTasks) scheduleRefresh(force = false, debounceMs = 0)
             }
 
         scope.launch {

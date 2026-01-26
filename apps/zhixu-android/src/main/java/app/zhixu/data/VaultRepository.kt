@@ -17,6 +17,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.sync.Mutex
@@ -64,11 +65,19 @@ class VaultRepository(
 ) {
     private val appConfigDirName = ".zhixu"
     private val indexRepository = VaultIndexRepository(context)
+    private val tasksRepository = VaultTasksRepository(context)
     private val dirIndexRepository = VaultDirIndexRepository(context)
+    private val tasksPreferences = TasksPreferences(context.applicationContext)
     private val dueFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
     @Volatile private var indexBuildInProgress: Boolean = false
     @Volatile private var dirIndexBuildInProgress: Boolean = false
     private val dirIndexBuildLock = Mutex()
+
+    private suspend fun isTasksPluginEnabled(): Boolean =
+        runCatching { tasksPreferences.enabled.first() }
+            .getOrDefault(false)
+
+    fun tasksPluginEnabledFlow() = tasksPreferences.enabled
 
     @Volatile private var indexChangeVersion: Long = 0L
     private val indexChangesInternal = MutableSharedFlow<Long>(replay = 1, extraBufferCapacity = 8)
@@ -346,6 +355,17 @@ class VaultRepository(
                 false
             }
 
+    suspend fun hasAnyIndexedTasks(): Boolean =
+        if (!isTasksPluginEnabled()) {
+            false
+        } else {
+            runCatching { tasksRepository.hasAnyIndexedDocs() }
+                .getOrElse {
+                    Log.e("Zhixu", "hasAnyIndexedTasks failed", it)
+                    false
+                }
+        }
+
     suspend fun ensureIndexBuilt(rootUri: Uri) {
         if (hasAnyIndexedDocs()) return
         rebuildIndex(rootUri)
@@ -600,7 +620,9 @@ class VaultRepository(
         if (isVaultInternalPath(rel)) return@withContext false
 
         val docUri = buildSyntheticDocUriForRelativePath(rootUri, rel) ?: return@withContext false
+        val tasksEnabled = isTasksPluginEnabled()
         runCatching { indexRepository.deleteDocument(docUri) }
+        if (tasksEnabled) runCatching { tasksRepository.deleteTasksByDocUri(docUri) }
         signalIndexChanged()
         true
     }
@@ -1384,6 +1406,7 @@ class VaultRepository(
     ) = withContext(Dispatchers.IO) {
         indexBuildInProgress = true
         try {
+            val tasksEnabled = isTasksPluginEnabled()
             ensureVaultStructure(rootUri)
             // Reuse the most recent doc listing when available to avoid repeated full directory scans.
             val markdownDocs = listMarkdownDocsCached(rootUri, force = forceScan, maxStaleMs = 3 * 60_000L)
@@ -1392,6 +1415,13 @@ class VaultRepository(
             val keepUris = (markdownDocs.asSequence() + drawingDocs.asSequence()).map { it.uri.toString() }.toHashSet()
             val indexedMetaResult = runCatching { indexRepository.listAllIndexedDocMeta() }
             val indexedMeta = indexedMetaResult.getOrNull().orEmpty()
+            val tasksDocMetaResult: Result<Map<String, VaultTasksRepository.IndexedDocMeta>> =
+                if (!tasksEnabled) {
+                    Result.success(emptyMap())
+                } else {
+                    runCatching { tasksRepository.listAllIndexedDocMeta() }
+                }
+            val tasksDocMeta = tasksDocMetaResult.getOrNull().orEmpty()
 
             var didChange = false
 
@@ -1407,6 +1437,11 @@ class VaultRepository(
                 runCatching { indexRepository.deleteDocumentsByUriStrings(stale) }
                     .onSuccess { didChange = true }
                     .onFailure { Log.e("Zhixu", "Index prune failed", it) }
+                if (tasksEnabled) {
+                    runCatching { tasksRepository.deleteTasksByDocUriStrings(stale) }
+                        .onSuccess { didChange = true }
+                        .onFailure { Log.e("Zhixu", "Tasks prune failed", it) }
+                }
             }
 
             val coroutineContext = currentCoroutineContext()
@@ -1415,8 +1450,9 @@ class VaultRepository(
                 coroutineContext.ensureActive()
                 val uriStr = doc.uri.toString()
                 val prev = indexedMeta[uriStr]
+                val prevTasksMeta = if (!tasksEnabled) null else tasksDocMeta[uriStr]
 
-                val shouldIndex =
+                val shouldIndexDocs =
                     when {
                         !indexedMetaResult.isSuccess -> true
                         prev == null -> true
@@ -1424,33 +1460,88 @@ class VaultRepository(
                         prev.lastModified != doc.lastModified || prev.size != doc.size -> true
                         else -> false
                     }
+                val shouldIndexTasks =
+                    tasksEnabled &&
+                        when {
+                            !tasksDocMetaResult.isSuccess -> true
+                            prevTasksMeta == null -> true
+                            doc.lastModified <= 0L -> true
+                            prevTasksMeta.lastModified != doc.lastModified || prevTasksMeta.size != doc.size -> true
+                            else -> false
+                        }
+                val nameChanged = doc.name.isNotBlank() && doc.name != prev?.name
 
-                if (!shouldIndex) {
-                    if (doc.name.isNotBlank() && doc.name != prev?.name) {
+                if (!shouldIndexDocs && !shouldIndexTasks) {
+                    if (nameChanged) {
                         runCatching { indexRepository.updateDocName(docUri = uriStr, newName = doc.name) }
                             .onSuccess { didChange = true }
+                        if (tasksEnabled) {
+                            runCatching { tasksRepository.updateDocName(docUri = uriStr, newName = doc.name) }
+                                .onSuccess { didChange = true }
+                        }
                     }
                 } else {
+                    var indexedDoc: UiDoc? = null
+                    var finalContent = ""
+                    var indexDocsNow = false
+                    var indexTasksNow = false
+
                     runCatching {
                         val content = readText(doc.uri)
-                        val normalized = TaskSyntax.normalizeMarkdown(content)
-                        val finalContent =
+                        var text = content
+                        var wroteNormalized = false
+                        if (tasksEnabled) {
+                            val normalized = TaskSyntax.normalizeMarkdown(content)
                             if (normalized.insertedIds > 0) {
                                 writeText(doc.uri, normalized.markdown)
-                                normalized.markdown
-                            } else {
-                                content
+                                text = normalized.markdown
+                                wroteNormalized = true
                             }
-                        val stat = DocumentFile.fromSingleUri(context, doc.uri)
-                        val indexedDoc =
-                            doc.copy(
-                                lastModified = stat?.lastModified() ?: doc.lastModified,
-                                size = stat?.length() ?: finalContent.toByteArray(StandardCharsets.UTF_8).size.toLong(),
-                            )
-                        indexRepository.indexDocument(indexedDoc, finalContent)
-                        didChange = true
+                        }
+                        finalContent = text
+                        indexDocsNow = shouldIndexDocs || wroteNormalized
+                        indexTasksNow = tasksEnabled && (shouldIndexTasks || wroteNormalized)
+
+                        val fallbackSize = text.toByteArray(StandardCharsets.UTF_8).size.toLong()
+                        val (lastModified, size) =
+                            if (doc.uri.scheme.equals("file", ignoreCase = true)) {
+                                val path = doc.uri.path
+                                val file = path?.let(::File)
+                                Pair(
+                                    file?.lastModified() ?: doc.lastModified,
+                                    file?.length() ?: fallbackSize,
+                                )
+                            } else {
+                                val stat = DocumentFile.fromSingleUri(context, doc.uri)
+                                Pair(
+                                    stat?.lastModified() ?: doc.lastModified,
+                                    stat?.length() ?: fallbackSize,
+                                )
+                            }
+                        indexedDoc = doc.copy(lastModified = lastModified, size = size)
                     }.onFailure {
-                        Log.e("Zhixu", "Index failed for ${doc.uri}", it)
+                        Log.e("Zhixu", "Index prep failed for ${doc.uri}", it)
+                    }
+
+                    val prepared = indexedDoc
+                    if (prepared != null) {
+                        if (indexDocsNow) {
+                            runCatching { indexRepository.indexDocument(prepared, finalContent) }
+                                .onSuccess { didChange = true }
+                                .onFailure { Log.e("Zhixu", "Doc index failed for ${doc.uri}", it) }
+                        } else if (nameChanged) {
+                            runCatching { indexRepository.updateDocName(docUri = uriStr, newName = doc.name) }
+                                .onSuccess { didChange = true }
+                        }
+
+                        if (indexTasksNow) {
+                            runCatching { tasksRepository.indexTasksForDocument(prepared, finalContent) }
+                                .onSuccess { didChange = true }
+                                .onFailure { Log.e("Zhixu", "Tasks index failed for ${doc.uri}", it) }
+                        } else if (tasksEnabled && nameChanged) {
+                            runCatching { tasksRepository.updateDocName(docUri = uriStr, newName = doc.name) }
+                                .onSuccess { didChange = true }
+                        }
                     }
                 }
 
@@ -1497,12 +1588,29 @@ class VaultRepository(
         val q = query.trim()
         if (q.isBlank()) return@withContext emptyList()
 
-        val indexed =
+        val docs =
             runCatching { indexRepository.search(q) }
                 .getOrElse {
                     Log.e("Zhixu", "Search failed", it)
                     emptyList()
                 }
+        val tasksEnabled = isTasksPluginEnabled()
+        val tasks =
+            if (!tasksEnabled) {
+                emptyList()
+            } else {
+                val remaining = (50 - docs.size).coerceAtLeast(0)
+                if (remaining <= 0) emptyList()
+                else {
+                    runCatching { tasksRepository.search(q, limit = remaining) }
+                        .getOrElse {
+                            Log.e("Zhixu", "Task search failed", it)
+                            emptyList()
+                        }
+                }
+            }
+
+        val indexed = docs + tasks
         if (indexed.isNotEmpty()) return@withContext indexed
 
         val root = rootUri ?: return@withContext indexed
@@ -1510,42 +1618,58 @@ class VaultRepository(
     }
 
     suspend fun getTodayTasks(
-        status: VaultIndexRepository.TaskStatusFilter = VaultIndexRepository.TaskStatusFilter.Undone,
+        status: VaultTasksRepository.TaskStatusFilter = VaultTasksRepository.TaskStatusFilter.Undone,
         tag: String? = null,
     ): List<UiTask> =
-        runCatching { indexRepository.getTodayTasks(status = status, tag = tag) }
-            .getOrElse {
-                Log.e("Zhixu", "getTodayTasks failed", it)
-                emptyList()
-            }
+        if (!isTasksPluginEnabled()) {
+            emptyList()
+        } else {
+            runCatching { tasksRepository.getTodayTasks(status = status, tag = tag) }
+                .getOrElse {
+                    Log.e("Zhixu", "getTodayTasks failed", it)
+                    emptyList()
+                }
+        }
 
     suspend fun getUpcomingTasks(
-        status: VaultIndexRepository.TaskStatusFilter = VaultIndexRepository.TaskStatusFilter.Undone,
+        status: VaultTasksRepository.TaskStatusFilter = VaultTasksRepository.TaskStatusFilter.Undone,
         tag: String? = null,
     ): List<UiTask> =
-        runCatching { indexRepository.getUpcomingTasks(status = status, tag = tag) }
-            .getOrElse {
-                Log.e("Zhixu", "getUpcomingTasks failed", it)
-                emptyList()
-            }
+        if (!isTasksPluginEnabled()) {
+            emptyList()
+        } else {
+            runCatching { tasksRepository.getUpcomingTasks(status = status, tag = tag) }
+                .getOrElse {
+                    Log.e("Zhixu", "getUpcomingTasks failed", it)
+                    emptyList()
+                }
+        }
 
     suspend fun getAllTasks(
         limit: Int = 200,
-        status: VaultIndexRepository.TaskStatusFilter = VaultIndexRepository.TaskStatusFilter.Undone,
+        status: VaultTasksRepository.TaskStatusFilter = VaultTasksRepository.TaskStatusFilter.Undone,
         tag: String? = null,
     ): List<UiTask> =
-        runCatching { indexRepository.getAllTasks(limit = limit, status = status, tag = tag) }
-            .getOrElse {
-                Log.e("Zhixu", "getAllTasks failed", it)
-                emptyList()
-            }
+        if (!isTasksPluginEnabled()) {
+            emptyList()
+        } else {
+            runCatching { tasksRepository.getAllTasks(limit = limit, status = status, tag = tag) }
+                .getOrElse {
+                    Log.e("Zhixu", "getAllTasks failed", it)
+                    emptyList()
+                }
+        }
 
     suspend fun getRecentCompletedTasks(limit: Int = 50): List<UiTask> =
-        runCatching { indexRepository.getRecentCompletedTasks(limit) }
-            .getOrElse {
-                Log.e("Zhixu", "getRecentCompletedTasks failed", it)
-                emptyList()
-            }
+        if (!isTasksPluginEnabled()) {
+            emptyList()
+        } else {
+            runCatching { tasksRepository.getRecentCompletedTasks(limit) }
+                .getOrElse {
+                    Log.e("Zhixu", "getRecentCompletedTasks failed", it)
+                    emptyList()
+                }
+        }
 
     suspend fun addTaskToInbox(rootUri: Uri, title: String): Boolean = withContext(Dispatchers.IO) {
         addTaskToInbox(
@@ -1634,7 +1758,9 @@ class VaultRepository(
         writeText(inbox.uri, normalized)
         indexDocUri(inbox.uri)
         recordDailyDocEdited(docUri = inbox.uri, day = LocalDate.now())
-        runCatching { indexRepository.recordTaskCreated(taskId = taskId, docUri = inbox.uri.toString(), createdEpochMs = createdAtMs) }
+        if (isTasksPluginEnabled()) {
+            runCatching { tasksRepository.recordTaskCreated(taskId = taskId, docUri = inbox.uri.toString(), createdEpochMs = createdAtMs) }
+        }
         true
     }
 
@@ -1917,6 +2043,7 @@ class VaultRepository(
         val sanitizedBase = sanitizeFileName(desiredName).removeSuffix(".md").trim().ifBlank { "Untitled" }
         val normalizedBase = sanitizedBase.removeSuffix(".md").trim().ifBlank { "Untitled" }
         val finalName = if (normalizedBase.endsWith(".md", ignoreCase = true)) normalizedBase else "$normalizedBase.md"
+        val tasksEnabled = isTasksPluginEnabled()
 
         // file:// vault: handle with java.io.File rename (DocumentsContract doesn't apply).
         if (docUri.scheme.equals("file", ignoreCase = true)) {
@@ -1939,8 +2066,17 @@ class VaultRepository(
             if (!ok) return@withContext null
 
             val newUri = Uri.fromFile(dest)
-            runCatching { indexRepository.migrateDocUri(oldUri = docUri.toString(), newUri = newUri.toString(), newName = dest.name) }
-                .onSuccess { signalIndexChanged() }
+            val oldUri = docUri.toString()
+            val newUriStr = newUri.toString()
+            val newName = dest.name
+            var changed = false
+            runCatching { indexRepository.migrateDocUri(oldUri = oldUri, newUri = newUriStr, newName = newName) }
+                .onSuccess { changed = true }
+            if (tasksEnabled) {
+                runCatching { tasksRepository.migrateDocUri(oldUri = oldUri, newUri = newUriStr, newName = newName) }
+                    .onSuccess { changed = true }
+            }
+            if (changed) signalIndexChanged()
             return@withContext newUri
         }
 
@@ -1952,13 +2088,24 @@ class VaultRepository(
             val newName = DocumentFile.fromSingleUri(context, renamedUri)?.name ?: finalName
             val oldUri = docUri.toString()
             val newUri = renamedUri.toString()
+            var changed = false
             runCatching {
                 if (oldUri == newUri) {
                     indexRepository.updateDocName(docUri = oldUri, newName = newName)
                 } else {
                     indexRepository.migrateDocUri(oldUri = oldUri, newUri = newUri, newName = newName)
                 }
-            }.onSuccess { signalIndexChanged() }
+            }.onSuccess { changed = true }
+            if (tasksEnabled) {
+                runCatching {
+                    if (oldUri == newUri) {
+                        tasksRepository.updateDocName(docUri = oldUri, newName = newName)
+                    } else {
+                        tasksRepository.migrateDocUri(oldUri = oldUri, newUri = newUri, newName = newName)
+                    }
+                }.onSuccess { changed = true }
+            }
+            if (changed) signalIndexChanged()
             return@withContext renamedUri
         }
 
@@ -1972,6 +2119,7 @@ class VaultRepository(
 
     suspend fun renameFile(fileUri: Uri, desiredName: String): Uri? = withContext(Dispatchers.IO) {
         val raw = sanitizeFileName(desiredName).trim().ifBlank { "Untitled" }
+        val tasksEnabled = isTasksPluginEnabled()
 
         fun extensionOf(name: String): String {
             val dot = name.lastIndexOf('.')
@@ -2015,8 +2163,17 @@ class VaultRepository(
             if (!ok) return@withContext null
 
             val newUri = Uri.fromFile(dest)
-            runCatching { indexRepository.migrateDocUri(oldUri = fileUri.toString(), newUri = newUri.toString(), newName = dest.name) }
-                .onSuccess { signalIndexChanged() }
+            val oldUri = fileUri.toString()
+            val newUriStr = newUri.toString()
+            val newName = dest.name
+            var changed = false
+            runCatching { indexRepository.migrateDocUri(oldUri = oldUri, newUri = newUriStr, newName = newName) }
+                .onSuccess { changed = true }
+            if (tasksEnabled) {
+                runCatching { tasksRepository.migrateDocUri(oldUri = oldUri, newUri = newUriStr, newName = newName) }
+                    .onSuccess { changed = true }
+            }
+            if (changed) signalIndexChanged()
             return@withContext newUri
         }
 
@@ -2026,13 +2183,24 @@ class VaultRepository(
             val newName = DocumentFile.fromSingleUri(context, renamedUri)?.name ?: finalName
             val oldUri = fileUri.toString()
             val newUri = renamedUri.toString()
+            var changed = false
             runCatching {
                 if (oldUri == newUri) {
                     indexRepository.updateDocName(docUri = oldUri, newName = newName)
                 } else {
                     indexRepository.migrateDocUri(oldUri = oldUri, newUri = newUri, newName = newName)
                 }
-            }.onSuccess { signalIndexChanged() }
+            }.onSuccess { changed = true }
+            if (tasksEnabled) {
+                runCatching {
+                    if (oldUri == newUri) {
+                        tasksRepository.updateDocName(docUri = oldUri, newName = newName)
+                    } else {
+                        tasksRepository.migrateDocUri(oldUri = oldUri, newUri = newUri, newName = newName)
+                    }
+                }.onSuccess { changed = true }
+            }
+            if (changed) signalIndexChanged()
             return@withContext renamedUri
         }
 
@@ -2104,6 +2272,7 @@ class VaultRepository(
 
     suspend fun indexDocUri(docUri: Uri) = withContext(Dispatchers.IO) {
         runCatching {
+            val tasksEnabled = isTasksPluginEnabled()
             val text = readText(docUri)
             val stat = DocumentFile.fromSingleUri(context, docUri)
             val indexedName = runCatching { indexRepository.getIndexedDocName(docUri.toString()) }.getOrNull()
@@ -2120,6 +2289,9 @@ class VaultRepository(
                     size = stat?.length() ?: text.toByteArray(StandardCharsets.UTF_8).size.toLong(),
                 )
             indexRepository.indexDocument(uiDoc, text)
+            if (tasksEnabled) {
+                tasksRepository.indexTasksForDocument(uiDoc, text)
+            }
             signalIndexChanged()
         }.onFailure {
             Log.e("Zhixu", "indexDocUri failed for $docUri", it)
@@ -2233,15 +2405,21 @@ class VaultRepository(
         runCatching { indexRepository.getDocsCreatedOn(day = day) }.getOrElse { emptyList() }
 
     suspend fun getTasksCreatedOn(day: LocalDate): List<UiTask> =
-        runCatching { indexRepository.getTasksCreatedOn(day = day) }.getOrElse { emptyList() }
+        runCatching {
+            if (!isTasksPluginEnabled()) emptyList()
+            else tasksRepository.getTasksCreatedOn(day = day)
+        }.getOrElse { emptyList() }
 
     suspend fun getTasksDueOn(
         day: LocalDate,
         limit: Int = 200,
-        status: VaultIndexRepository.TaskStatusFilter = VaultIndexRepository.TaskStatusFilter.Undone,
+        status: VaultTasksRepository.TaskStatusFilter = VaultTasksRepository.TaskStatusFilter.Undone,
         tag: String? = null,
     ): List<UiTask> =
-        runCatching { indexRepository.getTasksDueOn(day = day, limit = limit, status = status, tag = tag) }
+        runCatching {
+            if (!isTasksPluginEnabled()) emptyList()
+            else tasksRepository.getTasksDueOn(day = day, limit = limit, status = status, tag = tag)
+        }
             .getOrElse {
                 Log.e("Zhixu", "getTasksDueOn failed", it)
                 emptyList()
@@ -2319,6 +2497,7 @@ class VaultRepository(
         val before = readText(docUri)
         val after = TaskSyntax.toggleTaskAtLine(before, lineIndex)
         if (after != before) {
+            val tasksEnabled = isTasksPluginEnabled()
             val beforeChecked =
                 runCatching { TaskSyntax.parseTasks(before).firstOrNull { it.lineIndex == lineIndex }?.checked }
                     .getOrNull()
@@ -2340,9 +2519,16 @@ class VaultRepository(
                     baseName = computeDocBaseName(docName),
                     editedAtText = if (lastModified == 0L) "" else formatEditedAt(lastModified),
                 )
+            var changed = false
             runCatching { indexRepository.indexDocument(uiDoc, after) }
-                .onSuccess { signalIndexChanged() }
+                .onSuccess { changed = true }
                 .onFailure { Log.e("Zhixu", "Index update failed for $docUri", it) }
+            if (tasksEnabled) {
+                runCatching { tasksRepository.indexTasksForDocument(uiDoc, after) }
+                    .onSuccess { changed = true }
+                    .onFailure { Log.e("Zhixu", "Tasks index update failed for $docUri", it) }
+            }
+            if (changed) signalIndexChanged()
 
             recordDailyDocEdited(docUri = docUri)
             if (!beforeChecked && afterChecked) {
@@ -2357,6 +2543,7 @@ class VaultRepository(
         lineIndices: Set<Int>,
     ): Boolean = withContext(Dispatchers.IO) {
         if (lineIndices.isEmpty()) return@withContext true
+        val tasksEnabled = isTasksPluginEnabled()
         runCatching {
             val before = readText(docUri)
             val after = TaskSyntax.deleteTasksAtLines(before, lineIndices)
@@ -2375,9 +2562,16 @@ class VaultRepository(
                     baseName = computeDocBaseName(docName),
                     editedAtText = if (lastModified == 0L) "" else formatEditedAt(lastModified),
                 )
+            var changed = false
             runCatching { indexRepository.indexDocument(uiDoc, after) }
-                .onSuccess { signalIndexChanged() }
+                .onSuccess { changed = true }
                 .onFailure { Log.e("Zhixu", "Index update failed for $docUri", it) }
+            if (tasksEnabled) {
+                runCatching { tasksRepository.indexTasksForDocument(uiDoc, after) }
+                    .onSuccess { changed = true }
+                    .onFailure { Log.e("Zhixu", "Tasks index update failed for $docUri", it) }
+            }
+            if (changed) signalIndexChanged()
 
             recordDailyDocEdited(docUri = docUri)
             true
