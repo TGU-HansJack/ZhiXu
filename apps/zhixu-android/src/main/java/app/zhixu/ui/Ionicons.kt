@@ -11,11 +11,11 @@ object Ionicons {
     @DrawableRes val Sync: Int = R.drawable.ic_ion_cloud_upload_outline
     @DrawableRes val SyncOutline: Int = R.drawable.ic_ion_sync_outline
     @DrawableRes val RefreshOutline: Int = R.drawable.ic_ion_refresh_outline
-    @DrawableRes val Workshop: Int = R.drawable.ic_ion_extension_puzzle_outline
+    @DrawableRes val Workshop: Int = R.drawable.ic_lucide_store
     @DrawableRes val Search: Int = R.drawable.ic_ion_search_outline
     @DrawableRes val Settings: Int = R.drawable.ic_lucide_settings
     @DrawableRes val SettingsOutline: Int = R.drawable.ic_lucide_settings
-    @DrawableRes val ChartPie: Int = R.drawable.ic_lucide_chart_pie
+    @DrawableRes val ChartPie: Int = R.drawable.ic_lucide_chart_spline
     @DrawableRes val InformationCircleOutline: Int = R.drawable.ic_ion_information_circle_outline
     @DrawableRes val LanguageOutline: Int = R.drawable.ic_ion_language_outline
     @DrawableRes val LayersOutline: Int = R.drawable.ic_ion_layers_outline

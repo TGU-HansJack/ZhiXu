@@ -82,6 +82,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -1653,6 +1654,7 @@ fun ZhixuApp(
                 ) {
                     val drawerLeadingSize = 42.dp
                     val drawerIconSize = 20.dp
+                    val drawerIconScaleIon = 1.2f
 
                     ListItem(
                         leadingContent = {
@@ -1812,7 +1814,7 @@ fun ZhixuApp(
                                     painter = painterResource(Ionicons.HelpCircleOutline),
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(drawerIconSize),
+                                    modifier = Modifier.size(drawerIconSize).scale(drawerIconScaleIon),
                                 )
                             }
                         },
@@ -1837,7 +1839,7 @@ fun ZhixuApp(
                                     painter = painterResource(Ionicons.InformationCircleOutline),
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(drawerIconSize),
+                                    modifier = Modifier.size(drawerIconSize).scale(drawerIconScaleIon),
                                 )
                             }
                         },
