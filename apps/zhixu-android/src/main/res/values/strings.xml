@@ -79,7 +79,14 @@
     <string name="docs_filter_drawing">Drawing</string>
     <string name="action_rename">Rename</string>
     <string name="action_move">Move</string>
+    <string name="action_organize">Organize</string>
+    <string name="action_delete_selected">Delete selected</string>
     <string name="action_add_to_desktop">Add to home screen</string>
+    <string name="folder_root">Root folder</string>
+    <string name="docs_organize_result_fmt">Moved %1$d, failed %2$d</string>
+    <string name="shortcut_select_single">Select one file</string>
+    <string name="shortcut_not_supported">Home screen shortcuts are not supported</string>
+    <string name="shortcut_requested">Shortcut request sent</string>
     <string name="dialog_new_doc_title">New document</string>
     <string name="field_file_name">File name</string>
     <string name="action_create">Create</string>

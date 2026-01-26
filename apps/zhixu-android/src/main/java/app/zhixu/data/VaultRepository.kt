@@ -2212,6 +2212,181 @@ class VaultRepository(
         fileUri
     }
 
+    suspend fun moveVaultFile(
+        rootUri: Uri,
+        fileUri: Uri,
+        targetDirRelativePath: String?,
+    ): Uri? = withContext(Dispatchers.IO) {
+        val rootKey = rootUri.toString().trim()
+        if (rootKey.isBlank()) return@withContext null
+
+        val rel =
+            computeRelativePath(rootUri, fileUri)
+                ?.replace('\\', '/')
+                ?.trimStart('/')
+                ?.trim()
+                ?: return@withContext null
+        if (rel.isBlank() || isVaultInternalPath(rel)) return@withContext null
+
+        val srcName =
+            if (fileUri.scheme.equals("file", ignoreCase = true)) {
+                fileUri.path?.let { File(it).name }.orEmpty()
+            } else {
+                DocumentFile.fromSingleUri(context, fileUri)?.name.orEmpty()
+            }.ifBlank { rel.substringAfterLast('/').trim() }
+        if (srcName.isBlank()) return@withContext null
+
+        val srcParentKey = rel.substringBeforeLast('/', missingDelimiterValue = "").trimEnd('/')
+        val destParentKey =
+            targetDirRelativePath
+                .orEmpty()
+                .replace('\\', '/')
+                .trim()
+                .trimStart('/')
+                .trimEnd('/')
+        if (srcParentKey == destParentKey) return@withContext fileUri
+
+        val tasksEnabled = isTasksPluginEnabled()
+
+        fun guessMimeFromName(name: String): String {
+            val ext = name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+            if (ext.isBlank()) return "application/octet-stream"
+            return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext).orEmpty().ifBlank { "application/octet-stream" }
+        }
+
+        fun createUniqueName(existingNames: Set<String>, desired: String): String {
+            if (desired !in existingNames) return desired
+            val dot = desired.lastIndexOf('.')
+            val base = if (dot > 0) desired.substring(0, dot) else desired
+            val ext = if (dot > 0) desired.substring(dot) else ""
+            for (i in 1..200) {
+                val candidate = "$base ($i)$ext"
+                if (candidate !in existingNames) return candidate
+            }
+            return "${base}_${System.currentTimeMillis()}$ext"
+        }
+
+        fun copyStream(dst: Uri, src: Uri) {
+            val resolver: ContentResolver = context.contentResolver
+            val input =
+                if (src.scheme.equals("file", ignoreCase = true)) {
+                    val path = src.path ?: error("Invalid file uri: $src")
+                    File(path).inputStream()
+                } else {
+                    resolver.openInputStream(src) ?: error("Failed to open input stream for $src")
+                }
+            val output =
+                if (dst.scheme.equals("file", ignoreCase = true)) {
+                    val path = dst.path ?: error("Invalid file uri: $dst")
+                    File(path).parentFile?.mkdirs()
+                    File(path).outputStream()
+                } else {
+                    resolver.openOutputStream(dst, "wt") ?: error("Failed to open output stream for $dst")
+                }
+            input.use { i -> output.use { o -> i.copyTo(o) } }
+        }
+
+        val newUri =
+            if (rootUri.scheme.equals("file", ignoreCase = true)) {
+                val rootPath = rootUri.path ?: return@withContext null
+                val srcPath = fileUri.path ?: return@withContext null
+                val srcFile = File(srcPath)
+                if (!srcFile.exists() || !srcFile.isFile) return@withContext null
+
+                val destDir = if (destParentKey.isBlank()) File(rootPath) else File(rootPath, destParentKey)
+                destDir.mkdirs()
+
+                val uniqueName = createUniqueName(destDir.list()?.toSet().orEmpty(), srcName)
+                val destFile = File(destDir, uniqueName)
+
+                val moved = runCatching { srcFile.renameTo(destFile) }.getOrDefault(false)
+                if (!moved) {
+                    runCatching {
+                        srcFile.inputStream().use { input ->
+                            destFile.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    }.onFailure { return@withContext null }
+                    runCatching { srcFile.delete() }
+                }
+                Uri.fromFile(destFile)
+            } else {
+                val rootDoc = vaultRootToDocumentFile(context, rootUri) ?: return@withContext null
+                val srcDoc = DocumentFile.fromSingleUri(context, fileUri) ?: return@withContext null
+                if (!srcDoc.isFile) return@withContext null
+
+                val destDirDoc =
+                    if (destParentKey.isBlank()) {
+                        rootDoc
+                    } else {
+                        var current: DocumentFile = rootDoc
+                        for (part in destParentKey.split('/').filter { it.isNotBlank() }) {
+                            val next = findChild(current, part) ?: current.createDirectory(part)
+                            if (next == null || !next.isDirectory) return@withContext null
+                            current = next
+                        }
+                        current
+                    }
+
+                val existingNames = destDirDoc.listFiles().mapNotNull { it.name }.toSet()
+                val uniqueName = createUniqueName(existingNames, srcName)
+                val mime = context.contentResolver.getType(fileUri).orEmpty().ifBlank { guessMimeFromName(uniqueName) }
+
+                val created =
+                    createFileExact(destDirDoc, mime, uniqueName)
+                        ?: destDirDoc.createFile(mime, uniqueName)
+                        ?: return@withContext null
+
+                runCatching { copyStream(created.uri, fileUri) }
+                    .onFailure {
+                        runCatching { created.delete() }
+                        return@withContext null
+                    }
+
+                val resolver: ContentResolver = context.contentResolver
+                val deleted =
+                    runCatching { DocumentsContract.deleteDocument(resolver, fileUri) }.getOrDefault(false) ||
+                        runCatching { srcDoc.delete() }.getOrDefault(false)
+                if (!deleted) {
+                    // Best-effort: keep the copied file even if deletion fails.
+                }
+                runCatching { upsertDirIndexEntryForFileIfPresent(rootUri, created) }
+                created.uri
+            }
+
+        val oldUriStr = fileUri.toString()
+        val newUriStr = newUri.toString()
+        val newName =
+            if (newUri.scheme.equals("file", ignoreCase = true)) {
+                newUri.path?.let { File(it).name }.orEmpty()
+            } else {
+                DocumentFile.fromSingleUri(context, newUri)?.name.orEmpty()
+            }.ifBlank { srcName }
+
+        var changed = false
+        if (oldUriStr.isNotBlank() && newUriStr.isNotBlank() && oldUriStr != newUriStr) {
+            runCatching { indexRepository.migrateDocUri(oldUri = oldUriStr, newUri = newUriStr, newName = newName) }
+                .onSuccess { changed = true }
+            if (tasksEnabled) {
+                runCatching { tasksRepository.migrateDocUri(oldUri = oldUriStr, newUri = newUriStr, newName = newName) }
+                    .onSuccess { changed = true }
+            }
+        }
+
+        invalidateDocListCache(rootUri)
+        if (changed) signalIndexChanged()
+
+        val srcParentPath = srcParentKey.takeIf(String::isNotBlank)?.let { "$it/" }
+        val destParentPath = destParentKey.takeIf(String::isNotBlank)?.let { "$it/" }
+        runCatching { refreshDirIndexForDirectory(rootUri = rootUri, parentRelativePath = srcParentPath) }
+        if (destParentPath != srcParentPath) {
+            runCatching { refreshDirIndexForDirectory(rootUri = rootUri, parentRelativePath = destParentPath) }
+        }
+
+        newUri
+    }
+
     suspend fun renameDirectory(dirUri: Uri, desiredName: String): Uri? = withContext(Dispatchers.IO) {
         val sanitizedName = sanitizeFileName(desiredName).trim().ifBlank { "Untitled" }
 

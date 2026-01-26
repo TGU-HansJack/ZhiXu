@@ -484,7 +484,7 @@ fun DocumentListScreen(
                                                 LaunchedEffect(previewKey) {
                                                     if (previewCache.containsKey(previewKey)) return@LaunchedEffect
                                                     val raw = repository.readTextPreview(doc.uri, maxChars = 2500)
-                                                    previewCache[previewKey] = extractDocPreviewMarkdown(raw, maxChars = 150)
+                                                    previewCache[previewKey] = extractDocPreviewMarkdown(raw, maxChars = 100)
                                                 }
                                             } else {
                                                 LaunchedEffect(previewKey) {
@@ -610,7 +610,7 @@ fun DocumentListScreen(
                                         LaunchedEffect(previewKey) {
                                             if (previewCache.containsKey(previewKey)) return@LaunchedEffect
                                             val raw = repository.readTextPreview(doc.uri, maxChars = 2500)
-                                            previewCache[previewKey] = extractDocPreviewMarkdown(raw, maxChars = 150)
+                                            previewCache[previewKey] = extractDocPreviewMarkdown(raw, maxChars = 100)
                                         }
                                     } else {
                                         LaunchedEffect(previewKey) {

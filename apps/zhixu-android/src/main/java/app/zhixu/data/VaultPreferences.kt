@@ -132,6 +132,59 @@ class VaultPreferences(
             }
         }
     }
+
+    suspend fun migratePinnedDocUris(
+        vaultRootUri: Uri,
+        replacements: Map<String, String>,
+    ) {
+        val rootKey = vaultRootUri.toString()
+        if (rootKey.isBlank() || replacements.isEmpty()) return
+
+        val map =
+            replacements
+                .mapNotNull { (from, to) ->
+                    val old = from.trim().takeIf(String::isNotBlank) ?: return@mapNotNull null
+                    val new = to.trim().takeIf(String::isNotBlank) ?: return@mapNotNull null
+                    if (old == new) return@mapNotNull null
+                    Pair(old, new)
+                }.toMap()
+        if (map.isEmpty()) return
+
+        withContext(Dispatchers.IO) {
+            context.dataStore.edit { prefs ->
+                val raw = prefs[pinnedDocUrisJsonKey].orEmpty()
+                val obj =
+                    runCatching {
+                        if (raw.isBlank()) JSONObject() else JSONObject(raw)
+                    }.getOrElse { JSONObject() }
+
+                val arr = obj.optJSONArray(rootKey) ?: JSONArray()
+                val current = ArrayList<String>(arr.length())
+                for (i in 0 until arr.length()) {
+                    val uriStr = arr.optString(i).orEmpty().trim()
+                    if (uriStr.isNotBlank()) current += uriStr
+                }
+
+                val next = ArrayList<String>(current.size)
+                val seen = HashSet<String>(current.size)
+                for (uriStr in current) {
+                    val replaced = map[uriStr] ?: uriStr
+                    if (replaced.isBlank()) continue
+                    if (seen.add(replaced)) next += replaced
+                }
+
+                if (next.isEmpty()) {
+                    obj.remove(rootKey)
+                } else {
+                    val nextArr = JSONArray()
+                    for (uriStr in next) nextArr.put(uriStr)
+                    obj.put(rootKey, nextArr)
+                }
+
+                prefs[pinnedDocUrisJsonKey] = obj.toString()
+            }
+        }
+    }
 }
 
 data class DocListCache(

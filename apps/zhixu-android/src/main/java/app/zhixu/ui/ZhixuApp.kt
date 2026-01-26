@@ -2,6 +2,9 @@
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ShortcutInfo
+import android.content.pm.ShortcutManager
+import android.graphics.drawable.Icon as AndroidIcon
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkRequest
@@ -34,6 +37,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -41,11 +45,16 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -113,6 +122,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import app.zhixu.MainActivity
 import app.zhixu.R
 import app.zhixu.data.AccountPreferences
 import app.zhixu.data.AccountState
@@ -203,6 +213,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -301,6 +312,7 @@ fun ZhixuApp(
     var uiReady by remember { mutableStateOf(false) }
     var createSheetPage by remember { mutableStateOf<CreateSheetPage?>(null) }
     val createSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val docsSelectionMoveSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     LaunchedEffect(Unit) {
         withFrameNanos { }
@@ -1276,6 +1288,12 @@ fun ZhixuApp(
     var selectedTasks by remember { mutableStateOf<Set<TaskKey>>(emptySet()) }
     var selectedSpaceEntryUris by remember { mutableStateOf<Set<String>>(emptySet()) }
 
+    var docsSelectionOverflowExpanded by remember { mutableStateOf(false) }
+    var docsSelectionMoveSheetOpen by remember { mutableStateOf(false) }
+    var docsSelectionMoveDirs by remember { mutableStateOf<List<app.zhixu.data.VaultTreeEntry>>(emptyList()) }
+    var docsSelectionMoveDirsLoading by remember { mutableStateOf(false) }
+    var docsSelectionMoveDirsError by remember { mutableStateOf<String?>(null) }
+
     fun clearGlobalSearch() {
         globalSearchQuery = ""
         globalSearchResults = emptyList()
@@ -1319,15 +1337,49 @@ fun ZhixuApp(
     val pinnedDocUriSet = remember(pinnedDocUris) { pinnedDocUris.toHashSet() }
     val docsSelectionAllPinned = docsSelectionMode && selectedDocUris.all { it in pinnedDocUriSet }
 
+    LaunchedEffect(docsSelectionMode) {
+        if (!docsSelectionMode) {
+            docsSelectionOverflowExpanded = false
+            docsSelectionMoveSheetOpen = false
+        }
+    }
+
+    LaunchedEffect(docsSelectionMoveSheetOpen, vaultRootUriString) {
+        if (!docsSelectionMoveSheetOpen) return@LaunchedEffect
+        val root = vaultRootUri ?: return@LaunchedEffect
+        docsSelectionMoveDirsLoading = true
+        docsSelectionMoveDirsError = null
+        docsSelectionMoveDirs = emptyList()
+        runCatching {
+            withContext(Dispatchers.IO) {
+                repository
+                    .listVaultTreeEntries(
+                        rootUri = root,
+                        includeNonMarkdownFiles = false,
+                        includeHidden = false,
+                    ).filter { it.isDirectory }
+            }
+        }.onFailure {
+            docsSelectionMoveDirsLoading = false
+            docsSelectionMoveDirsError = it.message?.takeIf(String::isNotBlank) ?: it.javaClass.simpleName
+        }.onSuccess { dirs ->
+            docsSelectionMoveDirsLoading = false
+            docsSelectionMoveDirs = dirs
+        }
+    }
+
     val density = androidx.compose.ui.platform.LocalDensity.current
     val homeBarHeightPx = remember(density) { with(density) { ZhixuTopBarContentHeight.toPx() } }
     val homeBarDividerHeightPx = remember(density) { with(density) { 1.dp.toPx() } }
     val homeSubBarCollapseHeightPx = homeBarHeightPx + homeBarDividerHeightPx
-    val homeBarsMinOffsetPx = -(homeBarHeightPx * 2f + homeBarDividerHeightPx * 2f)
+    val homeBarsMinOffsetPxState =
+        rememberUpdatedState(
+            if (docsSelectionMode) -homeSubBarCollapseHeightPx else -(homeBarHeightPx * 2f + homeBarDividerHeightPx * 2f),
+        )
     // Negative = moved up (hidden). Range is [-(topBar + subBar + dividers), 0].
     // Collapse order: sub-bar first, then top bar (expand in reverse).
     var homeBarsOffsetPx by remember { mutableFloatStateOf(0f) }
-    val homeCollapsingEnabledState = rememberUpdatedState(currentRoute == "home" && !docsSelectionMode)
+    val homeCollapsingEnabledState = rememberUpdatedState(currentRoute == "home")
     var homeBarsSettleJob by remember { mutableStateOf<Job?>(null) }
 
     fun cancelHomeBarsSettle() {
@@ -1339,14 +1391,15 @@ fun ZhixuApp(
         if (!homeCollapsingEnabledState.value) return
         cancelHomeBarsSettle()
 
-        val current = homeBarsOffsetPx.coerceIn(homeBarsMinOffsetPx, 0f)
+        val minOffsetPx = homeBarsMinOffsetPxState.value
+        val current = homeBarsOffsetPx.coerceIn(minOffsetPx, 0f)
         val flingThreshold = 2400f
         val collapseToSubBar = -homeSubBarCollapseHeightPx
 
         val target =
             when {
                 velocityY < -flingThreshold -> {
-                    if (current <= collapseToSubBar) homeBarsMinOffsetPx else collapseToSubBar
+                    if (current <= collapseToSubBar) minOffsetPx else collapseToSubBar
                 }
                 velocityY > flingThreshold -> {
                     if (current >= collapseToSubBar) 0f else collapseToSubBar
@@ -1356,8 +1409,8 @@ fun ZhixuApp(
                     if (current <= mid) collapseToSubBar else 0f
                 }
                 else -> {
-                    val mid = (homeBarsMinOffsetPx + collapseToSubBar) / 2f
-                    if (current <= mid) homeBarsMinOffsetPx else collapseToSubBar
+                    val mid = (minOffsetPx + collapseToSubBar) / 2f
+                    if (current <= mid) minOffsetPx else collapseToSubBar
                 }
             }
 
@@ -1388,7 +1441,7 @@ fun ZhixuApp(
 
                     cancelHomeBarsSettle()
                     val prev = homeBarsOffsetPx
-                    val next = (prev + deltaY).coerceIn(homeBarsMinOffsetPx, 0f)
+                    val next = (prev + deltaY).coerceIn(homeBarsMinOffsetPxState.value, 0f)
                     val consumed = next - prev
                     homeBarsOffsetPx = next
                     return consumed
@@ -1519,6 +1572,8 @@ fun ZhixuApp(
     LaunchedEffect(currentRoute) {
         clearAllSelections()
         bulkDeleteTarget = null
+        docsSelectionOverflowExpanded = false
+        docsSelectionMoveSheetOpen = false
     }
 
     LaunchedEffect(currentRoute, settledTodoPage) {
@@ -1863,7 +1918,7 @@ fun ZhixuApp(
                 containerColor = MaterialTheme.colorScheme.background,
                 topBar = {
                     if (!showMainUi) return@Scaffold
-                    val isHomeCollapsible = currentRoute == "home" && !docsSelectionMode
+                    val isHomeCollapsible = currentRoute == "home"
                     val openDrawerContentDescription = stringResource(R.string.action_open_drawer)
                     val homeBarsOffsetInt = homeBarsOffsetPx.roundToInt()
                     val homeSubBarCollapseHeightPx = homeBarHeightPx + homeBarDividerHeightPx
@@ -2041,13 +2096,105 @@ fun ZhixuApp(
                                                 modifier = Modifier.size(ZhixuTopBarIconSize),
                                             )
                                         }
-                                        ZhixuIconButton(onClick = { android.widget.Toast.makeText(context, "敬请期待", android.widget.Toast.LENGTH_SHORT).show() }) {
-                                            Icon(
-                                                painter = painterResource(Ionicons.EllipsisVertical),
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onPrimary,
-                                                modifier = Modifier.size(ZhixuTopBarIconSize),
-                                            )
+                                        Box {
+                                            ZhixuIconButton(onClick = { docsSelectionOverflowExpanded = true }) {
+                                                Icon(
+                                                    painter = painterResource(Ionicons.EllipsisVertical),
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                                    modifier = Modifier.size(ZhixuTopBarIconSize),
+                                                )
+                                            }
+                                            DropdownMenu(
+                                                expanded = docsSelectionOverflowExpanded,
+                                                onDismissRequest = { docsSelectionOverflowExpanded = false },
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.action_delete_selected)) },
+                                                    onClick = {
+                                                        docsSelectionOverflowExpanded = false
+                                                        bulkDeleteTarget = BulkDeleteTarget.Docs
+                                                    },
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.action_organize)) },
+                                                    onClick = {
+                                                        docsSelectionOverflowExpanded = false
+                                                        docsSelectionMoveSheetOpen = true
+                                                    },
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.action_add_to_desktop)) },
+                                                    onClick = {
+                                                        docsSelectionOverflowExpanded = false
+                                                        val target = selectedDocUris.singleOrNull()
+                                                        if (target == null) {
+                                                            android.widget.Toast.makeText(
+                                                                context,
+                                                                context.getString(R.string.shortcut_select_single),
+                                                                android.widget.Toast.LENGTH_SHORT,
+                                                            ).show()
+                                                            return@DropdownMenuItem
+                                                        }
+                                                        scope.launch {
+                                                            val shortcutManager = context.getSystemService(ShortcutManager::class.java)
+                                                            if (shortcutManager == null || !shortcutManager.isRequestPinShortcutSupported) {
+                                                                android.widget.Toast.makeText(
+                                                                    context,
+                                                                    context.getString(R.string.shortcut_not_supported),
+                                                                    android.widget.Toast.LENGTH_SHORT,
+                                                                ).show()
+                                                                return@launch
+                                                            }
+
+                                                            val label =
+                                                                withContext(Dispatchers.IO) {
+                                                                    val uri = runCatching { Uri.parse(target) }.getOrNull()
+                                                                    val name =
+                                                                        if (uri?.scheme.equals("file", ignoreCase = true)) {
+                                                                            uri?.path?.let { File(it).name }.orEmpty()
+                                                                        } else if (uri != null) {
+                                                                            androidx.documentfile.provider.DocumentFile.fromSingleUri(context, uri)?.name.orEmpty()
+                                                                        } else {
+                                                                            ""
+                                                                        }
+
+                                                                    when {
+                                                                        name.endsWith(".md", ignoreCase = true) -> name.removeSuffix(".md")
+                                                                        ZhixuDrawFormat.hasDrawingExtension(name) -> ZhixuDrawFormat.stripDrawingExtension(name)
+                                                                        else -> name.substringBeforeLast('.', missingDelimiterValue = name)
+                                                                    }.trim().ifBlank {
+                                                                        context.getString(R.string.new_doc_default_title)
+                                                                    }
+                                                                }
+
+                                                            val intent =
+                                                                Intent(context, MainActivity::class.java).apply {
+                                                                    action = Intent.ACTION_VIEW
+                                                                    putExtra(app.zhixu.reminders.TaskReminderWorker.EXTRA_DOC_URI, target)
+                                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                                                                }
+
+                                                            val shortcutId = "doc_${target.hashCode()}"
+                                                            val shortcut =
+                                                                ShortcutInfo
+                                                                    .Builder(context, shortcutId)
+                                                                    .setShortLabel(label.take(20))
+                                                                    .setLongLabel(label)
+                                                                    .setIcon(AndroidIcon.createWithResource(context, R.drawable.ic_lucide_file_pen_line))
+                                                                    .setIntent(intent)
+                                                                    .build()
+
+                                                            val requested = shortcutManager.requestPinShortcut(shortcut, null)
+                                                            android.widget.Toast.makeText(
+                                                                context,
+                                                                if (requested) context.getString(R.string.shortcut_requested) else context.getString(R.string.common_failed),
+                                                                android.widget.Toast.LENGTH_SHORT,
+                                                            ).show()
+                                                        }
+                                                    },
+                                                )
+                                            }
                                         }
                                     } else {
                                         val cloudState =
@@ -2142,7 +2289,7 @@ fun ZhixuApp(
                                 }
                             },
                         )
-                        if (currentRoute == "home" && !docsSelectionMode) {
+                        if (currentRoute == "home") {
                             HorizontalDivider(
                                 modifier =
                                     if (isHomeCollapsible) {
@@ -2155,7 +2302,7 @@ fun ZhixuApp(
                                 color = MaterialTheme.colorScheme.outlineVariant,
                             )
                         }
-                        if (currentRoute == "home" && !docsSelectionMode) {
+                        if (currentRoute == "home") {
                             HomeSubBar(
                                 modifier =
                                     if (isHomeCollapsible) {
@@ -2166,7 +2313,10 @@ fun ZhixuApp(
                                         Modifier
                                     },
                                 selectedIndex = selectedHomeSubBarIndex,
-                                onSelect = { idx -> homeSubBarSelectedKey = homeSubBarItems[idx].key },
+                                onSelect = { idx ->
+                                    if (docsSelectionMode) selectedDocUris = emptySet()
+                                    homeSubBarSelectedKey = homeSubBarItems[idx].key
+                                },
                                 height = ZhixuTopBarContentHeight,
                                 labels = homeSubBarItems.map { it.label },
                             )
@@ -2348,6 +2498,123 @@ fun ZhixuApp(
                             },
                         )
                     }
+
+                    if (docsSelectionMoveSheetOpen) {
+                        ModalBottomSheet(
+                            onDismissRequest = { docsSelectionMoveSheetOpen = false },
+                            sheetState = docsSelectionMoveSheetState,
+                            containerColor = MaterialTheme.colorScheme.background,
+                            tonalElevation = 0.dp,
+                            dragHandle = { ZhixuCompactDragHandle() },
+                        ) {
+                            Column(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                        .windowInsetsPadding(WindowInsets.navigationBars),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.action_organize),
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+
+                                if (docsSelectionMoveDirsLoading) {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        CircularProgressIndicator()
+                                    }
+                                } else if (!docsSelectionMoveDirsError.isNullOrBlank()) {
+                                    Text(
+                                        text = docsSelectionMoveDirsError.orEmpty(),
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                } else {
+                                    val sheetMaxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.65f
+
+                                    fun startMove(targetDir: String?) {
+                                        val root = vaultRootUri
+                                        if (root == null) {
+                                            android.widget.Toast
+                                                .makeText(context, context.getString(R.string.settings_vault_not_selected), android.widget.Toast.LENGTH_SHORT)
+                                                .show()
+                                            return
+                                        }
+                                        val toMove = selectedDocUris.toList()
+                                        if (toMove.isEmpty()) return
+                                        docsSelectionMoveSheetOpen = false
+                                        selectedDocUris = emptySet()
+
+                                        scope.launch {
+                                            var moved = 0
+                                            var failed = 0
+                                            val replacements = LinkedHashMap<String, String>(toMove.size)
+                                            for (uriStr in toMove) {
+                                                val oldUri = runCatching { Uri.parse(uriStr) }.getOrNull() ?: continue
+                                                val newUri = repository.moveVaultFile(rootUri = root, fileUri = oldUri, targetDirRelativePath = targetDir)
+                                                if (newUri == null) {
+                                                    failed += 1
+                                                    continue
+                                                }
+                                                val newUriStr = newUri.toString()
+                                                if (newUriStr.isBlank() || newUriStr == uriStr) continue
+                                                moved += 1
+                                                replacements[uriStr] = newUriStr
+                                                onDocListMutated(DocListMutation.Renamed(oldUri = oldUri, newUri = newUri))
+                                            }
+
+                                            if (replacements.isNotEmpty()) {
+                                                prefs.migratePinnedDocUris(root, replacements)
+                                            }
+
+                                            android.widget.Toast
+                                                .makeText(
+                                                    context,
+                                                    context.getString(R.string.docs_organize_result_fmt, moved, failed),
+                                                    android.widget.Toast.LENGTH_SHORT,
+                                                ).show()
+                                        }
+                                    }
+
+                                    LazyColumn(
+                                        modifier = Modifier.fillMaxWidth().heightIn(max = sheetMaxHeight),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        item {
+                                            ListItem(
+                                                headlineContent = { Text(stringResource(R.string.folder_root)) },
+                                                supportingContent = { Text("/") },
+                                                modifier = Modifier.fillMaxWidth().clickable { startMove(targetDir = null) },
+                                            )
+                                        }
+                                        items(docsSelectionMoveDirs) { entry ->
+                                            val indent = (entry.depth.coerceAtMost(8) * 12).dp
+                                            ListItem(
+                                                headlineContent = { Text(entry.name) },
+                                                supportingContent = {
+                                                    Text(
+                                                        text = entry.relativePath,
+                                                        maxLines = 1,
+                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                    )
+                                                },
+                                                modifier =
+                                                    Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(start = indent)
+                                                        .clickable { startMove(targetDir = entry.relativePath) },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if (createSheetPage != null) {
                         ModalBottomSheet(
                             onDismissRequest = { createSheetPage = null },
@@ -2498,29 +2765,20 @@ fun ZhixuApp(
                 composable("home") {
                     val homeBarsOffsetDp = with(density) { homeBarsOffsetPx.toDp() }
                     val homeContentPadding: PaddingValues =
-                        if (docsSelectionMode) {
-                            padding
-                        } else {
-                            object : PaddingValues {
-                                override fun calculateLeftPadding(layoutDirection: androidx.compose.ui.unit.LayoutDirection): androidx.compose.ui.unit.Dp =
-                                    padding.calculateLeftPadding(layoutDirection)
+                        object : PaddingValues {
+                            override fun calculateLeftPadding(layoutDirection: androidx.compose.ui.unit.LayoutDirection): androidx.compose.ui.unit.Dp =
+                                padding.calculateLeftPadding(layoutDirection)
 
-                                override fun calculateTopPadding(): androidx.compose.ui.unit.Dp =
-                                    (padding.calculateTopPadding() + homeBarsOffsetDp).coerceAtLeast(0.dp)
+                            override fun calculateTopPadding(): androidx.compose.ui.unit.Dp =
+                                (padding.calculateTopPadding() + homeBarsOffsetDp).coerceAtLeast(0.dp)
 
-                                override fun calculateRightPadding(layoutDirection: androidx.compose.ui.unit.LayoutDirection): androidx.compose.ui.unit.Dp =
-                                    padding.calculateRightPadding(layoutDirection)
+                            override fun calculateRightPadding(layoutDirection: androidx.compose.ui.unit.LayoutDirection): androidx.compose.ui.unit.Dp =
+                                padding.calculateRightPadding(layoutDirection)
 
-                                override fun calculateBottomPadding(): androidx.compose.ui.unit.Dp =
-                                    padding.calculateBottomPadding()
-                            }
+                            override fun calculateBottomPadding(): androidx.compose.ui.unit.Dp =
+                                padding.calculateBottomPadding()
                         }
-                    val homeRootModifier =
-                        if (docsSelectionMode) {
-                            Modifier.fillMaxSize()
-                        } else {
-                            Modifier.fillMaxSize().nestedScroll(homeBarsNestedScrollConnection)
-                        }
+                    val homeRootModifier = Modifier.fillMaxSize().nestedScroll(homeBarsNestedScrollConnection)
                     val selectedHomeItem =
                         if (docsSelectionMode) {
                             homeSubBarItems.firstOrNull { it.key == HOME_SUB_TAB_DOCS }
