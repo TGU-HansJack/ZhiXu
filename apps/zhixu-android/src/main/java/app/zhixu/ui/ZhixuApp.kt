@@ -1659,14 +1659,22 @@ fun ZhixuApp(
         navController.navigate("edit?uri=$uriParam&q=$qParam&line=$lineParam")
     }
 
-    LaunchedEffect(navIntent, vaultRootUriString) {
+    LaunchedEffect(navIntent, isVaultLoaded, vaultRootUriString) {
         val intent = navIntent ?: return@LaunchedEffect
         val docUri = intent.getStringExtra(app.zhixu.reminders.TaskReminderWorker.EXTRA_DOC_URI).orEmpty()
         if (docUri.isBlank()) return@LaunchedEffect
         val lineIndex = intent.getIntExtra(app.zhixu.reminders.TaskReminderWorker.EXTRA_LINE_INDEX, -1).takeIf { it >= 0 }
 
+        if (!isVaultLoaded) return@LaunchedEffect
+
+        var retries = 0
+        while (runCatching { navController.graph }.isFailure) {
+            if (retries++ >= 120) return@LaunchedEffect
+            withFrameNanos { }
+        }
+
         // Ensure we are in the main graph; openDoc will navigate to editor.
-        if (vaultRootUriString == null) {
+        if (vaultRootUriString.isNullOrBlank()) {
             navController.navigate("vault") {
                 launchSingleTop = true
                 restoreState = true
