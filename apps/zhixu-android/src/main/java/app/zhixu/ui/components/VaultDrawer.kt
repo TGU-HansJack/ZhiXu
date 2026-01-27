@@ -134,6 +134,9 @@ fun VaultDrawer(
     itemShape: RoundedCornerShape = RoundedCornerShape(10.dp),
     allDirsExpanded: Boolean? = null,
     entryFilter: ((VaultTreeEntry) -> Boolean)? = null,
+    showEntryIcons: Boolean = true,
+    showEntryActions: Boolean = true,
+    highlightActiveDirectory: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -534,9 +537,10 @@ fun VaultDrawer(
                             entry.isDirectory &&
                             !activeDirectoryRelativePath.isNullOrBlank() &&
                             entry.relativePath == activeDirectoryRelativePath
+                    val activeDirHighlighted = highlightActiveDirectory && activeDirSelected
 
                     val borderModifier =
-                        if (activeDirSelected) {
+                        if (activeDirHighlighted) {
                             Modifier.border(
                                 width = 1.dp,
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.85f),
@@ -577,35 +581,37 @@ fun VaultDrawer(
 
                     val entryRowContent: @Composable RowScope.() -> Unit = {
                         Spacer(modifier = Modifier.width(indent))
-                        if (entry.isDirectory) {
-                            Icon(
-                                painter = painterResource(if (isExpanded) Ionicons.ChevronDown else Ionicons.ChevronForward),
-                                contentDescription = null,
-                                modifier = Modifier.size(itemChevronSize),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Icon(
-                                painter = painterResource(Ionicons.Vault),
-                                contentDescription = null,
-                                modifier = Modifier.size(itemIconSize),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        } else {
-                            Spacer(modifier = Modifier.size(itemChevronSize))
-                            Icon(
-                                painter =
-                                    painterResource(
-                                        when {
-                                            isImage -> Ionicons.ImageOutline
-                                            isPdf -> Ionicons.DocumentOutline
-                                            isDrawing -> R.drawable.ic_hero_paint_brush
-                                            else -> Ionicons.DocumentText
-                                        },
-                                    ),
-                                contentDescription = null,
-                                modifier = Modifier.size(itemIconSize),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                        if (showEntryIcons) {
+                            if (entry.isDirectory) {
+                                Icon(
+                                    painter = painterResource(if (isExpanded) Ionicons.ChevronDown else Ionicons.ChevronForward),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(itemChevronSize),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Icon(
+                                    painter = painterResource(Ionicons.Vault),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(itemIconSize),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            } else {
+                                Spacer(modifier = Modifier.size(itemChevronSize))
+                                Icon(
+                                    painter =
+                                        painterResource(
+                                            when {
+                                                isImage -> Ionicons.ImageOutline
+                                                isPdf -> Ionicons.DocumentOutline
+                                                isDrawing -> R.drawable.ic_hero_paint_brush
+                                                else -> Ionicons.DocumentText
+                                            },
+                                        ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(itemIconSize),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                         Text(
                             text = displayName,
@@ -614,49 +620,51 @@ fun VaultDrawer(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
-                        if (entry.isDirectory) {
+                        if (showEntryActions) {
+                            if (entry.isDirectory) {
+                                ZhixuIconButton(
+                                    onClick = {
+                                        newDocTargetDir = entry
+                                        newDocName = context.getString(R.string.new_doc_default_title)
+                                        showNewDocDialog = true
+                                    },
+                                    enabled = !isDirLoading && !selectionMode,
+                                    modifier = Modifier.size(actionButtonSize),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Add,
+                                        contentDescription = stringResource(R.string.action_create),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
                             ZhixuIconButton(
                                 onClick = {
-                                    newDocTargetDir = entry
-                                    newDocName = context.getString(R.string.new_doc_default_title)
-                                    showNewDocDialog = true
+                                    if (selectionMode && uriStr != null) {
+                                        onToggleEntrySelection(uriStr)
+                                    } else {
+                                        selectedEntry = entry
+                                        showEntryMenu = true
+                                    }
                                 },
-                                enabled = !isDirLoading && !selectionMode,
                                 modifier = Modifier.size(actionButtonSize),
                             ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Add,
-                                    contentDescription = stringResource(R.string.action_create),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                        }
-                        ZhixuIconButton(
-                            onClick = {
                                 if (selectionMode && uriStr != null) {
-                                    onToggleEntrySelection(uriStr)
+                                    Icon(
+                                        painter = painterResource(if (selected) Ionicons.CheckmarkCircle else Ionicons.SquareOutline),
+                                        contentDescription = null,
+                                        tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
                                 } else {
-                                    selectedEntry = entry
-                                    showEntryMenu = true
+                                    Icon(
+                                        imageVector = Icons.Outlined.MoreVert,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
                                 }
-                            },
-                            modifier = Modifier.size(actionButtonSize),
-                        ) {
-                            if (selectionMode && uriStr != null) {
-                                Icon(
-                                    painter = painterResource(if (selected) Ionicons.CheckmarkCircle else Ionicons.SquareOutline),
-                                    contentDescription = null,
-                                    tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Outlined.MoreVert,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp),
-                                )
                             }
                         }
                         if (entry.isDirectory && isDirLoading) {
@@ -668,7 +676,7 @@ fun VaultDrawer(
                         val containerColor =
                             when {
                                 selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                                activeDirSelected -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+                                activeDirHighlighted -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
                                 else -> MaterialTheme.colorScheme.surface
                             }
                         Surface(
@@ -707,7 +715,7 @@ fun VaultDrawer(
                                     .background(
                                         when {
                                             selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                                            activeDirSelected -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+                                            activeDirHighlighted -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
                                             else -> Color.Transparent
                                         },
                                     )

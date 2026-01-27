@@ -16,29 +16,34 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -115,22 +120,73 @@ fun VaultSearchDialog(
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        ZhixuTextField(
-                            value = query,
-                            onValueChange = onQueryChange,
-                            singleLine = true,
-                            placeholder = { Text(stringResource(R.string.action_search)) },
-                            leadingIcon = { Icon(painter = painterResource(app.zhixu.ui.Ionicons.Search), contentDescription = null) },
-                            modifier = Modifier.weight(1f).focusRequester(focusRequester),
-                            height = fieldHeight,
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        TextButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.height(fieldHeight),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        val fieldShape = RoundedCornerShape(4.dp)
+                        val containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
+
+                        Surface(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(fieldHeight)
+                                    .shadow(elevation = 2.dp, shape = fieldShape, clip = false),
+                            color = containerColor,
+                            shape = fieldShape,
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
                         ) {
-                            Text(stringResource(R.string.action_cancel))
+                            Row(
+                                modifier = Modifier.fillMaxSize().padding(start = 4.dp, end = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                ZhixuIconButton(
+                                    onClick = onDismiss,
+                                    modifier = Modifier.size(fieldHeight),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_lucide_arrow_left),
+                                        contentDescription = stringResource(R.string.action_cancel),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(6.dp))
+
+                                BasicTextField(
+                                    value = query,
+                                    onValueChange = onQueryChange,
+                                    singleLine = true,
+                                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                    textStyle =
+                                        MaterialTheme.typography.bodyMedium.merge(
+                                            androidx.compose.ui.text.TextStyle(
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                fontWeight = FontWeight.Normal,
+                                            ),
+                                        ),
+                                    modifier =
+                                        Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .focusRequester(focusRequester),
+                                    decorationBox = { innerTextField ->
+                                        androidx.compose.foundation.layout.Box(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.CenterStart,
+                                        ) {
+                                            if (query.isBlank()) {
+                                                Text(
+                                                    text = stringResource(R.string.action_search),
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    maxLines = 1,
+                                                )
+                                            }
+                                            innerTextField()
+                                        }
+                                    },
+                                )
+                            }
                         }
                     }
 
